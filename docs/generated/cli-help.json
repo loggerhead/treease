@@ -130,6 +130,98 @@
     {
       "arguments": [
         {
+          "help": "Expression to evaluate.",
+          "multiple": false,
+          "name": "expression",
+          "repeated": false,
+          "required": true
+        },
+        {
+          "help": "Input file or `-` for stdin.",
+          "multiple": false,
+          "name": "file",
+          "repeated": false,
+          "required": true
+        }
+      ],
+      "examples": [
+        {
+          "command": "treease web '.service' config.yaml",
+          "description": "Open the web UI for one input document."
+        }
+      ],
+      "id": "web",
+      "name": "web",
+      "options": [
+        {
+          "help": "Set input format.",
+          "long": "--input-format",
+          "multiple": false,
+          "name": "input-format",
+          "scope": "global",
+          "short": "-p",
+          "takes_value": true,
+          "value_name": "FORMAT"
+        },
+        {
+          "help": "Set output format.",
+          "long": "--output-format",
+          "multiple": false,
+          "name": "output-format",
+          "scope": "global",
+          "short": "-o",
+          "takes_value": true,
+          "value_name": "FORMAT"
+        },
+        {
+          "help": "Pretty-print output.",
+          "long": "--prettyPrint",
+          "multiple": false,
+          "name": "pretty-print",
+          "scope": "global",
+          "short": "-P",
+          "takes_value": false
+        },
+        {
+          "help": "Set indentation width.",
+          "long": "--indent",
+          "multiple": false,
+          "name": "indent",
+          "scope": "global",
+          "short": "-I",
+          "takes_value": true,
+          "value_name": "INDENT"
+        },
+        {
+          "help": "Unwrap scalar output.",
+          "long": "--unwrapScalar",
+          "multiple": false,
+          "name": "unwrap-scalar",
+          "scope": "global",
+          "short": "-r",
+          "takes_value": false
+        },
+        {
+          "help": "Disable YAML document separators.",
+          "long": "--no-doc",
+          "multiple": false,
+          "name": "no-doc",
+          "scope": "global",
+          "short": "-N",
+          "takes_value": false
+        }
+      ],
+      "path": "treease web",
+      "segments": [
+        "treease",
+        "web"
+      ],
+      "summary": "Open the web UI for a single structured document.",
+      "usage": "treease web [OPTIONS] <EXPRESSION> <FILE|->"
+    },
+    {
+      "arguments": [
+        {
           "help": "Optional command path to inspect.",
           "multiple": false,
           "name": "command",
