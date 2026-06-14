@@ -45,6 +45,7 @@
   export let onTextScroll: (payload: { scrollTop: number; scrollLeft: number }) => void = () => {}
   export let onSwap: (payload: { rightText: string; rightLanguage: SupportedEditorLanguageId }) => void = () => {}
   export let onGraphRuntimeState: (payload: RuntimeStateEventDetail) => void = () => {}
+  export let enableRevealSync = true
   export let synchronizedRuntimeLoading = false
 
   type DiffResponse = {
@@ -411,6 +412,7 @@
     <div class="h-full min-h-0 min-w-0 w-full">
       <GraphViewer
         bind:this={graphViewer}
+        {enableRevealSync}
         {synchronizedRuntimeLoading}
         on:reveal={handleGraphReveal}
         on:runtime-state={handleGraphViewerRuntimeState}

@@ -39,14 +39,13 @@
   import type { DiffPlan } from '../../lib/graph/diff-plan';
   import {
     SquareChevronLeft,
-    SquareChevronRight,
     ArrowLeftToLine,
     ArrowRightToLine,
     Braces,
     Share2,
     GripVertical,
-    PanelRightClose,
-    PanelLeftClose,
+    Link2,
+    Link2Off,
   } from 'lucide-svelte';
   import * as ButtonGroup from '../../lib/components/ui/button-group';
   import { IconButton } from '../../lib/components/ui/button';
@@ -73,6 +72,7 @@
   let editorRuntimeLoading = true;
   let viewerRuntimeLoading = true;
   let synchronizedRuntimeLoading = true;
+  let syncScrollEnabled = true;
   let yqInputOpen = false;
   let yqExpression = '';
   let yqBusy = false;
@@ -133,6 +133,7 @@
     editorRuntimeLoading,
     graphRuntimeLoading: viewerRuntimeLoading,
   });
+  $: syncScrollEnabled = $settings?.interaction?.enableSyncScroll ?? true;
 
   async function handleImportFileStream(payload: {
     file: File;
@@ -291,13 +292,23 @@
     showViewerTextPreview(leftText);
   }
 
+  async function toggleSyncScroll() {
+    const nextEnabled = !syncScrollEnabled;
+    scrollSyncLock = null;
+    await settingsStore.save({
+      interaction: {
+        enableSyncScroll: nextEnabled,
+      },
+    });
+  }
+
   function syncScroll(
     owner: ScrollSyncOwner,
     blockedBy: ScrollSyncOwner,
     position: ScrollPosition,
     apply: (position: ScrollPosition) => void,
   ) {
-    if (!$settings?.interaction?.enableSyncScroll) return;
+    if (!syncScrollEnabled) return;
     if (scrollSyncLock === blockedBy) return;
     scrollSyncLock = owner;
     apply(position);
@@ -333,7 +344,7 @@
 
   function handleEditorReveal(event: CustomEvent<{ path: PathSeg[]; target?: 'key' | 'value' | 'node' }>) {
     const path = event?.detail?.path ?? [];
-    if (!path.length) return;
+    if (!path.length || !syncScrollEnabled) return;
     viewerRef?.revealPath?.(path, { target: event.detail?.target });
   }
 
@@ -343,7 +354,7 @@
     trigger?: 'click' | 'search';
   }) {
     const path = payload?.path ?? [];
-    if (!path.length) return;
+    if (!path.length || !syncScrollEnabled) return;
     updateTreeSelection(path, {
       target: payload?.target,
       source: payload?.trigger === 'search' ? 'search' : 'graph',
@@ -428,6 +439,7 @@
               bind:this={editorRef}
               bind:tabSummaries
               bind:activeTabId
+              enableRevealSync={syncScrollEnabled}
               {synchronizedRuntimeLoading}
               on:reveal={handleEditorReveal}
               on:runtime-state={handleEditorRuntimeEvent}
@@ -482,6 +494,19 @@
                     {/if}
                   </IconButton>
                   <IconButton
+                    class={syncScrollEnabled ? 'text-[var(--accent)]' : 'text-[var(--text-muted)]'}
+                    aria-label={syncScrollEnabled ? 'Disable synchronized scrolling' : 'Enable synchronized scrolling'}
+                    title={syncScrollEnabled ? 'Disable synchronized scrolling' : 'Enable synchronized scrolling'}
+                    data-testid="sync-scroll-toggle"
+                    on:click={toggleSyncScroll}
+                  >
+                    {#if syncScrollEnabled}
+                      <Link2 size={12} />
+                    {:else}
+                      <Link2Off size={12} />
+                    {/if}
+                  </IconButton>
+                  <IconButton
                     class="text-[var(--text-primary)]"
                     aria-label="Collapse viewer"
                     title="Collapse viewer"
@@ -513,6 +538,7 @@
           <ViewportPanel
             bind:this={viewerRef}
             bind:viewMode={viewerViewMode}
+            enableRevealSync={syncScrollEnabled}
             {synchronizedRuntimeLoading}
             onRevealError={(line, column) => editorRef?.revealError(line, column)}
             onGraphReveal={handleGraphReveal}

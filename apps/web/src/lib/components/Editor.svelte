@@ -10,6 +10,7 @@
   export let tabSummaries: TabSummary[] = [];
   export let activeTabId = '';
   export let onScroll: (payload: { scrollTop: number; scrollLeft: number }) => void = () => {};
+  export let enableRevealSync = true;
   export let synchronizedRuntimeLoading = false;
 
   const dispatch = createEventDispatcher<{ reveal: unknown; 'runtime-state': RuntimeStateEventDetail }>();
@@ -112,6 +113,7 @@
   bind:this={editorCore}
   bind:tabSummaries
   bind:activeTabId
+  {enableRevealSync}
   {synchronizedRuntimeLoading}
   {onScroll}
   on:reveal={handleReveal}

@@ -108,6 +108,7 @@
   } from 'leafer-ui';
 
   type LeaferAppOrLeafer = LeaferApp | Leafer;
+  export let enableRevealSync = true;
   export let synchronizedRuntimeLoading = false;
 
   const MINIMAP_WIDTH = 220;
@@ -320,6 +321,7 @@ const fullBuildReasonSet = new Set([
     updateActiveTempModel: (updater) => activeTempModel.update(updater),
     getEditorRevision: () => editorRevisionValue,
     getGraphAppliedRevision: () => $graphAppliedRevision,
+    getEnableRevealSync: () => enableRevealSync,
     dispatchReveal: (path, target, trigger) => dispatch('reveal', { path, target, trigger }),
     handleError,
   });
@@ -1071,6 +1073,9 @@ const fullBuildReasonSet = new Set([
       lastAppliedGraphHighlightRevision = -1;
     } else if (!graphHighlightSignature) {
       clearSearchHighlight();
+      lastAppliedGraphHighlightSignature = '';
+      lastAppliedGraphHighlightRevision = -1;
+    } else if (!enableRevealSync) {
       lastAppliedGraphHighlightSignature = '';
       lastAppliedGraphHighlightRevision = -1;
     } else if (

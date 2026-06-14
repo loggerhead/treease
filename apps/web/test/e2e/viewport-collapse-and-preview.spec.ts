@@ -1,10 +1,13 @@
 import { expect, test } from './fixtures';
 import {
   getLatestGraphProbes,
+  getMonacoScroll,
   getMonacoValue,
+  setMonacoScroll,
   setEditorContent,
   waitForEditorReady,
   waitForGraphRendered,
+  waitForSettingsReady,
 } from './utils';
 
 async function selectExportFormat(page: import('@playwright/test').Page, label: string) {
@@ -93,4 +96,45 @@ test('graph mode remounts graph after switching back from text mode', async ({ p
   await expect(page.getByTestId('graph-viewer-canvas')).toBeVisible({ timeout: 5_000 });
   await expect(page.getByTestId('graph-search-trigger')).toBeVisible({ timeout: 5_000 });
   await expect.poll(async () => (await getLatestGraphProbes(page)).length, { timeout: 5_000 }).toBeGreaterThan(0);
+});
+
+test('sync scroll toggle stops and resumes left/right text scroll mirroring', async ({ page }) => {
+  await page.goto('/editor');
+  await waitForEditorReady(page);
+  await waitForSettingsReady(page);
+
+  const lines = Array.from({ length: 120 }, (_, index) => `line-${index + 1}: value-${index + 1}`).join('\n');
+  await setEditorContent(page, {
+    sourceText: lines,
+    language: 'yaml',
+  });
+
+  await page.getByRole('button', { name: 'Text mode', exact: true }).click();
+  await expect(page.getByTestId('monaco-right-editor')).toBeVisible({ timeout: 5_000 });
+  await page.getByRole('button', { name: 'Load compare file', exact: true }).click();
+  await page.getByLabel('Right panel file input').setInputFiles({
+    name: 'sidecar.yaml',
+    mimeType: 'application/x-yaml',
+    buffer: Buffer.from(lines, 'utf8'),
+  });
+
+  await expect.poll(async () => (await getMonacoValue(page, 'right-editor')).includes('line-120: value-120'), {
+    timeout: 5_000,
+  }).toBe(true);
+
+  await setMonacoScroll(page, 'source-editor', 640);
+  await expect.poll(async () => (await getMonacoScroll(page, 'right-editor')).scrollTop, { timeout: 5_000 }).toBe(640);
+
+  await page.getByTestId('sync-scroll-toggle').click();
+  await expect(page.getByRole('button', { name: 'Enable synchronized scrolling', exact: true })).toBeVisible();
+
+  await setMonacoScroll(page, 'source-editor', 1280);
+  await page.waitForTimeout(150);
+  expect((await getMonacoScroll(page, 'right-editor')).scrollTop).toBe(640);
+
+  await page.getByTestId('sync-scroll-toggle').click();
+  await expect(page.getByRole('button', { name: 'Disable synchronized scrolling', exact: true })).toBeVisible();
+
+  await setMonacoScroll(page, 'source-editor', 320);
+  await expect.poll(async () => (await getMonacoScroll(page, 'right-editor')).scrollTop, { timeout: 5_000 }).toBe(320);
 });

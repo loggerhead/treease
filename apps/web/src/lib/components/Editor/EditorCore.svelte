@@ -61,6 +61,7 @@
   export let tabSummaries: TabSummary[] = [];
   export let activeTabId = '';
   export let onScroll: (payload: { scrollTop: number; scrollLeft: number }) => void = () => {};
+  export let enableRevealSync = true;
   export let synchronizedRuntimeLoading = false;
 
   const dispatch = createEventDispatcher<{ 'runtime-state': RuntimeStateEventDetail }>();
@@ -340,7 +341,9 @@
 
   $: {
     const graphHighlight = $activeTempModel?.graphHighlight ?? null;
-    if (!graphHighlight?.path?.length || graphHighlight.source === 'editor') {
+    const graphRevealSyncBlocked =
+      !enableRevealSync && (graphHighlight?.source === 'graph' || graphHighlight?.source === 'search');
+    if (!graphHighlight?.path?.length || graphHighlight.source === 'editor' || graphRevealSyncBlocked) {
       lastExternalTreeSelection = null;
     } else if (graphHighlight !== lastExternalTreeSelection && editor && model) {
       lastExternalTreeSelection = graphHighlight;

@@ -17,8 +17,10 @@ import {
   readGraphLastReveal,
   readGraphRevealProbe,
   setEditorContent,
+  setMonacoPositionByText,
   waitForEditorReady,
   waitForGraphRendered,
+  waitForSettingsReady,
 } from './utils';
 
 type LargeFixtureRow = {
@@ -400,6 +402,61 @@ test('1MB fixture header table row 100 click selects the matching editor text', 
     .poll(async () => (await readEditorState(page)).tempModel.treePath, { timeout: 5_000 })
     .toEqual(expectedPath);
 
+  await expect
+    .poll(async () => (await readEditorState(page)).tempModel.selectionLength, { timeout: 5_000 })
+    .toBeGreaterThan(0);
+});
+
+test('sync scroll toggle also gates editor and graph reveal synchronization', async ({ page }) => {
+  await page.goto('/editor');
+  await waitForEditorReady(page);
+  await waitForSettingsReady(page);
+
+  await setEditorContent(page, {
+    sourceText: '{"user":{"name":"Alice","role":"admin"},"count":42}',
+    language: 'json',
+  });
+  await waitForGraphRendered(page);
+
+  await setMonacoPositionByText(page, 'source-editor', '"role":');
+  await expect
+    .poll(async () => readGraphHighlight(page), { timeout: 5_000 })
+    .toEqual(
+      expect.objectContaining({
+        path: ['$', 'user', 'role'],
+      }),
+    );
+
+  await page.getByTestId('sync-scroll-toggle').click();
+  await expect(page.getByRole('button', { name: 'Enable synchronized scrolling', exact: true })).toBeVisible();
+
+  await setMonacoPositionByText(page, 'source-editor', '"count":');
+  await expect
+    .poll(async () => (await readEditorState(page)).tempModel.treePath, { timeout: 5_000 })
+    .toEqual(['$', 'count']);
+  expect(await readGraphHighlight(page)).toEqual(
+    expect.objectContaining({
+      path: ['$', 'user', 'role'],
+    }),
+  );
+
+  const nameProbe = (await readGraphClickProbes(page)).find(
+    (probe) => !!probe.coord && probe.target === 'value' && probe.path.join('.') === 'user.name' && probe.text === 'Alice',
+  );
+  expect(nameProbe?.coord).toBeTruthy();
+  if (!nameProbe?.coord) throw new Error('graph probe user.name missing');
+
+  await clickGraphProbeAt(page, nameProbe.coord);
+  await page.waitForTimeout(150);
+  expect((await readEditorState(page)).tempModel.treePath).toEqual(['$', 'count']);
+
+  await page.getByTestId('sync-scroll-toggle').click();
+  await expect(page.getByRole('button', { name: 'Disable synchronized scrolling', exact: true })).toBeVisible();
+
+  await clickGraphProbeAt(page, nameProbe.coord);
+  await expect
+    .poll(async () => (await readEditorState(page)).tempModel.treePath, { timeout: 5_000 })
+    .toEqual(['$', 'user', 'name']);
   await expect
     .poll(async () => (await readEditorState(page)).tempModel.selectionLength, { timeout: 5_000 })
     .toBeGreaterThan(0);

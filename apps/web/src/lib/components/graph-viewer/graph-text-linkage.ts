@@ -37,6 +37,7 @@ type GraphTextLinkageControllerDeps = {
   updateActiveTempModel: (updater: (current: any) => any) => void;
   getEditorRevision: () => number;
   getGraphAppliedRevision: () => number;
+  getEnableRevealSync?: () => boolean;
   dispatchReveal: (path: PathSeg[], target?: GraphHighlightTarget, trigger?: string) => void;
   handleError: (
     error: unknown,
@@ -152,7 +153,7 @@ export function createGraphTextLinkageController(deps: GraphTextLinkageControlle
   }
 
   function syncTreeSelection(path: PathSeg[], target?: GraphHighlightTarget, trigger?: string): void {
-    if (!path?.length) return;
+    if (!path?.length || deps.getEnableRevealSync?.() === false) return;
     const source = trigger === 'search' ? 'search' : 'graph';
     deps.updateActiveTempModel((current) => ({
       ...current,
