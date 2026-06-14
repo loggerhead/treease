@@ -1,0 +1,147 @@
+import { expect, test, type Page } from './fixtures';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { chooseFile, getMonacoValue, readEditorState, setEditorContent, setMonacoValue, waitForEditorReady } from './utils';
+
+async function openTextMode(page: Page) {
+  await page.getByRole('button', { name: 'Text mode', exact: true }).click();
+  await expect(page.getByTestId('monaco-right-editor')).toBeVisible({ timeout: 5_000 });
+  await expect(page.getByRole('button', { name: 'Compare', exact: true })).toBeVisible();
+}
+
+async function setRightTextFromStore(page: Page, value: string) {
+  await setMonacoValue(page, 'right-editor', value);
+}
+
+async function syncRightToSource(page: Page) {
+  const source = (await readEditorState(page)).sourceText;
+  await setMonacoValue(page, 'right-editor', source);
+  await expect
+    .poll(async () => {
+      const rightText = await getMonacoValue(page, 'right-editor');
+      return JSON.stringify(JSON.parse(rightText)) === JSON.stringify(JSON.parse(source));
+    })
+    .toBe(true);
+}
+
+async function runCompare(page: Page) {
+  await page.getByRole('button', { name: 'Compare', exact: true }).click();
+}
+
+async function dropFileToRightPanel(page: Page, fileName: string, content: string, mimeType = 'application/json') {
+  await chooseFile(page, {
+    triggerLabel: 'Load compare file',
+    inputLabel: 'Right panel file input',
+    fileName,
+    content,
+    mimeType,
+  });
+}
+
+const baseJsonFixture = readFileSync(resolve(process.cwd(), '../../test/fixtures/compare/base.json'), 'utf8');
+
+test('shows equal toast and no decorations when right text equals source', async ({ page }) => {
+  await page.goto('/editor');
+  await waitForEditorReady(page);
+  await openTextMode(page);
+
+  await syncRightToSource(page);
+  await runCompare(page);
+  await expect(page.getByText('Compare completed (no differences)')).toBeVisible();
+  await expect(page.getByTestId('right-panel-dropzone')).toHaveAttribute('data-compare-highlight-count', '0');
+});
+
+test('re-compare should show warning toast and render highlight for parseable unequal JSON', async ({ page }) => {
+  await page.goto('/editor');
+  await waitForEditorReady(page);
+  await setEditorContent(page, { sourceText: '{"token":"base"}', language: 'json' });
+  await openTextMode(page);
+
+  await syncRightToSource(page);
+  await runCompare(page);
+  await expect(page.getByTestId('right-panel-dropzone')).toHaveAttribute('data-compare-highlight-count', '0');
+
+  await setMonacoValue(page, 'right-editor', '{"token":"second-token"}');
+  await runCompare(page);
+  await expect(page.getByText('Compare completed (differences found)')).toBeVisible();
+  await expect
+    .poll(async () => Number((await page.getByTestId('right-panel-dropzone').getAttribute('data-compare-highlight-count')) ?? '0'))
+    .toBeGreaterThan(0);
+});
+
+test('editing right Monaco clears previous compare highlights', async ({ page }) => {
+  await page.goto('/editor');
+  await waitForEditorReady(page);
+  await openTextMode(page);
+
+  await setMonacoValue(page, 'right-editor', '{"token":"will-clear"');
+  await runCompare(page);
+  await expect
+    .poll(async () => Number((await page.getByTestId('right-panel-dropzone').getAttribute('data-compare-highlight-count')) ?? '0'))
+    .toBeGreaterThan(0);
+
+  await setRightTextFromStore(page, '{"token":"after-edit"}');
+  await expect(page.getByTestId('right-panel-dropzone')).toHaveAttribute('data-compare-highlight-count', '0');
+});
+
+
+test('structured compare ignores formatting-only diffs', async ({ page }) => {
+  await page.goto('/editor');
+  await waitForEditorReady(page);
+  await setEditorContent(page, { sourceText: '{"a":1,"b":[true,false],"c":{"x":"y"}}', language: 'json' });
+  await openTextMode(page);
+
+  await setMonacoValue(page, 'right-editor', '{\n  "a": 1,\n  "b": [\n    true,\n    false\n  ],\n  "c": {\n    "x": "y"\n  }\n}');
+  await runCompare(page);
+
+  await expect(page.getByTestId('right-panel-dropzone')).toHaveAttribute('data-compare-highlight-count', '0');
+});
+
+test('structured compare keeps string whitespace diffs', async ({ page }) => {
+  await page.goto('/editor');
+  await waitForEditorReady(page);
+  await setEditorContent(page, { sourceText: '{"msg":"a b"}', language: 'json' });
+  await openTextMode(page);
+
+  await setMonacoValue(page, 'right-editor', '{"msg":"a  b"}');
+  await runCompare(page);
+
+  await expect
+    .poll(async () => Number((await page.getByTestId('right-panel-dropzone').getAttribute('data-compare-highlight-count')) ?? '0'))
+    .toBeGreaterThan(0);
+});
+
+test('compare keeps base.json tail hunk without extra trailing blank block', async ({ page }) => {
+  await page.goto('/editor');
+  await waitForEditorReady(page);
+  await openTextMode(page);
+
+  await dropFileToRightPanel(page, 'base.json', baseJsonFixture);
+  await expect
+    .poll(async () => JSON.stringify(JSON.parse(await getMonacoValue(page, 'right-editor'))))
+    .toBe(JSON.stringify(JSON.parse(baseJsonFixture)));
+
+  await runCompare(page);
+
+  await expect
+    .poll(async () => Number((await page.getByTestId('right-panel-dropzone').getAttribute('data-compare-highlight-count')) ?? '0'))
+    .toBeGreaterThan(0);
+
+  await expect(page.getByTestId('right-panel-dropzone').locator('.diff-blank-hunk')).toHaveCount(2);
+});
+
+test('editing left source clears previous compare highlights', async ({ page }) => {
+  await page.goto('/editor');
+  await waitForEditorReady(page);
+  await setEditorContent(page, { sourceText: '{"token":"base"}', language: 'json' });
+  await openTextMode(page);
+
+  await setMonacoValue(page, 'right-editor', '{"token":"changed"}');
+  await runCompare(page);
+  await expect
+    .poll(async () => Number((await page.getByTestId('right-panel-dropzone').getAttribute('data-compare-highlight-count')) ?? '0'))
+    .toBeGreaterThan(0);
+
+  await setMonacoValue(page, 'source-editor', '{"token":"edited-left"}');
+  await expect(page.getByTestId('right-panel-dropzone')).toHaveAttribute('data-compare-highlight-count', '0');
+});

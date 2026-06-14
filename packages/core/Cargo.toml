@@ -1,0 +1,69 @@
+[package]
+name = "treease-core"
+version = "1.0.0"
+edition = "2024"
+build = "build.rs"
+
+[lib]
+path = "src/lib.rs"
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = []
+## lite – only JSON language support, excludes YAML/TOML/Python/JavaScript/CSV
+lite = []
+
+[dependencies]
+regex-lite = "0.1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tsify = "0.4.5"
+wasm-bindgen = "0.2.121"
+serde-wasm-bindgen = "0.6"
+tree-sitter = { path = "../../deps/tree-sitter/lib" }
+tree-sitter-language = { path = "../../deps/tree-sitter/crates/language" }
+
+
+[dev-dependencies]
+insta = { version = "1", features = ["yaml"] }
+[build-dependencies]
+cc = "1.2"
+
+[profile.release]
+opt-level = "z"
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = true
+
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = ['-Oz', '--enable-bulk-memory', '--enable-nontrapping-float-to-int']
+[[bin]]
+name = "treease"
+path = "src/tools/treease.rs"
+test = false
+
+[[bin]]
+name = "corpus_runner_helper"
+path = "tests/support/corpus_runner_helper.rs"
+test = false
+
+[[bin]]
+name = "export_registry_doc"
+path = "src/tools/export_registry_doc.rs"
+test = false
+
+[[bin]]
+name = "export_language_support"
+path = "src/tools/export_language_support.rs"
+test = false
+
+[[bin]]
+name = "export_document_protocol"
+path = "src/tools/export_document_protocol.rs"
+test = false
+
+[[bin]]
+name = "sync_examples"
+path = "src/tools/sync_examples.rs"
+test = false

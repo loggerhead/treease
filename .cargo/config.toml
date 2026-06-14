@@ -1,0 +1,6 @@
+[env]
+CC_wasm32_unknown_unknown = { value = "scripts/zig-wasm32-cc.sh", relative = true }
+AR_wasm32_unknown_unknown = { value = "scripts/wasm32-ar.sh", relative = true }
+
+[target.wasm32-unknown-unknown]
+rustflags = ["-C", "link-args=--whole-archive"]

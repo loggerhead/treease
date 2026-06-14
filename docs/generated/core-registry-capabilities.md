@@ -1,0 +1,115 @@
+# Core Registry Capabilities
+
+## Build Options
+- lang_json: true
+- lang_yaml: true
+- lang_toml: true
+- lang_python: true
+- lang_javascript: true
+- lang_csv: true
+- op_traversal: true
+- op_math: true
+- op_relational: true
+- op_logic: true
+- op_assign: true
+- op_collection: true
+- op_codec: true
+- op_strings: true
+- op_sort: true
+- op_meta: true
+- op_special: true
+
+## Operators
+- short_pipe_op_type
+- self_reference_op_type
+- expression_op_type
+- value_op_type
+- traverse_path_op_type
+- traverse_array_op_type
+- recursive_descent_op_type
+- get_path_op_type
+- set_path_op_type
+- del_paths_op_type
+- delete_op_type
+- or_op_type
+- and_op_type
+- not_op_type
+- alternative_op_type
+- any_op_type
+- all_op_type
+- any_condition_op_type
+- all_condition_op_type
+- assign_op_type
+- add_assign_op_type
+- subtract_assign_op_type
+- multiply_assign_op_type
+- assign_variable_op_type
+- add_op_type
+- subtract_op_type
+- multiply_op_type
+- divide_op_type
+- modulo_op_type
+- equals_op_type
+- not_equals_op_type
+- relational_op_type
+- min_op_type
+- max_op_type
+- create_map_op_type
+- collect_op_type
+- collect_object_op_type
+- map_op_type
+- map_values_op_type
+- pick_op_type
+- omit_op_type
+- union_op_type
+- unique_op_type
+- unique_by_op_type
+- group_by_op_type
+- flatten_op_type
+- length_op_type
+- encode_op_type
+- decode_op_type
+- to_entries_op_type
+- from_entries_op_type
+- with_entries_op_type
+- to_number_op_type
+- join_string_op_type
+- sub_string_op_type
+- match_op_type
+- capture_op_type
+- test_op_type
+- split_string_op_type
+- change_case_op_type
+- trim_op_type
+- to_string_op_type
+- string_interpolation_op_type
+- sort_by_op_type
+- sort_op_type
+- sort_keys_op_type
+- reverse_op_type
+- shuffle_op_type
+- get_variable_op_type
+- get_tag_op_type
+- get_kind_op_type
+- get_key_op_type
+- is_key_op_type
+- keys_op_type
+- get_parent_op_type
+- get_parents_op_type
+- contains_op_type
+- has_op_type
+- reduce_op_type
+- block_op_type
+- empty_op_type
+- with_op_type
+- first_op_type
+- select_op_type
+- filter_op_type
+
+## Formats
+- json
+- yaml
+- toml
+- csv
+- python
+- javascript

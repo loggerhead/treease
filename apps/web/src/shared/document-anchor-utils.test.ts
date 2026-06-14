@@ -1,0 +1,109 @@
+import { describe, it, expect } from 'vitest';
+import { serializePath, byteOffsetToRowColumn, byteOffsetToUtf16Offset } from './document-anchor-utils';
+
+describe('serializePath', () => {
+  it('returns $ for empty path', () => {
+    expect(serializePath([])).toBe('$');
+  });
+
+  it('serializes a key path segment', () => {
+    const path = [{ tag: 0 as const, key: 'foo', index: 0 }];
+    expect(serializePath(path)).toBe('$.foo');
+  });
+
+  it('serializes nested key path segments', () => {
+    const path = [
+      { tag: 0 as const, key: 'foo', index: 0 },
+      { tag: 0 as const, key: 'bar', index: 0 },
+    ];
+    expect(serializePath(path)).toBe('$.foo.bar');
+  });
+
+  it('serializes an index path segment', () => {
+    const path = [{ tag: 1 as const, key: '', index: 2 }];
+    expect(serializePath(path)).toBe('$[2]');
+  });
+
+  it('serializes mixed key and index segments', () => {
+    const path = [
+      { tag: 0 as const, key: 'foo', index: 0 },
+      { tag: 1 as const, key: '', index: 3 },
+      { tag: 0 as const, key: 'bar', index: 0 },
+    ];
+    expect(serializePath(path)).toBe('$.foo[3].bar');
+  });
+
+  it('uses bracket notation for keys with special characters', () => {
+    const path = [{ tag: 0 as const, key: 'foo.bar', index: 0 }];
+    expect(serializePath(path)).toBe('$["foo.bar"]');
+  });
+
+  it('uses bracket notation for keys with spaces', () => {
+    const path = [{ tag: 0 as const, key: 'my key', index: 0 }];
+    expect(serializePath(path)).toBe('$["my key"]');
+  });
+});
+
+describe('byteOffsetToRowColumn', () => {
+  it('returns row 0 column 0 for offset 0', () => {
+    const result = byteOffsetToRowColumn('hello\nworld', 0);
+    expect(result).toEqual({ row: 0, column: 0 });
+  });
+
+  it('returns correct row and column for a multi-line string', () => {
+    const result = byteOffsetToRowColumn('hello\nworld', 6);
+    expect(result).toEqual({ row: 1, column: 0 });
+  });
+
+  it('handles offset at end of a line', () => {
+    const result = byteOffsetToRowColumn('abc\ndef', 3);
+    expect(result).toEqual({ row: 0, column: 3 });
+  });
+
+  it('handles UTF-8 characters that use multiple bytes', () => {
+    const result = byteOffsetToRowColumn('héllo', 1);
+    expect(result).toEqual({ row: 0, column: 1 });
+  });
+
+  it('handles offset beyond text length', () => {
+    const result = byteOffsetToRowColumn('hi', 100);
+    expect(result.row).toBe(0);
+    expect(typeof result.column).toBe('number');
+  });
+
+  it('clamps negative offset to 0', () => {
+    const result = byteOffsetToRowColumn('hello', -5);
+    expect(result).toEqual({ row: 0, column: 0 });
+  });
+});
+
+describe('byteOffsetToUtf16Offset', () => {
+  it('returns 0 for offset 0', () => {
+    expect(byteOffsetToUtf16Offset('hello', 0)).toBe(0);
+  });
+
+  it('returns correct offset for ASCII text', () => {
+    expect(byteOffsetToUtf16Offset('abc', 2)).toBe(2);
+  });
+
+  it('handles multi-byte UTF-8 characters', () => {
+    // 'é' is 2 bytes in UTF-8, 1 char in UTF-16
+    expect(byteOffsetToUtf16Offset('é', 1)).toBe(0);
+    expect(byteOffsetToUtf16Offset('é', 2)).toBe(1);
+  });
+
+  it('handles emoji (4 bytes UTF-8, 2 surrogates UTF-16)', () => {
+    // '😀' is 4 bytes in UTF-8, 2 code units in UTF-16
+    expect(byteOffsetToUtf16Offset('😀', 4)).toBe(2);
+  });
+
+  it('handles mixed ASCII and multi-byte', () => {
+    // 'a'=1b U8/1cu U16, 'é'=2b U8/1cu U16, '😀'=4b U8/2cu U16, total=7 bytes
+    expect(byteOffsetToUtf16Offset('aé😀', 7)).toBe(4);
+    expect(byteOffsetToUtf16Offset('aé😀', 1)).toBe(1);
+  });
+
+  it('clamps to valid range', () => {
+    expect(byteOffsetToUtf16Offset('hi', 100)).toBe(2);
+  });
+});

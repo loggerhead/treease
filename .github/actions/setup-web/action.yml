@@ -1,0 +1,30 @@
+name: Setup Web
+description: Install Zig, Node, pnpm, and wasm-pack for web builds
+
+inputs:
+  zig-version:
+    description: Zig version to install
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - uses: mlugg/setup-zig@v2
+      with:
+        version: ${{ inputs.zig-version }}
+    - uses: pnpm/action-setup@v3
+      with:
+        version: 9
+        run_install: false
+    - uses: actions/setup-node@v4
+      with:
+        node-version: 20
+        cache: pnpm
+        cache-dependency-path: apps/web/pnpm-lock.yaml
+    - name: Install dependencies
+      run: pnpm install --frozen-lockfile
+      shell: bash
+      working-directory: apps/web
+    - name: Install wasm-pack
+      run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+      shell: bash

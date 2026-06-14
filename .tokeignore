@@ -1,0 +1,9 @@
+deps/
+test/
+example/
+packages/core/tests/
+node_modules/
+target/
+dist/
+build/
+docs/

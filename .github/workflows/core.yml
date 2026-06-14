@@ -1,0 +1,21 @@
+name: Core Tests
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+jobs:
+  core-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: ./.github/actions/setup-rust
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: nextest
+      - name: Run core tests
+        run: ./test.sh all
+        working-directory: ${{ github.workspace }}/packages/core

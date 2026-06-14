@@ -1,0 +1,79 @@
+---
+source: src/wasm_document/tests/us12_streaming_snapshots.rs
+expression: summarize_artifacts(&baseline)
+---
+tree:
+  total_nodes: 34849
+  max_depth: 2
+  kind_counts:
+    0: 1
+    1: 3168
+    2: 31680
+  sem_type_counts:
+    0: 3168
+    1: 1
+    2: 28512
+    4: 3168
+  top_level_entries:
+    - ""
+    - ""
+    - ""
+    - ""
+    - ""
+    - ""
+    - ""
+    - ""
+    - ""
+    - ""
+    - ""
+    - ""
+  fingerprint: 252384af2a94a22b
+graph:
+  node_count: 1
+  edge_count: 0
+  node_kind_counts:
+    2: 1
+  max_depth: 0
+  table_node_count: 1
+  total_object_rows: 0
+  total_table_rows: 3168
+  total_table_cells: 19014
+  node_path_samples:
+    - k2|d0|$
+  edge_samples: []
+  table_samples:
+    - path: $
+      node_kind: 2
+      depth: 0
+      row_count: 3168
+      column_headers:
+        - ""
+        - name
+        - language
+        - id
+        - bio
+        - version
+      first_row:
+        - "0"
+        - Adeel Solangi
+        - Sindhi
+        - V59OF92YF627HFY0
+        - Donec lobortis eleifend condimentum. Cras dictum dolor lacinia lectus vehicula rutrum. Maecenas quis nisi nunc. Nam tristique feugiat est vitae mollis. Maecenas quis nisi nunc.
+        - "6.1"
+      last_row:
+        - "3167"
+        - Bhupesh Menon
+        - Hindi
+        - 0CEPNRDV98KT3ORP
+        - "Maecenas tempus neque ut porttitor malesuada. Phasellus massa ligula, hendrerit eget efficitur eget, tincidunt in ligula. Quisque mauris ligula, efficitur porttitor sodales ac, lacinia non ex. Maecenas quis nisi nunc."
+        - "2.69"
+      total_height: 88730
+      view_height: 1000
+      row_height: 28
+      node_box:
+        - 0
+        - 0
+        - 1206
+        - 1002
+  semantic_fingerprint: 03a8b8244291f8d9
+  layout_fingerprint: 9502bf8bf1222694

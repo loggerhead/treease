@@ -1,0 +1,200 @@
+@import "tailwindcss";
+
+:root {
+  --app-bg: #f8fafc;
+  --panel-bg: #ffffff;
+  --panel-bg-alt: #f8fafc;
+  --topbar-bg: #ffffff;
+  --bottombar-bg: #ffffff;
+  --text-primary: #0f172a;
+  --text-muted: #64748b;
+  --border-strong: #e2e8f0;
+  --border-muted: #e5e7eb;
+  --accent: #2563eb;
+  --danger: #dc2626;
+  --color-popover: #ffffff;
+  --color-popover-foreground: #0f172a;
+  --color-border: #e2e8f0;
+  --topbar-height: var(--bottombar-height);
+  --bottombar-height: 30px;
+  --max-key-length: 300px;
+}
+
+body {
+  @apply m-0 h-screen w-screen overflow-hidden p-0 bg-[var(--app-bg)] text-[var(--text-primary)];
+  font-family: "SF Pro Text", "PingFang SC", "Segoe UI", sans-serif;
+}
+
+#app {
+  @apply h-full w-full;
+}
+
+.app-split-layout {
+  @apply relative flex h-full min-h-0 w-full overflow-hidden;
+}
+
+.app-split-pane {
+  @apply relative h-full min-h-0 overflow-hidden;
+  flex: 0 0 auto;
+}
+
+.app-split-pane--left,
+.app-split-pane--right {
+  min-width: 0;
+}
+
+.app-split-divider {
+  @apply absolute top-0 z-10 h-full cursor-col-resize;
+  width: 10px;
+  touch-action: none;
+  user-select: none;
+}
+
+.splitter-control {
+  @apply pointer-events-auto absolute top-1/2 z-[20] -translate-x-1/2 -translate-y-1/2;
+}
+
+.splitter-control--split {
+  @apply flex items-center justify-center;
+  left: 0;
+  position: relative;
+}
+
+.splitter-control__drag-hint {
+  @apply flex h-4 items-center justify-center text-[var(--text-muted)];
+  position: absolute;
+  left: 50%;
+  top: -6px;
+  pointer-events: none;
+  transform: translate(-50%, -100%);
+  transition: color 120ms ease;
+}
+
+.app-split-divider:hover .splitter-control__drag-hint,
+.app-split-divider--dragging .splitter-control__drag-hint {
+  color: var(--accent);
+}
+
+.splitter-control__buttons {
+  @apply pointer-events-auto;
+}
+
+.splitter-control__group {
+  @apply inline-flex items-center gap-0;
+}
+
+.splitter-control__button {
+  @apply inline-flex h-7 w-7 items-center justify-center bg-[var(--panel-bg)] text-[var(--text-muted)] cursor-pointer;
+}
+
+.splitter-control__button:hover {
+  @apply bg-[#eff6ff] text-[var(--text-primary)];
+}
+
+[data-slot="dialog-overlay"] {
+  @apply fixed inset-0 z-50 backdrop-blur-[6px];
+  background: rgba(15, 23, 42, 0.35);
+}
+
+[data-slot="dialog-content"] {
+  @apply fixed left-1/2 top-1/2 z-[60] -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-[16px] border border-[var(--border-muted)] bg-[var(--panel-bg)] p-5 text-[var(--text-primary)] shadow-[0_24px_48px_rgba(15,23,42,0.18)];
+  width: min(720px, calc(100vw - 32px));
+  max-height: calc(100vh - 32px);
+  @apply grid gap-4;
+}
+
+[data-slot="dialog-header"] {
+  @apply flex flex-col gap-1.5;
+}
+
+[data-slot="dialog-title"] {
+  @apply text-[16px] font-semibold;
+}
+
+[data-slot="dialog-description"] {
+  @apply text-[12px] text-[var(--text-muted)];
+}
+
+[data-slot="dialog-footer"] {
+  @apply flex justify-end gap-2.5 border-t border-[var(--border-muted)] pt-2;
+}
+
+[data-slot="dialog-content"] > button {
+  @apply absolute right-3 top-3 grid h-7 w-7 place-items-center rounded-[8px] border border-[var(--border-muted)] bg-[var(--panel-bg)] text-[var(--text-muted)] cursor-pointer;
+}
+
+.sr-only {
+  @apply sr-only;
+}
+
+[data-slot="dropdown-menu-content"] {
+  @apply min-w-[160px] rounded-[10px] border border-[var(--border-muted)] bg-[var(--panel-bg)] p-1.5 text-[var(--text-primary)] shadow-[0_12px_28px_rgba(15,23,42,0.12)];
+}
+
+[data-slot="select-content"] {
+  @apply min-w-[160px] rounded-[10px] border border-[var(--border-muted)] bg-[var(--panel-bg)] p-1.5 text-[var(--text-primary)] shadow-[0_12px_28px_rgba(15,23,42,0.12)];
+}
+
+[data-slot="dropdown-menu-item"] {
+  @apply flex w-full items-center gap-2 rounded-[8px] px-[10px] py-2 text-[12px] text-[var(--text-primary)] cursor-pointer;
+}
+
+[data-slot="dropdown-menu-item"][data-highlighted],
+[data-slot="dropdown-menu-item"]:hover {
+  @apply bg-[#e2e8f0];
+}
+
+.leafer-tooltip {
+  @apply pointer-events-none z-[9999] max-h-[260px] max-w-[360px] overflow-auto whitespace-pre rounded-[8px] border border-[#e2e8f0] bg-white p-[10px] text-[12px] text-[#0f172a] shadow-[0_8px_24px_rgba(15,23,42,0.12)] font-mono;
+  line-height: 1.4;
+}
+
+.leafer-tooltip pre {
+  @apply m-0;
+}
+
+.left-truncate {
+  direction: rtl;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.left-truncate-content {
+  direction: ltr;
+  unicode-bidi: bidi-override;
+}
+
+.diff-line-del {
+  background: rgba(248, 113, 113, 0.16);
+}
+
+.diff-line-ins {
+  background: rgba(34, 197, 94, 0.16);
+}
+
+.diff-inline-del {
+  background: rgba(248, 113, 113, 0.35);
+  border-radius: 2px;
+}
+
+.diff-inline-ins {
+  background: rgba(34, 197, 94, 0.35);
+  border-radius: 2px;
+}
+
+.diff-margin-del {
+  background: rgba(248, 113, 113, 0.7);
+}
+
+.diff-margin-ins {
+  background: rgba(34, 197, 94, 0.7);
+}
+
+.diff-blank-hunk {
+  background: rgba(148, 163, 184, 0.14);
+}
+
+.monaco-editor .treease-json-block-highlight {
+  background: rgba(96, 165, 250, 0.16);
+}

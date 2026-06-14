@@ -1,0 +1,332 @@
+# TOML
+
+Parse from TOML. The current build also supports outputting TOML, so `treease '.' sample.toml` can roundtrip TOML documents. TOML output uses normalized formatting: root-level non-empty inline tables are emitted as table sections, and non-minified inline arrays include spaces inside the brackets.
+
+
+## Parse: Simple
+Given a sample.toml file of:
+```toml
+A = "hello"
+B = 12
+
+```
+then
+```bash
+treease -oy '.' sample.toml
+```
+will output
+```yaml
+A: hello
+B: 12
+```
+
+## Parse: Deep paths
+Given a sample.toml file of:
+```toml
+person.name = "hello"
+person.address = "12 cat st"
+
+```
+then
+```bash
+treease -oy '.' sample.toml
+```
+will output
+```yaml
+person:
+  name: hello
+  address: 12 cat st
+```
+
+## Encode: Scalar
+Given a sample.toml file of:
+```toml
+person.name = "hello"
+person.address = "12 cat st"
+
+```
+then
+```bash
+treease '.person.name' sample.toml
+```
+will output
+```yaml
+hello
+```
+
+## Parse: inline table
+Given a sample.toml file of:
+```toml
+name = { first = "Tom", last = "Preston-Werner" }
+```
+then
+```bash
+treease -oy '.' sample.toml
+```
+will output
+```yaml
+name:
+  first: Tom
+  last: Preston-Werner
+```
+
+## Parse: Array Table
+Given a sample.toml file of:
+```toml
+
+[owner.contact]
+name = "Tom Preston-Werner"
+age = 36
+
+[[owner.addresses]]
+street = "first street"
+suburb = "ok"
+
+[[owner.addresses]]
+street = "second street"
+suburb = "nice"
+
+```
+then
+```bash
+treease -oy '.' sample.toml
+```
+will output
+```yaml
+owner:
+  contact:
+    name: Tom Preston-Werner
+    age: 36
+  addresses:
+    - street: first street
+      suburb: ok
+    - street: second street
+      suburb: nice
+```
+
+## Parse: Array of Array Table
+Given a sample.toml file of:
+```toml
+
+[[fruits]]
+name = "apple"
+[[fruits.varieties]]  # nested array of tables
+name = "red delicious"
+```
+then
+```bash
+treease -oy '.' sample.toml
+```
+will output
+```yaml
+fruits:
+  - name: apple
+    varieties:
+      - name: red delicious
+```
+
+## Parse: Empty Table
+Given a sample.toml file of:
+```toml
+
+[dependencies]
+
+```
+then
+```bash
+treease -oy '.' sample.toml
+```
+will output
+```yaml
+dependencies: {}
+```
+
+## Roundtrip: inline table attribute
+Given a sample.toml file of:
+```toml
+name = { first = "Tom", last = "Preston-Werner" }
+
+```
+then
+```bash
+treease '.' sample.toml
+```
+will output
+```toml
+[name]
+first = "Tom"
+last = "Preston-Werner"
+```
+
+## Roundtrip: table section
+Given a sample.toml file of:
+```toml
+[owner.contact]
+name = "Tom"
+age = 36
+
+```
+then
+```bash
+treease '.' sample.toml
+```
+will output
+```toml
+[owner.contact]
+name = "Tom"
+age = 36
+```
+
+## Roundtrip: array of tables
+Given a sample.toml file of:
+```toml
+[[fruits]]
+name = "apple"
+[[fruits.varieties]]
+name = "red delicious"
+
+```
+then
+```bash
+treease '.' sample.toml
+```
+will output
+```toml
+[[fruits]]
+name = "apple"
+[[fruits.varieties]]
+name = "red delicious"
+```
+
+## Roundtrip: arrays and scalars
+Given a sample.toml file of:
+```toml
+A = ["hello", ["world", "again"]]
+B = 12
+
+```
+then
+```bash
+treease '.' sample.toml
+```
+will output
+```toml
+A = [ "hello", [ "world", "again" ] ]
+B = 12
+```
+
+## Roundtrip: simple
+Given a sample.toml file of:
+```toml
+A = "hello"
+B = 12
+
+```
+then
+```bash
+treease '.' sample.toml
+```
+will output
+```toml
+A = "hello"
+B = 12
+```
+
+## Roundtrip: deep paths
+Given a sample.toml file of:
+```toml
+[person]
+name = "hello"
+address = "12 cat st"
+
+```
+then
+```bash
+treease '.' sample.toml
+```
+will output
+```toml
+[person]
+name = "hello"
+address = "12 cat st"
+```
+
+## Roundtrip: empty array
+Given a sample.toml file of:
+```toml
+A = []
+
+```
+then
+```bash
+treease '.' sample.toml
+```
+will output
+```toml
+A = []
+```
+
+## Roundtrip: sample table
+Given a sample.toml file of:
+```toml
+var = "x"
+
+[owner.contact]
+name = "Tom Preston-Werner"
+age = 36
+
+```
+then
+```bash
+treease '.' sample.toml
+```
+will output
+```toml
+var = "x"
+
+[owner.contact]
+name = "Tom Preston-Werner"
+age = 36
+```
+
+## Roundtrip: empty table
+Given a sample.toml file of:
+```toml
+[dependencies]
+
+```
+then
+```bash
+treease '.' sample.toml
+```
+will output
+```toml
+[dependencies]
+```
+
+## Roundtrip: comments
+Given a sample.toml file of:
+```toml
+# This is a comment
+A = "hello"  # inline comment
+B = 12
+
+# Table comment
+[person]
+name = "Tom"  # name comment
+
+```
+then
+```bash
+treease '.' sample.toml
+```
+will output
+```toml
+# This is a comment
+A = "hello"  # inline comment
+B = 12
+
+# Table comment
+[person]
+name = "Tom"  # name comment
+```

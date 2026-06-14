@@ -1,0 +1,28 @@
+name: Setup Rust
+description: Install Rust toolchain with wasm target and cache dependencies
+
+runs:
+  using: composite
+  steps:
+    - uses: dtolnay/rust-toolchain@stable
+      with:
+        toolchain: 1.95.0
+        targets: wasm32-unknown-unknown
+        components: llvm-tools
+    - name: Add llvm-tools to PATH
+      shell: bash
+      run: |
+        host="$(rustc -vV | sed -n 's/^host: //p')"
+        llvm_tools_dir="$(rustc --print sysroot)/lib/rustlib/${host}/bin"
+        if [ -x "${llvm_tools_dir}/llvm-ar" ]; then
+          echo "${llvm_tools_dir}" >> "$GITHUB_PATH"
+        elif ! command -v llvm-ar >/dev/null 2>&1; then
+          echo "llvm-ar was not found in rustup llvm-tools or PATH" >&2
+          exit 1
+        fi
+    - uses: Swatinem/rust-cache@v2
+      with:
+        workspaces: packages/core
+        cache-all-crates: true
+        shared-key: rust-${{ runner.os }}-${{ runner.arch }}
+        add-job-id-key: false

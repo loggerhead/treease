@@ -1,0 +1,21 @@
+[submodule "deps/tree-sitter"]
+	path = deps/tree-sitter
+	url = git@github.com:tree-sitter/tree-sitter.git
+[submodule "deps/tree-sitter-toml"]
+	path = deps/tree-sitter-toml
+	url = git@github.com:tree-sitter-grammars/tree-sitter-toml.git
+[submodule "deps/tree-sitter-yaml"]
+	path = deps/tree-sitter-yaml
+	url = git@github.com:tree-sitter-grammars/tree-sitter-yaml.git
+[submodule "deps/tree-sitter-python"]
+	path = deps/tree-sitter-python
+	url = git@github.com:loggerhead/tree-sitter-python.git
+[submodule "deps/tree-sitter-javascript"]
+	path = deps/tree-sitter-javascript
+	url = git@github.com:loggerhead/tree-sitter-javascript.git
+[submodule "zaw"]
+	path = deps/zaw
+	url = git@github.com:loggerhead/zaw.git
+[submodule "test/fixtures"]
+	path = test/fixtures
+	url = https://github.com/loggerhead/treease-testdata.git

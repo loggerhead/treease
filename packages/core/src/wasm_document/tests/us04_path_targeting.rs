@@ -1,0 +1,596 @@
+use super::*;
+
+#[test]
+fn wasm_document_plan_then_apply_nested_value_edit_matches_web_probe_cases() {
+    let _guard = lock_test_mutex();
+
+    struct NestedCase {
+        language: &'static str,
+        document_key: &'static str,
+        source: &'static str,
+        path: Vec<GraphPathSeg>,
+        next_value: &'static str,
+        expected_source: &'static str,
+    }
+
+    let cases = [
+        NestedCase {
+            language: "json",
+            document_key: "nested-json",
+            source: r#"{"user":{"name":"Alice","role":"admin"},"count":42}"#,
+            path: vec![key_seg("user"), key_seg("name")],
+            next_value: "Carol",
+            expected_source: r#"{"user":{"name":"Carol","role":"admin"},"count":42}"#,
+        },
+        NestedCase {
+            language: "yaml",
+            document_key: "nested-yaml",
+            source: "table_with_header:\n  - id: 0\n    meta:\n      name: Alice\n      role: owner\n    status: ready\n",
+            path: vec![
+                key_seg("table_with_header"),
+                index_seg(0),
+                key_seg("meta"),
+                key_seg("name"),
+            ],
+            next_value: "Bob",
+            expected_source: "table_with_header:\n  - id: 0\n    meta:\n      name: 'Bob'\n      role: owner\n    status: ready\n",
+        },
+    ];
+
+    for case in cases {
+        reset_test_state();
+        let (base_snapshot_id, _) =
+            analyze_document_via_job(case.document_key, case.language, &[case.source]);
+        let planned = plan_graph_value_edit_impl(GraphValueEditRequest {
+            document_key: case.document_key.to_owned(),
+            snapshot_id: base_snapshot_id,
+            language: case.language.to_owned(),
+            path: case.path,
+            prefer_key: false,
+            value: scalar_edit_value(case.next_value),
+        })
+        .expect("planner should execute");
+
+        let plan = match planned {
+            SnapshotReadResult::Ready { data } => data,
+            SnapshotReadResult::SnapshotNotReady => panic!("snapshot should be ready"),
+        };
+        assert_eq!(
+            plan.mode,
+            GraphValueEditPlanMode::Edits,
+            "{}",
+            case.language
+        );
+        let started = start_apply_job(
+            case.document_key,
+            case.language,
+            base_snapshot_id,
+            plan.edits,
+        );
+        let close_batch = close(started.job_handle);
+        assert!(
+            matches!(close_batch.terminal, Some(JobTerminal::Completed)),
+            "{} nested edit should complete",
+            case.language,
+        );
+        let snapshot = stored_snapshot_for_document(case.document_key)
+            .expect("nested edit snapshot should be stored");
+        assert_eq!(
+            snapshot
+                .analysis
+                .as_ref()
+                .map(|analysis| analysis.source.as_str()),
+            Some(case.expected_source),
+            "{} nested edit should update target leaf",
+            case.language,
+        );
+    }
+}
+
+#[test]
+fn wasm_document_query_snapshot_prefers_latest_snapshot_for_document_when_request_is_stale() {
+    let _guard = lock_test_mutex();
+    reset_test_state();
+
+    let stale_source = r#"{"table_with_header":[{"h2":1}]}"#;
+    let (stale_snapshot_id, _) = analyze_document_via_job("query-stale", "json", &[stale_source]);
+
+    let current_source = r#"{"Result":{"Blocks":[{"Id":"7569035291635154985"}]}}"#;
+    let (_current_snapshot_id, _) =
+        analyze_document_via_job("query-current", "json", &[current_source]);
+    let cursor_offset = current_source
+        .find("7569035291635154985")
+        .expect("fixture should contain target value") as u32;
+
+    let result = query_snapshot_impl(QuerySnapshotRequest {
+        document_key: "query-current".to_owned(),
+        snapshot_id: stale_snapshot_id.0 as u32,
+        query_kind: QueryKind::ResolvePath as u8,
+        has_path: false,
+        path_pattern: String::new(),
+        span_start: cursor_offset,
+        span_end: cursor_offset,
+        target: QueryTargetKind::Value,
+    })
+    .expect("query should execute");
+
+    match result {
+        SnapshotReadResult::Ready { data } => {
+            assert_eq!(data.anchors.len(), 1);
+            assert_eq!(data.anchors[0].path, "$.Result.Blocks[0].Id");
+        }
+        SnapshotReadResult::SnapshotNotReady => {
+            panic!("latest snapshot for query-current should be available")
+        }
+    }
+}
+
+#[test]
+fn wasm_document_query_snapshot_resolves_path_on_2mb_json_fixture() {
+    let _guard = lock_test_mutex();
+    reset_test_state();
+
+    let source = read_repo_fixture("test/fixtures/json/2mb.1.json");
+    let (snapshot_id, _) = analyze_document_via_job("query-2mb", "json", &[&source]);
+    let cursor_offset = source
+        .find("3506455323725496609")
+        .expect("fixture should contain first block id") as u32;
+
+    let result = query_snapshot_impl(QuerySnapshotRequest {
+        document_key: "query-2mb".to_owned(),
+        snapshot_id: snapshot_id.0 as u32,
+        query_kind: QueryKind::ResolvePath as u8,
+        has_path: false,
+        path_pattern: String::new(),
+        span_start: cursor_offset,
+        span_end: cursor_offset,
+        target: QueryTargetKind::Value,
+    })
+    .expect("query should execute");
+
+    match result {
+        SnapshotReadResult::Ready { data } => {
+            assert_eq!(data.anchors.len(), 1);
+            assert_eq!(data.anchors[0].path, "$.Result.Blocks[0].Id");
+        }
+        SnapshotReadResult::SnapshotNotReady => panic!("2mb fixture snapshot should be ready"),
+    }
+}
+
+#[test]
+fn wasm_document_plan_then_apply_large_table_row_hundred_matches_web_table_probe_cases() {
+    let _guard = lock_test_mutex();
+
+    struct LargeTableCase {
+        language: &'static str,
+        document_key: &'static str,
+        source: String,
+        path: Vec<GraphPathSeg>,
+        next_value: &'static str,
+        expected_mode: GraphValueEditPlanMode,
+        expected_source: Option<String>,
+    }
+
+    let json_source = build_json_table_document(140);
+    let yaml_source = build_yaml_table_document(140);
+
+    let cases = vec![
+        LargeTableCase {
+            language: "json",
+            document_key: "table-json-100",
+            expected_source: Some(json_source.replacen("row-100", "row-100-updated", 1)),
+            source: json_source,
+            path: vec![
+                key_seg("table_with_header"),
+                index_seg(100),
+                key_seg("name"),
+            ],
+            next_value: "row-100-updated",
+            expected_mode: GraphValueEditPlanMode::Edits,
+        },
+        LargeTableCase {
+            language: "yaml",
+            document_key: "table-yaml-100",
+            expected_source: Some(yaml_source.replacen(
+                "name: row-100\n",
+                "name: 'row-100-updated'\n",
+                1,
+            )),
+            source: yaml_source,
+            path: vec![
+                key_seg("table_with_header"),
+                index_seg(100),
+                key_seg("name"),
+            ],
+            next_value: "row-100-updated",
+            expected_mode: GraphValueEditPlanMode::Edits,
+        },
+    ];
+
+    for case in cases {
+        reset_test_state();
+        let (base_snapshot_id, _) =
+            analyze_document_via_job(case.document_key, case.language, &[&case.source]);
+        let planned = plan_graph_value_edit_impl(GraphValueEditRequest {
+            document_key: case.document_key.to_owned(),
+            snapshot_id: base_snapshot_id,
+            language: case.language.to_owned(),
+            path: case.path,
+            prefer_key: false,
+            value: scalar_edit_value(case.next_value),
+        })
+        .expect("planner should execute");
+
+        let plan = match planned {
+            SnapshotReadResult::Ready { data } => data,
+            SnapshotReadResult::SnapshotNotReady => panic!("snapshot should be ready"),
+        };
+        assert_eq!(plan.mode, case.expected_mode, "{}", case.language);
+
+        match case.expected_source {
+            Some(expected_source) => {
+                let started = start_apply_job(
+                    case.document_key,
+                    case.language,
+                    base_snapshot_id,
+                    plan.edits,
+                );
+                let close_batch = close(started.job_handle);
+                assert!(
+                    matches!(close_batch.terminal, Some(JobTerminal::Completed)),
+                    "{} row-100 edit should complete",
+                    case.language,
+                );
+                assert_snapshot_source(case.document_key, &expected_source);
+            }
+            None => {
+                assert!(
+                    plan.reason.is_some(),
+                    "{} row-100 fallback should report a reason",
+                    case.language,
+                );
+                assert!(
+                    plan.edits.is_empty(),
+                    "{} row-100 fallback should not emit direct edits",
+                    case.language,
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn wasm_document_plan_then_apply_table_cell_value_extends_non_streaming_languages() {
+    let _guard = lock_test_mutex();
+
+    struct TableCellPlanCase {
+        language: &'static str,
+        document_key: &'static str,
+        source: &'static str,
+        path: Vec<GraphPathSeg>,
+        next_value: &'static str,
+        expected_source: &'static str,
+    }
+
+    let cases = [
+        TableCellPlanCase {
+            language: "toml",
+            document_key: "plan-table-cell-toml",
+            source: "[[table_with_header]]\nid = 0\nname = \"row-0\"\nstatus = \"ready\"\n\n[[table_with_header]]\nid = 1\nname = \"row-1\"\nstatus = \"hold\"\n",
+            path: vec![key_seg("table_with_header"), index_seg(0), key_seg("name")],
+            next_value: "row-0-updated",
+            expected_source: "[[table_with_header]]\nid = 0\nname = \"row-0-updated\"\nstatus = \"ready\"\n\n[[table_with_header]]\nid = 1\nname = \"row-1\"\nstatus = \"hold\"\n",
+        },
+        TableCellPlanCase {
+            language: "python",
+            document_key: "plan-table-cell-python",
+            source: "{'table_with_header': [{'id': 0, 'name': 'row-0', 'status': 'ready'}, {'id': 1, 'name': 'row-1', 'status': 'hold'}], 'meta': {'owner': 'Ada'}}",
+            path: vec![key_seg("table_with_header"), index_seg(0), key_seg("name")],
+            next_value: "row-0-updated",
+            expected_source: "{'table_with_header': [{'id': 0, 'name': 'row-0-updated', 'status': 'ready'}, {'id': 1, 'name': 'row-1', 'status': 'hold'}], 'meta': {'owner': 'Ada'}}",
+        },
+        TableCellPlanCase {
+            language: "javascript",
+            document_key: "plan-table-cell-javascript",
+            source: "({table_with_header: [{id: 0, name: \"row-0\", status: \"ready\"}, {id: 1, name: \"row-1\", status: \"hold\"}], meta: {owner: \"Ada\"}})",
+            path: vec![key_seg("table_with_header"), index_seg(0), key_seg("name")],
+            next_value: "row-0-updated",
+            expected_source: "({table_with_header: [{id: 0, name: \"row-0-updated\", status: \"ready\"}, {id: 1, name: \"row-1\", status: \"hold\"}], meta: {owner: \"Ada\"}})",
+        },
+    ];
+
+    for case in cases {
+        reset_test_state();
+        let (base_snapshot_id, _) =
+            analyze_document_via_job(case.document_key, case.language, &[case.source]);
+        let planned = plan_graph_value_edit_impl(GraphValueEditRequest {
+            document_key: case.document_key.to_owned(),
+            snapshot_id: base_snapshot_id,
+            language: case.language.to_owned(),
+            path: case.path,
+            prefer_key: false,
+            value: scalar_edit_value(case.next_value),
+        })
+        .expect("planner should execute");
+
+        let plan = match planned {
+            SnapshotReadResult::Ready { data } => data,
+            SnapshotReadResult::SnapshotNotReady => panic!("snapshot should be ready"),
+        };
+        assert_eq!(
+            plan.mode,
+            GraphValueEditPlanMode::Edits,
+            "{}",
+            case.language
+        );
+        assert!(
+            !plan.edits.is_empty(),
+            "{} table cell planner should emit edits",
+            case.language
+        );
+
+        let started = start_apply_job(
+            case.document_key,
+            case.language,
+            base_snapshot_id,
+            plan.edits,
+        );
+        let close_batch = close(started.job_handle);
+        assert!(
+            matches!(close_batch.terminal, Some(JobTerminal::Completed)),
+            "{} table cell planner round-trip should complete",
+            case.language
+        );
+        assert_snapshot_source(case.document_key, case.expected_source);
+    }
+}
+
+#[test]
+fn wasm_document_plans_csv_header_key_edit() {
+    let _guard = lock_test_mutex();
+    reset_test_state();
+
+    let source = read_repo_fixture("test/fixtures/csv/region_and_currency.csv");
+    let (base_snapshot_id, _) = analyze_document_via_job("csv-header-key", "csv", &[&source]);
+    let planned = plan_graph_value_edit_impl(GraphValueEditRequest {
+        document_key: "csv-header-key".to_owned(),
+        snapshot_id: base_snapshot_id,
+        language: "csv".to_owned(),
+        path: vec![index_seg(0), key_seg("Currency Code")],
+        prefer_key: true,
+        value: scalar_edit_value("Currency Id"),
+    })
+    .expect("planner should execute");
+
+    let plan = match planned {
+        SnapshotReadResult::Ready { data } => data,
+        SnapshotReadResult::SnapshotNotReady => panic!("snapshot should be ready"),
+    };
+    assert_eq!(plan.mode, GraphValueEditPlanMode::Edits);
+    assert!(plan.reason.is_none());
+    assert_eq!(plan.edits.len(), 1);
+    let edit = &plan.edits[0];
+    assert_eq!(
+        &source[edit.start_byte as usize..edit.old_end_byte as usize],
+        "\"Currency Code\""
+    );
+    assert_eq!(edit.replacement, "Currency Id");
+}
+
+#[test]
+fn wasm_document_plan_then_apply_table_without_header_value_matches_round_trip() {
+    let _guard = lock_test_mutex();
+
+    struct HeaderlessPlanCase {
+        language: &'static str,
+        document_key: &'static str,
+        source: &'static str,
+        path: Vec<GraphPathSeg>,
+        next_value: &'static str,
+        expected_source: &'static str,
+    }
+
+    let cases = [
+        HeaderlessPlanCase {
+            language: "json",
+            document_key: "plan-headerless-json",
+            source: r#"{"table_without_header":["a","b","c"]}"#,
+            path: vec![key_seg("table_without_header"), index_seg(1)],
+            next_value: "beta",
+            expected_source: r#"{"table_without_header":["a","beta","c"]}"#,
+        },
+        HeaderlessPlanCase {
+            language: "yaml",
+            document_key: "plan-headerless-yaml",
+            source: "table_without_header:\n  - a\n  - b\n  - c\n",
+            path: vec![key_seg("table_without_header"), index_seg(1)],
+            next_value: "beta",
+            expected_source: "table_without_header:\n  - a\n  - 'beta'\n  - c\n",
+        },
+        HeaderlessPlanCase {
+            language: "toml",
+            document_key: "plan-headerless-toml",
+            source: "table_without_header = [ \"a\", \"b\", \"c\" ]\n",
+            path: vec![key_seg("table_without_header"), index_seg(1)],
+            next_value: "beta",
+            expected_source: "table_without_header = [ \"a\", \"beta\", \"c\" ]\n",
+        },
+        HeaderlessPlanCase {
+            language: "python",
+            document_key: "plan-headerless-python",
+            source: "{'table_without_header': ['a', 'b', 'c']}",
+            path: vec![key_seg("table_without_header"), index_seg(1)],
+            next_value: "beta",
+            expected_source: "{'table_without_header': ['a', 'beta', 'c']}",
+        },
+        HeaderlessPlanCase {
+            language: "javascript",
+            document_key: "plan-headerless-javascript",
+            source: "({table_without_header: ['a', 'b', 'c']})",
+            path: vec![key_seg("table_without_header"), index_seg(1)],
+            next_value: "beta",
+            expected_source: "({table_without_header: ['a', \"beta\", 'c']})",
+        },
+    ];
+
+    for case in cases {
+        reset_test_state();
+        let (base_snapshot_id, _) =
+            analyze_document_via_job(case.document_key, case.language, &[case.source]);
+        let planned = plan_graph_value_edit_impl(GraphValueEditRequest {
+            document_key: case.document_key.to_owned(),
+            snapshot_id: base_snapshot_id,
+            language: case.language.to_owned(),
+            path: case.path,
+            prefer_key: false,
+            value: scalar_edit_value(case.next_value),
+        })
+        .expect("planner should execute");
+        let plan = match planned {
+            SnapshotReadResult::Ready { data } => data,
+            SnapshotReadResult::SnapshotNotReady => panic!("snapshot should be ready"),
+        };
+        assert_eq!(
+            plan.mode,
+            GraphValueEditPlanMode::Edits,
+            "{}",
+            case.language
+        );
+        let started = start_apply_job(
+            case.document_key,
+            case.language,
+            base_snapshot_id,
+            plan.edits,
+        );
+        let close_batch = close(started.job_handle);
+        assert!(
+            matches!(close_batch.terminal, Some(JobTerminal::Completed)),
+            "{} headerless planner round-trip should complete",
+            case.language
+        );
+        assert_snapshot_source(case.document_key, case.expected_source);
+    }
+}
+
+#[test]
+fn wasm_document_plan_repeated_path_cases_cover_object_and_nested_sequences() {
+    let _guard = lock_test_mutex();
+
+    struct RepeatedCase {
+        language: &'static str,
+        document_key: &'static str,
+        source: &'static str,
+        path: Vec<GraphPathSeg>,
+        next_value: &'static str,
+        expected_source: &'static str,
+    }
+
+    let cases = [
+        RepeatedCase {
+            language: "json",
+            document_key: "repeated-json-object",
+            source: r#"{"items":[{"name":"a"},{"name":"b"}]}"#,
+            path: vec![key_seg("items"), index_seg(1), key_seg("name")],
+            next_value: "c",
+            expected_source: r#"{"items":[{"name":"a"},{"name":"c"}]}"#,
+        },
+        RepeatedCase {
+            language: "yaml",
+            document_key: "repeated-yaml-object",
+            source: "items:\n  - name: a\n  - name: b\n",
+            path: vec![key_seg("items"), index_seg(1), key_seg("name")],
+            next_value: "c",
+            expected_source: "items:\n  - name: a\n  - name: 'c'\n",
+        },
+        RepeatedCase {
+            language: "json",
+            document_key: "repeated-json-nested",
+            source: r#"{"groups":[{"items":[{"name":"a"}]},{"items":[{"name":"b"}]}]}"#,
+            path: vec![
+                key_seg("groups"),
+                index_seg(1),
+                key_seg("items"),
+                index_seg(0),
+                key_seg("name"),
+            ],
+            next_value: "c",
+            expected_source: r#"{"groups":[{"items":[{"name":"a"}]},{"items":[{"name":"c"}]}]}"#,
+        },
+        RepeatedCase {
+            language: "yaml",
+            document_key: "repeated-yaml-nested",
+            source: "groups:\n  - items:\n      - name: a\n  - items:\n      - name: b\n",
+            path: vec![
+                key_seg("groups"),
+                index_seg(1),
+                key_seg("items"),
+                index_seg(0),
+                key_seg("name"),
+            ],
+            next_value: "c",
+            expected_source: "groups:\n  - items:\n      - name: a\n  - items:\n      - name: 'c'\n",
+        },
+        RepeatedCase {
+            language: "toml",
+            document_key: "repeated-toml-object",
+            source: "[[items]]\nname = \"a\"\n\n[[items]]\nname = \"b\"\n",
+            path: vec![key_seg("items"), index_seg(1), key_seg("name")],
+            next_value: "c",
+            expected_source: "[[items]]\nname = \"a\"\n\n[[items]]\nname = \"c\"\n",
+        },
+        RepeatedCase {
+            language: "python",
+            document_key: "repeated-python-object",
+            source: "{'items': [{'name': 'a'}, {'name': 'b'}]}",
+            path: vec![key_seg("items"), index_seg(1), key_seg("name")],
+            next_value: "c",
+            expected_source: "{'items': [{'name': 'a'}, {'name': 'c'}]}",
+        },
+        RepeatedCase {
+            language: "javascript",
+            document_key: "repeated-javascript-object",
+            source: "({items: [{name: \"a\"}, {name: \"b\"}]})",
+            path: vec![key_seg("items"), index_seg(1), key_seg("name")],
+            next_value: "c",
+            expected_source: "({items: [{name: \"a\"}, {name: \"c\"}]})",
+        },
+    ];
+
+    for case in cases {
+        reset_test_state();
+        let (base_snapshot_id, _) =
+            analyze_document_via_job(case.document_key, case.language, &[case.source]);
+        let planned = plan_graph_value_edit_impl(GraphValueEditRequest {
+            document_key: case.document_key.to_owned(),
+            snapshot_id: base_snapshot_id,
+            language: case.language.to_owned(),
+            path: case.path,
+            prefer_key: false,
+            value: scalar_edit_value(case.next_value),
+        })
+        .expect("planner should execute");
+        let plan = match planned {
+            SnapshotReadResult::Ready { data } => data,
+            SnapshotReadResult::SnapshotNotReady => panic!("snapshot should be ready"),
+        };
+        assert_eq!(
+            plan.mode,
+            GraphValueEditPlanMode::Edits,
+            "{}",
+            case.language
+        );
+        let started = start_apply_job(
+            case.document_key,
+            case.language,
+            base_snapshot_id,
+            plan.edits,
+        );
+        let close_batch = close(started.job_handle);
+        assert!(
+            matches!(close_batch.terminal, Some(JobTerminal::Completed)),
+            "{} repeated path planner round-trip should complete",
+            case.language
+        );
+        assert_snapshot_source(case.document_key, case.expected_source);
+    }
+}
