@@ -73,6 +73,29 @@ assert_not_contains() {
   fi
 }
 
+assert_json_field_eq() {
+  local json_text="$1"
+  local field_path="$2"
+  local expected="$3"
+  local message="$4"
+
+  local actual
+  actual="$(python3 - "$json_text" "$field_path" <<'PY'
+import json
+import sys
+
+value = json.loads(sys.argv[1])
+for part in sys.argv[2].split('.'):
+    if isinstance(value, list):
+        value = value[int(part)]
+    else:
+        value = value[part]
+print(value)
+PY
+)"
+  assert_eq "$expected" "$actual" "$message"
+}
+
 assert_file_eq() {
   local path="$1"
   local expected="$2"

@@ -13,6 +13,7 @@
 - `CODING.md` — 跨目录协作、可读性与所有权规则
 - `compile-options.md` — 构建命令与构建期环境变量
 - `cli-design.md` — CLI agent 友好设计调研
+- `cli/README.md` — CLI 使用、发现命令与 agent 路由
 - `stream-pipeline.md` — 流式导入、真假流式、chunk/close、ProjectionDelta
 - `layout-pipeline.md` — Graph node 生成、topology、布局与 changed-region relayout
 - `bidirectional-edit-pipeline.md` — Editor ↔ Graph、snapshot-bound planner、增量与 fallback

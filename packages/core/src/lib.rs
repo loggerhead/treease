@@ -1,4 +1,3 @@
-pub mod cli;
 pub mod compare;
 pub mod core;
 pub mod document;

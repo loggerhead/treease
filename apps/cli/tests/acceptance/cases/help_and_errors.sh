@@ -18,4 +18,17 @@ test_help_and_errors() {
   run_cli '' '-i' '.foo' 'a.yml' 'b.yml'
   assert_eq 1 "$LAST_EXIT_CODE" 'inplace with multiple files should exit 1'
   assert_contains "$LAST_STDERR" 'requires exactly one input file' 'inplace multiple files error should explain constraint'
+
+  run_cli '' 'e'
+  assert_eq 1 "$LAST_EXIT_CODE" 'removed legacy e command should exit 1'
+  assert_contains "$LAST_STDERR" 'UNKNOWN_COMMAND' 'removed legacy e command should include stable error code'
+  assert_contains "$LAST_STDERR" 'legacy eval subcommands were removed' 'removed legacy e command should include migration hint'
+
+  run_cli '' 'eval-all'
+  assert_eq 1 "$LAST_EXIT_CODE" 'removed legacy eval-all command should exit 1'
+  assert_contains "$LAST_STDERR" 'unknown command: eval-all' 'removed legacy eval-all command should mention command name'
+
+  run_cli '' 'ea'
+  assert_eq 1 "$LAST_EXIT_CODE" 'removed legacy ea command should exit 1'
+  assert_contains "$LAST_STDERR" 'unknown command: ea' 'removed legacy ea command should mention command name'
 }

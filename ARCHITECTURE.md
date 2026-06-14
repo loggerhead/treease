@@ -6,7 +6,7 @@
 
 不在本文重复领域术语、协议字段、测试策略、编码规则或模块内部职责：
 
-- neo-rs / Document Runtime 语境：`CONTEXT.md`
+- Document Runtime 语境：`CONTEXT.md`
 - 编码规则：`docs/CODING.md`
 - 测试策略：`docs/TESTING.md`
 - Web 约束：`docs/FRONTEND.md`
@@ -70,7 +70,7 @@ flowchart LR
 - 运行时依赖只沿箭头方向流动；Web 不直接调用 `packages/core/src` 内部实现。
 - `document/protocol.rs` 是 document protocol 的源头，`document-protocol.generated.ts` 是生成物。
 - `wasm_document.rs` 是 Document Runtime 的 WASM 导出边界。
-- `wasm.rs` + `wasm/` 模块只保留兼容或非 document ABI，不定义 neo-rs 主文档协议。
+- `wasm.rs` + `wasm/` 模块只保留兼容或非 document ABI，不定义主文档协议。
 - Worker 是 transport / correlation / fan-out 边界；Document Runtime 的 authority、freshness、snapshot 语义见 `CONTEXT.md`。
 
 ## 文档入口关系

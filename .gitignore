@@ -9,6 +9,7 @@ docs/dev-loop/loops
 docs/dev-loop/registry.yaml
 .agents/ralph-loop.local.md
 packages/core/target
+apps/cli/target
 apps/web/benchmarks/graph-stream-baseline.json
 guess-failure.md
 # wasm-pack test build output

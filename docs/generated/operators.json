@@ -1,0 +1,1472 @@
+[
+  {
+    "aliases": [],
+    "category": "math",
+    "examples": [],
+    "input_kinds": [
+      "any"
+    ],
+    "limitations": [
+      "Detailed operator guidance is still being expanded; consult docs/operators/ for full semantics."
+    ],
+    "name": "add",
+    "output_kind": "varies",
+    "related": [],
+    "summary": "Apply arithmetic to numeric values.",
+    "syntax": "LHS + RHS",
+    "yq_compat": "unknown"
+  },
+  {
+    "aliases": [],
+    "category": "assign",
+    "examples": [],
+    "input_kinds": [
+      "any"
+    ],
+    "limitations": [
+      "Detailed operator guidance is still being expanded; consult docs/operators/ for full semantics."
+    ],
+    "name": "add_assign",
+    "output_kind": "varies",
+    "related": [],
+    "summary": "Update matching nodes in place with an arithmetic operation.",
+    "syntax": "LHS += RHS",
+    "yq_compat": "unknown"
+  },
+  {
+    "aliases": [],
+    "category": "logic",
+    "examples": [],
+    "input_kinds": [
+      "any"
+    ],
+    "limitations": [
+      "Detailed operator guidance is still being expanded; consult docs/operators/ for full semantics."
+    ],
+    "name": "all",
+    "output_kind": "varies",
+    "related": [],
+    "summary": "Return true when all values are truthy.",
+    "syntax": "all",
+    "yq_compat": "unknown"
+  },
+  {
+    "aliases": [],
+    "category": "logic",
+    "examples": [],
+    "input_kinds": [
+      "any"
+    ],
+    "limitations": [
+      "Detailed operator guidance is still being expanded; consult docs/operators/ for full semantics."
+    ],
+    "name": "all_condition",
+    "output_kind": "varies",
+    "related": [],
+    "summary": "Built-in Treease operator.",
+    "syntax": "all(EXPR)",
+    "yq_compat": "unknown"
+  },
+  {
+    "aliases": [],
+    "category": "logic",
+    "examples": [],
+    "input_kinds": [
+      "any"
+    ],
+    "limitations": [
+      "Detailed operator guidance is still being expanded; consult docs/operators/ for full semantics."
+    ],
+    "name": "alternative",
+    "output_kind": "varies",
+    "related": [],
+    "summary": "Return the right-hand value when the left-hand side is empty.",
+    "syntax": "LHS // RHS",
+    "yq_compat": "unknown"
+  },
+  {
+    "aliases": [],
+    "category": "logic",
+    "examples": [],
+    "input_kinds": [
+      "any"
+    ],
+    "limitations": [
+      "Detailed operator guidance is still being expanded; consult docs/operators/ for full semantics."
+    ],
+    "name": "and",
+    "output_kind": "varies",
+    "related": [],
+    "summary": "Boolean AND over the current expression context.",
+    "syntax": "LHS and RHS",
+    "yq_compat": "unknown"
+  },
+  {
+    "aliases": [],
+    "category": "logic",
+    "examples": [],
+    "input_kinds": [
+      "any"
+    ],
+    "limitations": [
+      "Detailed operator guidance is still being expanded; consult docs/operators/ for full semantics."
+    ],
+    "name": "any",
+    "output_kind": "varies",
+    "related": [],
+    "summary": "Return true when any value is truthy.",
+    "syntax": "any",
+    "yq_compat": "unknown"
+  },
+  {
+    "aliases": [],
+    "category": "logic",
+    "examples": [],
+    "input_kinds": [
+      "any"
+    ],
+    "limitations": [
+      "Detailed operator guidance is still being expanded; consult docs/operators/ for full semantics."
+    ],
+    "name": "any_condition",
+    "output_kind": "varies",
+    "related": [],
+    "summary": "Built-in Treease operator.",
+    "syntax": "any(EXPR)",
+    "yq_compat": "unknown"
+  },
+  {
+    "aliases": [],
+    "category": "assign",
+    "examples": [],
+    "input_kinds": [
+      "any"
+    ],
+    "limitations": [
+      "Detailed operator guidance is still being expanded; consult docs/operators/ for full semantics."
+    ],
+    "name": "assign",
+    "output_kind": "varies",
+    "related": [],
+    "summary": "Assign the right-hand value to matching nodes.",
+    "syntax": "LHS = RHS | LHS |= RHS",
+    "yq_compat": "unknown"
+  },
+  {
+    "aliases": [],
+    "category": "assign",
+    "examples": [],
+    "input_kinds": [
+      "any"
+    ],
+    "limitations": [
+      "Detailed operator guidance is still being expanded; consult docs/operators/ for full semantics."
+    ],
+    "name": "assign_variable",
+    "output_kind": "varies",
+    "related": [],
+    "summary": "Bind a value to a variable for later use.",
+    "syntax": "EXPR as $name",
+    "yq_compat": "unknown"
+  },
+  {
+    "aliases": [],
+    "category": "special",
+    "examples": [],
+    "input_kinds": [
+      "any"
+    ],
+    "limitations": [
+      "Detailed operator guidance is still being expanded; consult docs/operators/ for full semantics."
+    ],
+    "name": "block",
+    "output_kind": "varies",
+    "related": [],
+    "summary": "Group expressions into a block.",
+    "syntax": "(EXPR)",
+    "yq_compat": "unknown"
+  },
+  {
+    "aliases": [],
+    "category": "strings",
+    "examples": [],
+    "input_kinds": [
+      "any"
+    ],
+    "limitations": [
+      "Detailed operator guidance is still being expanded; consult docs/operators/ for full semantics."
+    ],
+    "name": "capture",
+    "output_kind": "varies",
+    "related": [],
+    "summary": "Return regex capture groups.",
+    "syntax": "capture(REGEX)",
+    "yq_compat": "unknown"
+  },
+  {
+    "aliases": [
+      "upcase",
+      "downcase"
+    ],
+    "category": "strings",
+    "examples": [],
+    "input_kinds": [
+      "any"
+    ],
+    "limitations": [
+      "Detailed operator guidance is still being expanded; consult docs/operators/ for full semantics."
+    ],
+    "name": "change_case",
+    "output_kind": "varies",
+    "related": [],
+    "summary": "Change string case.",
+    "syntax": "upcase | downcase",
+    "yq_compat": "unknown"
+  },
+  {
+    "aliases": [],
+    "category": "collection",
+    "examples": [],
+    "input_kinds": [
+      "any"
+    ],
+    "limitations": [
+      "Detailed operator guidance is still being expanded; consult docs/operators/ for full semantics."
+    ],
+    "name": "collect",
+    "output_kind": "varies",
+    "related": [],
+    "summary": "Collect values into an array.",
+    "syntax": "[EXPR]",
+    "yq_compat": "unknown"
+  },
+  {
+    "aliases": [],
+    "category": "collection",
+    "examples": [],
+    "input_kinds": [
+      "any"
+    ],
+    "limitations": [
+      "Detailed operator guidance is still being expanded; consult docs/operators/ for full semantics."
+    ],
+    "name": "collect_object",
+    "output_kind": "varies",
+    "related": [],
+    "summary": "Collect key-value pairs into an object.",
+    "syntax": "{EXPR}",
+    "yq_compat": "unknown"
+  },
+  {
+    "aliases": [],
+    "category": "meta",
+    "examples": [],
+    "input_kinds": [
+      "any"
+    ],
+    "limitations": [
+      "Detailed operator guidance is still being expanded; consult docs/operators/ for full semantics."
+    ],
+    "name": "contains",
+    "output_kind": "varies",
+    "related": [],
+    "summary": "Return whether a value contains another value.",
+    "syntax": "contains(EXPR)",
+    "yq_compat": "unknown"
+  },
+  {
+    "aliases": [],
+    "category": "collection",
+    "examples": [],
+    "input_kinds": [
+      "any"
+    ],
+    "limitations": [
+      "Detailed operator guidance is still being expanded; consult docs/operators/ for full semantics."
+    ],
+    "name": "create_map",
+    "output_kind": "varies",
+    "related": [],
+    "summary": "Construct an object value.",
+    "syntax": "{ key: value }",
+    "yq_compat": "unknown"
+  },
+  {
+    "aliases": [],
+    "category": "codec",
+    "examples": [],
+    "input_kinds": [
+      "any"
+    ],
+    "limitations": [
+      "Detailed operator guidance is still being expanded; consult docs/operators/ for full semantics."
+    ],
+    "name": "decode",
+    "output_kind": "varies",
+    "related": [],
+    "summary": "Decode formatted text into structured values.",
+    "syntax": "@jsond | from_json",
+    "yq_compat": "unknown"
+  },
+  {
+    "aliases": [
+      "delpaths"
+    ],
+    "category": "traversal",
+    "examples": [],
+    "input_kinds": [
+      "any"
+    ],
+    "limitations": [
+      "Detailed operator guidance is still being expanded; consult docs/operators/ for full semantics."
+    ],
+    "name": "del_paths",
+    "output_kind": "varies",
+    "related": [],
+    "summary": "Delete values at one or more paths.",
+    "syntax": "delpaths(PATHS)",
+    "yq_compat": "unknown"
+  },
+  {
+    "aliases": [],
+    "category": "traversal",
+    "examples": [],
+    "input_kinds": [
+      "any"
+    ],
+    "limitations": [
+      "Detailed operator guidance is still being expanded; consult docs/operators/ for full semantics."
+    ],
+    "name": "delete",
+    "output_kind": "varies",
+    "related": [],
+    "summary": "Delete matching child values.",
+    "syntax": "del(EXPR)",
+    "yq_compat": "unknown"
+  },
+  {
+    "aliases": [],
+    "category": "math",
+    "examples": [],
+    "input_kinds": [
+      "any"
+    ],
+    "limitations": [
+      "Detailed operator guidance is still being expanded; consult docs/operators/ for full semantics."
+    ],
+    "name": "divide",
+    "output_kind": "varies",
+    "related": [],
+    "summary": "Apply arithmetic to numeric values.",
+    "syntax": "LHS / RHS",
+    "yq_compat": "unknown"
+  },
+  {
+    "aliases": [],
+    "category": "special",
+    "examples": [],
+    "input_kinds": [
+      "any"
+    ],
+    "limitations": [
+      "Detailed operator guidance is still being expanded; consult docs/operators/ for full semantics."
+    ],
+    "name": "empty",
+    "output_kind": "varies",
+    "related": [],
+    "summary": "Produce no output.",
+    "syntax": "empty",
+    "yq_compat": "unknown"
+  },
+  {
+    "aliases": [],
+    "category": "codec",
+    "examples": [],
+    "input_kinds": [
+      "any"
+    ],
+    "limitations": [
+      "Detailed operator guidance is still being expanded; consult docs/operators/ for full semantics."
+    ],
+    "name": "encode",
+    "output_kind": "varies",
+    "related": [],
+    "summary": "Encode values into a target format.",
+    "syntax": "@json | to_json",
+    "yq_compat": "unknown"
+  },
+  {
+    "aliases": [],
+    "category": "relational",
+    "examples": [],
+    "input_kinds": [
+      "any"
+    ],
+    "limitations": [
+      "Detailed operator guidance is still being expanded; consult docs/operators/ for full semantics."
+    ],
+    "name": "equals",
+    "output_kind": "varies",
+    "related": [],
+    "summary": "Compare values.",
+    "syntax": "LHS == RHS",
+    "yq_compat": "unknown"
+  },
+  {
+    "aliases": [],
+    "category": "special",
+    "examples": [],
+    "input_kinds": [
+      "any"
+    ],
+    "limitations": [
+      "Detailed operator guidance is still being expanded; consult docs/operators/ for full semantics."
+    ],
+    "name": "filter",
+    "output_kind": "varies",
+    "related": [],
+    "summary": "Keep values that satisfy a predicate.",
+    "syntax": "filter(EXPR)",
+    "yq_compat": "unknown"
+  },
+  {
+    "aliases": [],
+    "category": "special",
+    "examples": [],
+    "input_kinds": [
+      "any"
+    ],
+    "limitations": [
+      "Detailed operator guidance is still being expanded; consult docs/operators/ for full semantics."
+    ],
+    "name": "first",
+    "output_kind": "varies",
+    "related": [],
+    "summary": "Return the first matching value.",
+    "syntax": "first",
+    "yq_compat": "unknown"
+  },
+  {
+    "aliases": [],
+    "category": "collection",
+    "examples": [],
+    "input_kinds": [
+      "any"
+    ],
+    "limitations": [
+      "Detailed operator guidance is still being expanded; consult docs/operators/ for full semantics."
+    ],
+    "name": "flatten",
+    "output_kind": "varies",
+    "related": [],
+    "summary": "Flatten nested arrays.",
+    "syntax": "flatten(DEPTH?)",
+    "yq_compat": "unknown"
+  },
+  {
+    "aliases": [],
+    "category": "codec",
+    "examples": [],
+    "input_kinds": [
+      "any"
+    ],
+    "limitations": [
+      "Detailed operator guidance is still being expanded; consult docs/operators/ for full semantics."
+    ],
+    "name": "from_entries",
+    "output_kind": "varies",
+    "related": [],
+    "summary": "Build an object from entry objects.",
+    "syntax": "from_entries",
+    "yq_compat": "unknown"
+  },
+  {
+    "aliases": [
+      "key"
+    ],
+    "category": "meta",
+    "examples": [],
+    "input_kinds": [
+      "any"
+    ],
+    "limitations": [
+      "Detailed operator guidance is still being expanded; consult docs/operators/ for full semantics."
+    ],
+    "name": "get_key",
+    "output_kind": "varies",
+    "related": [],
+    "summary": "Return the key for an object entry.",
+    "syntax": "key",
+    "yq_compat": "unknown"
+  },
+  {
+    "aliases": [
+      "kind"
+    ],
+    "category": "meta",
+    "examples": [],
+    "input_kinds": [
+      "any"
+    ],
+    "limitations": [
+      "Detailed operator guidance is still being expanded; consult docs/operators/ for full semantics."
+    ],
+    "name": "get_kind",
+    "output_kind": "varies",
+    "related": [],
+    "summary": "Return the Treease kind of a value.",
+    "syntax": "kind",
+    "yq_compat": "unknown"
+  },
+  {
+    "aliases": [
+      "parent"
+    ],
+    "category": "meta",
+    "examples": [],
+    "input_kinds": [
+      "any"
+    ],
+    "limitations": [
+      "Detailed operator guidance is still being expanded; consult docs/operators/ for full semantics."
+    ],
+    "name": "get_parent",
+    "output_kind": "varies",
+    "related": [],
+    "summary": "Built-in Treease operator.",
+    "syntax": "See operator docs for syntax.",
+    "yq_compat": "unknown"
+  },
+  {
+    "aliases": [
+      "parents"
+    ],
+    "category": "meta",
+    "examples": [],
+    "input_kinds": [
+      "any"
+    ],
+    "limitations": [
+      "Detailed operator guidance is still being expanded; consult docs/operators/ for full semantics."
+    ],
+    "name": "get_parents",
+    "output_kind": "varies",
+    "related": [],
+    "summary": "Built-in Treease operator.",
+    "syntax": "See operator docs for syntax.",
+    "yq_compat": "unknown"
+  },
+  {
+    "aliases": [
+      "path"
+    ],
+    "category": "traversal",
+    "examples": [],
+    "input_kinds": [
+      "any"
+    ],
+    "limitations": [
+      "Detailed operator guidance is still being expanded; consult docs/operators/ for full semantics."
+    ],
+    "name": "get_path",
+    "output_kind": "varies",
+    "related": [],
+    "summary": "Return the current node path.",
+    "syntax": "path",
+    "yq_compat": "unknown"
+  },
+  {
+    "aliases": [
+      "tag",
+      "type"
+    ],
+    "category": "meta",
+    "examples": [],
+    "input_kinds": [
+      "any"
+    ],
+    "limitations": [
+      "Detailed operator guidance is still being expanded; consult docs/operators/ for full semantics."
+    ],
+    "name": "get_tag",
+    "output_kind": "varies",
+    "related": [],
+    "summary": "Return the semantic tag of a value.",
+    "syntax": "tag | type",
+    "yq_compat": "unknown"
+  },
+  {
+    "aliases": [],
+    "category": "meta",
+    "examples": [],
+    "input_kinds": [
+      "any"
+    ],
+    "limitations": [
+      "Detailed operator guidance is still being expanded; consult docs/operators/ for full semantics."
+    ],
+    "name": "get_variable",
+    "output_kind": "varies",
+    "related": [],
+    "summary": "Read a bound variable.",
+    "syntax": "$name",
+    "yq_compat": "unknown"
+  },
+  {
+    "aliases": [],
+    "category": "collection",
+    "examples": [],
+    "input_kinds": [
+      "any"
+    ],
+    "limitations": [
+      "Detailed operator guidance is still being expanded; consult docs/operators/ for full semantics."
+    ],
+    "name": "group_by",
+    "output_kind": "varies",
+    "related": [],
+    "summary": "Group values by a derived key.",
+    "syntax": "group_by(EXPR)",
+    "yq_compat": "unknown"
+  },
+  {
+    "aliases": [],
+    "category": "meta",
+    "examples": [],
+    "input_kinds": [
+      "any"
+    ],
+    "limitations": [
+      "Detailed operator guidance is still being expanded; consult docs/operators/ for full semantics."
+    ],
+    "name": "has",
+    "output_kind": "varies",
+    "related": [],
+    "summary": "Return whether a key or index exists.",
+    "syntax": "has(KEY)",
+    "yq_compat": "unknown"
+  },
+  {
+    "aliases": [],
+    "category": "meta",
+    "examples": [],
+    "input_kinds": [
+      "any"
+    ],
+    "limitations": [
+      "Detailed operator guidance is still being expanded; consult docs/operators/ for full semantics."
+    ],
+    "name": "is_key",
+    "output_kind": "varies",
+    "related": [],
+    "summary": "Return whether the current node is a key.",
+    "syntax": "is_key",
+    "yq_compat": "unknown"
+  },
+  {
+    "aliases": [],
+    "category": "strings",
+    "examples": [],
+    "input_kinds": [
+      "any"
+    ],
+    "limitations": [
+      "Detailed operator guidance is still being expanded; consult docs/operators/ for full semantics."
+    ],
+    "name": "join",
+    "output_kind": "varies",
+    "related": [],
+    "summary": "Join strings with a delimiter.",
+    "syntax": "join(DELIM)",
+    "yq_compat": "unknown"
+  },
+  {
+    "aliases": [],
+    "category": "meta",
+    "examples": [],
+    "input_kinds": [
+      "any"
+    ],
+    "limitations": [
+      "Detailed operator guidance is still being expanded; consult docs/operators/ for full semantics."
+    ],
+    "name": "keys",
+    "output_kind": "varies",
+    "related": [],
+    "summary": "Return object keys or array indexes.",
+    "syntax": "keys",
+    "yq_compat": "unknown"
+  },
+  {
+    "aliases": [],
+    "category": "collection",
+    "examples": [
+      "treease '.items | length' sample.yml"
+    ],
+    "input_kinds": [
+      "string",
+      "array",
+      "map",
+      "null"
+    ],
+    "limitations": [
+      "Length semantics follow Treease node kinds and may differ from yq edge cases."
+    ],
+    "name": "length",
+    "output_kind": "number",
+    "related": [
+      "keys",
+      "map",
+      "flatten"
+    ],
+    "summary": "Return the length of strings, arrays, maps, and null.",
+    "syntax": "length",
+    "yq_compat": "partial"
+  },
+  {
+    "aliases": [],
+    "category": "collection",
+    "examples": [],
+    "input_kinds": [
+      "any"
+    ],
+    "limitations": [
+      "Detailed operator guidance is still being expanded; consult docs/operators/ for full semantics."
+    ],
+    "name": "map",
+    "output_kind": "varies",
+    "related": [],
+    "summary": "Apply an expression to each sequence item.",
+    "syntax": "map(EXPR)",
+    "yq_compat": "unknown"
+  },
+  {
+    "aliases": [],
+    "category": "collection",
+    "examples": [],
+    "input_kinds": [
+      "any"
+    ],
+    "limitations": [
+      "Detailed operator guidance is still being expanded; consult docs/operators/ for full semantics."
+    ],
+    "name": "map_values",
+    "output_kind": "varies",
+    "related": [],
+    "summary": "Apply an expression to each object value.",
+    "syntax": "map_values(EXPR)",
+    "yq_compat": "unknown"
+  },
+  {
+    "aliases": [],
+    "category": "strings",
+    "examples": [],
+    "input_kinds": [
+      "any"
+    ],
+    "limitations": [
+      "Detailed operator guidance is still being expanded; consult docs/operators/ for full semantics."
+    ],
+    "name": "match",
+    "output_kind": "varies",
+    "related": [],
+    "summary": "Return regex match details.",
+    "syntax": "match(REGEX)",
+    "yq_compat": "unknown"
+  },
+  {
+    "aliases": [],
+    "category": "relational",
+    "examples": [],
+    "input_kinds": [
+      "any"
+    ],
+    "limitations": [
+      "Detailed operator guidance is still being expanded; consult docs/operators/ for full semantics."
+    ],
+    "name": "max",
+    "output_kind": "varies",
+    "related": [],
+    "summary": "Return the maximum value from a sequence.",
+    "syntax": "max",
+    "yq_compat": "unknown"
+  },
+  {
+    "aliases": [],
+    "category": "relational",
+    "examples": [],
+    "input_kinds": [
+      "any"
+    ],
+    "limitations": [
+      "Detailed operator guidance is still being expanded; consult docs/operators/ for full semantics."
+    ],
+    "name": "min",
+    "output_kind": "varies",
+    "related": [],
+    "summary": "Return the minimum value from a sequence.",
+    "syntax": "min",
+    "yq_compat": "unknown"
+  },
+  {
+    "aliases": [],
+    "category": "math",
+    "examples": [],
+    "input_kinds": [
+      "any"
+    ],
+    "limitations": [
+      "Detailed operator guidance is still being expanded; consult docs/operators/ for full semantics."
+    ],
+    "name": "modulo",
+    "output_kind": "varies",
+    "related": [],
+    "summary": "Apply arithmetic to numeric values.",
+    "syntax": "LHS % RHS",
+    "yq_compat": "unknown"
+  },
+  {
+    "aliases": [],
+    "category": "math",
+    "examples": [],
+    "input_kinds": [
+      "any"
+    ],
+    "limitations": [
+      "Detailed operator guidance is still being expanded; consult docs/operators/ for full semantics."
+    ],
+    "name": "multiply",
+    "output_kind": "varies",
+    "related": [],
+    "summary": "Apply arithmetic to numeric values.",
+    "syntax": "LHS * RHS",
+    "yq_compat": "unknown"
+  },
+  {
+    "aliases": [],
+    "category": "assign",
+    "examples": [],
+    "input_kinds": [
+      "any"
+    ],
+    "limitations": [
+      "Detailed operator guidance is still being expanded; consult docs/operators/ for full semantics."
+    ],
+    "name": "multiply_assign",
+    "output_kind": "varies",
+    "related": [],
+    "summary": "Update matching nodes in place with an arithmetic operation.",
+    "syntax": "LHS *= RHS",
+    "yq_compat": "unknown"
+  },
+  {
+    "aliases": [],
+    "category": "logic",
+    "examples": [],
+    "input_kinds": [
+      "any"
+    ],
+    "limitations": [
+      "Detailed operator guidance is still being expanded; consult docs/operators/ for full semantics."
+    ],
+    "name": "not",
+    "output_kind": "varies",
+    "related": [],
+    "summary": "Invert truthiness.",
+    "syntax": "not",
+    "yq_compat": "unknown"
+  },
+  {
+    "aliases": [],
+    "category": "relational",
+    "examples": [],
+    "input_kinds": [
+      "any"
+    ],
+    "limitations": [
+      "Detailed operator guidance is still being expanded; consult docs/operators/ for full semantics."
+    ],
+    "name": "not_equals",
+    "output_kind": "varies",
+    "related": [],
+    "summary": "Compare values.",
+    "syntax": "LHS != RHS",
+    "yq_compat": "unknown"
+  },
+  {
+    "aliases": [],
+    "category": "collection",
+    "examples": [],
+    "input_kinds": [
+      "any"
+    ],
+    "limitations": [
+      "Detailed operator guidance is still being expanded; consult docs/operators/ for full semantics."
+    ],
+    "name": "omit",
+    "output_kind": "varies",
+    "related": [],
+    "summary": "Drop object keys or sequence indexes.",
+    "syntax": "omit(PATHS)",
+    "yq_compat": "unknown"
+  },
+  {
+    "aliases": [],
+    "category": "logic",
+    "examples": [],
+    "input_kinds": [
+      "any"
+    ],
+    "limitations": [
+      "Detailed operator guidance is still being expanded; consult docs/operators/ for full semantics."
+    ],
+    "name": "or",
+    "output_kind": "varies",
+    "related": [],
+    "summary": "Boolean OR over the current expression context.",
+    "syntax": "LHS or RHS",
+    "yq_compat": "unknown"
+  },
+  {
+    "aliases": [],
+    "category": "collection",
+    "examples": [],
+    "input_kinds": [
+      "any"
+    ],
+    "limitations": [
+      "Detailed operator guidance is still being expanded; consult docs/operators/ for full semantics."
+    ],
+    "name": "pick",
+    "output_kind": "varies",
+    "related": [],
+    "summary": "Select a subset of object keys or sequence indexes.",
+    "syntax": "pick(PATHS)",
+    "yq_compat": "unknown"
+  },
+  {
+    "aliases": [],
+    "category": "traversal",
+    "examples": [],
+    "input_kinds": [
+      "any"
+    ],
+    "limitations": [
+      "Detailed operator guidance is still being expanded; consult docs/operators/ for full semantics."
+    ],
+    "name": "pipe",
+    "output_kind": "varies",
+    "related": [],
+    "summary": "Pass the left-hand result into the next expression.",
+    "syntax": "LHS | RHS",
+    "yq_compat": "unknown"
+  },
+  {
+    "aliases": [],
+    "category": "traversal",
+    "examples": [],
+    "input_kinds": [
+      "any"
+    ],
+    "limitations": [
+      "Detailed operator guidance is still being expanded; consult docs/operators/ for full semantics."
+    ],
+    "name": "recursive_descent",
+    "output_kind": "varies",
+    "related": [],
+    "summary": "Walk descendant nodes recursively.",
+    "syntax": "..",
+    "yq_compat": "unknown"
+  },
+  {
+    "aliases": [],
+    "category": "special",
+    "examples": [],
+    "input_kinds": [
+      "any"
+    ],
+    "limitations": [
+      "Detailed operator guidance is still being expanded; consult docs/operators/ for full semantics."
+    ],
+    "name": "reduce",
+    "output_kind": "varies",
+    "related": [],
+    "summary": "Fold a stream of values into an accumulator.",
+    "syntax": "reduce EXPR as $item (...)",
+    "yq_compat": "unknown"
+  },
+  {
+    "aliases": [],
+    "category": "relational",
+    "examples": [],
+    "input_kinds": [
+      "any"
+    ],
+    "limitations": [
+      "Detailed operator guidance is still being expanded; consult docs/operators/ for full semantics."
+    ],
+    "name": "relational",
+    "output_kind": "varies",
+    "related": [],
+    "summary": "Compare values.",
+    "syntax": "LHS < RHS | <= | > | >=",
+    "yq_compat": "unknown"
+  },
+  {
+    "aliases": [],
+    "category": "sort",
+    "examples": [],
+    "input_kinds": [
+      "any"
+    ],
+    "limitations": [
+      "Detailed operator guidance is still being expanded; consult docs/operators/ for full semantics."
+    ],
+    "name": "reverse",
+    "output_kind": "varies",
+    "related": [],
+    "summary": "Reverse sequence order.",
+    "syntax": "reverse",
+    "yq_compat": "unknown"
+  },
+  {
+    "aliases": [],
+    "category": "special",
+    "examples": [
+      "treease '.[] | select(.enabled)' sample.yml"
+    ],
+    "input_kinds": [
+      "array",
+      "map",
+      "scalar"
+    ],
+    "limitations": [
+      "Regular-expression behavior follows Treease string operators."
+    ],
+    "name": "select",
+    "output_kind": "matching values",
+    "related": [
+      "equals",
+      "not_equals",
+      "relational",
+      "test",
+      "filter"
+    ],
+    "summary": "Filter arrays and maps by a boolean expression.",
+    "syntax": "select(EXPR)",
+    "yq_compat": "partial"
+  },
+  {
+    "aliases": [],
+    "category": "traversal",
+    "examples": [],
+    "input_kinds": [
+      "any"
+    ],
+    "limitations": [
+      "Detailed operator guidance is still being expanded; consult docs/operators/ for full semantics."
+    ],
+    "name": "self",
+    "output_kind": "varies",
+    "related": [],
+    "summary": "Return the current node unchanged.",
+    "syntax": ".",
+    "yq_compat": "unknown"
+  },
+  {
+    "aliases": [
+      "setpath"
+    ],
+    "category": "traversal",
+    "examples": [],
+    "input_kinds": [
+      "any"
+    ],
+    "limitations": [
+      "Detailed operator guidance is still being expanded; consult docs/operators/ for full semantics."
+    ],
+    "name": "set_path",
+    "output_kind": "varies",
+    "related": [],
+    "summary": "Set a value at a path.",
+    "syntax": "setpath(PATH; VALUE)",
+    "yq_compat": "unknown"
+  },
+  {
+    "aliases": [],
+    "category": "traversal",
+    "examples": [],
+    "input_kinds": [
+      "any"
+    ],
+    "limitations": [
+      "Detailed operator guidance is still being expanded; consult docs/operators/ for full semantics."
+    ],
+    "name": "short_pipe",
+    "output_kind": "varies",
+    "related": [],
+    "summary": "Evaluate multiple expressions in sequence.",
+    "syntax": "EXPR ; EXPR",
+    "yq_compat": "unknown"
+  },
+  {
+    "aliases": [],
+    "category": "sort",
+    "examples": [],
+    "input_kinds": [
+      "any"
+    ],
+    "limitations": [
+      "Detailed operator guidance is still being expanded; consult docs/operators/ for full semantics."
+    ],
+    "name": "shuffle",
+    "output_kind": "varies",
+    "related": [],
+    "summary": "Shuffle sequence order.",
+    "syntax": "shuffle",
+    "yq_compat": "unknown"
+  },
+  {
+    "aliases": [],
+    "category": "sort",
+    "examples": [],
+    "input_kinds": [
+      "any"
+    ],
+    "limitations": [
+      "Detailed operator guidance is still being expanded; consult docs/operators/ for full semantics."
+    ],
+    "name": "sort",
+    "output_kind": "varies",
+    "related": [],
+    "summary": "Sort values.",
+    "syntax": "sort",
+    "yq_compat": "unknown"
+  },
+  {
+    "aliases": [],
+    "category": "sort",
+    "examples": [],
+    "input_kinds": [
+      "any"
+    ],
+    "limitations": [
+      "Detailed operator guidance is still being expanded; consult docs/operators/ for full semantics."
+    ],
+    "name": "sort_by",
+    "output_kind": "varies",
+    "related": [],
+    "summary": "Sort values by a derived key.",
+    "syntax": "sort_by(EXPR)",
+    "yq_compat": "unknown"
+  },
+  {
+    "aliases": [],
+    "category": "sort",
+    "examples": [],
+    "input_kinds": [
+      "any"
+    ],
+    "limitations": [
+      "Detailed operator guidance is still being expanded; consult docs/operators/ for full semantics."
+    ],
+    "name": "sort_keys",
+    "output_kind": "varies",
+    "related": [],
+    "summary": "Sort object keys.",
+    "syntax": "sort_keys",
+    "yq_compat": "unknown"
+  },
+  {
+    "aliases": [],
+    "category": "strings",
+    "examples": [],
+    "input_kinds": [
+      "any"
+    ],
+    "limitations": [
+      "Detailed operator guidance is still being expanded; consult docs/operators/ for full semantics."
+    ],
+    "name": "split",
+    "output_kind": "varies",
+    "related": [],
+    "summary": "Split strings by a delimiter.",
+    "syntax": "split(DELIM)",
+    "yq_compat": "unknown"
+  },
+  {
+    "aliases": [],
+    "category": "strings",
+    "examples": [],
+    "input_kinds": [
+      "any"
+    ],
+    "limitations": [
+      "Detailed operator guidance is still being expanded; consult docs/operators/ for full semantics."
+    ],
+    "name": "string_interpolation",
+    "output_kind": "varies",
+    "related": [],
+    "summary": "Interpolate expressions into strings.",
+    "syntax": "\"... \\(...) ...\"",
+    "yq_compat": "unknown"
+  },
+  {
+    "aliases": [
+      "substr",
+      "substitute"
+    ],
+    "category": "strings",
+    "examples": [],
+    "input_kinds": [
+      "any"
+    ],
+    "limitations": [
+      "Detailed operator guidance is still being expanded; consult docs/operators/ for full semantics."
+    ],
+    "name": "sub",
+    "output_kind": "varies",
+    "related": [],
+    "summary": "Replace substring or regex matches.",
+    "syntax": "sub(REGEX; REPLACEMENT)",
+    "yq_compat": "unknown"
+  },
+  {
+    "aliases": [],
+    "category": "math",
+    "examples": [],
+    "input_kinds": [
+      "any"
+    ],
+    "limitations": [
+      "Detailed operator guidance is still being expanded; consult docs/operators/ for full semantics."
+    ],
+    "name": "subtract",
+    "output_kind": "varies",
+    "related": [],
+    "summary": "Apply arithmetic to numeric values.",
+    "syntax": "LHS - RHS",
+    "yq_compat": "unknown"
+  },
+  {
+    "aliases": [],
+    "category": "assign",
+    "examples": [],
+    "input_kinds": [
+      "any"
+    ],
+    "limitations": [
+      "Detailed operator guidance is still being expanded; consult docs/operators/ for full semantics."
+    ],
+    "name": "subtract_assign",
+    "output_kind": "varies",
+    "related": [],
+    "summary": "Update matching nodes in place with an arithmetic operation.",
+    "syntax": "LHS -= RHS",
+    "yq_compat": "unknown"
+  },
+  {
+    "aliases": [],
+    "category": "strings",
+    "examples": [],
+    "input_kinds": [
+      "any"
+    ],
+    "limitations": [
+      "Detailed operator guidance is still being expanded; consult docs/operators/ for full semantics."
+    ],
+    "name": "test",
+    "output_kind": "varies",
+    "related": [],
+    "summary": "Return whether a regex matches.",
+    "syntax": "test(REGEX)",
+    "yq_compat": "unknown"
+  },
+  {
+    "aliases": [],
+    "category": "codec",
+    "examples": [],
+    "input_kinds": [
+      "any"
+    ],
+    "limitations": [
+      "Detailed operator guidance is still being expanded; consult docs/operators/ for full semantics."
+    ],
+    "name": "to_entries",
+    "output_kind": "varies",
+    "related": [],
+    "summary": "Convert objects or arrays into entry objects.",
+    "syntax": "to_entries",
+    "yq_compat": "unknown"
+  },
+  {
+    "aliases": [],
+    "category": "codec",
+    "examples": [],
+    "input_kinds": [
+      "any"
+    ],
+    "limitations": [
+      "Detailed operator guidance is still being expanded; consult docs/operators/ for full semantics."
+    ],
+    "name": "to_number",
+    "output_kind": "varies",
+    "related": [],
+    "summary": "Convert scalar values to numbers.",
+    "syntax": "to_number",
+    "yq_compat": "unknown"
+  },
+  {
+    "aliases": [],
+    "category": "strings",
+    "examples": [],
+    "input_kinds": [
+      "any"
+    ],
+    "limitations": [
+      "Detailed operator guidance is still being expanded; consult docs/operators/ for full semantics."
+    ],
+    "name": "to_string",
+    "output_kind": "varies",
+    "related": [],
+    "summary": "Convert values to strings.",
+    "syntax": "to_string",
+    "yq_compat": "unknown"
+  },
+  {
+    "aliases": [],
+    "category": "traversal",
+    "examples": [],
+    "input_kinds": [
+      "any"
+    ],
+    "limitations": [
+      "Detailed operator guidance is still being expanded; consult docs/operators/ for full semantics."
+    ],
+    "name": "traverse_array",
+    "output_kind": "varies",
+    "related": [],
+    "summary": "Traverse array or collection elements.",
+    "syntax": ".[]",
+    "yq_compat": "unknown"
+  },
+  {
+    "aliases": [],
+    "category": "traversal",
+    "examples": [],
+    "input_kinds": [
+      "any"
+    ],
+    "limitations": [
+      "Detailed operator guidance is still being expanded; consult docs/operators/ for full semantics."
+    ],
+    "name": "traverse_path",
+    "output_kind": "varies",
+    "related": [],
+    "summary": "Traverse object keys by path segment.",
+    "syntax": ".name",
+    "yq_compat": "unknown"
+  },
+  {
+    "aliases": [],
+    "category": "strings",
+    "examples": [],
+    "input_kinds": [
+      "any"
+    ],
+    "limitations": [
+      "Detailed operator guidance is still being expanded; consult docs/operators/ for full semantics."
+    ],
+    "name": "trim",
+    "output_kind": "varies",
+    "related": [],
+    "summary": "Trim string whitespace.",
+    "syntax": "trim",
+    "yq_compat": "unknown"
+  },
+  {
+    "aliases": [],
+    "category": "collection",
+    "examples": [],
+    "input_kinds": [
+      "any"
+    ],
+    "limitations": [
+      "Detailed operator guidance is still being expanded; consult docs/operators/ for full semantics."
+    ],
+    "name": "union",
+    "output_kind": "varies",
+    "related": [],
+    "summary": "Concatenate or combine multiple result streams.",
+    "syntax": "EXPR, EXPR",
+    "yq_compat": "unknown"
+  },
+  {
+    "aliases": [],
+    "category": "collection",
+    "examples": [],
+    "input_kinds": [
+      "any"
+    ],
+    "limitations": [
+      "Detailed operator guidance is still being expanded; consult docs/operators/ for full semantics."
+    ],
+    "name": "unique",
+    "output_kind": "varies",
+    "related": [],
+    "summary": "Remove duplicate values.",
+    "syntax": "unique",
+    "yq_compat": "unknown"
+  },
+  {
+    "aliases": [],
+    "category": "collection",
+    "examples": [],
+    "input_kinds": [
+      "any"
+    ],
+    "limitations": [
+      "Detailed operator guidance is still being expanded; consult docs/operators/ for full semantics."
+    ],
+    "name": "unique_by",
+    "output_kind": "varies",
+    "related": [],
+    "summary": "Remove duplicates based on a derived key.",
+    "syntax": "unique_by(EXPR)",
+    "yq_compat": "unknown"
+  },
+  {
+    "aliases": [],
+    "category": "special",
+    "examples": [],
+    "input_kinds": [
+      "any"
+    ],
+    "limitations": [
+      "Detailed operator guidance is still being expanded; consult docs/operators/ for full semantics."
+    ],
+    "name": "with",
+    "output_kind": "varies",
+    "related": [],
+    "summary": "Update a subtree with a scoped expression.",
+    "syntax": "with(PATH; EXPR)",
+    "yq_compat": "unknown"
+  },
+  {
+    "aliases": [],
+    "category": "codec",
+    "examples": [],
+    "input_kinds": [
+      "any"
+    ],
+    "limitations": [
+      "Detailed operator guidance is still being expanded; consult docs/operators/ for full semantics."
+    ],
+    "name": "with_entries",
+    "output_kind": "varies",
+    "related": [],
+    "summary": "Rewrite entries with an expression.",
+    "syntax": "with_entries(EXPR)",
+    "yq_compat": "unknown"
+  }
+]

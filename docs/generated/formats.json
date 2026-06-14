@@ -1,0 +1,89 @@
+[
+  {
+    "can_decode": true,
+    "can_encode": true,
+    "default_pretty_print": false,
+    "extensions": [
+      "csv"
+    ],
+    "name": "csv",
+    "preferences": {
+      "indent": 2,
+      "print_doc_separators": false,
+      "unwrap_scalar": true
+    }
+  },
+  {
+    "can_decode": true,
+    "can_encode": true,
+    "default_pretty_print": true,
+    "extensions": [
+      "js",
+      "mjs",
+      "cjs"
+    ],
+    "name": "javascript",
+    "preferences": {
+      "indent": 2,
+      "print_doc_separators": false,
+      "unwrap_scalar": false
+    }
+  },
+  {
+    "can_decode": true,
+    "can_encode": true,
+    "default_pretty_print": true,
+    "extensions": [
+      "json"
+    ],
+    "name": "json",
+    "preferences": {
+      "indent": 2,
+      "print_doc_separators": false,
+      "unwrap_scalar": false
+    }
+  },
+  {
+    "can_decode": true,
+    "can_encode": true,
+    "default_pretty_print": true,
+    "extensions": [
+      "py"
+    ],
+    "name": "python",
+    "preferences": {
+      "indent": 2,
+      "print_doc_separators": false,
+      "unwrap_scalar": false
+    }
+  },
+  {
+    "can_decode": true,
+    "can_encode": true,
+    "default_pretty_print": true,
+    "extensions": [
+      "toml"
+    ],
+    "name": "toml",
+    "preferences": {
+      "indent": 2,
+      "print_doc_separators": false,
+      "unwrap_scalar": true
+    }
+  },
+  {
+    "can_decode": true,
+    "can_encode": true,
+    "default_pretty_print": true,
+    "extensions": [
+      "yaml",
+      "yml"
+    ],
+    "name": "yaml",
+    "preferences": {
+      "indent": 2,
+      "print_doc_separators": true,
+      "unwrap_scalar": false
+    }
+  }
+]

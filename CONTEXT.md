@@ -1,12 +1,12 @@
 # CONTEXT.md
 
-Treease 的全局领域语境与规范。agent 需要判断 neo-rs、主文档链路、协议边界或术语含义时，以本文为准；执行计划、迁移步骤和临时 TODO 不放在这里。
+Treease 的全局领域语境与规范。agent 需要判断主文档链路、协议边界或术语含义时，以本文为准；执行计划、迁移步骤和临时 TODO 不放在这里。
 
 ---
 
-## neo-rs Document Runtime
+## Document Runtime
 
-neo-rs 不是 `stream session` 协议整理，而是把 Treease 主文档链路收敛为 Rust 持有的 Document Runtime。用户依赖的是同一份文档在编辑、导入、分析、建图、定位与图上编辑中的一致状态，不是一组 transport 操作。
+Document Runtime 不是 `stream session` 协议整理，而是把 Treease 主文档链路收敛为 Rust 持有的 Document Runtime。用户依赖的是同一份文档在编辑、导入、分析、建图、定位与图上编辑中的一致状态，不是一组 transport 操作。
 
 主链固定为：
 
@@ -158,7 +158,7 @@ Worker 不拥有 session registry、graph chunk codec、parse-failed materialize
 
 ## 成立条件
 
-neo-rs 成立必须同时满足：
+Document Runtime 成立必须同时满足：
 
 1. 顶层概念收口为 `DocumentSnapshot`、`DocumentAnchor`、`DocumentJob`、`EventBatch`、`JobTerminal` 与 snapshot-bound read APIs。
 2. `document/protocol.rs` 是 document protocol 真源，`wasm_document.rs` 是 document runtime WASM 导出边界。

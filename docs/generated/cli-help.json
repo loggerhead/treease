@@ -1,0 +1,471 @@
+{
+  "arguments": [
+    {
+      "help": "Expression to evaluate. Defaults to `.`.",
+      "multiple": false,
+      "name": "expression",
+      "repeated": false,
+      "required": false
+    },
+    {
+      "help": "Input files. Reads stdin when omitted.",
+      "multiple": true,
+      "name": "file",
+      "repeated": true,
+      "required": false
+    }
+  ],
+  "examples": [
+    {
+      "command": "treease '.foo' data.yaml",
+      "description": "Read a field from a structured document."
+    },
+    {
+      "command": "treease --null-input '{hello:\"world\"}'",
+      "description": "Evaluate an expression without input files."
+    }
+  ],
+  "id": "root",
+  "name": "treease",
+  "options": [
+    {
+      "help": "Evaluate without reading input.",
+      "long": "--null-input",
+      "multiple": false,
+      "name": "null-input",
+      "scope": "global",
+      "short": "-n",
+      "takes_value": false
+    },
+    {
+      "help": "Exit with status 1 if result is empty, null, or false.",
+      "long": "--exit-status",
+      "multiple": false,
+      "name": "exit-status",
+      "scope": "global",
+      "short": "-e",
+      "takes_value": false
+    },
+    {
+      "help": "Set input format.",
+      "long": "--input-format",
+      "multiple": false,
+      "name": "input-format",
+      "scope": "global",
+      "short": "-p",
+      "takes_value": true,
+      "value_name": "FORMAT"
+    },
+    {
+      "help": "Set output format.",
+      "long": "--output-format",
+      "multiple": false,
+      "name": "output-format",
+      "scope": "global",
+      "short": "-o",
+      "takes_value": true,
+      "value_name": "FORMAT"
+    },
+    {
+      "help": "Pretty-print output.",
+      "long": "--prettyPrint",
+      "multiple": false,
+      "name": "pretty-print",
+      "scope": "global",
+      "short": "-P",
+      "takes_value": false
+    },
+    {
+      "help": "Set indentation width.",
+      "long": "--indent",
+      "multiple": false,
+      "name": "indent",
+      "scope": "global",
+      "short": "-I",
+      "takes_value": true,
+      "value_name": "INDENT"
+    },
+    {
+      "help": "Unwrap scalar output.",
+      "long": "--unwrapScalar",
+      "multiple": false,
+      "name": "unwrap-scalar",
+      "scope": "global",
+      "short": "-r",
+      "takes_value": false
+    },
+    {
+      "help": "Disable YAML document separators.",
+      "long": "--no-doc",
+      "multiple": false,
+      "name": "no-doc",
+      "scope": "global",
+      "short": "-N",
+      "takes_value": false
+    },
+    {
+      "help": "Write result back to the input file.",
+      "long": "--inplace",
+      "multiple": false,
+      "name": "inplace",
+      "scope": "global",
+      "short": "-i",
+      "takes_value": false
+    },
+    {
+      "help": "Show this help message.",
+      "long": "--help",
+      "multiple": false,
+      "name": "help",
+      "scope": "global",
+      "short": "-h",
+      "takes_value": false
+    }
+  ],
+  "path": "treease",
+  "segments": [
+    "treease"
+  ],
+  "subcommands": [
+    {
+      "arguments": [
+        {
+          "help": "Optional command path to inspect.",
+          "multiple": false,
+          "name": "command",
+          "repeated": false,
+          "required": false
+        }
+      ],
+      "examples": [
+        {
+          "command": "treease help --format json",
+          "description": "Emit the root command schema as JSON."
+        }
+      ],
+      "id": "help",
+      "name": "help",
+      "options": [
+        {
+          "help": "Select help output format.",
+          "long": "--format",
+          "multiple": false,
+          "name": "format",
+          "scope": "help-only",
+          "takes_value": true,
+          "value_name": "FORMAT"
+        }
+      ],
+      "path": "treease help",
+      "segments": [
+        "treease",
+        "help"
+      ],
+      "summary": "Show CLI help in text or machine-readable JSON.",
+      "usage": "treease help [COMMAND] [--format text|json]"
+    },
+    {
+      "examples": [
+        {
+          "command": "treease operators list",
+          "description": "Inspect supported operators."
+        }
+      ],
+      "id": "operators",
+      "name": "operators",
+      "path": "treease operators",
+      "segments": [
+        "treease",
+        "operators"
+      ],
+      "subcommands": [
+        {
+          "id": "operators-list",
+          "name": "list",
+          "options": [
+            {
+              "help": "Filter operators by category.",
+              "long": "--category",
+              "multiple": false,
+              "name": "category",
+              "scope": "command-local",
+              "takes_value": true,
+              "value_name": "CATEGORY"
+            },
+            {
+              "help": "Select help output format.",
+              "long": "--format",
+              "multiple": false,
+              "name": "format",
+              "scope": "help-only",
+              "takes_value": true,
+              "value_name": "FORMAT"
+            }
+          ],
+          "path": "treease operators list",
+          "segments": [
+            "treease",
+            "operators",
+            "list"
+          ],
+          "summary": "List available operators.",
+          "usage": "treease operators list [--category CATEGORY] [--format text|json]"
+        },
+        {
+          "arguments": [
+            {
+              "help": "Operator name.",
+              "multiple": false,
+              "name": "name",
+              "repeated": false,
+              "required": true
+            }
+          ],
+          "id": "operators-get",
+          "name": "get",
+          "options": [
+            {
+              "help": "Select help output format.",
+              "long": "--format",
+              "multiple": false,
+              "name": "format",
+              "scope": "help-only",
+              "takes_value": true,
+              "value_name": "FORMAT"
+            }
+          ],
+          "path": "treease operators get",
+          "segments": [
+            "treease",
+            "operators",
+            "get"
+          ],
+          "summary": "Show a single operator.",
+          "usage": "treease operators get <name> [--format text|json]"
+        },
+        {
+          "arguments": [
+            {
+              "help": "Search query.",
+              "multiple": false,
+              "name": "query",
+              "repeated": false,
+              "required": true
+            }
+          ],
+          "id": "operators-search",
+          "name": "search",
+          "path": "treease operators search",
+          "segments": [
+            "treease",
+            "operators",
+            "search"
+          ],
+          "summary": "Search operators.",
+          "usage": "treease operators search <query>"
+        }
+      ],
+      "summary": "Inspect available operators.",
+      "usage": "treease operators <COMMAND>"
+    },
+    {
+      "examples": [
+        {
+          "command": "treease formats list",
+          "description": "Inspect supported serialization formats."
+        }
+      ],
+      "id": "formats",
+      "name": "formats",
+      "path": "treease formats",
+      "segments": [
+        "treease",
+        "formats"
+      ],
+      "subcommands": [
+        {
+          "id": "formats-list",
+          "name": "list",
+          "options": [
+            {
+              "help": "Select help output format.",
+              "long": "--format",
+              "multiple": false,
+              "name": "format",
+              "scope": "help-only",
+              "takes_value": true,
+              "value_name": "FORMAT"
+            }
+          ],
+          "path": "treease formats list",
+          "segments": [
+            "treease",
+            "formats",
+            "list"
+          ],
+          "summary": "List available input and output formats.",
+          "usage": "treease formats list [--format text|json]"
+        },
+        {
+          "arguments": [
+            {
+              "help": "Format name.",
+              "multiple": false,
+              "name": "name",
+              "repeated": false,
+              "required": true
+            }
+          ],
+          "id": "formats-get",
+          "name": "get",
+          "options": [
+            {
+              "help": "Select help output format.",
+              "long": "--format",
+              "multiple": false,
+              "name": "format",
+              "scope": "help-only",
+              "takes_value": true,
+              "value_name": "FORMAT"
+            }
+          ],
+          "path": "treease formats get",
+          "segments": [
+            "treease",
+            "formats",
+            "get"
+          ],
+          "summary": "Show a single format.",
+          "usage": "treease formats get <name> [--format text|json]"
+        }
+      ],
+      "summary": "Inspect available formats.",
+      "usage": "treease formats <COMMAND>"
+    },
+    {
+      "examples": [
+        {
+          "command": "treease examples list",
+          "description": "Show example invocations."
+        }
+      ],
+      "id": "examples",
+      "name": "examples",
+      "path": "treease examples",
+      "segments": [
+        "treease",
+        "examples"
+      ],
+      "subcommands": [
+        {
+          "id": "examples-list",
+          "name": "list",
+          "options": [
+            {
+              "help": "Select help output format.",
+              "long": "--format",
+              "multiple": false,
+              "name": "format",
+              "scope": "help-only",
+              "takes_value": true,
+              "value_name": "FORMAT"
+            }
+          ],
+          "path": "treease examples list",
+          "segments": [
+            "treease",
+            "examples",
+            "list"
+          ],
+          "summary": "List runnable examples.",
+          "usage": "treease examples list [--format text|json]"
+        },
+        {
+          "arguments": [
+            {
+              "help": "Example name.",
+              "multiple": false,
+              "name": "name",
+              "repeated": false,
+              "required": true
+            }
+          ],
+          "id": "examples-get",
+          "name": "get",
+          "options": [
+            {
+              "help": "Select help output format.",
+              "long": "--format",
+              "multiple": false,
+              "name": "format",
+              "scope": "help-only",
+              "takes_value": true,
+              "value_name": "FORMAT"
+            }
+          ],
+          "path": "treease examples get",
+          "segments": [
+            "treease",
+            "examples",
+            "get"
+          ],
+          "summary": "Show a single example.",
+          "usage": "treease examples get <name> [--format text|json]"
+        },
+        {
+          "arguments": [
+            {
+              "help": "Search query.",
+              "multiple": false,
+              "name": "query",
+              "repeated": false,
+              "required": true
+            }
+          ],
+          "id": "examples-search",
+          "name": "search",
+          "path": "treease examples search",
+          "segments": [
+            "treease",
+            "examples",
+            "search"
+          ],
+          "summary": "Search examples.",
+          "usage": "treease examples search <query>"
+        }
+      ],
+      "summary": "Inspect bundled examples.",
+      "usage": "treease examples <COMMAND>"
+    },
+    {
+      "examples": [
+        {
+          "command": "treease doctor",
+          "description": "Run local CLI diagnostics."
+        }
+      ],
+      "id": "doctor",
+      "name": "doctor",
+      "options": [
+        {
+          "help": "Select help output format.",
+          "long": "--format",
+          "multiple": false,
+          "name": "format",
+          "scope": "help-only",
+          "takes_value": true,
+          "value_name": "FORMAT"
+        }
+      ],
+      "path": "treease doctor",
+      "segments": [
+        "treease",
+        "doctor"
+      ],
+      "summary": "Run CLI diagnostics.",
+      "usage": "treease doctor [--format text|json]"
+    }
+  ],
+  "summary": "Evaluate Treease expressions over structured documents.",
+  "usage": "treease [OPTIONS] [EXPRESSION] [FILE]..."
+}

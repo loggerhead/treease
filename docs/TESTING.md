@@ -28,7 +28,7 @@
 
 ### P0：必须覆盖
 - `packages/core` 的核心计算链路
-- neo-rs 文档运行时主链：`packages/core/src/document/protocol.rs`、`packages/core/src/wasm_document.rs`
+- 文档运行时主链：`packages/core/src/document/protocol.rs`、`packages/core/src/wasm_document.rs`
 - `apps/web/src/workers` 与 `packages/core/wasm` 之间的 Job API / Snapshot Query / 错误通道
 - JSON streaming、graph delta、parse-failed diagnostics-only、stale 隔离
 - 编辑、格式化、构建视图、TreePath、关键图形交互等主用户路径
@@ -105,9 +105,9 @@
 - 对 `packages/core`，覆盖率应服务于核心能力稳定性，而不是平均摊薄到低价值分支
 - 对 `apps/web`，可运行、能防回归的测试比单纯数字更重要
 
-## neo-rs 回归矩阵
+## 文档运行时回归矩阵
 
-neo-rs 回归测试只覆盖主文档链路的核心验收面，不为阶段或覆盖率数字补泛化测试。最低证据如下：
+文档运行时回归测试只覆盖主文档链路的核心验收面，不为阶段或覆盖率数字补泛化测试。最低证据如下：
 
 | 验收面                             | 最低证据                                                                                                | 当前主证据文件                                                                                                                                                                                  |
 | ---------------------------------- | ------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -118,7 +118,7 @@ neo-rs 回归测试只覆盖主文档链路的核心验收面，不为阶段或�
 | parse-failed / diagnostics-only    | parse failed 仍产出 diagnostics-only 结果并清理 graph 可见状态                                          | `apps/web/src/lib/services/DocumentSessionService.test.ts`、`apps/web/src/lib/components/Editor/editor-analysis-controller.test.ts`、`apps/web/test/e2e/invalid-json-graph-diagnostics.spec.ts` |
 | 双向编辑与增量链路                 | 编辑器改动、图上编辑回写、fallback 仍收敛到统一 snapshot 主链                                           | `apps/web/test/e2e/bidirectional-edit-sync.spec.ts`、`apps/web/test/e2e/graph-edit-blur-commit.spec.ts`                                                                                         |
 
-- `packages/core/src/wasm.rs` 的旧 ABI 兼容需验证，但它不是 neo-rs 文档协议主链的长期真源。
+- `packages/core/src/wasm.rs` 的旧 ABI 兼容需验证，但它不是文档协议主链的长期真源。
 - Web graph stream 性能口径已冻结在 `docs/web-graph-stream-benchmark.md` 与 `apps/web/benchmarks/graph-stream-baseline.json`。
 - 回归比较统一执行 `cd apps/web && pnpm bench:graph-stream`：`successRate` 不允许下降；throughput 的 `avg(timeToGraphAppliedMs)` 恶化超过 `max(35%, 75ms)`、smoothness 的 `avg(maxFrameGapMs)` 恶化超过 `max(35%, 16ms)`、或 `avg(longFrameCount)` 增加超过 `2`，都视为回归。
 
@@ -137,7 +137,7 @@ neo-rs 回归测试只覆盖主文档链路的核心验收面，不为阶段或�
 ## 验证命令
 - `packages/core`：`cargo nextest run --locked`
 - `packages/core` fixture corpus：`cargo nextest run --locked --test corpus_runner --no-capture`
-- `packages/core` CLI unit tests：`cargo nextest run --locked --lib cli::`
+- `apps/cli` CLI unit tests：`cd apps/cli && cargo nextest run --locked --lib`
 - `apps/cli` bash acceptance：`cd apps/cli && bash tests/acceptance/run.sh`
 - `apps/web` Vitest（单元 + 集成）：`pnpm test`
 - `apps/web` 全量测试（Vitest + 日常 E2E + fixtures E2E）：`pnpm test:all`
@@ -147,7 +147,7 @@ neo-rs 回归测试只覆盖主文档链路的核心验收面，不为阶段或�
 
 ## AI 执行约定
 - agent 运行 `packages/core` 测试时，统一使用 `cargo nextest run`（替代 `cargo test` 以避免编译全部集成测试文件）。例外：WASM 测试、需要在单进程内验证非线程安全行为的场景仍需使用 `cargo test`。fixture corpus 也使用 `cargo nextest`，项目级并发限制由 `nextest.toml` 控制。
-- 对 `packages/core/src/cli.rs` 的修改，优先运行 `cargo nextest run --locked --lib cli::`
+- 对 `apps/cli/src/**/*.rs` 的修改，优先运行 `cd apps/cli && cargo nextest run --locked --lib`
 - 对 `apps/cli/tests/acceptance/**/*.sh` 的修改，或对会影响真实命令行外部行为的 CLI 改动，优先运行 `cd apps/cli && bash tests/acceptance/run.sh`
 - 对 `apps/web/src/**/*.test.ts` 的修改，优先运行 `pnpm test:unit`
 - 对 `apps/web/test/integration/**/*.test.ts` 的修改，优先运行 `pnpm test:integration`

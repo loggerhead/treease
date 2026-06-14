@@ -2,7 +2,7 @@
 
 ## 适用范围
 - 本文件只约束 `packages/core/`。
-- 默认前置导航：`../packages/core/AGENTS.md`、`../packages/core/src/AGENTS.md`、`./agent-entrypoints.md`。
+- 默认前置导航：`../packages/core/AGENTS.md`、`./agent-entrypoints.md`。
 
 ## Core 主链
 - Document Runtime WASM 导出：`packages/core/src/wasm_document.rs`
@@ -26,4 +26,3 @@
 - `GraphBuilder.build` 维持 O(n) 级遍历，不引入多次全树扫描。
 - 增量成功条件必须包含 `tree_path` / `path_span` 正确性；无法保证时必须 fallback。
 - 本地 dev server 已启动时，完成 `pnpm wasm:sync` 后需要重启 dev server 或强制刷新 worker，避免旧 WASM 二进制配新 TS binding 导致 decode 错误。
-

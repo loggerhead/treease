@@ -2,7 +2,7 @@
 
 ## 适用范围
 - 本文件只约束 `apps/web/`。
-- 默认前置导航：`../apps/web/AGENTS.md`、`../apps/web/src/AGENTS.md`、`./agent-entrypoints.md`。
+- 默认前置导航：`../apps/web/AGENTS.md`、`./agent-entrypoints.md`。
 
 ## Web 主链
 - `apps/web/src/lib/components/Editor.svelte`（核心在 `apps/web/src/lib/components/Editor/EditorCore.svelte`）→ `apps/web/src/workers/wasm-runtime.worker.ts` → `packages/core/wasm/index.ts` → `packages/core/src/wasm_document.rs` → `packages/core/src/document/`

@@ -37,7 +37,10 @@ function collectRootMarkdownFiles() {
 
 function collectGovernanceDocs() {
   return [...collectRootMarkdownFiles(), ...collectMarkdownFiles('docs')]
-    .filter((path) => !path.startsWith('docs/dev-loop/'));
+    .filter(
+      (path) =>
+        !path.startsWith('docs/dev-loop/') && !path.startsWith('docs/superpowers/plans/'),
+    );
 }
 
 function walkRepo(relativePath, results) {
@@ -157,11 +160,8 @@ function validateHotDocBudgets() {
     'docs/FRONTEND.md': 80,
     'docs/CORE.md': 50,
     'apps/web/AGENTS.md': 24,
-    'apps/web/src/AGENTS.md': 22,
     'apps/web/test/AGENTS.md': 20,
     'packages/core/AGENTS.md': 22,
-    'packages/core/src/AGENTS.md': 20,
-    'packages/core/tests/AGENTS.md': 18,
     'apps/cli/AGENTS.md': 24,
   };
 

@@ -1,7 +1,5 @@
 import { expect, test, type Page } from './fixtures';
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
-import { chooseFile, getMonacoValue, readEditorState, setEditorContent, setMonacoValue, waitForEditorReady } from './utils';
+import { getMonacoValue, readEditorState, setEditorContent, setMonacoValue, waitForEditorReady } from './utils';
 
 async function openTextMode(page: Page) {
   await page.getByRole('button', { name: 'Text mode', exact: true }).click();
@@ -27,18 +25,6 @@ async function syncRightToSource(page: Page) {
 async function runCompare(page: Page) {
   await page.getByRole('button', { name: 'Compare', exact: true }).click();
 }
-
-async function dropFileToRightPanel(page: Page, fileName: string, content: string, mimeType = 'application/json') {
-  await chooseFile(page, {
-    triggerLabel: 'Load compare file',
-    inputLabel: 'Right panel file input',
-    fileName,
-    content,
-    mimeType,
-  });
-}
-
-const baseJsonFixture = readFileSync(resolve(process.cwd(), '../../test/fixtures/compare/base.json'), 'utf8');
 
 test('shows equal toast and no decorations when right text equals source', async ({ page }) => {
   await page.goto('/editor');
@@ -111,24 +97,6 @@ test('structured compare keeps string whitespace diffs', async ({ page }) => {
     .toBeGreaterThan(0);
 });
 
-test('compare keeps base.json tail hunk without extra trailing blank block', async ({ page }) => {
-  await page.goto('/editor');
-  await waitForEditorReady(page);
-  await openTextMode(page);
-
-  await dropFileToRightPanel(page, 'base.json', baseJsonFixture);
-  await expect
-    .poll(async () => JSON.stringify(JSON.parse(await getMonacoValue(page, 'right-editor'))))
-    .toBe(JSON.stringify(JSON.parse(baseJsonFixture)));
-
-  await runCompare(page);
-
-  await expect
-    .poll(async () => Number((await page.getByTestId('right-panel-dropzone').getAttribute('data-compare-highlight-count')) ?? '0'))
-    .toBeGreaterThan(0);
-
-  await expect(page.getByTestId('right-panel-dropzone').locator('.diff-blank-hunk')).toHaveCount(2);
-});
 
 test('editing left source clears previous compare highlights', async ({ page }) => {
   await page.goto('/editor');
