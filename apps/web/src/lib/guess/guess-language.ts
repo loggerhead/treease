@@ -1,4 +1,4 @@
-import { guessLanguage as guessLanguageFromCore } from '@core-wasm/index';
+import { callSharedWasmWorker } from '../wasm/wasm-worker-singleton';
 import type { SupportedEditorLanguageId } from '../monaco/language-support';
 
 type DiagnosticsError = {
@@ -15,5 +15,5 @@ export async function guessLanguage(
   input: string,
   _diagnosticsProvider?: DiagnosticsProvider,
 ): Promise<SupportedEditorLanguageId | null> {
-  return guessLanguageFromCore(input) as Promise<SupportedEditorLanguageId | null>;
+  return callSharedWasmWorker<SupportedEditorLanguageId | null>('guessLanguage', { text: input });
 }

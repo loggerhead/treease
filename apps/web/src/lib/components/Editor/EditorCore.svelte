@@ -274,6 +274,10 @@
         revision,
         analysis,
       ),
+    triggerGraphSync: (position) => {
+      if (!position) return;
+      void editorAnalysisController.updateTreePath(position, { syncGraphHighlight: true });
+    },
   });
 
   const editorFormatController = createEditorFormatController({
@@ -510,11 +514,10 @@
       const shouldRotateDocumentKey = Boolean(wholeDocumentReplacement);
       if (shouldRotateDocumentKey) {
         const nextDocumentKey = rotateActiveDocumentKey();
-        clearDocumentSemanticState(nextDocumentKey);
-      }
-      lastModelLength = nextText.length;
-      lastModelText = nextText;
-      if (wholeDocumentReplacement) {
+        if (editorFullEditController.suppressNextWholeDocumentIntake()) {
+          releaseStoreUpdateSuppression();
+          return;
+        }
         activeTempModel.update((current) => ({
           ...current,
           treePath: [],

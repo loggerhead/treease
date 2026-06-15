@@ -1,5 +1,6 @@
 // 职责：WASM Worker 入口：init/dispose 生命周期、消息分发、runtime state 组装、freeStreams 管理
 import {
+  guessLanguage,
   initWasm,
   TOKEN_TYPES,
 } from '@core-wasm/index';
@@ -134,6 +135,11 @@ async function handleSemanticTokensLegend(
   postOk(ctx, message.id, [...TOKEN_TYPES]);
 }
 
+async function handleGuessLanguage(message: Extract<WorkerRequest, { type: 'guessLanguage' }>): Promise<void> {
+  const language = await guessLanguage(message.text);
+  postOk(ctx, message.id, language);
+}
+
 
 
 const documentParseRuntime: DocumentParseRuntime = {
@@ -163,6 +169,7 @@ function typedHandler<K extends WorkerRequest['type']>(
 
 const messageHandlers: Record<string, (msg: WorkerRequest) => Promise<void>> = {
   init: typedHandler<'init'>(handleInit),
+  guessLanguage: typedHandler<'guessLanguage'>(handleGuessLanguage),
   semanticTokensLegend: typedHandler<'semanticTokensLegend'>(handleSemanticTokensLegend),
   diagnostics: typedHandler<'diagnostics'>((msg) => handleDiagnostics(ctx, msg)),
   parseAndStore: typedHandler<'parseAndStore'>((msg) =>

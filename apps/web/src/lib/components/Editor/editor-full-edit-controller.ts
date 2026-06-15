@@ -96,13 +96,14 @@ type CreateEditorFullEditControllerOptions = {
     revision: number,
     analysis: DocumentAnalysisResult | null,
   ) => Promise<void>;
+  triggerGraphSync: (position: Monaco.IPosition) => void;
 };
-
 
 export function createEditorFullEditController(options: CreateEditorFullEditControllerOptions) {
   let importSession: FullEditSession | null = null;
   let importOnlyToken = 0;
   let suppressNextFormatSource = false;
+  let suppressNextWholeDocumentIntake = false;
   const fullEditSink = options.fullEditSink ?? createPrimaryFullEditSink();
 
   const defaultFormattingOptions = {
@@ -722,6 +723,22 @@ export function createEditorFullEditController(options: CreateEditorFullEditCont
     const files = event.dataTransfer?.files;
     if (!files || files.length === 0) return;
     const file = files[0];
+
+    // JSONL/NDJSON: import text without full-document parse. The cursor-driven
+    // findJsonBlockAtPosition handles per-line graph display. triggerGraphSync
+    // kicks off the graph for the first line immediately after import completes.
+    const lowerName = file.name.toLowerCase();
+    if (lowerName.endsWith('.jsonl') || lowerName.endsWith('.ndjson')) {
+      const text = await file.text();
+      suppressNextWholeDocumentIntake = true;
+      options.applyImportLanguage('json');
+      options.setEditorValue(text);
+      suppressNextWholeDocumentIntake = false;
+      options.setSourceText(text);
+      options.updateActiveTempModel((current) => ({ ...current, error: '', diagnostics: [] }));
+      options.triggerGraphSync({ lineNumber: 1, column: 1 });
+      return;
+    }
     const sample = await readImportSourceSample(file);
     const sourceFormat = await resolveImportSourceFormat(file.name, sample, editorLanguageFallback);
     const targetLanguage = supportedEditorLanguageSet.has(sourceFormat as SupportedEditorLanguageId)
@@ -748,6 +765,7 @@ export function createEditorFullEditController(options: CreateEditorFullEditCont
     importStream,
     handleDrop,
     flushPendingText,
+    suppressNextWholeDocumentIntake: () => suppressNextWholeDocumentIntake,
     setSuppressNextFormatSource: (value: boolean) => {
       suppressNextFormatSource = value;
     },

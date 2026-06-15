@@ -113,6 +113,7 @@ describe('editor-full-edit-controller', () => {
       callWasmWorker: vi.fn(async () => 'converted text'),
       applyGraphAnalysis: mockApplyGraphAnalysis,
       setActiveTabDocumentKey: vi.fn(),
+      triggerGraphSync: vi.fn(),
       ...overrides,
     };
   }
@@ -455,6 +456,59 @@ describe('editor-full-edit-controller', () => {
         expect.objectContaining({ semanticTokens: analysis.semanticTokens }),
       );
     });
+  });
+
+
+  it('imports dropped jsonl files as text-only via flag suppression', async () => {
+    const options = createOptions();
+    const controller = createEditorFullEditController(options as any);
+    const jsonlText = '{"a":1}\n{"b":2}\n{"c":3}\n';
+    const file = {
+      name: 'data.jsonl',
+      size: new TextEncoder().encode(jsonlText).byteLength,
+      text: vi.fn(async () => jsonlText),
+    };
+    const event = {
+      preventDefault: vi.fn(),
+      dataTransfer: { files: [file] },
+    };
+
+    // Flag should be false initially
+    expect(controller.suppressNextWholeDocumentIntake()).toBe(false);
+
+    await controller.handleDrop(event as any);
+
+    // Flag should be cleared after import
+    expect(controller.suppressNextWholeDocumentIntake()).toBe(false);
+    expect(options.applyImportLanguage).toHaveBeenCalledWith('json');
+    expect(options.setEditorValue).toHaveBeenCalledWith(jsonlText);
+    expect(options.setSourceText).toHaveBeenCalledWith(jsonlText);
+    expect(options.updateActiveTempModel).toHaveBeenCalledWith(expect.any(Function));
+    expect(options.triggerGraphSync).toHaveBeenCalledWith({ lineNumber: 1, column: 1 });
+  });
+
+  it('imports dropped ndjson files as text-only via flag suppression', async () => {
+    const options = createOptions();
+    const controller = createEditorFullEditController(options as any);
+    const jsonlText = '{"x":1}\n{"y":2}\n';
+    const file = {
+      name: 'data.ndjson',
+      size: new TextEncoder().encode(jsonlText).byteLength,
+      text: vi.fn(async () => jsonlText),
+    };
+    const event = {
+      preventDefault: vi.fn(),
+      dataTransfer: { files: [file] },
+    };
+
+    await controller.handleDrop(event as any);
+
+    expect(options.applyImportLanguage).toHaveBeenCalledWith('json');
+    expect(options.setEditorValue).toHaveBeenCalledWith(jsonlText);
+    expect(options.setSourceText).toHaveBeenCalledWith(jsonlText);
+    expect(options.updateActiveTempModel).toHaveBeenCalledWith(expect.any(Function));
+    expect(options.triggerGraphSync).toHaveBeenCalledWith({ lineNumber: 1, column: 1 });
+    expect(controller.suppressNextWholeDocumentIntake()).toBe(false);
   });
 
   it('imports dropped files as drop-file full-edit sessions', async () => {

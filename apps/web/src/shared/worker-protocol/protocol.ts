@@ -137,6 +137,7 @@ export type WorkerRequest =
   | { id: number; type: 'convert'; sourceLanguage: string; targetFormat: string; text: string; options?: any }
   | { id: number; type: 'runYq'; language: string; text: string; expression: string; options?: any; nest?: boolean }
   | { id: number; type: 'semanticTokensLegend' }
+  | { id: number; type: 'guessLanguage'; text: string }
   | { id: number; type: 'parseToTree'; language: string; text: string; nest: boolean }
   | { id: number; type: 'parseValueToTree'; language: string; text: string; nest: boolean }
   | { id: number; type: 'parseValueToData'; language: string; text: string; nest: boolean }
