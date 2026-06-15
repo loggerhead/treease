@@ -1616,6 +1616,23 @@ mod tests {
             "streaming close of 188KB fixture took {:.1}s — exceeds 10s budget",
             elapsed.as_secs_f64(),
         );
+        // Verify table row count: the fixture has 36 items in ApiList
+        let cache_entry = crate::core::graph_projection_service::get_projection_model_cache_entry(
+            "stream-large-close",
+        );
+        if let Some(entry) = cache_entry {
+            let model = entry.model_snapshot.materialize();
+            let table_rows: Vec<_> = model
+                .nodes
+                .iter()
+                .filter_map(|n| n.table.as_ref().map(|t| t.rows.len()))
+                .collect();
+            let max_table_rows = table_rows.into_iter().max().unwrap_or(0);
+            assert_eq!(
+                max_table_rows, 36,
+                "expected header table with 36 rows for ApiList, got {max_table_rows}"
+            );
+        }
     }
 
     /// Stress test: generate a ~500KB JSON array inline, feed as 16KB

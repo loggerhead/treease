@@ -598,6 +598,17 @@ fn fold_yaml_plain_scalar_lines(raw: &str) -> String {
 fn doc_value_node(node: tree_sitter::Node) -> Option<tree_sitter::Node> {
     first_named_child_of_kind(node, "block_node")
         .or_else(|| first_named_child_of_kind(node, "flow_node"))
+        .or_else(|| first_named_child_of_kind(node, "block_mapping"))
+        .or_else(|| first_named_child_of_kind(node, "flow_mapping"))
+        .or_else(|| first_named_child_of_kind(node, "block_sequence"))
+        .or_else(|| first_named_child_of_kind(node, "flow_sequence"))
+        .or_else(|| first_named_child_of_kind(node, "block_mapping_pair"))
+        .or_else(|| first_named_child_of_kind(node, "flow_pair"))
+        .or_else(|| first_named_child_of_kind(node, "plain_scalar"))
+        .or_else(|| first_named_child_of_kind(node, "single_quote_scalar"))
+        .or_else(|| first_named_child_of_kind(node, "double_quote_scalar"))
+        .or_else(|| first_named_child_of_kind(node, "block_scalar"))
+        .or_else(|| first_named_child_of_kind(node, "alias"))
 }
 
 fn validate_document_tags(document: tree_sitter::Node, source: &str) -> Result<(), CoreError> {
@@ -1245,7 +1256,8 @@ pub fn decode_yaml(input: &str) -> Result<DecodedDocument, CoreError> {
 #[cfg(test)]
 mod tests {
     use super::YamlDecoder;
-    use crate::core::{CoreError, ParseError};
+    use crate::core::{CoreError, ParseError, TreeNodeKind};
+    use crate::evaluator::{AllAtOnceEvaluator, Value};
     use crate::formats::Decode;
 
     #[test]
@@ -1264,6 +1276,18 @@ mod tests {
             YamlDecoder.decode_str("%YAML 1.2 foo\n---\n").unwrap_err(),
             CoreError::Parse(ParseError::InvalidSyntax)
         );
+    }
+
+    #[test]
+    fn yaml_decoder_decodes_direct_block_mapping_document() {
+        let decoded = YamlDecoder.decode_str("foo: 1\n").unwrap();
+        let root = decoded.store.get(decoded.root).unwrap();
+        assert_eq!(root.kind, TreeNodeKind::Mapping);
+
+        let selected = AllAtOnceEvaluator::new()
+            .evaluate_nodes(&decoded.store, ".foo", &[decoded.root])
+            .unwrap();
+        assert_eq!(selected, vec![Value::Number(1.0)]);
     }
 
     #[test]

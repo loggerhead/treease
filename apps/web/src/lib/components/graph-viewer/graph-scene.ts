@@ -13,6 +13,7 @@ type GraphSceneControllerDeps = {
   getRenderConfig: () => GraphViewerConfig;
   getLanguageId: () => string;
   getValueTypeToSemType: () => Record<string, string>;
+  isReadonly?: () => boolean;
   getLastAutoOffset: () => { x: number; y: number } | null;
   setLastAutoOffset: (value: { x: number; y: number } | null) => void;
   getLayers: () => GraphSceneLayers;
@@ -69,6 +70,7 @@ export function createGraphSceneController(deps: GraphSceneControllerDeps) {
     getRenderConfig: deps.getRenderConfig,
     getLanguageId: deps.getLanguageId,
     getValueTypeToSemType: deps.getValueTypeToSemType,
+    isReadonly: deps.isReadonly,
     getLastAutoOffset: deps.getLastAutoOffset,
     setLastAutoOffset: deps.setLastAutoOffset,
     getLayers: deps.getLayers,

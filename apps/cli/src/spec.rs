@@ -4,6 +4,7 @@ use serde::Serialize;
 #[serde(rename_all = "kebab-case")]
 pub(super) enum CliCommandId {
     Root,
+    Web,
     Help,
     Operators,
     OperatorsList,
@@ -113,6 +114,22 @@ pub(super) fn root_command_spec() -> CliCommandSpec {
             },
         ],
         vec![
+            command_spec(
+                CliCommandId::Web,
+                &["treease", "web"],
+                "treease web [OPTIONS] <EXPRESSION> <FILE|->",
+                "Open the web UI for a single structured document.",
+                vec![
+                    required_argument("expression", "Expression to evaluate."),
+                    required_argument("file", "Input file or `-` for stdin."),
+                ],
+                web_options(),
+                vec![CliExampleSpec {
+                    command: "treease web '.service' config.yaml".to_string(),
+                    description: "Open the web UI for one input document.".to_string(),
+                }],
+                Vec::new(),
+            ),
             command_spec(
                 CliCommandId::Help,
                 &["treease", "help"],
@@ -439,6 +456,23 @@ pub(super) fn execution_options() -> Vec<CliOptionSpec> {
 
 pub(super) fn metadata_options() -> Vec<CliOptionSpec> {
     vec![format_option()]
+}
+
+pub(super) fn web_options() -> Vec<CliOptionSpec> {
+    execution_options()
+        .into_iter()
+        .filter(|option| {
+            matches!(
+                option.name.as_str(),
+                "input-format"
+                    | "output-format"
+                    | "pretty-print"
+                    | "indent"
+                    | "unwrap-scalar"
+                    | "no-doc"
+            )
+        })
+        .collect()
 }
 
 fn command_spec(

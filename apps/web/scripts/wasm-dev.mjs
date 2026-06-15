@@ -1,15 +1,13 @@
 import { spawn } from 'node:child_process';
 import { copyFile, mkdir, readFile, readdir, stat, unlink, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
-import { execFile } from 'node:child_process';
 import { watch } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
-import { promisify } from 'node:util';
 import { runBindgen } from './wasm-bindgen.mjs';
+import { optimizeWasmSync } from './wasm-optimize.mjs';
 
-const execFileAsync = promisify(execFile);
 const copyOnly = process.argv.includes('--copy-only');
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -53,23 +51,8 @@ async function readVersion(wasmPath) {
 }
 
 async function optimizeWasm() {
-  try {
-    await execFileAsync('wasm-opt', [
-      '-Oz',
-      '--enable-bulk-memory',
-      '--enable-nontrapping-float-to-int',
-      '--strip-debug',
-      '--strip-producers',
-      '--vacuum',
-      rustWasmOut,
-      '-o',
-      rustWasmOptimizedOut
-    ]);
-    return rustWasmOptimizedOut;
-  } catch (err) {
-    process.stderr.write(`[wasm] wasm-opt unavailable or failed; copying raw wasm: ${err.message}\n`);
-    return rustWasmOut;
-  }
+  optimizeWasmSync(rustWasmOut, rustWasmOptimizedOut);
+  return rustWasmOptimizedOut;
 }
 
 async function removeStaleWasmFiles(staticDir, prefix, keepName) {

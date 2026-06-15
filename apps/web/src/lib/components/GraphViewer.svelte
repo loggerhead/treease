@@ -110,6 +110,7 @@
   type LeaferAppOrLeafer = LeaferApp | Leafer;
   export let enableRevealSync = true;
   export let synchronizedRuntimeLoading = false;
+  export let readonly = false;
 
   const MINIMAP_WIDTH = 220;
   const MINIMAP_HEIGHT = 150;
@@ -337,6 +338,7 @@ const fullBuildReasonSet = new Set([
     getDocumentKey: () => documentKeyValue,
     getLanguageId: () => languageIdValue,
     getEnableNest: () => $settings.parser.enableNest,
+    isReadonly: () => readonly,
     getEditorIO: () => editorIOValue,
     getEditorRevision: () => editorRevisionValue,
     getActiveSnapshotId: () => getActiveDocumentSnapshotId(documentKeyValue),
@@ -505,6 +507,7 @@ const fullBuildReasonSet = new Set([
     getRenderConfig: () => renderConfig,
     getLanguageId: () => languageIdValue,
     getValueTypeToSemType: () => valueTypeToSemType as Record<string, string>,
+    isReadonly: () => readonly,
     getLastAutoOffset: () => lastAutoOffset,
     setLastAutoOffset: (value) => {
       lastAutoOffset = value;
@@ -591,6 +594,7 @@ const fullBuildReasonSet = new Set([
     getConstructors: () => ({ LeaferCtor, PlainLeaferCtor, BoxCtor, TextCtor, PenCtor }),
     getTooltipEvents: () => ({ LeaferEvent: LeaferEventCtor, PointerEvent: PointerEventCtor }),
     getValueTypeToSemType: () => valueTypeToSemType as Record<string, string>,
+    isReadonly: () => readonly,
     getRootClickTargets: () => listClickTargetProbes(),
     setRuntimeHoverPreviewState: (preview) => {
       runtimeHoverPreviewState = preview;
@@ -630,6 +634,28 @@ const fullBuildReasonSet = new Set([
       void graphSceneController.updateViewport();
     },
   });
+  let lastSyncedReadonly = readonly;
+
+  function closeGraphInnerEditor(): void {
+    const editor = (leafer as ({ editor?: { closeInnerEditor?: (skipUpdate?: boolean) => void } } & object) | null)
+      ?.editor;
+    editor?.closeInnerEditor?.(true);
+  }
+
+  function syncReadonlyEditability(): void {
+    resetActiveEditState();
+    closeGraphInnerEditor();
+    hoverPanelController.destroyTooltipPanelRuntime();
+    const graphData = graphSceneController.getLastGraphData();
+    if (!graphData) return;
+    graphSceneController.replaceAll(graphData);
+    if (!isFullEditInteractionBlocked()) graphMinimapRuntimeController.update();
+  }
+
+  $: if (readonly !== lastSyncedReadonly) {
+    lastSyncedReadonly = readonly;
+    syncReadonlyEditability();
+  }
 
   graphRuntimeProbeController = createGraphRuntimeProbeController({
     shouldAttachGraphViewerTestHooks,

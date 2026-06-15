@@ -31,6 +31,14 @@ UI
 
 ## 领域模型
 
+### Treease Expression
+
+Treease Expression 是用户对结构化文档执行查询或变换的意图表达；它可以包含一个或多个 operator，但不等同于 operator 列表。需要描述整条求值逻辑时使用 `expression` / `表达式`，不要用 `operators` / `算子` 代称。
+
+### Expression Result
+
+Expression Result 是 Treease Expression 作用于输入 Document 后得到的派生结构化内容。它可以作为新的只读展示对象被解析和建图，但不代表原始 Document，也不默认拥有写回原始 Document 的语义。
+
 ### Document
 
 有唯一 `document_key` 的文本内容实体。`document_key` 由上层分配，Rust runtime 按它管理 job、snapshot、freshness 与资源回收。

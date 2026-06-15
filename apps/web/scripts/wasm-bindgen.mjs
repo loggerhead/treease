@@ -2,6 +2,7 @@ import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { optimizeWasmSync } from './wasm-optimize.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 export const webDir = path.resolve(here, '..');
@@ -34,20 +35,23 @@ export function runBindgen() {
     stdio: 'inherit'
   });
 
-  // 3. Rename core_bg.wasm → core.wasm, core_bg.wasm.d.ts → core.wasm.d.ts
-  //    wasm-bindgen always appends _bg to the wasm binary, but we don't want that.
+  // 3. Optimize core_bg.wasm ourselves; wasm-pack's built-in wasm-opt invocation
+  //    does not reliably preserve our feature flags on the current toolchain.
   const bgWasm = path.resolve(wasmPkgDir, 'core_bg.wasm');
   const outWasm = path.resolve(wasmPkgDir, 'core.wasm');
   if (fs.existsSync(bgWasm)) {
-    fs.renameSync(bgWasm, outWasm);
+    optimizeWasmSync(bgWasm, outWasm);
+    fs.rmSync(bgWasm, { force: true });
   }
+
+  // 4. Rename core_bg.wasm.d.ts → core.wasm.d.ts.
   const bgWasmDts = path.resolve(wasmPkgDir, 'core_bg.wasm.d.ts');
   const outWasmDts = path.resolve(wasmPkgDir, 'core.wasm.d.ts');
   if (fs.existsSync(bgWasmDts)) {
     fs.renameSync(bgWasmDts, outWasmDts);
   }
 
-  // 4. 去掉 core.js 中的静态 new URL('...wasm', import.meta.url) 引用，
+  // 5. 去掉 core.js 中的静态 new URL('...wasm', import.meta.url) 引用，
   //    并用 core.wasm 替换所有 core_bg.wasm 引用。
   const generatedJs = path.resolve(wasmPkgDir, 'core.js');
   let code = fs.readFileSync(generatedJs, 'utf-8');
@@ -60,7 +64,7 @@ export function runBindgen() {
     .replace(/core_bg\.wasm\.d\.ts/g, 'core.wasm.d.ts');
   fs.writeFileSync(generatedJs, code, 'utf-8');
 
-  // 5. Update package.json: core_bg.wasm → core.wasm
+  // 6. Update package.json: core_bg.wasm → core.wasm
   const pkgPath = path.resolve(wasmPkgDir, 'package.json');
   let pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
   if (pkg.files) {

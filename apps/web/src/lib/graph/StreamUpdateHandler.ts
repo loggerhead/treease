@@ -146,12 +146,29 @@ function applyTablePatch(state: StreamState, patch: any): void {
       } else {
         rows.push(...normalizedRows);
       }
-      const rowHeight = node.table.rowHeight ?? normalizedRows[0]?.boxArgs?.height ?? 0;
-      const headerHeight = node.table.headerHeight ?? 0;
-      const totalHeight = rowHeight > 0 ? headerHeight + rowHeight * rows.length : node.table.totalHeight;
+      // Use sizing carried in the patch (the Rust side recalculates
+      // view_height after row appends).  Fall back to local computation
+      // only for backward compatibility with older protocol.
+      const totalHeight = patch.totalHeight ?? patch.total_height ??
+        ((node.table.rowHeight ?? 0) > 0
+          ? (node.table.headerHeight ?? 0) + (node.table.rowHeight ?? 0) * rows.length
+          : node.table.totalHeight);
       state.nodes.set(patch.table_handle ?? patch.tableHandle, {
         ...node,
-        table: { ...node.table, rows, totalHeight },
+        table: {
+          ...node.table,
+          rows,
+          totalHeight,
+          ...(patch.viewHeight != null || patch.view_height != null
+            ? { viewHeight: patch.viewHeight ?? patch.view_height }
+            : {}),
+          ...(patch.headerHeight != null || patch.header_height != null
+            ? { headerHeight: patch.headerHeight ?? patch.header_height }
+            : {}),
+          ...(patch.rowHeight != null || patch.row_height != null
+            ? { rowHeight: patch.rowHeight ?? patch.row_height }
+            : {}),
+        },
       });
       break;
     }

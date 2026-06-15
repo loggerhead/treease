@@ -25,6 +25,18 @@ impl Language {
         }
     }
 
+    pub fn as_name(self) -> Option<&'static str> {
+        match self {
+            Self::Json => Some("json"),
+            Self::Yaml => Some("yaml"),
+            Self::Toml => Some("toml"),
+            Self::Python => Some("python"),
+            Self::Javascript => Some("javascript"),
+            Self::Csv => Some("csv"),
+            Self::None => None,
+        }
+    }
+
     pub fn as_format_language(self) -> Option<FormatLanguage> {
         match self {
             Self::Json => Some(FormatLanguage::Json),

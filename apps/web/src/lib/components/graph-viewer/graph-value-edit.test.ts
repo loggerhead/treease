@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { InnerEditorEvent } from '@leafer-in/editor';
 import { SemType, TreeKind, type TreeNode } from '@core-wasm/index'
 import { toWasmTreeNode } from '../../../shared/brand-bridge';
 import { createGraphValueEditController } from './graph-value-edit';
@@ -525,5 +526,84 @@ describe('graph-value-edit', () => {
     expect(publishTreeState).not.toHaveBeenCalled();
     expect(applyTextEdits).not.toHaveBeenCalled();
     expect(emitEditorMutation).not.toHaveBeenCalled();
+  });
+
+  it('suppresses graph value edit opens and commits when readonly', async () => {
+    let readonly = true;
+    const applyTextEdits = vi.fn(() => true);
+    const emitEditorMutation = vi.fn();
+    const publishTreeState = vi.fn(() => true);
+    const dispatchGraphEditEvent = vi.fn();
+    const model = { getVersionId: () => 1 };
+    const controller = createGraphValueEditController({
+      getCurrentData: () => ({ name: 'current' }),
+      getSourceText: () => '{"name":"current"}',
+      getDocumentKey: () => 'doc-key',
+      getLanguageId: () => 'json',
+      getEnableNest: () => true,
+      isReadonly: () => readonly,
+      getEditorIO: () => ({ context: 'editor', getModel: () => model as any, applyTextEdits } as any),
+      getEditorRevision: () => 3,
+      getActiveSnapshotId: () => 42,
+      resolveTreePathByPosition: vi.fn(async () => []),
+      nextTreeStateToken: () => 5,
+      publishTreeState,
+      emitEditorMutation,
+      updateActiveTempModel: vi.fn(),
+      refreshTooltipVisibility: vi.fn(),
+      dispatchGraphEditEvent,
+      handleError: vi.fn(),
+    });
+    const listeners = new Map<unknown, (event: unknown) => void>();
+    const editor = {
+      innerEditor: { config: {} },
+      getInnerEditor: vi.fn(() => ({ config: {} })),
+      on: vi.fn((type: unknown, handler: (event: unknown) => void) => {
+        listeners.set(type, handler);
+      }),
+    };
+    const cell = { path: [{ key: 'name' }], valueType: 'string', text: 'current' };
+    const target = {
+      __graphCell: cell,
+      __graphCellKind: 'value',
+      text: 'current',
+    };
+
+    controller.bindGraphEditorLifecycle(editor as any);
+    listeners.get(InnerEditorEvent.BEFORE_OPEN)?.({ editTarget: target });
+
+    expect(controller.hasActiveEdit()).toBe(false);
+    expect(dispatchGraphEditEvent).not.toHaveBeenCalled();
+
+    readonly = false;
+    listeners.get(InnerEditorEvent.BEFORE_OPEN)?.({ editTarget: target });
+    expect(controller.hasActiveEdit()).toBe(true);
+    expect(dispatchGraphEditEvent).toHaveBeenCalledWith(
+      'graph-edit-open',
+      expect.objectContaining({ path: [{ key: 'name' }], kind: 'value', valueType: 'string' }),
+    );
+    dispatchGraphEditEvent.mockClear();
+
+    readonly = true;
+    listeners.get(InnerEditorEvent.CLOSE)?.({});
+    await Promise.resolve();
+
+    expect(controller.hasActiveEdit()).toBe(false);
+    expect(dispatchGraphEditEvent).not.toHaveBeenCalled();
+    expect(mocked.commitTextEdit).not.toHaveBeenCalled();
+    expect(mocked.callSharedWasmWorker).not.toHaveBeenCalled();
+    expect(applyTextEdits).not.toHaveBeenCalled();
+    expect(emitEditorMutation).not.toHaveBeenCalled();
+    expect(publishTreeState).not.toHaveBeenCalled();
+
+    await expect(controller.commitTooltipPanelProbe({ cell: cell as any, kind: 'value' }, 'next')).resolves.toBe(false);
+    await expect(controller.applyGraphEdit(cell as any, 'value', 'next')).resolves.toBe(false);
+
+    expect(dispatchGraphEditEvent).not.toHaveBeenCalled();
+    expect(mocked.commitTextEdit).not.toHaveBeenCalled();
+    expect(mocked.callSharedWasmWorker).not.toHaveBeenCalled();
+    expect(applyTextEdits).not.toHaveBeenCalled();
+    expect(emitEditorMutation).not.toHaveBeenCalled();
+    expect(publishTreeState).not.toHaveBeenCalled();
   });
 });

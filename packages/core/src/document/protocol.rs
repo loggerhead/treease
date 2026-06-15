@@ -326,11 +326,17 @@ pub enum TablePatch {
         columns: Vec<GraphCellData>,
     },
     /// One or more rows are appended to an existing table.
+    /// Carries updated table sizing so consumers can resize the
+    /// viewport without a full node re-send.
     RowsAppended {
         table_handle: u32,
         /// Row index of the first new row (must equal current row count).
         start_index: u32,
         rows: Vec<GraphRowData>,
+        total_height: i32,
+        view_height: i32,
+        header_height: i32,
+        row_height: i32,
     },
     /// Specific cells in an existing table are updated.
     CellsUpdated {

@@ -174,6 +174,7 @@ type GraphSceneRuntimeDeps = {
   getRenderConfig: () => GraphViewerConfig;
   getLanguageId: () => string;
   getValueTypeToSemType: () => Record<string, string>;
+  isReadonly?: () => boolean;
   getLastAutoOffset: () => { x: number; y: number } | null;
   setLastAutoOffset: (value: { x: number; y: number } | null) => void;
   getLayers: () => GraphSceneLayers;
@@ -520,6 +521,7 @@ export function createGraphSceneRuntime(deps: GraphSceneRuntimeDeps) {
       TextCtor,
       PenCtor,
       valueTypeToSemType: deps.getValueTypeToSemType(),
+      editable: deps.isReadonly?.() ? false : undefined,
       registerCellBox: (cell, kind, box) => {
         if (box && typeof box === 'object') {
           cellBindings.set(box, { cell, kind, box });

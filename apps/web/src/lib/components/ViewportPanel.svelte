@@ -47,6 +47,8 @@
   export let onGraphRuntimeState: (payload: RuntimeStateEventDetail) => void = () => {}
   export let enableRevealSync = true
   export let synchronizedRuntimeLoading = false
+  export let graphOnly = false
+  export let readonlyGraph = false
 
   type DiffResponse = {
     mode: 'tree' | 'text'
@@ -64,7 +66,9 @@
   let sidecarEditor: SidecarEditor | null = null
   let graphViewer: any = null
   let graphSearchInput: GraphSearchInput | null = null
+  let effectiveViewMode: 'graph' | 'text' = 'graph'
   $: visibleGraphDiagnostics = $jsonBlockSelection ? [] : ($activeTempModel?.diagnostics ?? []).slice(0, 2)
+  $: effectiveViewMode = graphOnly ? 'graph' : viewMode
 
   function sanitizeContextText(text: string) {
     const MAX_LINE_LEN = 100;
@@ -130,7 +134,7 @@
   }
 
   async function runDiffCompare() {
-    if (viewMode !== 'text') return
+    if (graphOnly || effectiveViewMode !== 'text') return
     try {
       const readySidecarEditor = await ensureSidecarEditorReady()
       const rightText = normalizeCompareText(readySidecarEditor?.getText() ?? scratchText)
@@ -177,7 +181,7 @@
       clearCompareHighlights()
     }
   }
-  $: if (viewMode !== 'text' && hasRightCompareHighlights()) {
+  $: if (effectiveViewMode !== 'text' && hasRightCompareHighlights()) {
     clearCompareHighlights()
   }
 
@@ -187,6 +191,7 @@
   }
 
   async function loadRightPanelFile(file: File) {
+    if (graphOnly) return
     const [sample, text] = await Promise.all([readImportSourceSample(file), file.text()])
     const sourceFormat = await resolveImportSourceFormat(file.name, sample, editorLanguageFallback)
     const nextLanguage = supportedEditorLanguageSet.has(sourceFormat as SupportedEditorLanguageId)
@@ -197,6 +202,7 @@
 
   async function handleRightPanelDrop(event: DragEvent) {
     event.preventDefault()
+    if (graphOnly) return
     const files = event.dataTransfer?.files
     if (!files || files.length === 0) return
     await loadRightPanelFile(files[0])
@@ -207,10 +213,12 @@
   }
 
   function openRightPanelFilePicker() {
+    if (graphOnly) return
     rightPanelFileInput?.click()
   }
 
   async function handleRightPanelFileChange(event: Event) {
+    if (graphOnly) return
     const input = event.currentTarget as HTMLInputElement | null
     const file = input?.files?.[0]
     if (!file) return
@@ -222,6 +230,7 @@
     value: string,
     nextLanguage: SupportedEditorLanguageId = languageIdValue,
   ) {
+    if (graphOnly) return
     viewMode = 'text'
     clearCompareHighlights()
     updateScratchText(value)
@@ -230,6 +239,7 @@
   }
 
   export function showTextPreview(value: string) {
+    if (graphOnly) return
     void showRightPanelText(value)
   }
 
@@ -248,14 +258,17 @@
   }
 
   export function setTextScrollPosition(position: { scrollTop: number; scrollLeft: number }) {
+    if (graphOnly) return
     sidecarEditor?.setScrollPosition(position)
   }
 
   export function getActiveText(): string {
+    if (graphOnly) return $sourceText
     return getSidecarText()
   }
 
   export function getActiveLanguage(): SupportedEditorLanguageId {
+    if (graphOnly) return languageIdValue
     return getSidecarLanguage()
   }
 </script>
@@ -269,15 +282,17 @@
   on:drop={handleRightPanelDrop}
   on:dragover={handleRightPanelDragOver}
 >
-  <input
-    class="hidden"
-    type="file"
-    bind:this={rightPanelFileInput}
-    aria-label="Right panel file input"
-    on:change={handleRightPanelFileChange}
-  />
+  {#if !graphOnly}
+    <input
+      class="hidden"
+      type="file"
+      bind:this={rightPanelFileInput}
+      aria-label="Right panel file input"
+      on:change={handleRightPanelFileChange}
+    />
+  {/if}
   <div class="absolute right-3 top-2.5 z-[2] inline-flex flex-col items-end gap-2.5">
-    {#if viewMode === 'graph' && !synchronizedRuntimeLoading}
+    {#if effectiveViewMode === 'graph' && (!synchronizedRuntimeLoading || graphOnly)}
       <ButtonGroup.Root
         orientation="vertical"
         variant="segmented-outline"
@@ -329,7 +344,7 @@
           <ImageDown size={12} />
         </IconButton>
       </ButtonGroup.Root>
-    {:else}
+    {:else if !graphOnly}
       <ButtonGroup.Root
         orientation="vertical"
         variant="segmented-outline"
@@ -363,7 +378,7 @@
     {/if}
   </div>
 
-  {#if viewMode === 'graph' && visibleGraphDiagnostics.length}
+  {#if effectiveViewMode === 'graph' && visibleGraphDiagnostics.length}
     <div class="pointer-events-auto absolute left-3 right-[140px] top-4 z-[1] flex flex-col gap-2.5">
       {#each visibleGraphDiagnostics as diag}
         <button
@@ -394,7 +409,7 @@
     </div>
   {/if}
 
-  {#if viewMode === 'text'}
+  {#if !graphOnly && effectiveViewMode === 'text'}
     <div class="flex h-full min-h-0 min-w-0 flex-col bg-[var(--panel-bg)]">
       {#if diffError}
         <div class="border-b border-[var(--border-muted)] px-3 py-2 text-[12px] text-[#f87171]">
@@ -414,6 +429,7 @@
         bind:this={graphViewer}
         {enableRevealSync}
         {synchronizedRuntimeLoading}
+        readonly={readonlyGraph}
         on:reveal={handleGraphReveal}
         on:runtime-state={handleGraphViewerRuntimeState}
       />

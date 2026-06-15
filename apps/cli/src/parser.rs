@@ -5,6 +5,7 @@ use super::{CliError, CommandKind, ParsedArgs, spec};
 
 pub(super) fn parse_args_with_clap(argv: &[String]) -> Result<ParsedArgs, CliError> {
     reject_removed_legacy_eval_commands(argv)?;
+    reject_invalid_web_invocation(argv)?;
 
     #[cfg(not(target_arch = "wasm32"))]
     {
@@ -28,23 +29,75 @@ fn reject_removed_legacy_eval_commands(argv: &[String]) -> Result<(), CliError> 
     Ok(())
 }
 
+fn reject_invalid_web_invocation(argv: &[String]) -> Result<(), CliError> {
+    let Some(web_index) = root_subcommand_index(argv) else {
+        return Ok(());
+    };
+    if argv[web_index] != "web" {
+        return Ok(());
+    }
+
+    let mut positional_count = 0;
+    let mut index = web_index + 1;
+    while index < argv.len() {
+        match argv[index].as_str() {
+            "-n" | "--null-input" => return Err(CliError::UnsupportedWebFlag("--null-input")),
+            "-e" | "--exit-status" => return Err(CliError::UnsupportedWebFlag("--exit-status")),
+            "-i" | "--inplace" => return Err(CliError::UnsupportedWebFlag("--inplace")),
+            "-p" | "--input-format" | "-o" | "--output-format" | "-I" | "--indent" => {
+                index += 2;
+                continue;
+            }
+            "-P" | "--prettyPrint" | "-r" | "--unwrapScalar" | "-N" | "--no-doc" => {}
+            arg if arg.starts_with('-') => return Ok(()),
+            _ => positional_count += 1,
+        }
+
+        if positional_count > 2 {
+            return Err(CliError::InvalidWebInputCount);
+        }
+
+        index += 1;
+    }
+
+    Ok(())
+}
+
+fn root_subcommand_index(argv: &[String]) -> Option<usize> {
+    let mut index = 1;
+    while index < argv.len() {
+        match argv[index].as_str() {
+            "-p" | "--input-format" | "-o" | "--output-format" | "-I" | "--indent" => {
+                index += 2;
+            }
+            "-n" | "--null-input" | "-e" | "--exit-status" | "-P" | "--prettyPrint" | "-r"
+            | "--unwrapScalar" | "-N" | "--no-doc" | "-i" | "--inplace" | "-h" | "--help" => {
+                index += 1;
+            }
+            _ if argv[index].starts_with('-') => return None,
+            _ => return Some(index),
+        }
+    }
+
+    None
+}
+
 #[cfg(not(target_arch = "wasm32"))]
 fn parse_args_with_clap_impl(argv: &[String]) -> Result<ParsedArgs, CliError> {
     let root_spec = spec::root_command_spec();
-    let matches = build_command(root_spec.clone())
+    let parse_spec = if should_parse_as_root_invocation(argv) {
+        let mut root_only_spec = root_spec.clone();
+        root_only_spec.subcommands.clear();
+        root_only_spec
+    } else {
+        root_spec.clone()
+    };
+    let matches = build_command(parse_spec)
         .try_get_matches_from(argv)
         .map_err(map_clap_error)?;
 
     let mut parsed = ParsedArgs::default();
-    parsed.null_input = matches.get_flag("null-input");
-    parsed.exit_status = matches.get_flag("exit-status");
-    parsed.input_format = matches.get_one::<String>("input-format").cloned();
-    parsed.output_format = matches.get_one::<String>("output-format").cloned();
-    parsed.pretty_print = matches.get_flag("pretty-print").then_some(true);
-    parsed.indent = matches.get_one::<i32>("indent").copied();
-    parsed.unwrap_scalar = matches.get_flag("unwrap-scalar");
-    parsed.no_doc = matches.get_flag("no-doc");
-    parsed.inplace = matches.get_flag("inplace");
+    apply_execution_options(&mut parsed, &matches);
 
     if matches.get_flag("help") {
         parsed.command = CommandKind::Help;
@@ -71,6 +124,66 @@ fn parse_args_with_clap_impl(argv: &[String]) -> Result<ParsedArgs, CliError> {
     }
 
     Ok(parsed)
+}
+
+fn should_parse_as_root_invocation(argv: &[String]) -> bool {
+    root_subcommand_index(argv).is_some_and(|index| !is_root_subcommand(argv[index].as_str()))
+}
+
+fn is_root_subcommand(value: &str) -> bool {
+    matches!(
+        value,
+        "web" | "help" | "operators" | "formats" | "examples" | "doctor"
+    )
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn apply_execution_options(parsed: &mut ParsedArgs, matches: &ArgMatches) {
+    if get_flag_if_present(matches, "null-input") {
+        parsed.null_input = true;
+    }
+    if get_flag_if_present(matches, "exit-status") {
+        parsed.exit_status = true;
+    }
+    if let Some(value) = get_one_if_present::<String>(matches, "input-format") {
+        parsed.input_format = Some(value.clone());
+    }
+    if let Some(value) = get_one_if_present::<String>(matches, "output-format") {
+        parsed.output_format = Some(value.clone());
+    }
+    if get_flag_if_present(matches, "pretty-print") {
+        parsed.pretty_print = Some(true);
+    }
+    if let Some(value) = get_one_if_present::<i32>(matches, "indent") {
+        parsed.indent = Some(*value);
+    }
+    if get_flag_if_present(matches, "unwrap-scalar") {
+        parsed.unwrap_scalar = true;
+    }
+    if get_flag_if_present(matches, "no-doc") {
+        parsed.no_doc = true;
+    }
+    if get_flag_if_present(matches, "inplace") {
+        parsed.inplace = true;
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn get_flag_if_present(matches: &ArgMatches, id: &str) -> bool {
+    matches
+        .try_get_one::<bool>(id)
+        .ok()
+        .flatten()
+        .copied()
+        .unwrap_or(false)
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn get_one_if_present<'a, T: Clone + Send + Sync + 'static>(
+    matches: &'a ArgMatches,
+    id: &str,
+) -> Option<&'a T> {
+    matches.try_get_one::<T>(id).ok().flatten()
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -143,8 +256,17 @@ fn build_argument(argument: spec::CliArgumentSpec) -> Arg {
         arg = arg.required(false);
     }
 
+    if argument.required {
+        arg = arg.required(true);
+    }
+
     if argument.multiple || argument.repeated {
-        arg = arg.num_args(0..).allow_hyphen_values(true);
+        if argument.required {
+            arg = arg.num_args(1..);
+        } else {
+            arg = arg.num_args(0..);
+        }
+        arg = arg.allow_hyphen_values(true);
     }
 
     arg
@@ -166,6 +288,18 @@ fn apply_matches(
     }
 
     match command_spec.id {
+        spec::CliCommandId::Web => {
+            apply_execution_options(parsed, matches);
+            if let Some(expression) = matches.get_one::<String>("expression") {
+                parsed.expression = expression.clone();
+            }
+            parsed.files = matches
+                .get_many::<String>("file")
+                .into_iter()
+                .flatten()
+                .cloned()
+                .collect();
+        }
         spec::CliCommandId::Help => {
             parsed.help = true;
             parsed.metadata_target = matches.get_one::<String>("command").cloned();
@@ -209,6 +343,7 @@ fn apply_matches(
 fn command_kind_for_id(command_id: &spec::CliCommandId) -> Option<CommandKind> {
     match command_id {
         spec::CliCommandId::Root => Some(CommandKind::Run),
+        spec::CliCommandId::Web => Some(CommandKind::Web),
         spec::CliCommandId::Help => Some(CommandKind::Help),
         spec::CliCommandId::OperatorsList => Some(CommandKind::OperatorsList),
         spec::CliCommandId::OperatorsGet => Some(CommandKind::OperatorsGet),

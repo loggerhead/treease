@@ -1,11 +1,14 @@
 use std::env;
 use std::fs;
-use std::io::{self, Read};
+use std::io::{self, Read, Write};
 
 mod catalog;
 mod errors;
 mod parser;
 mod spec;
+mod web_assets;
+mod web_payload;
+mod web_server;
 
 use treease_core::core::{
     Context, CoreError, Encoder, NodeId, Printer, Reader, SystemError, VecPrinterWriter,
@@ -39,6 +42,7 @@ struct ParsedArgs {
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum CommandKind {
     Run,
+    Web,
     Help,
     OperatorsList,
     OperatorsGet,
@@ -84,6 +88,13 @@ enum CliError {
     UnknownExample(String),
     InvalidFlagCombination,
     MultipleInputFilesForInplace,
+    UnsupportedWebFlag(&'static str),
+    InvalidWebInputCount,
+    MissingWebAssets,
+    #[allow(dead_code)]
+    WebServer(String),
+    #[allow(dead_code)]
+    WebForbidden,
     UnknownCommand(String),
     UnknownFlag(String),
     Eval(String),
@@ -153,6 +164,7 @@ fn run(raw_args: &[String]) -> Result<i32, CliError> {
             print!("{}", render_help(&parsed));
             return Ok(0);
         }
+        CommandKind::Web => return run_web_command(&parsed),
         CommandKind::Run => {}
         _ => {
             let output = execute_metadata_command(&parsed)?;
@@ -178,12 +190,26 @@ fn run(raw_args: &[String]) -> Result<i32, CliError> {
     Ok(compute_exit_status(parsed.exit_status, &output) as i32)
 }
 
+fn run_web_command(parsed: &ParsedArgs) -> Result<i32, CliError> {
+    let inputs = read_inputs(&parsed.files)?;
+    let payload = web_payload::build_cli_graph_result_payload(parsed, &inputs)?;
+    let result_json =
+        serde_json::to_vec(&payload).map_err(|error| CliError::Eval(error.to_string()))?;
+    let server = web_server::WebServer::bind(result_json)?;
+
+    let mut stdout = io::stdout();
+    writeln!(stdout, "{}", server.graph_url())?;
+    stdout.flush()?;
+
+    server.serve_forever()?;
+    Ok(0)
+}
+
 fn execute_command(parsed: &ParsedArgs, inputs: &[InputPayload]) -> Result<Vec<u8>, CliError> {
     let mut registry = treease_core::init()?;
     let result = (|| {
         let mut ctx = Context::empty(registry.handle());
-        let configured =
-            configured_formats(parsed, inputs.first().map(InputPayload::display_name))?;
+        let configured = configured_formats(parsed, inputs.first())?;
         let prefs = configured_preferences(parsed, &configured.output)?;
         let encoder = CliPrinterEncoder {
             inner: make_value_encoder(&configured.output, prefs.clone())?,
@@ -200,6 +226,7 @@ fn execute_command(parsed: &ParsedArgs, inputs: &[InputPayload]) -> Result<Vec<u
             let parsed_expression = parse_expression(&parsed.expression)?;
             let mut total_processed_docs = 0_u32;
             for payload in inputs {
+                let input_format = resolve_input_format(parsed, payload)?;
                 let mut cursor = io::Cursor::new(payload.bytes.as_slice());
                 let mut reader = Reader::new(&mut cursor);
                 total_processed_docs += evaluator
@@ -209,7 +236,7 @@ fn execute_command(parsed: &ParsedArgs, inputs: &[InputPayload]) -> Result<Vec<u
                         &mut reader,
                         parsed_expression.as_deref(),
                         &mut printer,
-                        Some(configured.input.as_str()),
+                        Some(input_format.as_str()),
                     )
                     .map_err(|err| CliError::Eval(format!("{err:?}")))?;
             }
@@ -260,23 +287,130 @@ fn read_inputs(files: &[String]) -> Result<Vec<InputPayload>, CliError> {
 
 fn configured_formats(
     parsed: &ParsedArgs,
-    filename: Option<&str>,
+    first_input: Option<&InputPayload>,
 ) -> Result<ConfiguredFormats, CliError> {
-    let input = match parsed.input_format.as_deref() {
-        Some(value) => canonical_cli_format(value)?,
-        None => match filename {
-            Some("<stdin>") | Some("-") => "yaml".to_string(),
-            Some(name) => treease_core::core::find_cli_format_spec_from_filename(name)
-                .map(|spec| spec.name.to_string())
-                .ok_or_else(|| CliError::UnsupportedFormat(name.to_string()))?,
-            None => "yaml".to_string(),
-        },
-    };
+    let input = first_input
+        .map(|payload| resolve_input_format(parsed, payload))
+        .transpose()?
+        .unwrap_or_else(|| "json".to_string());
     let output = match parsed.output_format.as_deref() {
         Some(value) => canonical_cli_format(value)?,
-        None => input.clone(),
+        None if first_input.is_some() => input.clone(),
+        None => "yaml".to_string(),
     };
-    Ok(ConfiguredFormats { input, output })
+    Ok(ConfiguredFormats { output })
+}
+
+fn resolve_input_format(parsed: &ParsedArgs, payload: &InputPayload) -> Result<String, CliError> {
+    if let Some(value) = parsed.input_format.as_deref() {
+        return canonical_cli_format(value);
+    }
+
+    Ok(guess_input_format(payload).unwrap_or_else(|| "json".to_string()))
+}
+
+fn guess_input_format(payload: &InputPayload) -> Option<String> {
+    guess_input_format_from_filename(payload.display_name())
+        .or_else(|| guess_input_format_from_content(&payload.bytes))
+}
+
+fn guess_input_format_from_filename(filename: &str) -> Option<String> {
+    if matches!(filename, "<stdin>" | "-") {
+        return None;
+    }
+
+    let last_segment = filename.rsplit(['/', '\\']).next().unwrap_or(filename);
+    let dot_pos = last_segment.rfind('.')?;
+    let ext = &last_segment[dot_pos + 1..];
+    if ext.is_empty() {
+        return None;
+    }
+
+    treease_core::core::find_cli_format_spec(ext).map(|spec| spec.name.to_string())
+}
+
+fn guess_input_format_from_content(bytes: &[u8]) -> Option<String> {
+    let text = std::str::from_utf8(bytes).ok()?;
+    let trimmed = text
+        .trim_start_matches('\u{feff}')
+        .trim_matches(|ch: char| ch.is_ascii_whitespace());
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    if serde_json::from_str::<serde_json::Value>(trimmed).is_ok() {
+        return Some("json".to_string());
+    }
+    if looks_like_toml(trimmed) {
+        return Some("toml".to_string());
+    }
+    if looks_like_yaml(trimmed) {
+        return Some("yaml".to_string());
+    }
+    if looks_like_csv(trimmed) {
+        return Some("csv".to_string());
+    }
+
+    None
+}
+
+fn looks_like_toml(text: &str) -> bool {
+    text.lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty() && !line.starts_with('#'))
+        .any(|line| {
+            if line.starts_with('[') && line.ends_with(']') && line.len() > 2 {
+                return true;
+            }
+            let Some((key, value)) = line.split_once('=') else {
+                return false;
+            };
+            !key.trim().is_empty()
+                && !value.trim().is_empty()
+                && key.trim().chars().all(|ch| {
+                    ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-' | '.' | '"' | '\'' | ' ')
+                })
+        })
+}
+
+fn looks_like_yaml(text: &str) -> bool {
+    if text.starts_with("---") || text.starts_with("- ") {
+        return true;
+    }
+
+    text.lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty() && !line.starts_with('#'))
+        .any(|line| {
+            if line.starts_with("- ") {
+                return true;
+            }
+            let Some((key, value)) = line.split_once(':') else {
+                return false;
+            };
+            !key.trim().is_empty()
+                && !key.contains('{')
+                && !key.contains('[')
+                && (!value.trim().is_empty() || line.ends_with(':'))
+        })
+}
+
+fn looks_like_csv(text: &str) -> bool {
+    let rows: Vec<&str> = text
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .take(3)
+        .collect();
+    if rows.len() < 2 {
+        return false;
+    }
+
+    let first_count = rows[0].split(',').count();
+    first_count > 1
+        && rows[1..]
+            .iter()
+            .all(|row| row.split(',').count() == first_count)
 }
 
 fn configured_preferences(
@@ -330,6 +464,21 @@ fn parse_args(argv: &[String]) -> Result<ParsedArgs, CliError> {
 }
 
 fn validate_args(parsed: &ParsedArgs) -> Result<(), CliError> {
+    if parsed.command == CommandKind::Web {
+        if parsed.null_input {
+            return Err(CliError::UnsupportedWebFlag("--null-input"));
+        }
+        if parsed.exit_status {
+            return Err(CliError::UnsupportedWebFlag("--exit-status"));
+        }
+        if parsed.inplace {
+            return Err(CliError::UnsupportedWebFlag("--inplace"));
+        }
+        if parsed.files.len() != 1 {
+            return Err(CliError::InvalidWebInputCount);
+        }
+    }
+
     if parsed.inplace {
         if parsed.null_input {
             return Err(CliError::InvalidFlagCombination);
@@ -437,6 +586,7 @@ fn execute_metadata_command(parsed: &ParsedArgs) -> Result<Vec<u8>, CliError> {
             render_metadata_value(&catalog::search_examples(query), json)?
         }
         CommandKind::Doctor => render_metadata_value(&catalog::doctor_info(), json)?,
+        CommandKind::Web => return Err(CliError::MissingWebAssets),
         CommandKind::Run => return Err(CliError::InvalidFlagCombination),
     };
 
@@ -466,7 +616,6 @@ fn compute_exit_status(enabled: bool, output: &[u8]) -> u8 {
 
 #[derive(Debug, Clone)]
 struct ConfiguredFormats {
-    input: String,
     output: String,
 }
 
@@ -487,6 +636,167 @@ pub mod internal_metadata {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::{Read, Write};
+    use std::net::TcpStream;
+
+    static TEST_WEB_ASSETS: &[web_assets::EmbeddedAsset] = &[
+        web_assets::EmbeddedAsset {
+            path: "/index.html",
+            content_type: "text/html; charset=utf-8",
+            bytes: b"<html><body>graph</body></html>",
+        },
+        web_assets::EmbeddedAsset {
+            path: "/_app/app.js",
+            content_type: "text/javascript; charset=utf-8",
+            bytes: b"console.log('graph')",
+        },
+    ];
+
+    fn request_web_server_once(state: web_server::WebServerState, target: &str) -> Vec<u8> {
+        let server = web_server::WebServer::bind_for_test(state).expect("server should bind");
+        let addr = server.local_addr();
+        let handle = std::thread::spawn(move || {
+            server
+                .serve_once_for_test()
+                .expect("server should handle one request");
+        });
+
+        let mut stream = TcpStream::connect(addr).expect("client should connect");
+        write!(
+            stream,
+            "GET {target} HTTP/1.1\r\nHost: {addr}\r\nConnection: close\r\n\r\n"
+        )
+        .expect("request should write");
+        stream.flush().expect("request should flush");
+
+        let mut response = Vec::new();
+        stream
+            .read_to_end(&mut response)
+            .expect("response should read");
+        handle.join().expect("server thread should join");
+        response
+    }
+
+    fn test_web_server_state() -> web_server::WebServerState {
+        web_server::WebServerState {
+            token: "test-token".to_string(),
+            result_json: br#"{"ok":true}"#.to_vec(),
+            assets: TEST_WEB_ASSETS,
+        }
+    }
+
+    fn assert_response_contains(response: &[u8], expected: &str) {
+        let text = std::str::from_utf8(response).expect("response should be utf8");
+        assert!(
+            text.contains(expected),
+            "response did not contain {expected:?}:\n{text}"
+        );
+    }
+
+    fn response_body(response: &[u8]) -> &[u8] {
+        response
+            .windows(4)
+            .position(|window| window == b"\r\n\r\n")
+            .map(|index| &response[index + 4..])
+            .expect("response should include header terminator")
+    }
+
+    #[test]
+    fn embedded_assets_lookup_normalizes_graph_route_to_index() {
+        let assets = [
+            web_assets::EmbeddedAsset {
+                path: "/index.html",
+                content_type: "text/html; charset=utf-8",
+                bytes: b"<html></html>",
+            },
+            web_assets::EmbeddedAsset {
+                path: "/_app/app.js",
+                content_type: "text/javascript; charset=utf-8",
+                bytes: b"console.log(1)",
+            },
+        ];
+
+        let index = web_assets::find_asset(&assets, "/cli/graph")
+            .expect("graph route should use index.html");
+        assert_eq!(index.path, "/index.html");
+
+        let graph_with_query = web_assets::find_asset(&assets, "/cli/graph?token=x")
+            .expect("graph route with query should use index.html");
+        assert_eq!(graph_with_query.path, "/index.html");
+
+        let script = web_assets::find_asset(&assets, "/_app/app.js?hash=1")
+            .expect("static asset should resolve directly");
+        assert_eq!(script.content_type, "text/javascript; charset=utf-8");
+
+        assert!(
+            web_assets::find_asset(&assets, "/missing").is_none(),
+            "unknown extensionless route should not fallback"
+        );
+        assert!(
+            web_assets::find_asset(&assets, "/api/status").is_none(),
+            "api-looking route should not fallback"
+        );
+        assert!(
+            web_assets::find_asset(&assets, "/missing.txt").is_none(),
+            "missing static asset should not fallback"
+        );
+        assert!(
+            web_assets::find_asset(&assets, "/cli/graph/anything").is_none(),
+            "graph fallback should not cover unknown subpaths"
+        );
+    }
+
+    #[test]
+    fn web_server_serves_result_only_with_matching_token() {
+        let missing = request_web_server_once(test_web_server_state(), "/cli/result");
+        assert_response_contains(&missing, "HTTP/1.1 403 Forbidden");
+
+        let wrong = request_web_server_once(test_web_server_state(), "/cli/result?token=wrong");
+        assert_response_contains(&wrong, "HTTP/1.1 403 Forbidden");
+
+        let matching =
+            request_web_server_once(test_web_server_state(), "/cli/result?token=test-token");
+        assert_response_contains(&matching, "HTTP/1.1 200 OK");
+        assert_response_contains(&matching, "Content-Type: application/json; charset=utf-8");
+        assert_eq!(response_body(&matching), br#"{"ok":true}"#);
+    }
+
+    #[test]
+    fn web_server_serves_graph_route_from_index_asset() {
+        let missing = request_web_server_once(test_web_server_state(), "/cli/graph");
+        assert_response_contains(&missing, "HTTP/1.1 403 Forbidden");
+
+        let wrong = request_web_server_once(test_web_server_state(), "/cli/graph?token=wrong");
+        assert_response_contains(&wrong, "HTTP/1.1 403 Forbidden");
+
+        let graph = request_web_server_once(test_web_server_state(), "/cli/graph?token=test-token");
+        assert_response_contains(&graph, "HTTP/1.1 200 OK");
+        assert_response_contains(&graph, "Content-Type: text/html; charset=utf-8");
+        assert_eq!(response_body(&graph), b"<html><body>graph</body></html>");
+
+        let static_asset = request_web_server_once(test_web_server_state(), "/_app/app.js");
+        assert_response_contains(&static_asset, "HTTP/1.1 200 OK");
+        assert_response_contains(
+            &static_asset,
+            "Content-Type: text/javascript; charset=utf-8",
+        );
+        assert_eq!(response_body(&static_asset), b"console.log('graph')");
+
+        let root = request_web_server_once(test_web_server_state(), "/");
+        assert_response_contains(&root, "HTTP/1.1 404 Not Found");
+
+        let direct_index = request_web_server_once(test_web_server_state(), "/index.html");
+        assert_response_contains(&direct_index, "HTTP/1.1 404 Not Found");
+
+        let graph_subpath = request_web_server_once(
+            test_web_server_state(),
+            "/cli/graph/anything?token=test-token",
+        );
+        assert_response_contains(&graph_subpath, "HTTP/1.1 404 Not Found");
+
+        let unknown = request_web_server_once(test_web_server_state(), "/missing");
+        assert_response_contains(&unknown, "HTTP/1.1 404 Not Found");
+    }
 
     #[test]
     fn default_invocation_parses_expression_and_files() {
@@ -621,6 +931,89 @@ mod tests {
         assert_eq!(parsed.output_format.as_deref(), Some("json"));
         assert_eq!(parsed.indent, Some(2));
         assert_eq!(parsed.expression, ".foo");
+    }
+
+    #[test]
+    fn input_format_guess_prefers_explicit_override() {
+        let parsed = parse_args(&[
+            "treease".to_string(),
+            "--input-format".to_string(),
+            "yaml".to_string(),
+            ".foo".to_string(),
+        ])
+        .expect("parse should succeed");
+        let payload = InputPayload {
+            name: "data.json".to_string(),
+            bytes: br#"{"foo":1}"#.to_vec(),
+        };
+
+        let input = resolve_input_format(&parsed, &payload).expect("input format should resolve");
+
+        assert_eq!(input, "yaml");
+    }
+
+    #[test]
+    fn input_format_guess_uses_filename_extension_before_content() {
+        let payload = InputPayload {
+            name: "data.yaml".to_string(),
+            bytes: br#"{"foo":1}"#.to_vec(),
+        };
+
+        let guessed = guess_input_format(&payload);
+
+        assert_eq!(guessed.as_deref(), Some("yaml"));
+    }
+
+    #[test]
+    fn input_format_guess_uses_content_for_stdin() {
+        let payload = InputPayload {
+            name: "<stdin>".to_string(),
+            bytes: b"foo: 1\nbar: 2\n".to_vec(),
+        };
+
+        let guessed = guess_input_format(&payload);
+
+        assert_eq!(guessed.as_deref(), Some("yaml"));
+    }
+
+    #[test]
+    fn input_format_guess_uses_content_for_suffixless_file() {
+        let payload = InputPayload {
+            name: "config".to_string(),
+            bytes: b"foo = 1\nbar = 2\n".to_vec(),
+        };
+
+        let guessed = guess_input_format(&payload);
+
+        assert_eq!(guessed.as_deref(), Some("toml"));
+    }
+
+    #[test]
+    fn input_format_defaults_to_json_when_guess_fails() {
+        let parsed =
+            parse_args(&["treease".to_string(), ".foo".to_string()]).expect("parse should succeed");
+        let payload = InputPayload {
+            name: "README".to_string(),
+            bytes: b"plain text without recognizable structure".to_vec(),
+        };
+
+        let input = resolve_input_format(&parsed, &payload).expect("input format should resolve");
+
+        assert_eq!(input, "json");
+    }
+
+    #[test]
+    fn suffixless_yaml_input_executes_without_explicit_input_format() {
+        let parsed =
+            parse_args(&["treease".to_string(), ".foo".to_string()]).expect("parse should succeed");
+        let inputs = vec![InputPayload {
+            name: "sample".to_string(),
+            bytes: b"foo: 1\n".to_vec(),
+        }];
+
+        let output = execute_command(&parsed, &inputs).expect("command should succeed");
+
+        assert_eq!(String::from_utf8(output).unwrap(), "1\n");
     }
 
     #[test]
@@ -810,5 +1203,242 @@ mod tests {
         assert!(help.contains("treease operators <COMMAND>"));
         assert!(help.contains("treease operators list"));
         assert!(!help.contains("treease [OPTIONS] [EXPRESSION] [FILE]..."));
+    }
+
+    #[test]
+    fn web_command_parses_expression_file_and_format_options() {
+        let parsed = parse_args(&[
+            "treease".to_string(),
+            "web".to_string(),
+            "-p".to_string(),
+            "yaml".to_string(),
+            "-o".to_string(),
+            "json".to_string(),
+            "-I".to_string(),
+            "2".to_string(),
+            ".service".to_string(),
+            "config.yaml".to_string(),
+        ])
+        .expect("web command should parse");
+
+        assert_eq!(parsed.command, CommandKind::Web);
+        assert_eq!(parsed.expression, ".service");
+        assert_eq!(parsed.files, vec!["config.yaml"]);
+        assert_eq!(parsed.input_format.as_deref(), Some("yaml"));
+        assert_eq!(parsed.output_format.as_deref(), Some("json"));
+        assert_eq!(parsed.indent, Some(2));
+    }
+
+    #[test]
+    fn web_command_accepts_stdin_source() {
+        let parsed = parse_args(&[
+            "treease".to_string(),
+            "web".to_string(),
+            ".".to_string(),
+            "-".to_string(),
+        ])
+        .expect("web stdin should parse");
+
+        assert_eq!(parsed.command, CommandKind::Web);
+        assert_eq!(parsed.files, vec!["-"]);
+    }
+
+    #[test]
+    fn web_command_rejects_multiple_input_sources() {
+        let error = parse_args(&[
+            "treease".to_string(),
+            "web".to_string(),
+            ".".to_string(),
+            "a.yaml".to_string(),
+            "b.yaml".to_string(),
+        ])
+        .expect_err("web should reject multiple files");
+
+        match error {
+            CliError::InvalidWebInputCount => {}
+            other => panic!("unexpected error: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn root_invocation_with_web_file_name_is_not_prechecked_as_web_command() {
+        let parsed = parse_args(&[
+            "treease".to_string(),
+            ".".to_string(),
+            "web".to_string(),
+            "a.yaml".to_string(),
+            "b.yaml".to_string(),
+            "c.yaml".to_string(),
+        ])
+        .expect("root invocation should parse");
+
+        assert_eq!(parsed.command, CommandKind::Run);
+        assert_eq!(parsed.expression, ".");
+        assert_eq!(parsed.files, vec!["web", "a.yaml", "b.yaml", "c.yaml"]);
+    }
+
+    #[test]
+    fn web_command_rejects_root_execution_flags_that_do_not_apply() {
+        let error = parse_args(&[
+            "treease".to_string(),
+            "-e".to_string(),
+            "web".to_string(),
+            ".".to_string(),
+            "a.yaml".to_string(),
+        ])
+        .expect_err("web should reject exit-status");
+
+        match error {
+            CliError::UnsupportedWebFlag("--exit-status") => {}
+            other => panic!("unexpected error: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn web_command_preserves_unknown_flag_error() {
+        let error = parse_args(&[
+            "treease".to_string(),
+            "web".to_string(),
+            "--wat".to_string(),
+            ".".to_string(),
+            "file.yaml".to_string(),
+        ])
+        .expect_err("unknown web flag should fail");
+
+        match error {
+            CliError::UnknownFlag(flag) => assert_eq!(flag, "--wat"),
+            other => panic!("unexpected error: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn web_command_preserves_unknown_flag_with_value_error() {
+        let error = parse_args(&[
+            "treease".to_string(),
+            "web".to_string(),
+            "--wat".to_string(),
+            "value".to_string(),
+            ".".to_string(),
+            "file.yaml".to_string(),
+        ])
+        .expect_err("unknown web flag should fail before input count validation");
+
+        match error {
+            CliError::UnknownFlag(flag) => assert_eq!(flag, "--wat"),
+            other => panic!("unexpected error: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn web_payload_uses_expression_output_and_output_format() {
+        let parsed = parse_args(&[
+            "treease".to_string(),
+            "web".to_string(),
+            "-o".to_string(),
+            "json".to_string(),
+            ".foo".to_string(),
+            "input.yaml".to_string(),
+        ])
+        .expect("web should parse");
+        let inputs = vec![InputPayload {
+            name: "input.yaml".to_string(),
+            bytes: b"foo:\n  bar: 1\n".to_vec(),
+        }];
+
+        let payload = web_payload::build_cli_graph_result_payload(&parsed, &inputs)
+            .expect("web payload should be produced");
+
+        assert_eq!(payload.source_label, "input.yaml");
+        assert_eq!(payload.expression, ".foo");
+        assert_eq!(payload.language, "json");
+        assert_eq!(payload.text, "{\"bar\": 1}\n");
+    }
+
+    #[test]
+    fn web_payload_supports_stdin_and_defaults_to_yaml() {
+        let parsed = parse_args(&[
+            "treease".to_string(),
+            "web".to_string(),
+            ".".to_string(),
+            "-".to_string(),
+        ])
+        .expect("web stdin should parse");
+        let inputs = vec![InputPayload {
+            name: "<stdin>".to_string(),
+            bytes: b"foo: 1\n".to_vec(),
+        }];
+
+        let payload = web_payload::build_cli_graph_result_payload(&parsed, &inputs)
+            .expect("web payload should be produced");
+
+        assert_eq!(payload.source_label, "<stdin>");
+        assert_eq!(payload.language, "yaml");
+        assert_eq!(payload.text, "foo: 1\n");
+    }
+
+    #[test]
+    fn web_command_rejects_subcommand_position_unsupported_flags() {
+        for (flag, expected) in [
+            ("--null-input", "--null-input"),
+            ("--exit-status", "--exit-status"),
+            ("--inplace", "--inplace"),
+        ] {
+            let error = parse_args(&[
+                "treease".to_string(),
+                "web".to_string(),
+                flag.to_string(),
+                ".".to_string(),
+                "file.yaml".to_string(),
+            ])
+            .expect_err("web should reject unsupported execution flag");
+
+            match error {
+                CliError::UnsupportedWebFlag(actual) => assert_eq!(actual, expected),
+                other => panic!("unexpected error for {flag}: {other:?}"),
+            }
+        }
+    }
+
+    #[test]
+    fn help_json_advertises_web_command() {
+        let json = spec::root_help_json_value();
+        let subcommands = json
+            .get("subcommands")
+            .and_then(serde_json::Value::as_array)
+            .expect("root subcommands should be present");
+
+        let web_command = subcommands
+            .iter()
+            .find(|command| command.get("name").and_then(serde_json::Value::as_str) == Some("web"))
+            .expect("web command should be advertised");
+
+        assert!(subcommands.iter().any(|command| {
+            command.get("name").and_then(serde_json::Value::as_str) == Some("web")
+                && command.get("usage").and_then(serde_json::Value::as_str)
+                    == Some("treease web [OPTIONS] <EXPRESSION> <FILE|->")
+        }));
+
+        let file_argument = web_command
+            .get("arguments")
+            .and_then(serde_json::Value::as_array)
+            .and_then(|arguments| {
+                arguments.iter().find(|argument| {
+                    argument.get("name").and_then(serde_json::Value::as_str) == Some("file")
+                })
+            })
+            .expect("web file argument should be present");
+
+        assert_eq!(
+            file_argument
+                .get("repeated")
+                .and_then(serde_json::Value::as_bool),
+            Some(false)
+        );
+        assert_eq!(
+            file_argument
+                .get("multiple")
+                .and_then(serde_json::Value::as_bool),
+            Some(false)
+        );
     }
 }

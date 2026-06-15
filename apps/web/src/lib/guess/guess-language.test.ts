@@ -1,6 +1,9 @@
+import { readFileSync } from 'node:fs';
 import { mkdir, open, readdir, writeFile } from 'node:fs/promises';
 import { basename, dirname, extname, join, relative } from 'node:path';
-import { describe, expect, it, vi } from 'vitest';
+import { fileURLToPath } from 'node:url';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
+import { initWasm } from '@core-wasm/index';
 import { guessLanguage } from './guess-language';
 import { exampleLanguageByExtension } from '../monaco/language-support';
 import type { SupportedEditorLanguageId } from '../monaco/language-support';
@@ -37,6 +40,12 @@ type CorpusResult = CorpusCase & {
 };
 
 type CorpusStats = Record<CorpusLanguage, { total: number; failures: number }>;
+
+function cloneWasmBytes(path: string): ArrayBuffer {
+  const bytes = readFileSync(path);
+  const u8 = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+  return u8.buffer.slice(u8.byteOffset, u8.byteOffset + u8.byteLength);
+}
 
 async function mapConcurrent<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
   const results = Array.from({ length: items.length }) as R[];
@@ -200,6 +209,11 @@ function renderFailureReport(results: CorpusResult[], failures: CorpusResult[], 
 }
 
 describe('guessLanguage', () => {
+  beforeAll(async () => {
+    const wasmPath = fileURLToPath(new URL('../../../../../packages/core/wasm/pkg/core.wasm', import.meta.url));
+    await initWasm({ wasmBytes: cloneWasmBytes(wasmPath) });
+  }, 5_000);
+
   describe('example corpus', () => {
     const entries = Object.entries(exampleFiles);
 
@@ -293,7 +307,7 @@ describe('guessLanguage', () => {
   });
 
   describe('with diagnosticsProvider', () => {
-    it('uses diagnostics to confirm json when it parses clean', async () => {
+    it('ignores diagnosticsProvider and keeps feature-only json result', async () => {
       const provider = vi.fn(async (lang: string, _text: string) => {
         if (lang === 'json') return [];
         return [{ startLineNumber: 1, startColumn: 1, endLineNumber: 1, endColumn: 5, kind: 1 }];
@@ -301,12 +315,10 @@ describe('guessLanguage', () => {
       const input = '{"key": "value"}';
       const result = await guessLanguage(input, provider);
       expect(result).toBe('json');
-      expect(provider).toHaveBeenCalled();
-      const calledLangs = provider.mock.calls.map((c) => c[0]);
-      expect(calledLangs).toContain('json');
+      expect(provider).not.toHaveBeenCalled();
     });
 
-    it('returns winner with large gap when only one parses clean', async () => {
+    it('ignores diagnosticsProvider and keeps feature-only yaml result', async () => {
       const provider = vi.fn(async (lang: string) => {
         if (lang === 'yaml') return [];
         return [{ startLineNumber: 1, startColumn: 1, endLineNumber: 1, endColumn: 20, kind: 1 }];
@@ -314,23 +326,15 @@ describe('guessLanguage', () => {
       const input = 'name: alice\nage: 30\n';
       const result = await guessLanguage(input, provider);
       expect(result).toBe('yaml');
+      expect(provider).not.toHaveBeenCalled();
     });
 
-    it('returns null when all candidates parse successfully', async () => {
+    it('ignores diagnosticsProvider and keeps short-input null result', async () => {
       const provider = vi.fn(async () => []);
-      const input = 'the quick brown fox jumps over the lazy dog';
+      const input = 'abc';
       const result = await guessLanguage(input, provider);
       expect(result).toBeNull();
-    });
-
-
-    it('does not crash when diagnosticsProvider throws', async () => {
-      const provider = vi.fn(async () => {
-        throw new Error('parse failed');
-      });
-      const input = '{"key": "value"}';
-      const result = await guessLanguage(input, provider);
-      expect(result).toBe('json');
+      expect(provider).not.toHaveBeenCalled();
     });
   });
 });

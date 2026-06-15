@@ -87,6 +87,7 @@ const mockStreamUpdateHandler = vi.hoisted(() => ({
 const mockRenderState = vi.hoisted(() => ({
   renderCount: 0,
   patchCount: 0,
+  lastEditable: undefined as boolean | undefined,
 }));
 
 vi.mock('../../graph/StreamUpdateHandler', () => mockStreamUpdateHandler);
@@ -138,6 +139,7 @@ vi.mock('./graph-render-kernel', () => ({
   renderGraphEdges: vi.fn((_args: any) => []),
   renderGraphNode: vi.fn(({ node, drawContext, registerMetaClickTarget }: any) => {
     mockRenderState.renderCount += 1;
+    mockRenderState.lastEditable = drawContext.editable;
     const nodeBox = {
       x: node.boxArgs.x,
       y: node.boxArgs.y,
@@ -191,7 +193,7 @@ function createNode(id: number, x: number) {
   } as any;
 }
 
-function createDeps(options?: { canvasPadding?: number }) {
+function createDeps(options?: { canvasPadding?: number; isReadonly?: () => boolean }) {
   const container = {
     setAttribute: vi.fn(),
   } as unknown as HTMLElement;
@@ -262,6 +264,7 @@ function createDeps(options?: { canvasPadding?: number }) {
         }) as any,
       getLanguageId: () => 'json',
       getValueTypeToSemType: () => ({}),
+      isReadonly: options?.isReadonly,
       getLastAutoOffset: () => lastAutoOffset,
       setLastAutoOffset,
       getLayers: () => layers,
@@ -316,6 +319,7 @@ describe('graph-scene-runtime', () => {
     vi.clearAllMocks();
     mockRenderState.renderCount = 0;
     mockRenderState.patchCount = 0;
+    mockRenderState.lastEditable = undefined;
     vi.stubGlobal('requestAnimationFrame', ((callback: FrameRequestCallback) => {
       callback(0);
       return 1;
@@ -349,6 +353,28 @@ describe('graph-scene-runtime', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it('passes readonly state into the main graph draw context', () => {
+    const { runtime } = createDeps({ isReadonly: () => true });
+
+    runtime.replaceAll({ nodes: [createNode(1, 20)], edges: [] });
+
+    expect(mockRenderState.lastEditable).toBe(false);
+  });
+
+  it('uses the latest readonly state when the main graph is rebuilt', () => {
+    let readonly = false;
+    const { runtime } = createDeps({ isReadonly: () => readonly });
+    runtime.replaceAll({ nodes: [createNode(1, 20)], edges: [] });
+    expect(mockRenderState.lastEditable).toBeUndefined();
+
+    readonly = true;
+    const currentGraph = runtime.getLastGraphData();
+    expect(currentGraph).not.toBeNull();
+    runtime.replaceAll(currentGraph!);
+
+    expect(mockRenderState.lastEditable).toBe(false);
   });
 
   it('marks table cell patch target as dirty without an edge change', async () => {

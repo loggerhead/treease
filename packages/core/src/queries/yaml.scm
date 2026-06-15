@@ -16,18 +16,7 @@
 
 (comment) @comment
 
-[
-  (anchor_name)
-  (alias_name)
-] @label
 
-(tag) @type
-
-[
-  (yaml_directive)
-  (tag_directive)
-  (reserved_directive)
-] @attribute
 
 (block_mapping_pair
   key: (flow_node
@@ -72,8 +61,6 @@
 ] @punctuation.bracket
 
 [
-  "*"
-  "&"
   "---"
   "..."
 ] @punctuation.special

@@ -1,6 +1,6 @@
 use crate::compare::{Diff, DiffType, compare_text, diff_texts_structured};
 use crate::core::{
-    NodeId, TreeStore,
+    Language, NodeId, TreeStore,
     document_analysis::{DocumentAnalysisDemand, analyze_document_internal_with_demand},
     find_json_block_at_position,
 };
@@ -39,6 +39,13 @@ pub fn get_chunk_size_config() -> JsValue {
         large_file_chunk_size: crate::stream::chunk_size::LARGE_FILE_CHUNK_SIZE,
     };
     serde_wasm_bindgen::to_value(&config).unwrap_or(JsValue::UNDEFINED)
+}
+
+#[wasm_bindgen]
+pub fn guess_language_wasm(text: String) -> Option<String> {
+    crate::core::guess_language(&text)
+        .and_then(Language::as_name)
+        .map(str::to_string)
 }
 
 // ── Tool function input/output types ─────────────────────────────────────

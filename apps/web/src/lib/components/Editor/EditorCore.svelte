@@ -1166,9 +1166,7 @@
     text: string,
     currentLanguage: SupportedEditorLanguageId,
   ): Promise<SupportedEditorLanguageId> {
-    const guessed = await guessLanguage(text, async (language, snippet) => {
-      return callSharedWasmWorker('diagnostics', { language, text: snippet });
-    });
+    const guessed = await guessLanguage(text);
     return guessed ?? currentLanguage;
   }
 

@@ -47,6 +47,7 @@ type GraphValueEditControllerDeps = {
   getDocumentKey: () => string;
   getLanguageId: () => SupportedEditorLanguageId;
   getEnableNest: () => boolean;
+  isReadonly?: () => boolean;
   getEditorIO: () => EditorIO | null;
   getEditorRevision: () => number;
   getActiveSnapshotId: () => number | null;
@@ -81,6 +82,10 @@ export function createGraphValueEditController(deps: GraphValueEditControllerDep
 
   const activeEditStateByEditor = new Map<LeaferEditor, ActiveEditState>();
   const boundGraphEditors = new Set<LeaferEditor>();
+
+  function isReadonly(): boolean {
+    return deps.isReadonly?.() === true;
+  }
 
   function getEditorActiveEditState(editor: LeaferEditor): ActiveEditState {
     let state = activeEditStateByEditor.get(editor);
@@ -138,6 +143,9 @@ export function createGraphValueEditController(deps: GraphValueEditControllerDep
     raw: string,
     editTargetOverride: LeaferText | null = null,
   ): Promise<boolean> {
+    if (isReadonly()) {
+      return false;
+    }
     if (!editCell) {
       return false;
     }
@@ -297,6 +305,9 @@ export function createGraphValueEditController(deps: GraphValueEditControllerDep
     probe: { cell: GraphCell; kind: GraphCellKind },
     text: string,
   ): Promise<boolean> {
+    if (isReadonly()) {
+      return false;
+    }
     if (probe.kind !== 'key' && probe.kind !== 'value') {
       return false;
     }
@@ -310,6 +321,10 @@ export function createGraphValueEditController(deps: GraphValueEditControllerDep
   }
 
   async function commitTextEdit(editor?: LeaferEditor | null): Promise<void> {
+    if (isReadonly()) {
+      resetActiveEditState(editor);
+      return;
+    }
     const state = editor ? (activeEditStateByEditor.get(editor) ?? null) : getFirstActiveEditState();
     if (deps.getCurrentData() == null || !state?.cell || !state.target) {
       resetActiveEditState(editor);
@@ -347,6 +362,10 @@ export function createGraphValueEditController(deps: GraphValueEditControllerDep
       const target = (event as { editTarget?: LeaferText })?.editTarget ?? null;
       const cell = target?.__graphCell ?? null;
       if (!cell) return;
+      if (isReadonly()) {
+        resetActiveEditState(editor);
+        return;
+      }
       const state = getEditorActiveEditState(editor);
       state.cell = cell;
       state.target = target;

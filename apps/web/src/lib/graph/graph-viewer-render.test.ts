@@ -469,7 +469,7 @@ describe('graph-viewer-render', () => {
   });
 
   it('uses draw context textEditInnerName for editable text and falls back to TextEditor', () => {
-    const createCtx = (textEditInnerName?: string): DrawContext => ({
+    const createCtx = (textEditInnerName?: string, editable?: boolean): DrawContext => ({
       nodeLayer: { add: vi.fn() },
       styleConfig: {
         layout: { nodeBorderWidth: 1, rowHeight: 20, rowPaddingInline: 8, headerFontWeight: 600 },
@@ -504,6 +504,7 @@ describe('graph-viewer-render', () => {
       languageIdValue: 'json',
       fontSize: 12,
       textEditInnerName,
+      editable,
       BoxCtor: MockBox,
       TextCtor: MockText,
       PenCtor: MockPen,
@@ -536,10 +537,13 @@ describe('graph-viewer-render', () => {
 
     const defaultText = createCellText(createCtx(), parent, editableCell, 'value', 'object') as MockText;
     const tooltipText = createCellText(createCtx('TooltipTextEditor'), parent, editableCell, 'value', 'object') as MockText;
+    const readonlyText = createCellText(createCtx(undefined, false), parent, editableCell, 'value', 'object') as MockText;
 
     expect(defaultText.editable).toBe(true);
     expect(defaultText.editInner).toBe('TextEditor');
     expect(tooltipText.editInner).toBe('TooltipTextEditor');
+    expect(readonlyText.editable).toBe(false);
+    expect(readonlyText.editInner).toBeUndefined();
   });
 
   it('offsets table header and body cells into the inner content box', () => {

@@ -82,6 +82,7 @@ type HoverPanelControllerDeps = {
     PointerEvent: any;
   };
   getValueTypeToSemType: () => Record<string, string>;
+  isReadonly?: () => boolean;
   getRootClickTargets: () => GraphViewerClickTarget[];
   bindGraphEditorLifecycle: (editor: LeaferEditor | null) => void;
   canOpenSubgraphPreviewForCell: (cell: GraphCell, target: 'key' | 'value' | 'node') => boolean;
@@ -220,6 +221,7 @@ export function createGraphHoverPanelController(deps: HoverPanelControllerDeps) 
     deps.setRuntimeHoverPreviewState(null);
     const runtime = tooltipPanelRuntime;
     if (runtime) {
+      runtime.editor?.closeInnerEditor?.(true);
       runtime.tableRuntimes.forEach((tableRuntime) => tableRuntime.destroy?.());
       runtime.tableRuntimes = [];
       runtime.dispose?.();
@@ -617,7 +619,7 @@ export function createGraphHoverPanelController(deps: HoverPanelControllerDeps) 
       TextCtor,
       PenCtor,
       valueTypeToSemType: deps.getValueTypeToSemType(),
-      editable: true,
+      editable: deps.isReadonly?.() ? false : true,
       registerCellBox: cellEntryBindings.registerCellBox,
       unregisterCellBox: cellEntryBindings.unregisterCellBox,
       registerRowBox: cellEntryBindings.registerRowBox,

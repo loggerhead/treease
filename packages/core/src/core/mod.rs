@@ -25,6 +25,7 @@ pub mod graph_projection_service;
 pub mod graph_relayout;
 pub mod graph_shape;
 pub mod graph_topology;
+pub mod guess_language;
 pub mod incremental_edit;
 pub mod io_adapters;
 pub mod json_block;
@@ -98,6 +99,7 @@ pub use graph_model::{
 };
 pub use graph_model_index::GraphModelIndex;
 pub use graph_relayout::compute_ancestor_relayout_chain;
+pub use guess_language::guess_language;
 pub use incremental_edit::{
     DocumentTextEdit, StructuralOffsetUpdate, adjust_tree_store_offsets_from,
     adjust_tree_store_offsets_from_collecting, apply_delta, apply_edit_to_source,

@@ -281,6 +281,10 @@ impl StreamingGraphProjector {
                     table_handle: handle,
                     start_index: 0,
                     rows: table.rows.iter().map(convert_row).collect(),
+                    total_height: table.total_height,
+                    view_height: table.view_height,
+                    header_height: table.header_height,
+                    row_height: table.row_height,
                 });
             }
             self.table_states.insert(pk, state);
@@ -359,6 +363,10 @@ impl StreamingGraphProjector {
                         .iter()
                         .map(convert_row)
                         .collect(),
+                    total_height: table.total_height,
+                    view_height: table.view_height,
+                    header_height: table.header_height,
+                    row_height: table.row_height,
                 });
                 for (row_index, row) in table.rows.iter().enumerate().skip(state.row_count) {
                     for (column_index, cell) in row.cells.iter().enumerate() {
@@ -1422,6 +1430,7 @@ mod tests {
                     table_handle: h,
                     start_index,
                     rows,
+                    ..
                 } if *h == table_handle && *start_index == 0 => {
                     initial_rows = Some(rows.len());
                 }
@@ -1497,6 +1506,56 @@ mod tests {
                 "column {i}: box_args.x={cur_x} must be > prev x={prev_x}"
             );
         }
+    }
+
+    /// 回归测试：RowsAppended 必须携带 total_height / view_height / header_height /
+    /// row_height，确保 Frontend 在追加行后不需要完整重新发送 Table 节点就能
+    /// 更新 viewport 尺寸——否则会出现「table node 下方大片空白，仅显示
+    /// 首块 chunk 的行数」的 bug。
+    #[test]
+    fn rows_appended_carries_table_sizing() {
+        let b = builder_from_source(r#"[{"a":1,"b":2},{"a":3,"b":4},{"a":5,"b":6}]"#);
+        let (s, r) = b.tree_ref().unwrap();
+        let mut p = StreamingGraphProjector::new("json", "rows-appended-sizing");
+        let update = p
+            .update(s, r, &[])
+            .expect("first update must produce delta");
+        let delta = &update.delta;
+
+        let table_node = delta
+            .nodes_added
+            .iter()
+            .find(|n| n.table.is_some())
+            .expect("must have a table node in nodes_added");
+        let table_handle = table_node.render_handle;
+
+        let rows_appended_patch = delta
+            .table_patches
+            .iter()
+            .find_map(|patch| match patch {
+                crate::document::protocol::TablePatch::RowsAppended {
+                    table_handle: h,
+                    start_index,
+                    total_height,
+                    view_height,
+                    header_height,
+                    row_height,
+                    ..
+                } if *h == table_handle && *start_index == 0 => {
+                    Some((*total_height, *view_height, *header_height, *row_height))
+                }
+                _ => None,
+            })
+            .expect("must emit RowsAppended with start_index=0 carrying sizing fields");
+
+        let (total_height, view_height, header_height, row_height) = rows_appended_patch;
+        assert!(total_height > 0, "total_height must be positive");
+        assert!(view_height > 0, "view_height must be positive");
+        assert!(
+            header_height > 0,
+            "header_height must be positive for header table"
+        );
+        assert!(row_height > 0, "row_height must be positive");
     }
 
     /// 复现：以 web e2e fixture（1MB-min.json，裸顶层数组，3168 个均匀对象）
