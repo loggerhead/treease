@@ -492,6 +492,7 @@ const fullBuildReasonSet = new Set([
       return graphRenderCoordinator.attachExternalDocumentJobSession(session);
     },
     renderJsonBlockSelection: (selection) => graphRenderCoordinator.renderJsonBlockSelection(selection),
+    resetStreamProgress: () => graphStreamProgressController.reset(),
     onStreamingRenderError: (error) => {
       console.error('[GraphViewer] streaming render failed', error);
     },
@@ -572,6 +573,7 @@ const fullBuildReasonSet = new Set([
       if (!isFullEditInteractionBlocked()) graphMinimapRuntimeController.update();
       return result;
     },
+    flushPendingRenderWork: () => graphSceneController.flushPendingRenderWork(),
     cancelActiveRenderWork: () => graphSceneController.cancelActiveRenderWork(),
     replaceRenderedGraph: (value) => {
       const result = graphSceneController.replaceAll(value);

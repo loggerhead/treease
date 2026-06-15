@@ -21,6 +21,7 @@ export type TreeaseRuntimePathSeg = {
 export type TreeaseMonacoHook = {
   getValue: () => string;
   setValue: (value: string) => void;
+  setValueExact?: (value: string) => void;
   setPosition?: (lineNumber: number, column: number) => void;
   getScroll?: () => { scrollTop: number; scrollLeft: number };
   setScroll?: (scrollTop: number, scrollLeft?: number) => void;
@@ -219,6 +220,7 @@ export type WindowTreease = {
       path: TreeaseBridgePathSeg[],
       target?: GraphHighlightTarget | 'node',
     ) => void;
+    setValueExact?: (hookId: string, value: string) => void;
     getValue: (hookId: string) => string;
     setValue: (hookId: string, value: string) => void;
     setPosition: (hookId: string, lineNumber: number, column: number) => void;

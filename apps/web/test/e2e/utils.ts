@@ -179,49 +179,31 @@ export async function setEditorContent(page: Page, payload: { sourceText: string
       treease.editor.setLanguageId(language);
     }, payload.language);
   }
-
-  const previousFormatting = await evaluateTreease(page, (treease) => treease.settings.getState().settings.formatting);
-  const shouldRestoreFormatting = previousFormatting.smart === true;
-  if (shouldRestoreFormatting) {
-    await evaluateTreease(page, async (treease, formatting) => {
-      await treease.settings.save({
-        formatting: {
-          ...formatting,
-          smart: false,
-        },
-      });
-    }, previousFormatting);
-    await waitForSettingsReady(page);
-  }
-
-  try {
-    await setMonacoValue(page, 'source-editor', payload.sourceText);
-    await expect
-      .poll(
-        async () => {
-          const [modelText, state, fullEditState] = await Promise.all([
-            getMonacoValue(page, 'source-editor'),
-            readEditorState(page),
-            readImportStreamState(page),
-          ]);
-          return {
-            modelSynced: modelText === payload.sourceText,
-            storeSynced: state.sourceText === payload.sourceText,
-            languageSynced: payload.language ? state.languageId === payload.language : true,
-            fullEditIdle: fullEditState.phase === 'idle',
-          };
-        },
-        { timeout: 5_000 },
-      )
-      .toEqual({ modelSynced: true, storeSynced: true, languageSynced: true, fullEditIdle: true });
-  } finally {
-    if (shouldRestoreFormatting) {
-      await evaluateTreease(page, async (treease, formatting) => {
-        await treease.settings.save({ formatting });
-      }, previousFormatting);
-      await waitForSettingsReady(page);
-    }
-  }
+  await evaluateTreease(
+    page,
+    (treease, args: { hookId: string; value: string }) => {
+      treease.editor.setValueExact?.(args.hookId, args.value);
+    },
+    { hookId: 'source-editor', value: payload.sourceText },
+  );
+  await expect
+    .poll(
+      async () => {
+        const [modelText, state, fullEditState] = await Promise.all([
+          getMonacoValue(page, 'source-editor'),
+          readEditorState(page),
+          readImportStreamState(page),
+        ]);
+        return {
+          modelSynced: modelText === payload.sourceText,
+          storeSynced: state.sourceText === payload.sourceText,
+          languageSynced: payload.language ? state.languageId === payload.language : true,
+          fullEditIdle: fullEditState.phase === 'idle',
+        };
+      },
+      { timeout: 5_000 },
+    )
+    .toEqual({ modelSynced: true, storeSynced: true, languageSynced: true, fullEditIdle: true });
 }
 
 export async function setMonacoValue(page: Page, hookId: string, value: string) {

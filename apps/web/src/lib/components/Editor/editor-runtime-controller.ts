@@ -1,6 +1,14 @@
 import type * as Monaco from 'monaco-editor';
 import { buildEditorTheme } from '../../settings/ui-settings';
-import { getSharedMonacoShell, getSharedMonacoLanguageServices, type MonacoShell, type MonacoLanguageServices } from '../../monaco/editor-runtime';
+import {
+  getSharedMonacoShell,
+  getSharedMonacoLanguageServices,
+  prewarmSharedMonacoShell,
+  type MonacoShell,
+  type MonacoLanguageServices,
+} from '../../monaco/editor-runtime';
+
+prewarmSharedMonacoShell();
 
 type CreateEditorRuntimeControllerOptions = {
   getSettings: () => any;

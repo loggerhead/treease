@@ -29,6 +29,7 @@ function createDeps() {
     renderDocumentGraph: vi.fn(async () => ({})),
     attachFullEditDocumentJobSession: vi.fn(async () => ({})),
     renderJsonBlockSelection: vi.fn(async () => ({ nodes: [], edges: [] })),
+    resetStreamProgress: vi.fn(),
     onStreamingRenderError: vi.fn(),
   };
 }
@@ -92,6 +93,16 @@ describe('graph-viewer render effects JSON block scheduling', () => {
       text: 'not-json',
       revision: 4,
     });
+  });
+
+  it('resets transient graph progress when JSON block selection clears', () => {
+    const deps = createDeps();
+    const effects = createGraphViewerRenderEffects(deps);
+
+    effects.maybeRenderJsonBlock(createSelection(), true);
+    effects.maybeRenderJsonBlock(null, true);
+
+    expect(deps.resetStreamProgress).toHaveBeenCalledTimes(1);
   });
 
   it('attaches a full-edit session even when it has already reached finalizing', () => {

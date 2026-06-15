@@ -58,7 +58,6 @@ export async function initMonacoShell(): Promise<MonacoShell> {
   };
   const configurationService = StandaloneServices.get(IConfigurationService);
   configurationService.updateValue('editor.semanticHighlighting.enabled', true);
-
   return { monaco };
 }
 
@@ -125,6 +124,10 @@ export function getSharedMonacoLanguageServices(options: MonacoRuntimeOptions): 
     });
   sharedLangServicesPromise = promise;
   return promise;
+}
+
+export function prewarmSharedMonacoShell(): void {
+  void getSharedMonacoShell().catch(() => undefined);
 }
 
 export function getSharedMonacoRuntime(options: MonacoRuntimeOptions): Promise<MonacoRuntime> {

@@ -190,6 +190,7 @@ function createDeps(overrides: Record<string, unknown> = {}) {
 function createSceneBridge(overrides: Record<string, unknown> = {}) {
   return {
     applyGraphDelta: vi.fn(async () => {}),
+    flushPendingRenderWork: vi.fn(async () => {}),
     cancelActiveRenderWork: vi.fn(),
     replaceRenderedGraph: vi.fn((value: any) => value),
     getLastRenderedGraph: () => ({ nodes: [], edges: [] }),
@@ -272,6 +273,46 @@ describe('graph-render-session coordinator', () => {
     expect(bindActiveDocumentSnapshotIfPresent).toHaveBeenCalledWith(
       expect.objectContaining({ documentKey: 'test-key', revision: 5 }),
     );
+  });
+
+  it('waits for pending scene render work before publishing final redraw', async () => {
+    mockedCallWorker
+      .mockResolvedValueOnce(startJobResult(23))
+      .mockResolvedValueOnce(textChunkBatch([projectionEvent(false)]))
+      .mockResolvedValueOnce(closeCompletedBatch(23, { mainGraph: projectionDelta(false) }));
+
+    const deps = createDeps();
+    let releaseFlush: (() => void) | null = null;
+    const flushPendingRenderWork = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          releaseFlush = resolve;
+        }),
+    );
+    const bridge = createSceneBridge({
+      flushPendingRenderWork,
+      getLastRenderedGraph: () => ({ nodes: [{ id: 1 }], edges: [] }),
+    });
+    const coordinator = createGraphRenderSession(deps as any);
+    coordinator.attachSceneBridge(bridge);
+
+    const renderPromise = coordinator.renderDocumentGraph({
+      kind: 'incremental',
+      documentKey: 'test-key',
+      language: 'json',
+      text: '{"a":1}',
+      revision: 5,
+    });
+
+    await vi.waitFor(() => {
+      expect(flushPendingRenderWork).toHaveBeenCalled();
+    });
+    expect(deps.onStreamFinalRedraw).not.toHaveBeenCalled();
+
+    releaseFlush?.();
+    await renderPromise;
+
+    expect(deps.onStreamFinalRedraw).toHaveBeenCalledWith('committed', 5);
   });
 
   it('skips the snapshot main graph when streaming already applied a projection', async () => {
@@ -668,6 +709,35 @@ describe('graph-render-session coordinator', () => {
       text: '{"nested":true}',
     });
     expect(deps.onStreamFinalRedraw).toHaveBeenCalledWith('json-block', 8);
+  });
+
+  it('renderJsonBlockSelection resets stream progress before starting a new transient block render', async () => {
+    mockedCallWorker
+      .mockResolvedValueOnce(startJobResult(70))
+      .mockResolvedValueOnce(textChunkBatch())
+      .mockResolvedValueOnce(closeCompletedBatch(70, { mainGraph: projectionDelta(true) }));
+
+    const deps = createDeps({
+      getJsonBlockSelection: () => ({ blockDocumentKey: 'block-key', revision: 8, startByte: 5, endByte: 25 }),
+    });
+    const coordinator = createGraphRenderSession(deps as any);
+    coordinator.attachSceneBridge(createSceneBridge());
+
+    await coordinator.renderJsonBlockSelection({
+      sourceDocumentKey: 'source-key',
+      blockDocumentKey: 'block-key',
+      language: 'json',
+      text: '{"nested":true}',
+      revision: 8,
+      startByte: 5,
+      endByte: 25,
+      startLineNumber: 0,
+      startColumn: 5,
+      endLineNumber: 0,
+      endColumn: 25,
+    });
+
+    expect(deps.resetStreamProgress).toHaveBeenCalledTimes(1);
   });
 
   it('renderJsonBlockSelection completes stream progress when the block job reaches a final snapshot', async () => {

@@ -51,7 +51,8 @@ export function createGraphTextLinkageController(deps: GraphTextLinkageControlle
   let activeSearchHighlights: Array<{ target: LeaferBox; fill?: string; stroke?: string }> = [];
   let activeHighlightState: { path: PathSeg[]; target?: GraphHighlightTarget } | null = null;
 
-  function clearSearchHighlight(): void {
+  function clearRenderedSearchHighlights(): void {
+    if (activeSearchHighlights.length === 0) return;
     const renderConfig = deps.getRenderConfig();
     const cellBoxByPathMap = deps.getCellBoxByPathMap();
     activeSearchHighlights.forEach((entry) => {
@@ -64,8 +65,15 @@ export function createGraphTextLinkageController(deps: GraphTextLinkageControlle
       if (entry.value) entry.value.fill = 'transparent';
     });
     activeSearchHighlights = [];
-    activeHighlightState = null;
     deps.setGraphHighlightTestState(null);
+  }
+
+  function clearSearchHighlight(): void {
+    if (activeSearchHighlights.length === 0 && activeHighlightState == null) {
+      return;
+    }
+    clearRenderedSearchHighlights();
+    activeHighlightState = null;
   }
 
   function applySearchHighlight(target: LeaferBox | null, style: { fill?: string; stroke?: string }): void {
@@ -365,6 +373,17 @@ export function createGraphTextLinkageController(deps: GraphTextLinkageControlle
     let entry = getCellEntry(cellBoxByPathMap, path);
     const hasRenderableEntry = (candidate: ReturnType<typeof getCellEntry>): boolean =>
       !!(candidate?.row || candidate?.key || candidate?.value);
+    let missingRenderableContext = !hasRenderableEntry(entry) && renderHandle == null && !node;
+    if (missingRenderableContext && options?.navigate) {
+      scrollRowIntoViewFromFallback(path);
+      entry = getCellEntry(cellBoxByPathMap, path);
+      missingRenderableContext = !hasRenderableEntry(entry) && renderHandle == null && !node;
+    }
+    if (missingRenderableContext) {
+      clearRenderedSearchHighlights();
+      activeHighlightState = { path: [...path], target: options?.target };
+      return;
+    }
     clearSearchHighlight();
     activeHighlightState = { path: [...path], target: options?.target };
     if (options?.navigate) {

@@ -4,6 +4,7 @@ type TestHookEditor = {
   getDomNode?: () => HTMLElement | null;
   getValue: () => string;
   setValue: (value: string) => void;
+  setValueForTestHook?: (value: string) => void;
   focus?: () => void;
   setPosition?: (position: { lineNumber: number; column: number }) => void;
   revealPositionInCenter?: (position: { lineNumber: number; column: number }) => void;
@@ -27,25 +28,41 @@ function shouldAttachMonacoTestHook() {
 export function attachMonacoTestHook(editor: TestHookEditor, hookId: string, tokenize?: TokenizeFn) {
   if (!shouldAttachMonacoTestHook()) return () => {};
   let node = editor.getDomNode?.() ?? null;
-  if (!node) return () => {};
+  let domMarkFrame: number | null = null;
+  let disposed = false;
 
   const markDomNode = () => {
+    if (disposed) return false;
     node = editor.getDomNode?.() ?? node;
-    if (!node) return;
+    if (!node) return false;
     node.dataset.monacoTestHook = hookId;
     node.dataset.testid = `monaco-${hookId}`;
+    return true;
   };
   const scheduleDomMark = () => {
-    markDomNode();
-    queueMicrotask(markDomNode);
-    requestAnimationFrame(markDomNode);
+    if (markDomNode()) return;
+    queueMicrotask(() => {
+      if (markDomNode() || disposed) return;
+      const retry = () => {
+        domMarkFrame = null;
+        if (markDomNode() || disposed) return;
+        domMarkFrame = requestAnimationFrame(retry);
+      };
+      if (domMarkFrame == null) {
+        domMarkFrame = requestAnimationFrame(retry);
+      }
+    });
   };
-  markDomNode();
+  scheduleDomMark();
   const modelChangeDisposable = editor.onDidChangeModel?.(scheduleDomMark);
   registerEditorHook(hookId, {
     getValue: () => editor.getValue(),
     setValue: (value: string) => {
       editor.setValue(value);
+      editor.focus?.();
+    },
+    setValueExact: (value: string) => {
+      (editor.setValueForTestHook ?? editor.setValue)(value);
       editor.focus?.();
     },
     applyEdits: (edits) => {
@@ -112,6 +129,11 @@ export function attachMonacoTestHook(editor: TestHookEditor, hookId: string, tok
   });
 
   return () => {
+    disposed = true;
+    if (domMarkFrame != null) {
+      cancelAnimationFrame(domMarkFrame);
+      domMarkFrame = null;
+    }
     modelChangeDisposable?.dispose();
     unregisterEditorHook(hookId);
   };

@@ -44,6 +44,10 @@ function isIntakeResult(result: ImportIntakeResult): result is IntakeResult {
   return 'status' in result;
 }
 
+function isCancelledIntakeResult(result: IntakeResult): boolean {
+  return result.status === 'failed' && typeof result.error === 'string' && result.error.startsWith('cancelled:');
+}
+
 type FullEditSession = {
   active: boolean;
   documentKey: string;
@@ -225,6 +229,8 @@ export function createEditorFullEditController(options: CreateEditorFullEditCont
   }
 
   function settleImportSessionUi(session: FullEditSession, mode: 'finish' | 'cancel'): void {
+    if (!session.active) return;
+    session.active = false;
     if (importSession?.sessionId === session.sessionId) {
       importSession = null;
     }
@@ -446,6 +452,11 @@ export function createEditorFullEditController(options: CreateEditorFullEditCont
       cancelImportStream();
       return 0;
     }
+    const isSessionCurrent = () =>
+      importSession?.active === true &&
+      importSession.sessionId === session.sessionId &&
+      importSession.ownerKey === session.ownerKey &&
+      (params.isFresh?.() ?? true);
     session.visibleText = params.text;
     session.hasVisibleFlush = true;
     session.textFlushedChars = params.text.length;
@@ -466,7 +477,9 @@ export function createEditorFullEditController(options: CreateEditorFullEditCont
       settings: documentJobSettingsFor(),
       revision: session.revision,
       builderConfig: options.getGraphBuilderConfig(),
+      isFresh: isSessionCurrent,
     }).then((intakeResult) => {
+      if (!isSessionCurrent()) return;
       if (intakeResult.status === 'completed') {
         const authoritativeSourceText = (intakeResult as { sourceText?: string | null }).sourceText ?? null;
         const shouldApplyAuthoritativeSourceText =
@@ -485,14 +498,12 @@ export function createEditorFullEditController(options: CreateEditorFullEditCont
         });
       }
       if (intakeResult.status === 'failed') {
+        if (isCancelledIntakeResult(intakeResult)) return;
         options.updateActiveTempModel((current) => ({ ...current, error: intakeResult.error }));
         toast.error('Graph rebuild failed');
       }
     }).finally(() => {
-      fullEditSink.finish({ sessionId: session.sessionId, ownerKey: session.ownerKey });
-      if (importSession?.sessionId === session.sessionId) {
-        importSession = null;
-      }
+      settleImportSessionUi(session, 'finish');
     });
     return session.revision;
   }

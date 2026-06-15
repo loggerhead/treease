@@ -445,7 +445,29 @@
       colorDecoratorsActivatedOn: 'clickAndHover',
       'semanticHighlighting.enabled': true,
     });
-    cleanupSourceEditorTestHook = attachMonacoTestHook(editor, 'source-editor', monaco.editor.tokenize);
+    cleanupSourceEditorTestHook = attachMonacoTestHook(
+      {
+        getDomNode: () => editor?.getDomNode() ?? null,
+        getValue: () => editor?.getValue() ?? '',
+        setValue: (value: string) => {
+          editor?.setValue(value);
+        },
+        setValueForTestHook: (value: string) => {
+          setEditorValuePreservingWholeDocumentSourceText(value);
+        },
+        focus: () => editor?.focus(),
+        setPosition: (position) => editor?.setPosition(position),
+        revealPositionInCenter: (position) => editor?.revealPositionInCenter(position),
+        getScrollTop: () => editor?.getScrollTop() ?? 0,
+        getScrollLeft: () => editor?.getScrollLeft() ?? 0,
+        setScrollPosition: (position) => editor?.setScrollPosition(position),
+        executeEdits: (source, edits) => editor?.executeEdits(source, edits),
+        onDidChangeModel: (listener) => editor?.onDidChangeModel(listener) ?? { dispose: () => {} },
+        getModel: () => editor?.getModel() ?? null,
+      },
+      'source-editor',
+      monaco.editor.tokenize,
+    );
     ensureLanguageRegistered(languageIdValue);
     monaco.editor.setModelLanguage(model, languageIdValue);
     editorStore.actions.initWorkspaceFromPrimaryTab({ id: firstTab.id, name: firstTab.name });
@@ -511,6 +533,8 @@
         changes.length === 1 && changes[0].rangeOffset === 0 && changes[0].rangeLength === previousLength
           ? changes[0]
           : null;
+      lastModelLength = nextText.length;
+      lastModelText = nextText;
       const shouldRotateDocumentKey = Boolean(wholeDocumentReplacement);
       if (shouldRotateDocumentKey) {
         const nextDocumentKey = rotateActiveDocumentKey();

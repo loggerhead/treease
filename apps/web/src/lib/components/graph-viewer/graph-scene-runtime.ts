@@ -692,6 +692,14 @@ export function createGraphSceneRuntime(deps: GraphSceneRuntimeDeps) {
     if (forceLeafer) deps.updateLeafer();
   }
 
+  async function flushPendingRenderWork(): Promise<void> {
+    await (pendingStreamRedrawDone ?? Promise.resolve());
+    if (pendingNodeBuffer.length > 0 || pendingBufferTimer) {
+      flushNodeBuffer(true);
+    }
+    await (pendingViewportRedrawDone ?? Promise.resolve());
+  }
+
   function scheduleNodeBufferFlush(): void {
     if (pendingBufferTimer) return;
     pendingBufferTimer = setTimeout(() => {
@@ -887,6 +895,7 @@ export function createGraphSceneRuntime(deps: GraphSceneRuntimeDeps) {
     replaceAll,
     applyGraphDelta,
     updateViewport,
+    flushPendingRenderWork,
     scheduleViewportRedraw,
     cancelActiveRenderWork,
     getLastGraphData,

@@ -23,6 +23,7 @@ type RenderEffectsDeps = {
   renderDocumentGraph: RenderDocumentGraph;
   attachFullEditDocumentJobSession: AttachFullEditDocumentJobSession;
   renderJsonBlockSelection: (selection: JsonBlockSelection) => Promise<unknown>;
+  resetStreamProgress: () => void;
   onStreamingRenderError: (error: unknown) => void;
 };
 
@@ -206,6 +207,9 @@ export function createGraphViewerRenderEffects(deps: RenderEffectsDeps) {
 
   function maybeRenderJsonBlock(selection: JsonBlockSelection | null, hasRenderRuntime: boolean): void {
     if (!selection || !hasRenderRuntime) {
+      if (lastJsonBlockActive) {
+        deps.resetStreamProgress();
+      }
       if (!selection) lastJsonBlockActive = false;
       pendingJsonBlockSignature = '';
       return;

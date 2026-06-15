@@ -32,6 +32,7 @@ const defaultGraphDocumentFormatting = {
   maxArrayInlineItems: 6,
   alignObjectArrays: true,
 };
+
 export type ParsedTreeData = {
   tree: TreeNode;
   value: unknown;
@@ -52,6 +53,7 @@ type GraphRenderSourceRef = {
 
 type GraphRenderSceneBridge = {
   applyGraphDelta: (delta: RawGraphDelta, version?: { baseGraphVersion: number; graphVersion: number }) => Promise<void>;
+  flushPendingRenderWork: () => Promise<void>;
   cancelActiveRenderWork: () => void;
   replaceRenderedGraph: (value: GraphRenderResult) => GraphRenderResult;
   getLastRenderedGraph: () => GraphRenderResult | null;
@@ -132,8 +134,6 @@ function finalDocumentEvent(batch: EventBatch): DocumentJobFinalEvent | null {
   return null;
 }
 
-
-
 export function createGraphRenderSession(deps: GraphRenderSessionDeps) {
   let sceneBridge: GraphRenderSceneBridge | null = null;
   let renderedDocumentKey: string | null = null;
@@ -169,6 +169,16 @@ export function createGraphRenderSession(deps: GraphRenderSessionDeps) {
       throw new Error('Graph render scene bridge is not attached');
     }
     return sceneBridge;
+  }
+
+  async function flushSceneAndRedraw(
+    mode: 'committed' | 'streaming' | 'json-block',
+    revision: number,
+    freshness?: { isCurrent: () => boolean },
+  ): Promise<void> {
+    await getSceneBridge().flushPendingRenderWork();
+    if (freshness && !freshness.isCurrent()) return;
+    deps.onStreamFinalRedraw(mode, revision);
   }
 
   function mutateGraphStreamState(mutator: (state: Record<string, any>) => void): void {
@@ -397,7 +407,7 @@ export function createGraphRenderSession(deps: GraphRenderSessionDeps) {
     );
 
     deps.completeStreamProgress();
-    deps.onStreamFinalRedraw(params.redrawMode, params.revision);
+    await flushSceneAndRedraw(params.redrawMode, params.revision);
     performance.mark('pipeline:render-document-graph:end');
     performance.measure('pipeline:render-document-graph', 'pipeline:render-document-graph:start', 'pipeline:render-document-graph:end');
     markGraphStreamDone();
@@ -505,7 +515,11 @@ export function createGraphRenderSession(deps: GraphRenderSessionDeps) {
         () => {
           if (graphVisiblyCompleted) return;
           graphVisiblyCompleted = true;
-          deps.onStreamFinalRedraw(request.kind === 'incremental' ? 'committed' : 'streaming', request.revision);
+          void flushSceneAndRedraw(
+            request.kind === 'incremental' ? 'committed' : 'streaming',
+            request.revision,
+            freshness,
+          );
         },
       );
 
@@ -699,6 +713,7 @@ export function createGraphRenderSession(deps: GraphRenderSessionDeps) {
     clearActiveDocumentSnapshot(selection.sourceDocumentKey, activeSnapshotId);
     activeSnapshotId = null;
     deps.clearErrorMessage();
+    deps.resetStreamProgress();
 
     const freshness = createFreshnessScope(
       {

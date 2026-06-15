@@ -135,6 +135,16 @@ describe('editor-full-edit-controller', () => {
     };
   }
 
+  function createDeferred<T>() {
+    let resolve!: (value: T | PromiseLike<T>) => void;
+    let reject!: (reason?: unknown) => void;
+    const promise = new Promise<T>((res, rej) => {
+      resolve = res;
+      reject = rej;
+    });
+    return { promise, resolve, reject };
+  }
+
   function createIdleFullEditUiState(): FullEditUiState {
     return {
       active: false,
@@ -276,6 +286,125 @@ describe('editor-full-edit-controller', () => {
       expect(options.setEditorValue).toHaveBeenLastCalledWith('{\n  "a": 1\n}');
     });
   });
+
+  it('ignores stale intake results after a newer full-edit session starts', async () => {
+    const firstIntake = createDeferred<{ snapshotId: number; analysis: null; sourceText: string }>();
+    const secondIntake = createDeferred<{ snapshotId: number; analysis: null; sourceText: string }>();
+    mockStartDocumentJobForGraph
+      .mockImplementationOnce(() => firstIntake.promise)
+      .mockImplementationOnce(() => secondIntake.promise);
+
+    const options = createOptions();
+    const controller = createEditorFullEditController(options as any);
+    const firstText = '{"sample":true}';
+    const secondText = '{"user":true}';
+    const secondAuthoritativeText = '{\n  "user": true\n}';
+    let activeRequest = 'first';
+
+    await controller.startFullEditSession({
+      language: 'json' as any,
+      text: firstText,
+      reason: 'initial-example',
+      isFresh: () => activeRequest === 'first',
+    });
+
+    activeRequest = 'second';
+    await controller.startFullEditSession({
+      language: 'json' as any,
+      text: secondText,
+      reason: 'whole-document-replacement',
+      isFresh: () => activeRequest === 'second',
+    });
+
+    secondIntake.resolve({
+      snapshotId: 22,
+      analysis: null,
+      sourceText: secondAuthoritativeText,
+    });
+
+    await vi.waitFor(() => {
+      expect(options.setEditorValue).toHaveBeenLastCalledWith(secondAuthoritativeText);
+    });
+
+    firstIntake.resolve({
+      snapshotId: 11,
+      analysis: null,
+      sourceText: '{\n  "sample": true\n}',
+    });
+
+    await vi.waitFor(() => {
+      expect(options.setEditorValue).toHaveBeenLastCalledWith(secondAuthoritativeText);
+    });
+    expect(options.updateActiveTempModel).not.toHaveBeenCalled();
+  });
+
+  it('does not finish a cancelled full-edit session again from finally', async () => {
+    const firstIntake = createDeferred<{ snapshotId: number; analysis: null; sourceText: string }>();
+    const secondIntake = createDeferred<{ snapshotId: number; analysis: null; sourceText: string }>();
+    mockStartDocumentJobForGraph
+      .mockImplementationOnce(() => firstIntake.promise)
+      .mockImplementationOnce(() => secondIntake.promise);
+
+    const sinkEvents: Array<{ kind: string; payload: unknown }> = [];
+    const options = createOptions({
+      commitEditorState: vi.fn().mockReturnValueOnce(5).mockReturnValueOnce(5).mockReturnValueOnce(6),
+      fullEditSink: {
+        getState: createIdleFullEditUiState,
+        begin: (payload) => sinkEvents.push({ kind: 'begin', payload }),
+        appendChunkMeta: (payload) => sinkEvents.push({ kind: 'appendChunkMeta', payload }),
+        markFinalizing: (payload) => sinkEvents.push({ kind: 'markFinalizing', payload }),
+        finish: (payload) => sinkEvents.push({ kind: 'finish', payload }),
+        cancel: (payload) => sinkEvents.push({ kind: 'cancel', payload }),
+        bindSnapshot: (payload) => sinkEvents.push({ kind: 'bindSnapshot', payload }),
+      } satisfies FullEditSink,
+    });
+    const controller = createEditorFullEditController(options as any);
+    let activeRequest = 'first';
+
+    await controller.startFullEditSession({
+      language: 'json' as any,
+      text: '{"sample":true}',
+      reason: 'initial-example',
+      isFresh: () => activeRequest === 'first',
+    });
+
+    activeRequest = 'second';
+    await controller.startFullEditSession({
+      language: 'json' as any,
+      text: '{"user":true}',
+      reason: 'whole-document-replacement',
+      isFresh: () => activeRequest === 'second',
+    });
+
+    secondIntake.resolve({
+      snapshotId: 22,
+      analysis: null,
+      sourceText: '{\n  "user": true\n}',
+    });
+    await vi.waitFor(() => {
+      expect(sinkEvents.filter((event) => event.kind === 'finish')).toHaveLength(1);
+    });
+
+    firstIntake.resolve({
+      snapshotId: 11,
+      analysis: null,
+      sourceText: '{\n  "sample": true\n}',
+    });
+    await vi.waitFor(() => {
+      expect(sinkEvents.filter((event) => event.kind === 'cancel')).toHaveLength(1);
+    });
+
+    expect(sinkEvents.filter((event) => event.kind === 'finish')).toHaveLength(1);
+    expect(sinkEvents).toContainEqual({
+      kind: 'cancel',
+      payload: { sessionId: 'doc-test:5', ownerKey: 'model://test' },
+    });
+    expect(sinkEvents).toContainEqual({
+      kind: 'finish',
+      payload: { sessionId: 'doc-test:6', ownerKey: 'model://test' },
+    });
+  });
+
   it('preserves submitted source text when whole-document replacement opts out of intake writeback', async () => {
     mockStartDocumentJobForGraph.mockResolvedValueOnce({
       snapshotId: 10,

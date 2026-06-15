@@ -184,7 +184,7 @@ describe('editor analysis controller json block selection', () => {
   });
 
   it('clears tree state when the authoritative source becomes empty', async () => {
-    const { controller, model, setTreeState } = createController({ text: '' });
+    const { controller, model, setTreeState, updateActiveTempModel } = createController({ text: '' });
 
     await controller.syncAuthoritativeAnalysis(model as any, 'json', 'doc-json', false);
 
@@ -195,6 +195,21 @@ describe('editor analysis controller json block selection', () => {
       source: 'editor',
       revision: 3,
     });
+    expect(updateActiveTempModel).toHaveBeenCalled();
+    const currentTempModel: any = {
+      treePath: [{ tag: 0, key: 'before', index: 0 }],
+      graphHighlight: {
+        path: [{ tag: 0, key: 'before', index: 0 }],
+        target: 'value',
+        revision: 2,
+        source: 'search',
+      },
+    };
+    const clearsGraphHighlight = updateActiveTempModel.mock.calls.some(([updater]) => {
+      const nextTempModel = (updater as (current: any) => any)(currentTempModel);
+      return nextTempModel.treePath.length === 0 && nextTempModel.graphHighlight === null;
+    });
+    expect(clearsGraphHighlight).toBe(true);
   });
 
   it('sets JSON block selection when invalid JSON cursor is inside a valid block', async () => {

@@ -70,6 +70,10 @@ export function ensureWindowTreease(): WindowTreease | null {
       setLanguageId: (value) => getEditorStoreBridge().setLanguageId(value),
       setTempGraphSelection: (path, target) => getEditorStoreBridge().setTempGraphSelection(path, target),
       getValue: (hookId) => getEditorHook(hookId).getValue(),
+      setValueExact: (hookId, value) => {
+        const hook = getEditorHook(hookId);
+        (hook.setValueExact ?? hook.setValue)(value);
+      },
       setValue: (hookId, value) => getEditorHook(hookId).setValue(value),
       setPosition: (hookId, lineNumber, column) => {
         const fn = getEditorHook(hookId).setPosition;

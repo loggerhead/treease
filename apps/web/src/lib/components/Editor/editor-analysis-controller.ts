@@ -369,6 +369,11 @@ export function createEditorAnalysisController(options: CreateEditorAnalysisCont
         source: 'editor',
         revision: currentRevision(),
       });
+      options.updateActiveTempModel((current) => ({
+        ...current,
+        treePath: [],
+        graphHighlight: null,
+      }));
       await freshness.step(() => updateTreePath(options.getEditor()?.getPosition() ?? null, { syncGraphHighlight: false }));
       return;
     }

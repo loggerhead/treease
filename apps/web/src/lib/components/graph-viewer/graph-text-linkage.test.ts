@@ -162,6 +162,65 @@ describe('graph-text-linkage', () => {
     expect(highlightedBox.fill).toBe('transparent');
   });
 
+  it('preserves the requested highlight path when local render bindings are temporarily missing', async () => {
+    const path = ['$', 'library', 'book', 0, 'title'] as any[];
+    const pathKey = buildPathKey(path);
+    const updateActiveTempModel = vi.fn();
+    const highlightedBox = new MockBox();
+    const cellMap = new Map<string, any>();
+
+    const controller = createGraphTextLinkageController({
+      getDocumentKey: () => 'cache',
+      getSourceText: () => '',
+      getLanguageId: () => 'json',
+      getActiveSnapshotId: () => 7,
+      getEnableNest: () => true,
+      getRenderConfig: () =>
+        ({
+          colors: {
+            table: {
+              rowBackground: '#fff',
+              rowBorder: '#ddd',
+              hoverRowBackground: '#eee',
+              hoverCellBackground: '#ff0',
+            },
+          },
+        }) as any,
+      getNodeDataMap: () => new Map(),
+      getNodeBoxMap: () => new Map(),
+      getCellBoxByPathMap: () => cellMap,
+      getPathKeyToRenderHandleMap: () => new Map(),
+      getClickTargetProbes: () => [],
+      setGraphHighlightTestState: vi.fn(),
+      setGraphRevealTestState: vi.fn(),
+      setGraphRowScrollTestState: vi.fn(),
+      buildPathSegFromCell: () => null,
+      upsertCellEntry: vi.fn(),
+      centerOnBox: () => false,
+      centerOnNode: vi.fn(),
+      updateLeafer: vi.fn(),
+      updateActiveTempModel,
+      getEditorRevision: () => 0,
+      getGraphAppliedRevision: () => 0,
+      dispatchReveal: vi.fn(),
+      handleError: vi.fn(),
+    });
+
+    controller.revealPath(path, { target: 'value', navigate: false });
+    await Promise.resolve();
+
+    expect(updateActiveTempModel).not.toHaveBeenCalled();
+
+    cellMap.set(pathKey, {
+      value: highlightedBox,
+      row: new MockBox('#fff'),
+    });
+
+    controller.refreshActiveHighlight();
+    expect(highlightedBox.fill).toBe('#ff0');
+    expect(updateActiveTempModel).not.toHaveBeenCalled();
+  });
+
   it('treats renderHandle 0 as a valid graph node handle', async () => {
     const path = [{ tag: 0, key: 'object', index: 0 }] as any[];
     const pathKey = buildPathKey(path);

@@ -156,10 +156,15 @@ export function resolveGraphHoverPreviewRule(
   if (!cell || !kind || kind === 'header') return null;
   if (cell.isHeaderlessTable && !cell.isScrollableTable) return null;
   const panelTarget = resolveGraphHoverPanelTarget(kind);
-  if (!panelTarget) return null;
-  const overflowPreview: GraphHoverPreviewTarget | null = target?.isOverflow
-    ? { cell, target: panelTarget, previewKind: 'pre' }
-    : null;
+  const cellWidth = cell.boxArgs?.width ?? 0;
+  const textLen = cell.text?.length ?? 0;
+  const fontSize = (target as { fontSize?: number })?.fontSize ?? 12;
+  // Approximate: if text char count >= cell width / font_size, text must overflow.
+  const approxOverflow = cellWidth > 0 && textLen > 0 && textLen >= cellWidth / fontSize;
+  const overflowPreview: GraphHoverPreviewTarget | null =
+    (target?.isOverflow || approxOverflow)
+      ? { cell, target: panelTarget, previewKind: 'pre' }
+      : null;
   if (kind === 'key' || kind === 'meta') return overflowPreview;
   if (panelTarget === 'node') return null;
   const isStructuredValue = cell.valueType === 'object' || cell.valueType === 'array';
@@ -658,11 +663,12 @@ export function createGraphHoverPanelController(deps: HoverPanelControllerDeps) 
     runtime.app.updateClientBounds?.();
     runtime.app.update?.();
     if (requestToken !== tooltipPanelRequestToken) return;
+    await refreshTooltipPanelPlacement(runtime);
+    if (requestToken !== tooltipPanelRequestToken) return;
     setTooltipPanelLoadingState(host, false);
     tooltipPanelPendingPathKey = '';
     deps.setRuntimeHoverPreviewState({ kind: 'subgraph', visible: true });
     deps.setRuntimeHoverPanelDebugState({ phase: 'panel-ready', error: '' });
-    await refreshTooltipPanelPlacement(runtime);
   }
 
   async function openTooltipPanelForCell(host: HTMLElement, cell: GraphCell, targetKind: 'key' | 'value' | 'node'): Promise<void> {
