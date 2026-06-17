@@ -16,13 +16,29 @@ describe('EditorDiagnostics', () => {
     vi.resetAllMocks();
   });
 
-  it('returns empty result for blank text and skips worker calls', async () => {
+  it('does not suppress preloaded diagnostics for blank json input', async () => {
     const monaco = { MarkerSeverity: { Error: 8 } } as any;
     const model = { getValue: vi.fn().mockReturnValue('   ') } as any;
 
-    const result = await readStoredDiagnosticsResult(monaco, model, 'json' as any, 'cache', true);
+    const result = await readStoredDiagnosticsResult(
+      monaco,
+      model,
+      'json' as any,
+      'vitest://diag/blank-json',
+      true,
+      [{ startLineNumber: 1, startColumn: 4, endLineNumber: 1, endColumn: 4, kind: 1 }],
+    );
 
-    expect(result).toEqual({ markers: [], diagnostics: [], error: '' });
+    expect(result.markers).toHaveLength(1);
+    expect(result.markers[0]).toMatchObject({
+      startLineNumber: 1,
+      startColumn: 4,
+      endLineNumber: 1,
+      endColumn: 4,
+      message: 'Syntax error',
+      severity: 8,
+    });
+    expect(result.diagnostics).toHaveLength(1);
     expect(callSharedWasmWorker).not.toHaveBeenCalled();
   });
 
@@ -377,10 +393,44 @@ describe('EditorDiagnostics', () => {
     );
   });
 
-  it('skips analysis when text is blank', async () => {
+  it('analyzes blank json input instead of short-circuiting it', async () => {
     const callMock = vi.mocked(callSharedWasmWorker as any);
-    await analyzeDocumentAndStore('json' as any, '   ', 'vitest://diag/store-ready', true);
-    expect(callMock).not.toHaveBeenCalled();
+    callMock
+      .mockResolvedValueOnce({ jobHandle: 1, batch: { requestSeq: 1, events: [], terminal: null } })
+      .mockResolvedValue({
+        requestSeq: 1,
+        events: [
+          {
+            type: 'parseFailed',
+            snapshotId: null,
+            analysis: {
+              tree: null,
+              valueJson: null,
+              diagnostics: [{ startLineNumber: 1, startColumn: 4, endLineNumber: 1, endColumn: 4, kind: 1 }],
+              semanticTokens: { data: [], version: 1 },
+              sourceByteLength: 3,
+              language: 'json',
+            },
+          },
+        ],
+        terminal: { type: 'completed' },
+      });
+
+    const result = await analyzeDocumentAndStore('json' as any, '   ', 'vitest://diag/store-ready', true);
+
+    expect(callMock.mock.calls.slice(0, 3).map((call) => call[0])).toEqual([
+      'startDocumentJob',
+      'advanceDocumentJob',
+      'advanceDocumentJob',
+    ]);
+    expect(callMock.mock.calls[1][1]).toMatchObject({ jobHandle: 1, kind: 'textChunk', text: '   ' });
+    expect(callMock.mock.calls[2][1]).toMatchObject({ jobHandle: 1, kind: 'close' });
+    expect(result).toEqual(
+      expect.objectContaining({
+        snapshotId: null,
+        diagnostics: [{ startLineNumber: 1, startColumn: 4, endLineNumber: 1, endColumn: 4, kind: 1 }],
+      }),
+    );
   });
 
 });

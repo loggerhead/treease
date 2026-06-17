@@ -183,12 +183,39 @@ describe('editor analysis controller json block selection', () => {
     expect(getSelection()).toBeNull();
   });
 
-  it('clears tree state when the authoritative source becomes empty', async () => {
-    const { controller, model, setTreeState, updateActiveTempModel } = createController({ text: '' });
+  it('routes empty authoritative sources through analysis instead of short-circuiting them', async () => {
+    const analysis = {
+      tree: null,
+      value: null,
+      diagnostics: [{ message: 'parse failed' }],
+      semanticTokens: new ArrayBuffer(0),
+      snapshotId: null,
+    };
+    const { controller, model, setTreeState } = createController({ text: '' });
+    mocked.analyzeDocumentAndStore.mockResolvedValue(analysis);
+    mocked.resolveDocumentAnalysis.mockResolvedValue(resolvedAnalysis(analysis));
 
     await controller.syncAuthoritativeAnalysis(model as any, 'json', 'doc-json', false);
 
-    expect(mocked.analyzeDocumentAndStore).not.toHaveBeenCalled();
+    expect(mocked.analyzeDocumentAndStore).toHaveBeenCalledWith(
+      'json',
+      '',
+      'doc-json',
+      false,
+      expect.objectContaining({
+        onAnalysisDelta: expect.any(Function),
+      }),
+    );
+    expect(setTreeState).not.toHaveBeenCalled();
+  });
+
+  it('clears tree state only when authoritative analysis returns null', async () => {
+    const { controller, model, setTreeState, updateActiveTempModel } = createController({ text: '' });
+    mocked.analyzeDocumentAndStore.mockResolvedValue(null);
+
+    await controller.syncAuthoritativeAnalysis(model as any, 'json', 'doc-json', false);
+
+    expect(mocked.analyzeDocumentAndStore).toHaveBeenCalled();
     expect(setTreeState).toHaveBeenCalledWith({
       tree: null,
       value: null,

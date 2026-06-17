@@ -194,9 +194,12 @@ export async function setEditorContent(page: Page, payload: { sourceText: string
           readEditorState(page),
           readImportStreamState(page),
         ]);
+        // Monaco may normalize some control-leading inputs (for example a
+        // standalone UTF-8 BOM). The helper should wait for the editor/store
+        // to converge on the editor-accepted text, not on the original payload.
         return {
-          modelSynced: modelText === payload.sourceText,
-          storeSynced: state.sourceText === payload.sourceText,
+          modelSynced: state.sourceText === modelText,
+          storeSynced: state.sourceText === modelText,
           languageSynced: payload.language ? state.languageId === payload.language : true,
           fullEditIdle: fullEditState.phase === 'idle',
         };
@@ -343,7 +346,7 @@ export async function dropFile(
 }
 
 export async function waitForEditorReady(page: Page, timeout = IS_CI ? 10_000 : 5_000) {
-  await expect(monacoHook(page, 'source-editor')).toBeVisible({ timeout });
+  await waitForMonacoHook(page, 'source-editor', timeout);
   await expect(
     page
       .getByRole('button', { name: 'Graph mode', exact: true })

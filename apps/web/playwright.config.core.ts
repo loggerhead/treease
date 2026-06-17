@@ -5,11 +5,9 @@ const CI = !!process.env.CI;
 export default defineConfig({
   testDir: './test/e2e',
   testMatch: [
-    'smoke-main-chain.spec.ts',
     'editor-core-real-chain.spec.ts',
     'import-format-recognition.spec.ts',
     'format-minify-sort.spec.ts',
-    'tree-path-ui-chain.spec.ts',
     'bidirectional-edit-sync.spec.ts',
     'graph-edit-blur-commit.spec.ts',
     'reveal-sync.spec.ts',

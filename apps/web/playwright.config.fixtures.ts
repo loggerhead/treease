@@ -7,8 +7,11 @@ export default defineConfig({
   expect: {
     timeout: 5_000,
   },
-  fullyParallel: true,
-  workers: '50%',
+  // This corpus suite validates fixture semantics through a shared dev server.
+  // Running cases in parallel mostly measures cold-start contention in Vite +
+  // Monaco instead of parser/graph correctness.
+  fullyParallel: false,
+  workers: 1,
   reporter: 'list',
   use: {
     baseURL: 'http://127.0.0.1:4173',

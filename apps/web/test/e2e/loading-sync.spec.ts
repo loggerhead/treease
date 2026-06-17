@@ -1,5 +1,5 @@
 import { expect, test } from './fixtures';
-import { waitForEditorReady, waitForGraphRendered } from './utils';
+import { readGraphClickProbes, waitForEditorReady, waitForGraphRendered } from './utils';
 
 test('editor and graph loading skeletons clear together on first paint', async ({ page }, testInfo) => {
   testInfo.annotations.push({
@@ -86,4 +86,8 @@ test('editor and graph loading skeletons clear together on first paint', async (
   expect((observation?.samples.length ?? 0) > 0).toBe(true);
   expect(observation?.sawGraphHiddenWhileEditorVisible).toBe(false);
   expect(observation?.sawEditorHiddenWhileGraphVisible).toBe(false);
+  await expect(page.getByTestId('graph-error-message')).toHaveCount(0);
+  await expect
+    .poll(async () => (await readGraphClickProbes(page)).length, { timeout: 5_000 })
+    .toBeGreaterThan(0);
 });

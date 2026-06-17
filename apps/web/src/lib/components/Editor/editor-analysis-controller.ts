@@ -359,7 +359,7 @@ export function createEditorAnalysisController(options: CreateEditorAnalysisCont
       }),
     );
     const text = requestModel.getValue();
-    if (!requestDocumentKey || !text.trim()) {
+    if (!requestDocumentKey) {
       clearAuthoritativeAnalysis(requestDocumentKey || undefined);
       if (!freshness.isCurrent()) return;
       clearEditorDiagnostics(requestModel);
@@ -392,7 +392,24 @@ export function createEditorAnalysisController(options: CreateEditorAnalysisCont
         },
       }),
     );
-    if (!analysis) return;
+    if (!analysis) {
+      clearAuthoritativeAnalysis(requestDocumentKey);
+      if (!freshness.isCurrent()) return;
+      clearEditorDiagnostics(requestModel);
+      options.setTreeState({
+        tree: null,
+        value: null,
+        source: 'editor',
+        revision: currentRevision(),
+      });
+      options.updateActiveTempModel((current) => ({
+        ...current,
+        treePath: [],
+        graphHighlight: null,
+      }));
+      await freshness.step(() => updateTreePath(options.getEditor()?.getPosition() ?? null, { syncGraphHighlight: false }));
+      return;
+    }
     bindActiveDocumentSnapshotIfPresent({
       documentKey: requestDocumentKey,
       revision: currentRevision(),

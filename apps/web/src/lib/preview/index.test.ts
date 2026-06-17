@@ -95,4 +95,47 @@ describe('generatePreview', () => {
     expect((preview as string[]).join('\n')).toContain('JWT Header');
     expect((preview as string[]).join('\n')).not.toContain('Base64 Decoded');
   });
+
+  it('decodes standalone base64 strings', async () => {
+    const node = valueToTreeNode('SGVsbG8gd29ybGQ=');
+
+    const preview = await generatePreview({
+      node,
+      value: 'SGVsbG8gd29ybGQ=',
+      rawValue: '"SGVsbG8gd29ybGQ="',
+      language: 'json',
+    });
+
+    expect(preview).toEqual(['<div><strong>Base64 Decoded</strong></div>', '<pre>Hello world</pre>']);
+  });
+
+  it('decodes percent-encoded URI fragments that are not full URLs', async () => {
+    const node = valueToTreeNode('hello%20world%2Ftree');
+
+    const preview = await generatePreview({
+      node,
+      value: 'hello%20world%2Ftree',
+      rawValue: '"hello%20world%2Ftree"',
+      language: 'json',
+    });
+
+    expect(preview).toEqual(['<div><strong>URI Decoded</strong></div>', '<pre>hello world/tree</pre>']);
+  });
+
+  it('renders stable date preview fields for ISO-like values', async () => {
+    const node = valueToTreeNode('2026-04-13');
+
+    const preview = await generatePreview({
+      node,
+      value: '2026-04-13',
+      rawValue: '"2026-04-13"',
+      language: 'json',
+    });
+
+    expect(typeof preview).toBe('string');
+    expect(preview).toContain('<strong>ISO</strong>');
+    expect(preview).toContain('2026-04-13T');
+    expect(preview).toContain('<strong>Timestamp</strong>');
+    expect(preview).toContain('<strong>RelativeTime</strong>');
+  });
 });

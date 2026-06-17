@@ -53,7 +53,7 @@ export async function analyzeDocumentAndStore(
   nest: boolean,
   options?: AnalyzeDocumentAndStoreOptions,
 ): Promise<StoredDocumentAnalysis | null> {
-  if (!documentKey || !text.trim()) return null;
+  if (!documentKey) return null;
   let latestStreamingAnalysis: StoredDocumentAnalysis | null = null;
   const started = await callSharedWasmWorker<StartDocumentJobResult>('startDocumentJob', {
     documentKey,
@@ -229,7 +229,7 @@ export async function readStoredDiagnosticsResult(
   const text = model.getValue();
   const emptyResult = createEmptyDiagnosticsResult();
 
-  if (!text.trim() || !documentKey) {
+  if (!documentKey) {
     return emptyResult;
   }
 
