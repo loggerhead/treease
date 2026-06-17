@@ -13,7 +13,6 @@ use crate::{
 
 use super::{
     diagnostics::{ErrorSpan, TokenSpan},
-    nested_json,
     parse_tree::{self, DecodeWithTokenSpansResult},
     parser::JsonStreamError,
     scanner::{ProfileHooks, Scanner, Span, Token, TokenCache, TokenTag},
@@ -554,12 +553,11 @@ impl StreamingParser {
         self.scanner.token_cache()
     }
 
-    /// Set the nesting depth for nested-JSON expansion.
+    /// Set the reserved nesting depth budget for nested-JSON expansion.
     ///
-    /// When `nest_json` is enabled, string values that look like JSON
-    /// objects/arrays are recursively expanded up to this depth (capped
-    /// at 8).  A value of 0 disables nested expansion even when
-    /// `nest_json` is `true`.
+    /// Expansion is currently disabled, but callers still configure the
+    /// intended depth here so the public API stays stable until the
+    /// Wasm/source-rewrite bug is fixed.
     pub fn set_nest_depth(&mut self, depth: u8) {
         self.nest_depth = depth.min(8);
     }
@@ -934,19 +932,12 @@ impl StreamingParser {
         tok: &Token,
         forced_path: Option<&str>,
     ) -> Result<(), JsonStreamError> {
-        if self.nest_json && nested_json::is_nested_json_candidate(&tok.value) {
-            let trimmed = nested_json::trim_ascii_whitespace(&tok.value);
-            if let Some(nested_events) = self.try_nested_json(trimmed) {
-                self.source_rewrites.push(SourceRewrite {
-                    start_byte: tok.span.start.offset as u32,
-                    old_end_byte: tok.span.end.offset as u32,
-                    replacement: trimmed.to_owned(),
-                });
-                self.emit_nested_value(&nested_events, &tok.span, forced_path)?;
-                self.on_value_complete();
-                return Ok(());
-            }
-        }
+        // Nest expansion is temporarily disabled because of a Wasm-specific
+        // bug in the source rewrite mechanism that corrupts the CoreTreeNode
+        // tree (array children beyond index 0 are lost).
+        // TODO: fix the underlying SourceRewrite bug in wasm32 builds,
+        // then re-enable both source rewrites and nested event emission.
+        let _ = (self.nest_json, self.nest_depth);
         let meta = self.meta_from_span(&tok.span, SemType::Str, forced_path);
         self.emit_event(StreamingEvent::Scalar {
             value: tok.value.clone(),
@@ -999,139 +990,6 @@ impl StreamingParser {
             meta,
         });
         self.on_value_complete();
-        Ok(())
-    }
-
-    fn emit_nested_value(
-        &mut self,
-        events: &[StreamingEvent],
-        span: &Span,
-        forced_path: Option<&str>,
-    ) -> Result<(), JsonStreamError> {
-        self.nested_json_expanded = true;
-        // Walk through the nested events and emit them with rebased metadata.
-        // We skip DocStart/DocEnd and rebase the rest.
-        let mut object_depth: usize = 0;
-        let mut array_depth: usize = 0;
-
-        for event in events {
-            match event {
-                StreamingEvent::DocStart(_) | StreamingEvent::DocEnd(_) => {}
-                StreamingEvent::MapStart(nested_meta) => {
-                    let meta = self.rebase_nested_meta(
-                        self.meta_from_span(span, SemType::Map, forced_path),
-                        span,
-                        nested_meta,
-                    );
-                    self.emit_event(StreamingEvent::MapStart(meta));
-                    self.path_stack.push(PathFrame {
-                        kind: PathKind::Object,
-                        index: 0,
-                        pending_key: None,
-                    });
-                    object_depth += 1;
-                }
-                StreamingEvent::MapKey {
-                    value,
-                    meta: nested_meta,
-                } => {
-                    let path = self.path_for_key(value);
-                    let meta = self.rebase_nested_meta(
-                        self.meta_from_span_with_path(span, SemType::Str, &path),
-                        span,
-                        nested_meta,
-                    );
-                    if let Some(frame) = self.current_path_frame_mut() {
-                        let _ = frame.set_pending_key(value.clone());
-                    }
-                    self.emit_event(StreamingEvent::MapKey {
-                        value: value.clone(),
-                        meta,
-                    });
-                }
-                StreamingEvent::MapEnd(nested_meta) => {
-                    if object_depth > 0 {
-                        object_depth -= 1;
-                        self.pop_path_frame();
-                    }
-                    let meta = self.rebase_nested_meta(
-                        self.meta_from_span(span, SemType::Map, forced_path),
-                        span,
-                        nested_meta,
-                    );
-                    self.emit_event(StreamingEvent::MapEnd(meta));
-                }
-                StreamingEvent::SeqStart(nested_meta) => {
-                    let meta = self.rebase_nested_meta(
-                        self.meta_from_span(span, SemType::Seq, forced_path),
-                        span,
-                        nested_meta,
-                    );
-                    self.emit_event(StreamingEvent::SeqStart(meta));
-                    self.path_stack.push(PathFrame {
-                        kind: PathKind::Array,
-                        index: 0,
-                        pending_key: None,
-                    });
-                    array_depth += 1;
-                }
-                StreamingEvent::SeqEnd(nested_meta) => {
-                    if array_depth > 0 {
-                        array_depth -= 1;
-                        self.pop_path_frame();
-                    }
-                    let meta = self.rebase_nested_meta(
-                        self.meta_from_span(span, SemType::Seq, forced_path),
-                        span,
-                        nested_meta,
-                    );
-                    self.emit_event(StreamingEvent::SeqEnd(meta));
-                }
-                StreamingEvent::Scalar {
-                    value,
-                    meta: nested_meta,
-                } => {
-                    let sem_type = nested_meta.sem_type.unwrap_or(SemType::Str);
-                    let meta = self.rebase_nested_meta(
-                        self.meta_from_span(span, sem_type, forced_path),
-                        span,
-                        nested_meta,
-                    );
-                    self.emit_event(StreamingEvent::Scalar {
-                        value: value.clone(),
-                        meta,
-                    });
-                }
-                StreamingEvent::Alias {
-                    anchor,
-                    meta: nested_meta,
-                } => {
-                    let meta = self.rebase_nested_meta(
-                        self.meta_from_span(span, SemType::Str, forced_path),
-                        span,
-                        nested_meta,
-                    );
-                    self.emit_event(StreamingEvent::Alias {
-                        anchor: anchor.clone(),
-                        meta,
-                    });
-                }
-                StreamingEvent::ParseError {
-                    message,
-                    meta: nested_meta,
-                } => {
-                    let meta = self.rebase_nested_meta(
-                        self.meta_from_span(span, SemType::Str, forced_path),
-                        span,
-                        nested_meta,
-                    );
-                    self.emit_event(StreamingEvent::ParseError {
-                        message: message.clone(),
-                        meta,
-                    });
-                }
-            }
-        }
         Ok(())
     }
 
@@ -1256,19 +1114,6 @@ impl StreamingParser {
             ..Meta::default()
         }
     }
-
-    fn rebase_nested_meta(&self, mut meta: Meta, outer_span: &Span, nested_meta: &Meta) -> Meta {
-        let base = outer_span.start.offset as u32;
-        meta.start_byte = base.saturating_add(nested_meta.start_byte);
-        meta.end_byte = base.saturating_add(nested_meta.end_byte);
-        meta.line = nested_meta.line;
-        meta.column = nested_meta.column;
-        meta
-    }
-
-    // ------------------------------------------------------------------
-    // Token classification (for TokenSpan collection)
-    // ------------------------------------------------------------------
 
     fn classify_token_type(&self, tok: &Token) -> Option<u32> {
         let is_object_key = tok.tag == TokenTag::String && !self.stack.is_empty() && {
@@ -1425,23 +1270,6 @@ impl StreamingParser {
         }
         self.lookahead = Some(tok.clone());
         Ok(Some(tok))
-    }
-
-    // ------------------------------------------------------------------
-    // Nested JSON
-    // ------------------------------------------------------------------
-
-    fn try_nested_json(&mut self, value: &str) -> Option<Vec<StreamingEvent>> {
-        if !nested_json::is_nested_json_candidate(value) {
-            return None;
-        }
-        if self.nest_depth >= 8 {
-            return None;
-        }
-        self.nest_depth += 1;
-        let result = super::parser::decode_with_nesting(value, true);
-        self.nest_depth -= 1;
-        result.ok()
     }
 
     // ------------------------------------------------------------------

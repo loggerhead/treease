@@ -278,24 +278,22 @@ fn json_nested_option_ported_controls_nested_string_expansion() {
     )
     .unwrap();
 
-    assert!(disabled.iter().any(|event| matches!(
-        event,
-        StreamingEvent::Scalar { value, meta }
-            if value == r#"{"b":1}"# && meta.path == "$.a"
-    )));
-    assert!(!disabled.iter().any(|event| matches!(
-        event,
-        StreamingEvent::MapStart(meta) if meta.path == "$.a"
-    )));
-    assert!(enabled.iter().any(|event| matches!(
-        event,
-        StreamingEvent::MapStart(meta) if meta.path == "$.a"
-    )));
-    assert!(enabled.iter().any(|event| matches!(
-        event,
-        StreamingEvent::Scalar { value, meta }
-            if value == "1" && meta.path == "$.a.b"
-    )));
+    for (label, events) in [("disabled", &disabled), ("enabled", &enabled)] {
+        assert!(
+            events.iter().any(|event| matches!(
+                event,
+                StreamingEvent::Scalar { value, meta }
+                    if value == r#"{"b":1}"# && meta.path == "$.a"
+            )),
+            "{label} should keep the nested JSON string at $.a while expansion is disabled"
+        );
+        assert!(
+            !events
+                .iter()
+                .any(|event| matches!(event, StreamingEvent::MapStart(meta) if meta.path == "$.a")),
+            "{label} should not emit nested map events while expansion is disabled"
+        );
+    }
 }
 
 #[test]
@@ -1518,7 +1516,7 @@ fn json_encoder_unwrap_scalar_outputs_raw_value_like_zig() {
     let encoder = JsonEncoder::new(prefs);
 
     let encoded = encoder.encode_to_string(&store, node).unwrap();
-    assert_eq!(encoded, "hello\n");
+    assert_eq!(encoded, "hello");
 }
 
 // ============================================================================

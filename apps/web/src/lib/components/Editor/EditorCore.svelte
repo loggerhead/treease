@@ -1115,7 +1115,10 @@
     );
     if (!selectionRange) {
       const message = `Failed to reveal path ${JSON.stringify(path)}`;
-      activeTempModel.update((current) => ({ ...current, error: message }));
+      // Clear graphHighlight to prevent the reactive subscription from
+      // re-entering — the error update would otherwise keep the reference
+      // check alive (H1 !== H2) and loop forever.
+      activeTempModel.update((current) => ({ ...current, error: message, graphHighlight: null }));
       toast.error('Reveal failed');
       throw new Error(message);
     }

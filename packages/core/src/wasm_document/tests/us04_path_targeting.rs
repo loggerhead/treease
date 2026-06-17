@@ -1,5 +1,46 @@
 use super::*;
 
+const COMPLEX_JSON_FIXTURE: &str = "test/fixtures/json/complex.1.json";
+const COMPLEX_LONG_KEY: &str = "we___are___such___stuff___as___dreams___are___made___on___and___our___little___life___is___rounded___with___sleep";
+
+fn analyze_complex_fixture(document_key: &str) -> SnapshotId {
+    let source = read_repo_fixture(COMPLEX_JSON_FIXTURE);
+    let (snapshot_id, _) = analyze_document_via_job(document_key, "json", &[&source]);
+    snapshot_id
+}
+
+fn assert_find_anchors_ready(
+    document_key: &str,
+    snapshot_id: SnapshotId,
+    path: &str,
+    target: QueryTargetKind,
+) {
+    let result = query_snapshot_impl(QuerySnapshotRequest {
+        document_key: document_key.to_owned(),
+        snapshot_id: snapshot_id.0 as u32,
+        query_kind: QueryKind::FindAnchors as u8,
+        has_path: true,
+        path_pattern: path.to_owned(),
+        span_start: 0,
+        span_end: 0,
+        target,
+    })
+    .expect("query should execute");
+
+    match result {
+        SnapshotReadResult::Ready { data } => {
+            assert!(
+                !data.anchors.is_empty(),
+                "FindAnchors for {path} should return anchors, got empty. document_key={document_key} snapshot_id={}",
+                snapshot_id.0,
+            );
+        }
+        SnapshotReadResult::SnapshotNotReady => {
+            panic!("snapshot for {document_key} should be ready");
+        }
+    }
+}
+
 #[test]
 fn wasm_document_plan_then_apply_nested_value_edit_matches_web_probe_cases() {
     let _guard = lock_test_mutex();
@@ -592,5 +633,111 @@ fn wasm_document_plan_repeated_path_cases_cover_object_and_nested_sequences() {
             case.language
         );
         assert_snapshot_source(case.document_key, case.expected_source);
+    }
+}
+
+/// The WASM `query_snapshot` receives `queryKind` as the string `"findAnchors"`
+/// from TypeScript. Serde must deserialize this correctly — if it doesn't, the
+/// query falls through to ResolveHover (the catch-all branch) and returns empty.
+#[test]
+fn wasm_document_querykind_findanchors_serde() {
+    let val = serde_json::json!("findAnchors");
+    let kind: crate::document::protocol::QueryKind =
+        serde_json::from_value(val).expect("deserialize findAnchors");
+    assert_eq!(kind, crate::document::protocol::QueryKind::FindAnchors);
+
+    // Also verify that a case mismatch does not accidentally deserialize.
+    let bogus = serde_json::json!("findanchor");
+    let result: Result<crate::document::protocol::QueryKind, _> = serde_json::from_value(bogus);
+    assert!(result.is_err(), "case mismatch should not deserialize");
+}
+
+/// Direct Rust test that mimics the Wasm `query_snapshot` call for the
+/// complex.1.json fixture — targeting a deep key cell through a long
+/// array- and empty-string-key path.
+#[test]
+fn wasm_document_find_anchors_complex_fixture_deep_empty_key() {
+    let _guard = lock_test_mutex();
+    reset_test_state();
+
+    let snapshot_id = analyze_complex_fixture("complex-deep");
+    let path = format!("$.{COMPLEX_LONG_KEY}[43][\"\"]");
+    assert_find_anchors_ready("complex-deep", snapshot_id, &path, QueryTargetKind::Value);
+}
+
+/// Same fixture, path without empty-string key — just index into the array.
+/// This is the case originally investigated in the previous session.
+#[test]
+fn wasm_document_find_anchors_complex_fixture_simple_index() {
+    let _guard = lock_test_mutex();
+    reset_test_state();
+
+    let snapshot_id = analyze_complex_fixture("complex-index");
+    let path = format!("$.{COMPLEX_LONG_KEY}[16]");
+    assert_find_anchors_ready("complex-index", snapshot_id, &path, QueryTargetKind::Value);
+}
+
+/// Verify that FindAnchors with target Key works for the same deep path.
+#[test]
+fn wasm_document_find_anchors_complex_fixture_deep_empty_key_target_key() {
+    let _guard = lock_test_mutex();
+    reset_test_state();
+
+    let snapshot_id = analyze_complex_fixture("complex-deep-key");
+    let path = format!("$.{COMPLEX_LONG_KEY}[43][\"\"]");
+    assert_find_anchors_ready("complex-deep-key", snapshot_id, &path, QueryTargetKind::Key);
+}
+
+/// Verify that FindAnchors works for BOTH index 0 AND index 1+
+/// in the complex.1.json fixture through the direct Rust path.
+/// This is the same document that the Wasm test loads.
+#[test]
+fn wasm_document_find_anchors_complex_fixture_index_scan() {
+    let _guard = lock_test_mutex();
+    reset_test_state();
+
+    let snapshot_id = analyze_complex_fixture("complex-scan");
+
+    for idx in [0u32, 1, 2, 5, 10, 20, 30, 40, 42, 43, 50, 100, 150] {
+        let path = format!("$.{COMPLEX_LONG_KEY}[{idx}][\"\"]");
+        assert_find_anchors_ready("complex-scan", snapshot_id, &path, QueryTargetKind::Value);
+    }
+}
+
+/// Verify that FindAnchors works with output_graph=false (like the Wasm
+/// analyzer) and enable_nest=false (the default, which is the correct
+/// setting for analysis — nest expansion is a display concern).
+#[test]
+fn wasm_document_find_anchors_complex_no_graph_no_nest() {
+    let _guard = lock_test_mutex();
+    reset_test_state();
+
+    let source = read_repo_fixture(COMPLEX_JSON_FIXTURE);
+
+    let started = start_document_job_impl(StartDocumentJobRequest {
+        document_key: "complex-nograph-nonest".to_owned(),
+        language: "json".to_owned(),
+        output_graph: false,
+        output_analysis: true,
+        builder_config: None,
+        base_snapshot_id: None,
+        edits: vec![],
+        settings: DocumentJobSettings::default(),
+    })
+    .expect("job should start");
+
+    let job_handle = started.job_handle;
+    let _ = text_chunk(job_handle, &source);
+    let close_batch = close(job_handle);
+    let snapshot_id = snapshot_id_from_batch(&close_batch);
+
+    for idx in [0u32, 1, 2, 43] {
+        let path = format!("$.{COMPLEX_LONG_KEY}[{idx}][\"\"]");
+        assert_find_anchors_ready(
+            "complex-nograph-nonest",
+            snapshot_id,
+            &path,
+            QueryTargetKind::Value,
+        );
     }
 }

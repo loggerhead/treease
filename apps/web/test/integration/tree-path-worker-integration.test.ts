@@ -1,8 +1,14 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { analyzeDocumentAndStore } from '../../src/lib/services/EditorDiagnostics';
 import { resolvePathSpan, resolveTreePath } from '../../src/lib/services/TreePathService';
 import { toWasmPathSeg } from '../../src/shared/brand-bridge';
 import { initWasmWorkerForTests, shutdownWasmWorkerForTests } from '../wasm-test-helpers';
+
+const COMPLEX_FIXTURE_PATH = join(process.cwd(), '..', '..', 'test', 'fixtures', 'json', 'complex.1.json');
+const COMPLEX_LONG_KEY =
+  'we___are___such___stuff___as___dreams___are___made___on___and___our___little___life___is___rounded___with___sleep';
 
 function createModel(text: string) {
   const lines = text.split('\n');
@@ -33,6 +39,10 @@ function getEditorPosition(text: string, needle: string, occurrence = 0) {
 async function seedStoredAnalysis(documentKey: string, language: string, text: string) {
   const analysis = await analyzeDocumentAndStore(language as any, text, documentKey, true);
   return analysis?.snapshotId ?? null;
+}
+
+function readComplexFixture() {
+  return readFileSync(COMPLEX_FIXTURE_PATH, 'utf-8');
 }
 
 describe('TreePathService worker integration', () => {
@@ -71,5 +81,50 @@ describe('TreePathService worker integration', () => {
     );
 
     expect(resolved).toBeNull();
+  });
+
+  it('resolves top-level key path in complex.1.json fixture', async () => {
+    const text = readComplexFixture();
+    const snapshotId = await seedStoredAnalysis('vitest://tree-path/complex-simple', 'json', text);
+
+    const path = [toWasmPathSeg({ tag: 0, key: 'empty array', index: 0 })];
+
+    const model = createModel(text);
+    const resolved = await resolvePathSpan(
+      model,
+      path,
+      'vitest://tree-path/complex-simple',
+      'json' as any,
+      'value',
+      true,
+      snapshotId,
+    );
+
+    expect(resolved).not.toBeNull();
+  });
+
+  it('resolves deep empty-key path in complex.1.json fixture', async () => {
+    const text = readComplexFixture();
+    const snapshotId = await seedStoredAnalysis('vitest://tree-path/complex-deep', 'json', text);
+
+    const path = [
+      toWasmPathSeg({ tag: 0, key: COMPLEX_LONG_KEY, index: 0 }),
+      toWasmPathSeg({ tag: 1, key: '', index: 43 }),
+      toWasmPathSeg({ tag: 0, key: '', index: 0 }),
+    ];
+
+    const model = createModel(text);
+    const resolved = await resolvePathSpan(
+      model,
+      path,
+      'vitest://tree-path/complex-deep',
+      'json' as any,
+      'value',
+      true,
+      snapshotId,
+    );
+
+    expect(resolved).not.toBeNull();
+    expect(resolved!.startByte).toBeLessThan(resolved!.endByte);
   });
 });

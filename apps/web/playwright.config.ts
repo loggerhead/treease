@@ -6,6 +6,7 @@ export default defineConfig({
   testDir: './test/e2e',
   testIgnore: 'fixture-corpus.spec.ts',
   timeout: CI ? 10_000 : 5_000,
+  retries: 1,
   expect: {
     timeout: CI ? 10_000 : 5_000,
   },

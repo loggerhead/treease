@@ -282,7 +282,6 @@ impl Encode for JsonEncoder {
         let root = node(store, node_id)?;
         if root.kind == TreeNodeKind::Scalar && self.prefs.unwrap_scalar {
             writer.write_all(root.value.as_bytes())?;
-            writer.write_all(b"\n")?;
             return Ok(());
         }
 

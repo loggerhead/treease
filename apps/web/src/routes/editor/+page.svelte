@@ -1,5 +1,6 @@
 <!-- 职责：Editor 路由页面：Editor/Viewport/TopBar/BottomBar 组件装配、跨组件事件编排、DOM 交互 -->
 <script lang="ts">
+  import { get } from 'svelte/store';
   import { onMount, tick } from 'svelte';
   import Editor from '../../lib/components/Editor.svelte';
   import TopBar from '../../lib/components/TopBar.svelte';
@@ -37,6 +38,7 @@
   import { computeSynchronizedRuntimeLoading, type RuntimeStateEventDetail } from '../../lib/runtime-loading';
   import { breadcrumbTargetForPath, type PathSeg } from '../../lib/store/tree-path';
   import type { DiffPlan } from '../../lib/graph/diff-plan';
+  import { serializePath } from '../../shared/document-anchor-utils';
   import {
     SquareChevronLeft,
     ArrowLeftToLine,
@@ -347,7 +349,6 @@
     if (!path.length || !syncScrollEnabled) return;
     viewerRef?.revealPath?.(path, { target: event.detail?.target });
   }
-
   function handleGraphReveal(payload: {
     path: PathSeg[];
     target?: 'key' | 'value' | 'node';
@@ -355,6 +356,17 @@
   }) {
     const path = payload?.path ?? [];
     if (!path.length || !syncScrollEnabled) return;
+
+    // `emitReveal` in graph-text-linkage already sets graphHighlight via
+    // syncTreeSelection before dispatching the reveal event. Skip this
+    // redundant update when the path matches — otherwise EditorCore.revealPath
+    // fires twice with different object references, causing duplicate
+    // resolvePathSelectionRangeSafe calls that race on the WASM worker.
+    const currentPath = get(activeTempModel)?.treePath ?? [];
+    if (currentPath.length && serializePath(currentPath) === serializePath(path)) {
+      return;
+    }
+
     updateTreeSelection(path, {
       target: payload?.target,
       source: payload?.trigger === 'search' ? 'search' : 'graph',

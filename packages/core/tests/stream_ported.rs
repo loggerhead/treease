@@ -367,11 +367,27 @@ fn streaming_json_keeps_nested_json_paths_stable() {
         .finish()
         .expect("nested json path decode should succeed");
 
-    // The nested-JSON path expansion in Rust may produce paths like
-    // "$.outer.inner" for MapStart or "$.outer" for the outer object.
-    // The key assertion is that nested expansion creates inner map
-    // events with non-empty paths, and at least one tail key reaches the
-    // nested level.
+    // nest expansion is disabled: no expansion flag, no source rewrites.
+    assert!(
+        !parser.nested_json_expanded(),
+        "nest_json=true should NOT set the nested_json_expanded flag — expansion is disabled"
+    );
+    let rewrites = parser.take_source_rewrites();
+    assert!(
+        rewrites.is_empty(),
+        "nest_json=true should NOT produce source rewrites — expansion is disabled, got {rewrites:?}"
+    );
+
+    // The outer string scalar retains its path.
+    let has_outer_scalar = events.iter().any(|event| {
+        matches!(
+            event,
+            StreamingEvent::Scalar { meta, .. } if meta.path == "$.outer"
+        )
+    });
+    assert!(has_outer_scalar, "expected Scalar at $.outer");
+
+    // No nested paths — nest expansion no longer emits nested tree events.
     let nested_paths: Vec<String> = events
         .iter()
         .filter_map(|event| match event {
@@ -383,17 +399,9 @@ fn streaming_json_keeps_nested_json_paths_stable() {
         .filter(|p| !p.is_empty())
         .collect();
 
-    // At minimum we should see the outer object path and inner paths.
     assert!(
-        nested_paths.iter().any(|p| p == "$.outer"),
-        "expected $.outer in: {nested_paths:?}"
-    );
-    // The tail key path differs between Zig (which normalises to "$.outer.tail")
-    // and Rust (which may include intermediate keys like "$.outer.inner.tail").
-    // Verify that both tail key and tail scalar are present at some nested path.
-    assert!(
-        nested_paths.iter().any(|p| p.contains(".tail")),
-        "expected '.tail' in nested paths: {nested_paths:?}"
+        !nested_paths.iter().any(|p| p.contains(".tail")),
+        "nest expansion no longer emits nested tree events — no '.tail' paths expected, got: {nested_paths:?}"
     );
 }
 

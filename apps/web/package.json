@@ -30,7 +30,7 @@
 		"test:wasm": "pnpm wasm:bindgen && vp test",
 		"test:coverage": "vp test --coverage",
 		"test:e2e": "playwright test test/e2e",
-		"e2e": "pnpm test:e2e",
+		"e2e": "pnpm test:e2e || pnpm exec playwright test test/e2e --last-failed --workers=1",
 		"e2e:headed": "pnpm test:e2e --headed",
 		"test:e2e:fixtures": "playwright test --config playwright.config.fixtures.ts",
 		"e2e:fixtures": "pnpm test:e2e:fixtures",

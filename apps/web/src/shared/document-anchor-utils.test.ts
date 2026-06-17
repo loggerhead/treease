@@ -1,6 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import { serializePath, byteOffsetToRowColumn, byteOffsetToUtf16Offset } from './document-anchor-utils';
 
+const COMPLEX_LONG_KEY =
+  'we___are___such___stuff___as___dreams___are___made___on___and___our___little___life___is___rounded___with___sleep';
+
 describe('serializePath', () => {
   it('returns $ for empty path', () => {
     expect(serializePath([])).toBe('$');
@@ -41,6 +44,14 @@ describe('serializePath', () => {
   it('uses bracket notation for keys with spaces', () => {
     const path = [{ tag: 0 as const, key: 'my key', index: 0 }];
     expect(serializePath(path)).toBe('$["my key"]');
+  });
+
+  it('serializes a long key with array index', () => {
+    const path = [
+      { tag: 0 as const, key: COMPLEX_LONG_KEY, index: 0 },
+      { tag: 1 as const, key: '', index: 16 },
+    ];
+    expect(serializePath(path)).toBe(`$.${COMPLEX_LONG_KEY}[16]`);
   });
 });
 
