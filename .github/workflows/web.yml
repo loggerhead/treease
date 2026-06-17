@@ -63,7 +63,7 @@ jobs:
         run: pnpm exec playwright install chromium
         working-directory: ${{ github.workspace }}/apps/web
       - name: Run E2E core tests
-        run: pnpm e2e:core
+        run: pnpm test:e2e:core
         working-directory: ${{ github.workspace }}/apps/web
       - name: Upload Playwright traces
         if: failure()

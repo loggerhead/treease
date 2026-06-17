@@ -139,11 +139,10 @@
 - `packages/core` fixture corpus：`cargo nextest run --locked --test corpus_runner --no-capture`
 - `apps/cli` CLI unit tests：`cd apps/cli && cargo nextest run --locked --lib`
 - `apps/cli` bash acceptance：`cd apps/cli && bash tests/acceptance/run.sh`
-- `apps/web` Vitest（单元 + 集成）：`pnpm test`
-- `apps/web` 全量测试（Vitest + 日常 E2E + fixtures E2E）：`pnpm test:all`
-- `apps/web` 分层 Vitest：`pnpm test:unit`、`pnpm test:integration`、`pnpm test:coverage`、`pnpm test:wasm`
-- `apps/web` E2E 核心链路（core）：`pnpm e2e:core`、`pnpm e2e:core:headed`
-- `apps/web` E2E：`pnpm test:e2e`、`pnpm e2e:headed`、`pnpm test:e2e:fixtures`、`pnpm e2e:fixtures:headed`
+- `apps/web` 全量测试（单元 + E2E core）：`pnpm test`
+- `apps/web` 全量+（全量 + 日常 E2E + fixtures E2E）：`pnpm test:all`
+- `apps/web` 分层：`pnpm test:unit`、`pnpm test:integration`、`pnpm test:coverage`、`pnpm test:wasm`
+- `apps/web` E2E：`pnpm test:e2e`、`pnpm test:e2e:headed`、`pnpm test:e2e:fixtures`、`pnpm test:e2e:fixtures:headed`、`pnpm test:e2e:core`、`pnpm test:e2e:core:headed`
 
 ## AI 执行约定
 - agent 运行 `packages/core` 测试时，统一使用 `cargo nextest run`（替代 `cargo test` 以避免编译全部集成测试文件）。例外：WASM 测试、需要在单进程内验证非线程安全行为的场景仍需使用 `cargo test`。fixture corpus 也使用 `cargo nextest`，项目级并发限制由 `nextest.toml` 控制。
