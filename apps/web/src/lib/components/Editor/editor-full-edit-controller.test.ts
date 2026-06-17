@@ -285,6 +285,15 @@ describe('editor-full-edit-controller', () => {
     await vi.waitFor(() => {
       expect(options.setEditorValue).toHaveBeenLastCalledWith('{\n  "a": 1\n}');
     });
+    expect(mockStartDocumentJobForGraph).toHaveBeenCalledWith(
+      expect.objectContaining({
+        settings: expect.objectContaining({
+          formatting: expect.objectContaining({
+            formatSourceOnClose: true,
+          }),
+        }),
+      }),
+    );
   });
 
   it('ignores stale intake results after a newer full-edit session starts', async () => {
@@ -420,12 +429,22 @@ describe('editor-full-edit-controller', () => {
       text: '"{\\"a\\":1}"',
       reason: 'whole-document-replacement',
       sourceWritebackPolicy: 'submitted',
+      formatSourceOnClose: false,
     });
 
     await vi.waitFor(() => {
       expect(options.setEditorValue).toHaveBeenCalledTimes(1);
     });
     expect(options.setEditorValue).toHaveBeenLastCalledWith('"{\\"a\\":1}"');
+    expect(mockStartDocumentJobForGraph).toHaveBeenCalledWith(
+      expect.objectContaining({
+        settings: expect.objectContaining({
+          formatting: expect.objectContaining({
+            formatSourceOnClose: false,
+          }),
+        }),
+      }),
+    );
   });
 
   it('publishes sidecar full-edit state through the injected sink only', async () => {

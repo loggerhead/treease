@@ -64,6 +64,14 @@
   export let enableRevealSync = true;
   export let synchronizedRuntimeLoading = false;
 
+  type QueuedWholeDocumentReplacement = {
+    text: string;
+    sourceWritebackPolicy?: 'intake' | 'submitted';
+    formatSourceOnClose?: boolean;
+    shouldResolveLanguage?: boolean;
+    markUserInput?: boolean;
+  };
+
   const dispatch = createEventDispatcher<{ 'runtime-state': RuntimeStateEventDetail }>();
 
   let monaco: typeof import('monaco-editor');
@@ -91,7 +99,7 @@
   let wholeDocumentReplacementToken = 0;
   let formattingOptionsValue;
   let suppressNextWholeDocumentAutoGuess = false;
-  let preserveNextWholeDocumentSourceText = false;
+  let queuedWholeDocumentReplacement: QueuedWholeDocumentReplacement | null = null;
   let editorRevisionValue = 0;
   const userInputByTabId = new Map<string, boolean>();
   let refreshSemanticTokensForLanguage: (languageId?: string) => void = () => {};
@@ -287,7 +295,13 @@
     getNestEnabled,
     isImportActive: () => editorFullEditController.isImportActive(),
     callWasmWorker: callWasmWorkerFromEditor,
-    setEditorValue,
+    replaceWholeDocumentText: (value, kind) =>
+      queueWholeDocumentReplacement(value, {
+        sourceWritebackPolicy: 'intake',
+        formatSourceOnClose: kind === 'sort',
+        shouldResolveLanguage: false,
+        markUserInput: true,
+      }),
     resetEditorCursorToStart,
   });
 
@@ -453,7 +467,12 @@
           editor?.setValue(value);
         },
         setValueForTestHook: (value: string) => {
-          setEditorValuePreservingWholeDocumentSourceText(value);
+          queueWholeDocumentReplacement(value, {
+            sourceWritebackPolicy: 'submitted',
+            formatSourceOnClose: false,
+            shouldResolveLanguage: false,
+            markUserInput: true,
+          });
         },
         focus: () => editor?.focus(),
         setPosition: (position) => editor?.setPosition(position),
@@ -461,7 +480,8 @@
         getScrollTop: () => editor?.getScrollTop() ?? 0,
         getScrollLeft: () => editor?.getScrollLeft() ?? 0,
         setScrollPosition: (position) => editor?.setScrollPosition(position),
-        executeEdits: (source, edits) => editor?.executeEdits(source, edits),
+        executeEdits: (source, edits) =>
+          editor?.executeEdits(source, edits as Monaco.editor.IIdentifiedSingleEditOperation[]),
         onDidChangeModel: (listener) => editor?.onDidChangeModel(listener) ?? { dispose: () => {} },
         getModel: () => editor?.getModel() ?? null,
       },
@@ -537,11 +557,16 @@
       lastModelText = nextText;
       const shouldRotateDocumentKey = Boolean(wholeDocumentReplacement);
       if (shouldRotateDocumentKey) {
-        const nextDocumentKey = rotateActiveDocumentKey();
+        rotateActiveDocumentKey();
         if (editorFullEditController.suppressNextWholeDocumentIntake()) {
           releaseStoreUpdateSuppression();
           return;
         }
+        const queuedReplacement =
+          queuedWholeDocumentReplacement && queuedWholeDocumentReplacement.text === nextText
+            ? queuedWholeDocumentReplacement
+            : null;
+        queuedWholeDocumentReplacement = null;
         activeTempModel.update((current) => ({
           ...current,
           treePath: [],
@@ -553,8 +578,12 @@
         const currentLanguage = languageIdValue;
         const preparedRevision = editorRevisionValue;
         const replacementToken = ++wholeDocumentReplacementToken;
-        const sourceWritebackPolicy = preserveNextWholeDocumentSourceText ? 'submitted' : 'intake';
-        preserveNextWholeDocumentSourceText = false;
+        const sourceWritebackPolicy = queuedReplacement?.sourceWritebackPolicy ?? 'intake';
+        const formatSourceOnClose = queuedReplacement?.formatSourceOnClose ?? true;
+        const shouldResolveLanguage =
+          queuedReplacement?.shouldResolveLanguage ??
+          (!shouldSkipWholeDocumentAutoGuess && wholeDocumentReplacement.text.trim().length >= 8);
+        const shouldMarkUserInput = queuedReplacement?.markUserInput ?? true;
         editorStore.actions.prepareFullEditStream({
           documentKey: documentKeyValue,
           revision: preparedRevision,
@@ -578,7 +607,7 @@
         void settleWholeDocumentReplacement({
           text: nextText,
           currentLanguage,
-          shouldResolveLanguage: !shouldSkipWholeDocumentAutoGuess && wholeDocumentReplacement.text.trim().length >= 8,
+          shouldResolveLanguage,
           resolveLanguage: resolveWholeDocumentReplacementLanguage,
           onResolveLanguageError: (error) => {
             console.error('[editor] whole-document language detection failed', error);
@@ -588,15 +617,13 @@
             if (language !== currentLanguage) toast.success(`Detected ${language.toUpperCase()} input`);
           },
           commitWholeDocumentReplacement: async (language) => {
-            markActiveTabUserInput(true);
-            if (sourceWritebackPolicy === 'submitted') {
-              editorFullEditController.setSuppressNextFormatSource(true);
-            }
+            if (shouldMarkUserInput) markActiveTabUserInput(true);
             await editorFullEditController.startFullEditSession({
               language,
               text: nextText,
               reason: 'whole-document-replacement',
               sourceWritebackPolicy,
+              formatSourceOnClose,
               documentKey: documentKeyValue,
               isFresh: isReplacementCurrent,
             });
@@ -775,11 +802,17 @@
     return true;
   }
 
-  function setEditorValuePreservingWholeDocumentSourceText(value: string): boolean {
-    preserveNextWholeDocumentSourceText = true;
+  function queueWholeDocumentReplacement(
+    value: string,
+    options: Omit<QueuedWholeDocumentReplacement, 'text'> = {},
+  ): boolean {
+    queuedWholeDocumentReplacement = {
+      text: value,
+      ...options,
+    };
     const changed = setEditorValue(value);
     if (!changed) {
-      preserveNextWholeDocumentSourceText = false;
+      queuedWholeDocumentReplacement = null;
     }
     return changed;
   }
@@ -971,12 +1004,10 @@
   }
 
   export function formatActive() {
-    editorFullEditController.setSuppressNextFormatSource(true);
     return editorFormatController.formatActive();
   }
 
   export function minifyActive() {
-    editorFullEditController.setSuppressNextFormatSource(true);
     return editorFormatController.minifyActive();
   }
 
@@ -1013,7 +1044,12 @@
     }
     try {
       const result = JSON.stringify(text);
-      setEditorValuePreservingWholeDocumentSourceText(result);
+      queueWholeDocumentReplacement(result, {
+        sourceWritebackPolicy: 'submitted',
+        formatSourceOnClose: false,
+        shouldResolveLanguage: false,
+        markUserInput: true,
+      });
       resetEditorCursorToStart();
       toast.success('Escape completed');
     } catch (error) {
@@ -1037,7 +1073,12 @@
       } else {
         result = JSON.stringify(parsed, null, 2);
       }
-      setEditorValuePreservingWholeDocumentSourceText(result);
+      queueWholeDocumentReplacement(result, {
+        sourceWritebackPolicy: 'submitted',
+        formatSourceOnClose: false,
+        shouldResolveLanguage: false,
+        markUserInput: true,
+      });
       resetEditorCursorToStart();
       toast.success('Unescape completed');
     } catch (error) {

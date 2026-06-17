@@ -11,7 +11,7 @@ export default defineConfig({
     timeout: CI ? 10_000 : 5_000,
   },
   fullyParallel: true,
-  workers: '50%',
+  workers: CI ? 1 : '50%',
   reporter: 'dot',
   use: {
     baseURL: 'http://127.0.0.1:4173',

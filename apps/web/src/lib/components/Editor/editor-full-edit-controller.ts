@@ -56,6 +56,7 @@ type FullEditSession = {
   reason: FullEditReason;
   transportKind: FullEditTransportKind;
   sourceWritebackPolicy: SourceWritebackPolicy;
+  formatSourceOnClose: boolean;
   decoder: TextDecoder;
   inputByteLength: number;
   streamSeq: number;
@@ -106,7 +107,6 @@ type CreateEditorFullEditControllerOptions = {
 export function createEditorFullEditController(options: CreateEditorFullEditControllerOptions) {
   let importSession: FullEditSession | null = null;
   let importOnlyToken = 0;
-  let suppressNextFormatSource = false;
   let suppressNextWholeDocumentIntake = false;
   const fullEditSink = options.fullEditSink ?? createPrimaryFullEditSink();
 
@@ -120,9 +120,7 @@ export function createEditorFullEditController(options: CreateEditorFullEditCont
     alignObjectArrays: true,
   };
 
-  function documentJobSettingsFor() {
-    const formatSourceOnClose = !suppressNextFormatSource;
-    suppressNextFormatSource = false;
+  function documentJobSettingsFor(formatSourceOnClose = true) {
     return buildDocumentJobSettings({
       enableNest: options.getNestEnabled(),
       formatting: {
@@ -340,6 +338,7 @@ export function createEditorFullEditController(options: CreateEditorFullEditCont
     transportKind: FullEditTransportKind;
     editorReadOnly: boolean;
     sourceWritebackPolicy: SourceWritebackPolicy;
+    formatSourceOnClose: boolean;
     documentKey?: string;
     isFresh?: () => boolean;
   }): Promise<FullEditSession | null> {
@@ -369,6 +368,7 @@ export function createEditorFullEditController(options: CreateEditorFullEditCont
       reason: params.reason,
       transportKind: params.transportKind,
       sourceWritebackPolicy: params.sourceWritebackPolicy,
+      formatSourceOnClose: params.formatSourceOnClose,
       decoder: new TextDecoder(),
       inputByteLength: 0,
       streamSeq: 0,
@@ -410,6 +410,7 @@ export function createEditorFullEditController(options: CreateEditorFullEditCont
       transportKind: 'file',
       editorReadOnly: true,
       sourceWritebackPolicy: 'intake',
+      formatSourceOnClose: true,
     });
     if (!session) return null;
     options.setEditorValue('');
@@ -433,6 +434,7 @@ export function createEditorFullEditController(options: CreateEditorFullEditCont
     >;
     transportKind?: FullEditTransportKind;
     sourceWritebackPolicy?: SourceWritebackPolicy;
+    formatSourceOnClose?: boolean;
     documentKey?: string;
     isFresh?: () => boolean;
   }): Promise<number> {
@@ -444,6 +446,7 @@ export function createEditorFullEditController(options: CreateEditorFullEditCont
       transportKind: params.transportKind ?? 'memory',
       editorReadOnly: false,
       sourceWritebackPolicy: params.sourceWritebackPolicy ?? 'intake',
+      formatSourceOnClose: params.formatSourceOnClose ?? true,
       documentKey: params.documentKey,
       isFresh: params.isFresh,
     });
@@ -474,7 +477,7 @@ export function createEditorFullEditController(options: CreateEditorFullEditCont
       documentKey: session.documentKey,
       language: session.language,
       text: session.visibleText,
-      settings: documentJobSettingsFor(),
+      settings: documentJobSettingsFor(session.formatSourceOnClose),
       revision: session.revision,
       builderConfig: options.getGraphBuilderConfig(),
       isFresh: isSessionCurrent,
@@ -777,9 +780,6 @@ export function createEditorFullEditController(options: CreateEditorFullEditCont
     handleDrop,
     flushPendingText,
     suppressNextWholeDocumentIntake: () => suppressNextWholeDocumentIntake,
-    setSuppressNextFormatSource: (value: boolean) => {
-      suppressNextFormatSource = value;
-    },
     dispose,
   };
 }

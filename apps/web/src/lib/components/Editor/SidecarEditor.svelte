@@ -79,6 +79,7 @@
     updateActiveTempModel: updateSidecarTempModel,
     commitEditorState: commitSidecarEditorState,
     applyGraphAnalysis: applySidecarGraphAnalysis,
+    triggerGraphSync: () => {},
   });
 
   function sidecarDocumentKey(): string {

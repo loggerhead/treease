@@ -17,7 +17,7 @@ type CreateEditorFormatControllerOptions = {
   getNestEnabled: () => boolean;
   isImportActive: () => boolean;
   callWasmWorker: <T>(method: string, input: unknown) => Promise<T>;
-  setEditorValue: (value: string) => boolean;
+  replaceWholeDocumentText: (value: string, kind: FormatCommandKind) => boolean;
   resetEditorCursorToStart: () => void;
 };
 
@@ -45,7 +45,7 @@ export function createEditorFormatController(options: CreateEditorFormatControll
       });
       if (typeof nextText === 'string') {
         if (nextText !== text) {
-          options.setEditorValue(nextText);
+          options.replaceWholeDocumentText(nextText, kind);
         }
         options.resetEditorCursorToStart();
       }

@@ -23,7 +23,7 @@ function createOptions(overrides: Record<string, unknown> = {}) {
     getNestEnabled: vi.fn(() => true),
     isImportActive: vi.fn(() => false),
     callWasmWorker: vi.fn(async () => '{\n  "a": 1,\n  "b": 2\n}'),
-    setEditorValue: vi.fn(() => true),
+    replaceWholeDocumentText: vi.fn(() => true),
     resetEditorCursorToStart: vi.fn(),
     ...overrides,
   } as any;
@@ -45,7 +45,7 @@ describe('createEditorFormatController', () => {
       text: '{"b":2,"a":1}',
       options: { indent: 2, nest: true },
     });
-    expect(options.setEditorValue).toHaveBeenCalledWith('{\n  "a": 1,\n  "b": 2\n}');
+    expect(options.replaceWholeDocumentText).toHaveBeenCalledWith('{\n  "a": 1,\n  "b": 2\n}', 'format');
     expect(options.resetEditorCursorToStart).toHaveBeenCalledTimes(1);
     expect(vi.mocked(toast.loading)).toHaveBeenCalledWith('Format queued...');
     expect(vi.mocked(toast.success)).toHaveBeenCalledWith('Format completed', { id: 'toast-id' });
@@ -59,7 +59,7 @@ describe('createEditorFormatController', () => {
 
     await controller.sortActive();
 
-    expect(options.setEditorValue).not.toHaveBeenCalled();
+    expect(options.replaceWholeDocumentText).not.toHaveBeenCalled();
     expect(options.resetEditorCursorToStart).toHaveBeenCalledTimes(1);
     expect(vi.mocked(toast.info)).toHaveBeenCalledWith('Sort completed (no changes)', { id: 'toast-id' });
   });
