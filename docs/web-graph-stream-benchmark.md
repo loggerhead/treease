@@ -3,7 +3,7 @@
 ## 目的
 
 - 比较 `apps/web` 真实页面链路下不同 graph stream chunk size 的表现。
-- 输入固定来自仓库根目录 `test/fixtures/{json,toml,yaml}` 的 raw valid fixture。
+- 输入固定来自仓库根目录 `test/fixtures/json/`、`test/fixtures/toml/`、`test/fixtures/yaml/` 的 raw valid fixture。
 - 输出不是单个 case 的快慢，而是 bucket-level 的 throughput / smoothness 推荐与回归比较结果。
 
 ## 冻结口径

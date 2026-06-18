@@ -33,6 +33,7 @@ same-language File.stream()
 - `runIntakeJob()` 不是 same-language 文件流式主链；它更多服务于 full-edit / converted import。
 - same-language 文件导入会把 `File.stream()` tee 成“刷新编辑器文本”和“推进 DocumentJob”两路。
 - JSON streaming 期间 graph 输出由 `StreamingGraphProjector` 管理；事件是单调追加/更新，不靠 close 后再补一份“真正结果”。
+- `parser.enableNest` 生效时，JSON decoder 会在 Core 侧直接把字符串化 nested JSON 展开成事件并重绑到外层 path；chunk 期 `ProjectionDelta`、close 后 `SnapshotReady.sourceText` 与后续 snapshot-bound 查询必须看到同一套 nested path。
 - pending empty sequence / pending header-table schema 在 presentation 稳定前不应提前暴露成错误 graph node。
 
 ### 2. 非 JSON 假流式

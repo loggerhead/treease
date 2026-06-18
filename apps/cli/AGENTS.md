@@ -11,5 +11,6 @@
 - 文档、命令、测试入口必须与 `Cargo.toml` 和 `tests/acceptance/run.sh` 保持一致。
 
 ## 验证
-- CLI 逻辑：在当前目录运行 `cargo nextest run --locked --lib`
-- CLI acceptance：在当前目录运行 `bash tests/acceptance/run.sh`
+- CLI 逻辑：运行 `cd apps/cli && cargo nextest run --locked --lib`
+- CLI acceptance：运行 `cd apps/cli && bash tests/acceptance/run.sh`
+- CLI 元数据快照：运行 `cd apps/cli && cargo run --locked --bin export_cli_metadata`

@@ -15,7 +15,7 @@ These operators are useful when a document contains stringified embedded YAML/JS
 
 This page documents the registry-backed codec capabilities that are currently usable in expressions. The parser currently recognizes `@uri` / `@urid`, but the active codec registry does not register a URI encoder/decoder, so URI is intentionally omitted here.
 
-See CSV [documentation](../usage/csv.md) for accepted formats.
+See CSV [documentation](../formats/csv.md) for accepted formats.
 
 
 Base64 assumes [rfc4648](https://rfc-editor.org/rfc/rfc4648.html) encoding. Encoding and decoding both assume that the content is a utf-8 string and not binary content.

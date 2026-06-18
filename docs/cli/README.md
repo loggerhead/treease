@@ -45,6 +45,9 @@ Expression evaluation failures are reported in the terminal and do not start a s
 - `../generated/cli-help.json`
 - `../generated/operators.json`
 - `../generated/formats.json`
+- 刷新命令：运行 `cd apps/cli && cargo run --locked --bin export_cli_metadata`
+
+手写格式说明入口见 `../formats/README.md`；生成 JSON 快照反映当前构建支持的 CLI 格式与能力。
 
 ## Error Codes
 

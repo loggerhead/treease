@@ -55,6 +55,7 @@ ApplyEdits
 - `snapshot.incremental.can_resume`
 - `snapshot.incremental.graph_model` / `graph_model_index`
 - `snapshot.incremental.structural_span_index`
+- whole-document replacement / format / minify 的最终写回文本统一取 `SnapshotReady.sourceText`。
 
 ## 2. Graph → Editor
 

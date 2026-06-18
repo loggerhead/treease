@@ -26,6 +26,7 @@
 - 主文档 graph 只消费 `DocumentJob` 事件与 `SnapshotReady.mainGraph`；不要回到 `buildProjection('mainGraph')` 或其他 read API 补主图。
 - snapshot-bound read API 必须显式带 `snapshotId`；缺少时返回 `SnapshotNotReady`，不得在读取 API 内偷偷建 snapshot。
 - hover 子图唯一入口是 `buildHoverSubgraphProjection({ snapshotId, path })`。
+- `SnapshotReady.sourceText` 是 editor/store 的 authoritative 写回文本；`parseFailed` 不提供替换用 `sourceText`。
 - `getDiagnostics`、`parseToTree`、`parseValueToTree` 只做瞬时探测或非主文档缓存，不得回流成主文档 authority。
 - JSON block 容错渲染只是光标派生 UI 状态；整文 invalid JSON 仍走 diagnostics-only 主链，不替代主文档 authoritative analysis。
 - Monaco 语言高亮必须来自 Core/WASM 主链；禁止引入 `monaco-editor/esm/vs/basic-languages/*/*.contribution`，唯一例外是 settings 的 JSON 配置编辑。

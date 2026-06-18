@@ -5,6 +5,8 @@ import { fileURLToPath } from 'node:url';
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 const governanceDocs = collectGovernanceDocs();
+const cargoBinsByDir = collectCargoBinNamesByDir();
+const cargoBins = new Set([...cargoBinsByDir.values()].flatMap((bins) => [...bins]));
 
 const errors = [];
 
@@ -36,43 +38,132 @@ function collectRootMarkdownFiles() {
 }
 
 function collectGovernanceDocs() {
-  return [...collectRootMarkdownFiles(), ...collectMarkdownFiles('docs')]
+  return [
+    ...new Set([
+      ...collectRootMarkdownFiles(),
+      ...collectMarkdownFiles('docs'),
+      ...collectNamedFiles('apps', 'AGENTS.md'),
+      ...collectNamedFiles('packages', 'AGENTS.md'),
+    ]),
+  ]
     .filter(
       (path) =>
         !path.startsWith('docs/dev-loop/') && !path.startsWith('docs/superpowers/plans/'),
     );
 }
 
-function walkRepo(relativePath, results) {
+function collectNamedFiles(relativePath, targetName) {
+  const results = [];
+  walkRepo(relativePath, results, { matchAllFiles: true });
+  return results
+    .filter((item) => path.basename(item) === targetName)
+    .map((item) => normalizeRelativePath(item))
+    .sort();
+}
+
+function walkRepo(relativePath, results, options = {}) {
+  const { matchAllFiles = false } = options;
   const absolutePath = path.join(repoRoot, relativePath);
   if (!existsSync(absolutePath)) return;
   const stats = statSync(absolutePath);
   if (stats.isDirectory()) {
+    if (shouldSkipDir(relativePath)) return;
     for (const entry of readdirSync(absolutePath)) {
-      walkRepo(path.join(relativePath, entry), results);
+      walkRepo(path.join(relativePath, entry), results, options);
     }
     return;
   }
-  if (/\.(md|svelte|ts|tsx|js|mjs|json|yml|yaml)$/.test(relativePath)) {
+  if (matchAllFiles || /\.(md|svelte|ts|tsx|js|mjs|json|yml|yaml)$/.test(relativePath)) {
     results.push(relativePath);
   }
+}
+
+function shouldSkipDir(relativePath) {
+  const base = path.basename(relativePath);
+  return [
+    '.git',
+    '.tmp',
+    '.venv',
+    '.venv-playwright',
+    'node_modules',
+  ].includes(base);
+}
+
+function isPlaceholderToken(token) {
+  return /[<>{}]/.test(token);
 }
 
 function isLikelyPathToken(token) {
   if (token.includes('://') || token.startsWith('file:///')) return false;
   if (token.includes(' ')) return false;
   if (token.includes('*')) return false;
+  if (isPlaceholderToken(token)) return false;
   if (/^(pnpm|node|git|vp|playwright)\b/.test(token)) return false;
   if (/^[A-Za-z0-9_-]+:$/.test(token)) return false;
-  return /^(\.\.\/|\.\/|apps\/|packages\/|doc\/|scripts\/|\.github\/)/.test(token);
+  return /^(\.\.\/|\.\/|apps\/|packages\/|docs\/|test\/|scripts\/|\.github\/)/.test(token);
 }
 
-function resolveDocPath(docPath, token) {
+function isLikelyMarkdownLinkTarget(token) {
+  if (!token || token.startsWith('#')) return false;
+  if (/^(https?:|mailto:|file:)/.test(token)) return false;
+  if (isPlaceholderToken(token)) return false;
+  return true;
+}
+
+function collectInlineCodeTokens(content) {
+  return [...content.matchAll(/`([^`\n]+)`/g)].map((match) => match[1].trim());
+}
+
+function collectMarkdownLinkTargets(content) {
+  return [...content.matchAll(/\[[^\]]+\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g)].map((match) =>
+    match[1].trim(),
+  );
+}
+
+function collectCargoBinNamesByDir() {
+  const manifests = [
+    ...collectNamedFiles('apps', 'Cargo.toml'),
+    ...collectNamedFiles('packages', 'Cargo.toml'),
+  ];
+  const binsByDir = new Map();
+  for (const manifestPath of manifests) {
+    const content = readRepoFile(manifestPath);
+    const dir = normalizeRelativePath(path.dirname(manifestPath));
+    const bins = new Set();
+    let inBin = false;
+    for (const rawLine of content.split('\n')) {
+      const line = rawLine.trim();
+      if (line === '[[bin]]') {
+        inBin = true;
+        continue;
+      }
+      if (line.startsWith('[')) {
+        inBin = false;
+      }
+      if (!inBin) continue;
+      const match = line.match(/^name\s*=\s*"([^"]+)"/);
+      if (match) bins.add(match[1]);
+    }
+    binsByDir.set(dir, bins);
+  }
+  return binsByDir;
+}
+
+function resolveInlineDocPath(docPath, token) {
   const [cleanToken] = token.split('#');
   const baseDir = path.dirname(path.join(repoRoot, docPath));
   return cleanToken.startsWith('./') || cleanToken.startsWith('../')
     ? path.resolve(baseDir, cleanToken)
     : path.resolve(repoRoot, cleanToken);
+}
+
+function resolveMarkdownLinkTarget(docPath, token) {
+  const [cleanToken] = token.split('#');
+  const baseDir = path.dirname(path.join(repoRoot, docPath));
+  if (/^(apps\/|packages\/|docs\/|test\/|scripts\/|\.github\/)/.test(cleanToken)) {
+    return path.resolve(repoRoot, cleanToken);
+  }
+  return path.resolve(baseDir, cleanToken);
 }
 
 function validateLineFragment(docPath, token, resolved, collector) {
@@ -93,10 +184,21 @@ function validateLineFragment(docPath, token, resolved, collector) {
 }
 
 function validateDocPaths(docPath, content, collector = fail) {
-  const tokens = [...content.matchAll(/`([^`\n]+)`/g)].map((match) => match[1].trim());
-  for (const token of tokens) {
-    if (!isLikelyPathToken(token)) continue;
-    const resolved = resolveDocPath(docPath, token);
+  const inlineTokens = new Set(collectInlineCodeTokens(content).filter(isLikelyPathToken));
+  for (const token of inlineTokens) {
+    const resolved = resolveInlineDocPath(docPath, token);
+    if (!existsSync(resolved)) {
+      collector(`${docPath}: 路径不存在 -> ${token}`);
+      continue;
+    }
+    validateLineFragment(docPath, token, resolved, collector);
+  }
+
+  const markdownTargets = new Set(
+    collectMarkdownLinkTargets(content).filter(isLikelyMarkdownLinkTarget),
+  );
+  for (const token of markdownTargets) {
+    const resolved = resolveMarkdownLinkTarget(docPath, token);
     if (!existsSync(resolved)) {
       collector(`${docPath}: 路径不存在 -> ${token}`);
       continue;
@@ -106,13 +208,44 @@ function validateDocPaths(docPath, content, collector = fail) {
 }
 
 function validateCommands(docPath, content, webScripts) {
-  const lines = content.split('\n');
-  for (const rawLine of lines) {
-    const line = rawLine.trim();
-    if (!line || line.startsWith('#')) continue;
+  for (const token of collectInlineCodeTokens(content)) {
+    validateCommandToken(docPath, token, webScripts);
+  }
+}
 
-    if (line.startsWith('pnpm ')) {
-      const command = line.split(/\s+/)[1];
+function resolveCommandPath(cwd, targetPath) {
+  return path.resolve(cwd, targetPath);
+}
+
+function findCargoManifestDir(cwd) {
+  let currentDir = cwd;
+  while (currentDir.startsWith(repoRoot)) {
+    if (existsSync(path.join(currentDir, 'Cargo.toml'))) return currentDir;
+    if (currentDir === repoRoot) break;
+    currentDir = path.dirname(currentDir);
+  }
+  return null;
+}
+
+function validateCommandToken(docPath, token, webScripts) {
+  let cwd = repoRoot;
+  for (const rawSegment of token.split('&&')) {
+    const segment = rawSegment.trim();
+    if (!segment) continue;
+
+    if (segment.startsWith('cd ')) {
+      const targetPath = segment.slice('cd '.length).trim().split(/\s+/)[0];
+      const resolved = resolveCommandPath(cwd, targetPath);
+      if (!existsSync(resolved)) {
+        fail(`${docPath}: cd 目标不存在 -> ${targetPath}`);
+        continue;
+      }
+      cwd = resolved;
+      continue;
+    }
+
+    if (segment.startsWith('pnpm ')) {
+      const command = segment.split(/\s+/)[1];
       if (!command || ['install', 'exec', 'dlx'].includes(command)) continue;
       if (!webScripts[command]) {
         fail(`${docPath}: 未在 apps/web/package.json 中找到脚本 -> pnpm ${command}`);
@@ -120,13 +253,36 @@ function validateCommands(docPath, content, webScripts) {
       continue;
     }
 
-    if (line.startsWith('node ')) {
-      const scriptPath = line.slice('node '.length).trim().split(/\s+/)[0];
-      const resolved = path.resolve(repoRoot, scriptPath);
+    if (segment.startsWith('node ')) {
+      const scriptPath = segment.slice('node '.length).trim().split(/\s+/)[0];
+      if (!scriptPath || scriptPath.startsWith('-')) continue;
+      const resolved = resolveCommandPath(cwd, scriptPath);
       if (!existsSync(resolved)) {
         fail(`${docPath}: Node 脚本不存在 -> ${scriptPath}`);
       }
       continue;
+    }
+
+    if (segment.startsWith('bash ')) {
+      const scriptPath = segment.slice('bash '.length).trim().split(/\s+/)[0];
+      const resolved = resolveCommandPath(cwd, scriptPath);
+      if (!existsSync(resolved)) {
+        fail(`${docPath}: Bash 脚本不存在 -> ${scriptPath}`);
+      }
+      continue;
+    }
+
+    if (segment.startsWith('cargo run ')) {
+      const match = segment.match(/--bin\s+([A-Za-z0-9_-]+)/);
+      if (!match) continue;
+      const manifestDir = findCargoManifestDir(cwd);
+      const knownBins = manifestDir
+        ? cargoBinsByDir.get(normalizeRelativePath(path.relative(repoRoot, manifestDir))) ??
+          cargoBins
+        : cargoBins;
+      if (!knownBins.has(match[1])) {
+        fail(`${docPath}: Cargo bin 不存在 -> ${match[1]}`);
+      }
     }
   }
 }

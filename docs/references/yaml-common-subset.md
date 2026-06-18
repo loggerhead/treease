@@ -36,10 +36,11 @@
 
 ## 当前失败集分类
 
-当前 `test/fixtures/failure.txt` 中失败的 YAML fixture 按以下原则分类：
+仓库当前不再维护集中式 YAML 失败清单文件；YAML fixture 是否进入常规回归集，直接以目录归属为准：
 
 - 保留在 `test/fixtures/yaml/`：只保留仍属于常见子集、需要继续修复的样例。
-- 迁移到 `test/fixtures/yaml-rare/`：凡是依赖上述高级特性的失败样例，统一视为罕见语法。
+- 迁移到 `test/fixtures/yaml-rare/`：凡是依赖上述高级特性的样例，统一视为罕见语法。
+- `test/fixtures/yaml-rare/README.md`：记录 rare fixture 的整体范围与排除原因。
 
 当前保留在常规 YAML 目录中的失败样例只有空流：
 

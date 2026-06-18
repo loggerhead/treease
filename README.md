@@ -33,7 +33,7 @@ flowchart LR
 - WASM 构建 / 协议生成：在 `apps/web/` 执行 `pnpm wasm:bindgen`；影响运行时编解码时继续执行 `pnpm wasm:sync`
 - Core：在 `packages/core/` 执行 `cargo nextest run --locked`；fixture corpus 可执行 `cargo nextest run --locked --test corpus_runner --no-capture`
 - Core 辅助生成：在 `packages/core/` 执行 `cargo run --locked --bin export_language_support`、`cargo run --locked --bin sync_examples`、`cargo run --locked --bin export_registry_doc`
-- CLI：默认实现在 `apps/cli/src/lib.rs`；在 `apps/cli/` 执行 `cargo nextest run --locked --lib`、`cargo run --locked --bin treease -- [args]`、`bash tests/acceptance/run.sh`
+- CLI：默认实现在 `apps/cli/src/lib.rs`；常用命令：`cd apps/cli && cargo nextest run --locked --lib`、`cd apps/cli && cargo run --locked --bin treease -- [args]`、`cd apps/cli && bash tests/acceptance/run.sh`、`cd apps/cli && cargo run --locked --bin export_cli_metadata`
 - 文档一致性：在仓库根目录执行 `node scripts/check-docs.mjs`
 
 ## 当前技术栈
@@ -51,10 +51,11 @@ flowchart LR
 - 完整索引见 `docs/README.md`。
 - Agent 领域术语与文档运行时规范见 `CONTEXT.md`。
 - 全局规则：`docs/CODING.md`、`docs/TESTING.md`、`docs/FRONTEND.md`、`docs/CORE.md`
-- 产品与能力参考：`docs/user-stories.md`、`docs/operators/README.md`、`docs/usage/README.md`、`docs/references/core/README.md`
+- 产品与能力参考：`docs/user-stories.md`、`docs/operators/README.md`、`docs/formats/README.md`、`docs/references/README.md`
 
 ## 高频任务
 - 修改文档协议字段：先改 `packages/core/src/document/protocol.rs`，再在 `packages/core/` 执行 `cargo run --locked --bin export_document_protocol`
+- 刷新 CLI 帮助 / 算子 / 格式快照：运行 `cd apps/cli && cargo run --locked --bin export_cli_metadata`
 - `pnpm wasm:bindgen` 已重新用于文档协议生成：运行 `cargo run --locked --bin export_document_protocol` + `wasm-pack build`；旧 `types.json` / 旧 binding 体系已清理删除。
 - 调整 CLI 行为：先读 `apps/cli/AGENTS.md` 与 `apps/cli/src/main.rs`
 - 调整 Web 行为：先读 `apps/web/AGENTS.md` 与 `docs/FRONTEND.md`
