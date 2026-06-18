@@ -62,10 +62,9 @@ fn json_format_with_spans_records_nested_value_span() {
     let formatted = format_json_document_with_spans(&decoded, &prefs).expect("format with spans");
     assert!(formatted.text.contains("\"nested\""));
 
-    // The tree preserves the original structure (string value) — formatting
-    // produces the original JSON with escaped string, not the expanded form.
-    assert!(formatted.text.contains("\\\"inner\\\""));
-    // The nested node is a string in the tree (original structure).
+    // Nest expansion is enabled, so the nested JSON is expanded inline.
+    assert!(formatted.text.contains("\"inner\":"));
+    // The nested node is a map in the tree (expanded from the original string).
     let nested_str = find_node_by_path(
         decoded.root,
         &[path_seg_key("nested")],
@@ -78,7 +77,7 @@ fn json_format_with_spans_records_nested_value_span() {
         .iter()
         .find(|span| span.node_id == nested_str)
         .expect("nested span recorded");
-    assert!(formatted.text[span.start_byte as usize..].starts_with("\""));
+    assert!(formatted.text[span.start_byte as usize..].starts_with("{"));
 }
 
 #[test]

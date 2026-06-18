@@ -278,22 +278,43 @@ fn json_nested_option_ported_controls_nested_string_expansion() {
     )
     .unwrap();
 
-    for (label, events) in [("disabled", &disabled), ("enabled", &enabled)] {
-        assert!(
-            events.iter().any(|event| matches!(
-                event,
-                StreamingEvent::Scalar { value, meta }
-                    if value == r#"{"b":1}"# && meta.path == "$.a"
-            )),
-            "{label} should keep the nested JSON string at $.a while expansion is disabled"
-        );
-        assert!(
-            !events
-                .iter()
-                .any(|event| matches!(event, StreamingEvent::MapStart(meta) if meta.path == "$.a")),
-            "{label} should not emit nested map events while expansion is disabled"
-        );
-    }
+    assert!(
+        disabled.iter().any(|event| matches!(
+            event,
+            StreamingEvent::Scalar { value, meta }
+                if value == r#"{"b":1}"# && meta.path == "$.a"
+        )),
+        "disabled mode should keep the nested JSON string at $.a"
+    );
+    assert!(
+        !disabled
+            .iter()
+            .any(|event| matches!(event, StreamingEvent::MapStart(meta) if meta.path == "$.a")),
+        "disabled mode should not emit nested map events"
+    );
+
+    assert!(
+        enabled
+            .iter()
+            .any(|event| matches!(event, StreamingEvent::MapStart(meta) if meta.path == "$.a")),
+        "enabled mode should materialize a nested map at $.a"
+    );
+    assert!(
+        enabled.iter().any(|event| matches!(
+            event,
+            StreamingEvent::Scalar { value, meta }
+                if value == "1" && meta.path == "$.a.b"
+        )),
+        "enabled mode should expose the nested scalar at $.a.b"
+    );
+    assert!(
+        !enabled.iter().any(|event| matches!(
+            event,
+            StreamingEvent::Scalar { value, meta }
+                if value == r#"{"b":1}"# && meta.path == "$.a"
+        )),
+        "enabled mode should replace the outer string scalar with nested events"
+    );
 }
 
 #[test]

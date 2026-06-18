@@ -40,6 +40,21 @@ pub struct SourceRewrite {
     pub replacement: String,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct AppliedSourceRewrite {
+    raw_start: usize,
+    raw_end: usize,
+    source_start: usize,
+    replacement_len: usize,
+    cumulative_delta_after: i64,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+struct NestedMaterialization {
+    source: String,
+    events: Vec<StreamingEvent>,
+}
+
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct DecodeProfile {
     pub input_bytes: usize,
@@ -553,11 +568,10 @@ impl StreamingParser {
         self.scanner.token_cache()
     }
 
-    /// Set the reserved nesting depth budget for nested-JSON expansion.
+    /// Set the current nesting depth for nested-JSON expansion.
     ///
-    /// Expansion is currently disabled, but callers still configure the
-    /// intended depth here so the public API stays stable until the
-    /// Wasm/source-rewrite bug is fixed.
+    /// Callers use this when a parse starts from inside an already-expanded
+    /// nested JSON value so recursive expansion still respects the global cap.
     pub fn set_nest_depth(&mut self, depth: u8) {
         self.nest_depth = depth.min(8);
     }
@@ -932,12 +946,9 @@ impl StreamingParser {
         tok: &Token,
         forced_path: Option<&str>,
     ) -> Result<(), JsonStreamError> {
-        // Nest expansion is temporarily disabled because of a Wasm-specific
-        // bug in the source rewrite mechanism that corrupts the CoreTreeNode
-        // tree (array children beyond index 0 are lost).
-        // TODO: fix the underlying SourceRewrite bug in wasm32 builds,
-        // then re-enable both source rewrites and nested event emission.
-        let _ = (self.nest_json, self.nest_depth);
+        if self.try_emit_nested_json_scalar(tok, forced_path)? {
+            return Ok(());
+        }
         let meta = self.meta_from_span(&tok.span, SemType::Str, forced_path);
         self.emit_event(StreamingEvent::Scalar {
             value: tok.value.clone(),
@@ -945,6 +956,55 @@ impl StreamingParser {
         });
         self.on_value_complete();
         Ok(())
+    }
+
+    fn try_emit_nested_json_scalar(
+        &mut self,
+        tok: &Token,
+        forced_path: Option<&str>,
+    ) -> Result<bool, JsonStreamError> {
+        if !self.nest_json
+            || self.nest_depth >= 8
+            || !super::nested_json::is_nested_json_candidate(&tok.value)
+        {
+            return Ok(false);
+        }
+
+        let trimmed = super::nested_json::trim_ascii_whitespace(&tok.value);
+        let nested = match decode_nested_materialized(
+            trimmed,
+            self.nest_depth.saturating_add(1),
+            self.emit_path,
+        ) {
+            Ok(nested) => nested,
+            Err(_) => return Ok(false),
+        };
+
+        let outer_path = if let Some(path) = forced_path {
+            path.to_owned()
+        } else if self.emit_path {
+            self.build_path(None)
+        } else {
+            String::new()
+        };
+        let outer_start = tok.span.start.offset as u32;
+        let outer_end = tok.span.end.offset as u32;
+
+        self.source_rewrites.push(SourceRewrite {
+            start_byte: outer_start,
+            old_end_byte: outer_end,
+            replacement: nested.source,
+        });
+        self.nested_json_expanded = true;
+
+        for event in nested.events {
+            if let Some(event) = rebase_nested_event_for_rewrite(event, outer_start, &outer_path) {
+                self.emit_event(event);
+            }
+        }
+
+        self.on_value_complete();
+        Ok(true)
     }
 
     fn emit_number_scalar(
@@ -1485,6 +1545,211 @@ pub type Decoder = StreamDecoder;
 fn append_key_path(out: &mut String, key: &str) {
     out.push('.');
     out.push_str(key);
+}
+
+fn decode_nested_materialized(
+    input: &str,
+    nest_depth: u8,
+    emit_path: bool,
+) -> Result<NestedMaterialization, JsonStreamError> {
+    let mut parser = StreamingParser::with_path_emission(true, emit_path);
+    parser.set_nest_depth(nest_depth);
+    parser.feed(input)?;
+    let events = parser.finish()?;
+    let rewrites = parser.take_source_rewrites();
+    let (source, events) = materialize_source_rewrites(input, events, rewrites)?;
+    Ok(NestedMaterialization { source, events })
+}
+
+fn materialize_source_rewrites(
+    input: &str,
+    events: Vec<StreamingEvent>,
+    rewrites: Vec<SourceRewrite>,
+) -> Result<(String, Vec<StreamingEvent>), JsonStreamError> {
+    if rewrites.is_empty() {
+        return Ok((input.to_owned(), events));
+    }
+
+    let mut sorted_rewrites = rewrites;
+    sorted_rewrites.sort_by_key(|rewrite| rewrite.start_byte);
+
+    let mut source = String::with_capacity(input.len());
+    let mut cursor = 0usize;
+    let mut applied = Vec::with_capacity(sorted_rewrites.len());
+
+    for rewrite in sorted_rewrites {
+        let raw_start = rewrite.start_byte as usize;
+        let raw_end = rewrite.old_end_byte as usize;
+        if raw_start < cursor || raw_end < raw_start || raw_end > input.len() {
+            return Err(JsonStreamError::UnexpectedEnd);
+        }
+
+        source.push_str(
+            input
+                .get(cursor..raw_start)
+                .ok_or(JsonStreamError::UnexpectedEnd)?,
+        );
+
+        let source_start = source.len();
+        source.push_str(&rewrite.replacement);
+        let cumulative_delta_after = source.len() as i64 - raw_end as i64;
+        applied.push(AppliedSourceRewrite {
+            raw_start,
+            raw_end,
+            source_start,
+            replacement_len: rewrite.replacement.len(),
+            cumulative_delta_after,
+        });
+        cursor = raw_end;
+    }
+
+    source.push_str(input.get(cursor..).ok_or(JsonStreamError::UnexpectedEnd)?);
+
+    let line_index = crate::core::LineIndex::build(&source);
+    let rebased_events = events
+        .into_iter()
+        .map(|event| rebase_materialized_event(event, &applied, &line_index))
+        .collect();
+    Ok((source, rebased_events))
+}
+
+fn rebase_materialized_event(
+    event: StreamingEvent,
+    applied: &[AppliedSourceRewrite],
+    line_index: &crate::core::LineIndex,
+) -> StreamingEvent {
+    match event {
+        StreamingEvent::DocStart(meta) => {
+            StreamingEvent::DocStart(rebase_materialized_meta(meta, applied, line_index))
+        }
+        StreamingEvent::DocEnd(meta) => {
+            StreamingEvent::DocEnd(rebase_materialized_meta(meta, applied, line_index))
+        }
+        StreamingEvent::MapStart(meta) => {
+            StreamingEvent::MapStart(rebase_materialized_meta(meta, applied, line_index))
+        }
+        StreamingEvent::MapKey { value, meta } => StreamingEvent::MapKey {
+            value,
+            meta: rebase_materialized_meta(meta, applied, line_index),
+        },
+        StreamingEvent::MapEnd(meta) => {
+            StreamingEvent::MapEnd(rebase_materialized_meta(meta, applied, line_index))
+        }
+        StreamingEvent::SeqStart(meta) => {
+            StreamingEvent::SeqStart(rebase_materialized_meta(meta, applied, line_index))
+        }
+        StreamingEvent::SeqEnd(meta) => {
+            StreamingEvent::SeqEnd(rebase_materialized_meta(meta, applied, line_index))
+        }
+        StreamingEvent::Scalar { value, meta } => StreamingEvent::Scalar {
+            value,
+            meta: rebase_materialized_meta(meta, applied, line_index),
+        },
+        StreamingEvent::Alias { anchor, meta } => StreamingEvent::Alias {
+            anchor,
+            meta: rebase_materialized_meta(meta, applied, line_index),
+        },
+        StreamingEvent::ParseError { message, meta } => StreamingEvent::ParseError {
+            message,
+            meta: rebase_materialized_meta(meta, applied, line_index),
+        },
+    }
+}
+
+fn rebase_materialized_meta(
+    mut meta: Meta,
+    applied: &[AppliedSourceRewrite],
+    line_index: &crate::core::LineIndex,
+) -> Meta {
+    meta.start_byte = map_materialized_offset(meta.start_byte, applied);
+    meta.end_byte = map_materialized_offset(meta.end_byte, applied);
+    let line_column = line_index.offset_to_line_column(meta.start_byte as usize);
+    meta.line = line_column.line as i32 + 1;
+    meta.column = line_column.column as i32 + 1;
+    meta
+}
+
+fn map_materialized_offset(offset: u32, applied: &[AppliedSourceRewrite]) -> u32 {
+    let raw = offset as usize;
+    let index = applied.partition_point(|rewrite| rewrite.raw_start <= raw);
+    if index == 0 {
+        return offset;
+    }
+    let rewrite = &applied[index - 1];
+    if raw <= rewrite.raw_end {
+        let inner = raw.saturating_sub(rewrite.raw_start);
+        let clamped = inner.min(rewrite.replacement_len);
+        return (rewrite.source_start + clamped).min(u32::MAX as usize) as u32;
+    }
+    let mapped = raw as i64 + rewrite.cumulative_delta_after;
+    clamp_offset_to_u32(mapped)
+}
+
+pub(crate) fn clamp_offset_to_u32(offset: i64) -> u32 {
+    if offset <= 0 {
+        0
+    } else if offset >= u32::MAX as i64 {
+        u32::MAX
+    } else {
+        offset as u32
+    }
+}
+
+fn rebase_nested_event_for_rewrite(
+    event: StreamingEvent,
+    outer_start: u32,
+    outer_path: &str,
+) -> Option<StreamingEvent> {
+    match event {
+        StreamingEvent::DocStart(_) | StreamingEvent::DocEnd(_) => None,
+        StreamingEvent::MapStart(meta) => Some(StreamingEvent::MapStart(
+            rebase_nested_meta_for_rewrite(meta, outer_start, outer_path),
+        )),
+        StreamingEvent::MapKey { value, meta } => Some(StreamingEvent::MapKey {
+            value,
+            meta: rebase_nested_meta_for_rewrite(meta, outer_start, outer_path),
+        }),
+        StreamingEvent::MapEnd(meta) => Some(StreamingEvent::MapEnd(
+            rebase_nested_meta_for_rewrite(meta, outer_start, outer_path),
+        )),
+        StreamingEvent::SeqStart(meta) => Some(StreamingEvent::SeqStart(
+            rebase_nested_meta_for_rewrite(meta, outer_start, outer_path),
+        )),
+        StreamingEvent::SeqEnd(meta) => Some(StreamingEvent::SeqEnd(
+            rebase_nested_meta_for_rewrite(meta, outer_start, outer_path),
+        )),
+        StreamingEvent::Scalar { value, meta } => Some(StreamingEvent::Scalar {
+            value,
+            meta: rebase_nested_meta_for_rewrite(meta, outer_start, outer_path),
+        }),
+        StreamingEvent::Alias { anchor, meta } => Some(StreamingEvent::Alias {
+            anchor,
+            meta: rebase_nested_meta_for_rewrite(meta, outer_start, outer_path),
+        }),
+        StreamingEvent::ParseError { message, meta } => Some(StreamingEvent::ParseError {
+            message,
+            meta: rebase_nested_meta_for_rewrite(meta, outer_start, outer_path),
+        }),
+    }
+}
+
+fn rebase_nested_meta_for_rewrite(mut meta: Meta, outer_start: u32, outer_path: &str) -> Meta {
+    meta.start_byte = outer_start.saturating_add(meta.start_byte);
+    meta.end_byte = outer_start.saturating_add(meta.end_byte);
+    meta.path = rebase_nested_path_for_rewrite(&meta.path, outer_path);
+    meta.path_supplier = None;
+    meta
+}
+
+fn rebase_nested_path_for_rewrite(inner_path: &str, outer_path: &str) -> String {
+    if outer_path.is_empty() {
+        return inner_path.to_string();
+    }
+    if inner_path.is_empty() || inner_path == "$" {
+        return outer_path.to_string();
+    }
+    let suffix = inner_path.strip_prefix('$').unwrap_or(inner_path);
+    format!("{outer_path}{suffix}")
 }
 
 fn append_index_path(out: &mut String, index: usize) {

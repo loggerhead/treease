@@ -2621,7 +2621,7 @@ fn wasm_document_real_event_patch_demo_large_json_table_uses_linear_row_patches(
 }
 
 #[test]
-fn wasm_document_escape_nest_json_changes_graph_when_expansion_is_disabled() {
+fn wasm_document_escape_nest_json_reconstructs_original_graph_when_enabled() {
     let _guard = lock_test_mutex();
     reset_test_state();
 
@@ -2637,9 +2637,8 @@ fn wasm_document_escape_nest_json_changes_graph_when_expansion_is_disabled() {
         .expect("source text should serialize as a JSON string value");
 
     // Graph B: feed the escaped JSON string as the source to a streaming job
-    // with nest mode enabled. With the updated nest_json behavior, the nest
-    // parser does NOT recursively expand escaped content into nested tree
-    // events or source rewrites.
+    // with nest mode enabled. Nested expansion should reconstruct the same
+    // graph as the original document.
     let started = start_document_job_impl(StartDocumentJobRequest {
         document_key: "escape-nest-1mb-nested".to_owned(),
         language: "json".to_owned(),
@@ -2685,8 +2684,8 @@ fn wasm_document_escape_nest_json_changes_graph_when_expansion_is_disabled() {
         })
         .expect("nest-mode should produce a graph");
 
-    assert_ne!(
+    assert_eq!(
         baseline.graph, nested_graph,
-        "escape → nest-parse should NOT produce identical graph (nest no longer expands into tree events)"
+        "escape → nest-parse should reconstruct the original graph when nested expansion is enabled"
     );
 }

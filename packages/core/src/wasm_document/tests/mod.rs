@@ -107,7 +107,7 @@ fn start_document_job_accepts_settings_snapshot() {
 }
 
 #[test]
-fn streaming_job_settings_preserve_nested_json_string_when_expansion_disabled() {
+fn streaming_job_settings_materialize_nested_json_when_nest_enabled() {
     let _guard = lock_test_mutex();
     reset_test_state();
 
@@ -140,15 +140,14 @@ fn streaming_job_settings_preserve_nested_json_string_when_expansion_disabled() 
         })
         .expect("snapshot analysis");
 
-    // Nest expansion is disabled, so the tree keeps the original string value.
     let value_json = analysis.value_json.as_deref().expect("valueJson present");
     let value: serde_json::Value =
         serde_json::from_str(value_json).expect("valueJson should decode");
-    assert!(value["nested"].is_string());
+    assert_eq!(value["nested"], serde_json::json!({ "inner": 42 }));
 }
 
 #[test]
-fn streaming_close_formats_original_nested_json_source_when_expansion_disabled() {
+fn streaming_close_writes_nested_json_source_when_nest_enabled() {
     let _guard = lock_test_mutex();
     reset_test_state();
 
@@ -189,23 +188,15 @@ fn streaming_close_formats_original_nested_json_source_when_expansion_disabled()
         })
         .expect("snapshot ready");
 
-    // Nest expansion is disabled; smart formatting formats the original source.
-    assert_ne!(
-        source_text, NESTED_JSON_INPUT,
-        "smart formatting should have changed the source"
-    );
     assert!(
-        !source_text.contains("\"inner\":42"),
-        "source should NOT be expanded; nest expansion is disabled. got: {source_text}"
+        source_text.contains("\"inner\":42"),
+        "source should be rewritten to the expanded nested JSON. got: {source_text}"
     );
-    assert!(
-        source_text.contains("nested"),
-        "source should contain the original key. got: {source_text}"
-    );
+    assert_eq!(source_text, r#"{"nested":{"inner":42}}"#);
 }
 
 #[test]
-fn streaming_close_emits_snapshot_for_top_level_nested_string_when_expansion_disabled() {
+fn streaming_close_emits_expanded_snapshot_for_top_level_nested_string_when_nest_enabled() {
     let _guard = lock_test_mutex();
     reset_test_state();
 
@@ -237,13 +228,63 @@ fn streaming_close_emits_snapshot_for_top_level_nested_string_when_expansion_dis
 
     let _ = text_chunk(started.job_handle, r#""{\"a\":1}""#);
     let batch = close(started.job_handle);
-    // With nest expansion disabled, source_text may not be emitted.
-    // Just verify the close succeeds without error.
-    let has_snapshot = batch
+    let source_text = batch
         .events
         .iter()
-        .any(|e| matches!(e, DocumentEvent::SnapshotReady { .. }));
-    assert!(has_snapshot, "close should produce a snapshot");
+        .find_map(|event| match event {
+            DocumentEvent::SnapshotReady { source_text, .. } => source_text.as_ref(),
+            _ => None,
+        })
+        .expect("nested top-level string should emit expanded source text");
+    assert_eq!(source_text, r#"{"a":1}"#);
+}
+
+#[test]
+fn streaming_close_recursively_rewrites_nested_json_source_when_nest_enabled() {
+    let _guard = lock_test_mutex();
+    reset_test_state();
+
+    let nested_input =
+        serde_json::to_string(r#"{"a":1,"b":"{\"c\":\"d\"}"}"#).expect("input should serialize");
+
+    let started = start_document_job_impl(StartDocumentJobRequest {
+        document_key: "close-format-recursive-nested-json".to_owned(),
+        language: "json".to_owned(),
+        output_graph: true,
+        output_analysis: true,
+        builder_config: None,
+        base_snapshot_id: None,
+        edits: vec![],
+        settings: DocumentJobSettings {
+            parser: crate::document::protocol::DocumentParserSettings {
+                enable_nest: true,
+                nest_max_depth: 8,
+            },
+            formatting: crate::document::protocol::DocumentFormattingSettings {
+                indent: 2,
+                smart: true,
+                format_source_on_close: false,
+                max_line_length: 100,
+                max_inline_complexity: 1,
+                max_array_inline_items: 6,
+                align_object_arrays: true,
+            },
+        },
+    })
+    .expect("job should start");
+
+    let _ = text_chunk(started.job_handle, &nested_input);
+    let batch = close(started.job_handle);
+    let source_text = batch
+        .events
+        .iter()
+        .find_map(|event| match event {
+            DocumentEvent::SnapshotReady { source_text, .. } => source_text.as_ref(),
+            _ => None,
+        })
+        .expect("snapshot ready should emit rewritten source text");
+
+    assert_eq!(source_text, r#"{"a":1,"b":{"c":"d"}}"#);
 }
 
 #[test]
@@ -354,7 +395,7 @@ fn streaming_smart_close_semantic_tokens_match_formatted_source() {
 }
 
 #[test]
-fn streaming_nested_close_semantic_tokens_match_original_source_when_expansion_disabled() {
+fn streaming_nested_close_semantic_tokens_match_expanded_source_when_nest_enabled() {
     let _guard = lock_test_mutex();
     reset_test_state();
 
@@ -392,27 +433,26 @@ fn streaming_nested_close_semantic_tokens_match_original_source_when_expansion_d
         stored_snapshot_for_document("nested-tokens-json").expect("snapshot should be stored");
     let analysis = snapshot.analysis.as_ref().expect("analysis should exist");
 
-    // Nest expansion is disabled, so the stored source is unchanged.
     assert_eq!(
-        analysis.source, raw,
-        "source should be unchanged; nest expansion is disabled"
+        analysis.source, r#"{"a":{"b":1}}"#,
+        "source should be rewritten to the expanded nested JSON"
     );
 
     let fresh_tokens = crate::core::encode_semantic_tokens("json", &analysis.source);
     assert!(
         !fresh_tokens.is_empty(),
-        "fresh encode should produce tokens for the unchanged source"
+        "fresh encode should produce tokens for the expanded source"
     );
     assert_eq!(
         analysis.semantic_tokens, fresh_tokens,
-        "streaming close semantic tokens must match fresh encode of unchanged source.\n\
+        "streaming close semantic tokens must match fresh encode of expanded source.\n\
          Source:\n{}\n",
         analysis.source
     );
 }
 
 #[test]
-fn streaming_close_keeps_nested_json_value_as_string_for_followup_graph_edits() {
+fn streaming_close_materializes_nested_json_for_followup_graph_edits() {
     let _guard = lock_test_mutex();
     reset_test_state();
 
@@ -459,24 +499,11 @@ fn streaming_close_keeps_nested_json_value_as_string_for_followup_graph_edits() 
     let source_text = snapshot.0.expect("sourceText present");
     let analysis = snapshot.1.expect("analysis present");
 
-    // Nest expansion is disabled: the tree value at $.nested is a string.
     let value_json = analysis.value_json.as_deref().expect("valueJson present");
     let value: serde_json::Value =
         serde_json::from_str(value_json).expect("valueJson should decode");
-    assert!(
-        value["nested"].is_string(),
-        "$.nested should be a string value since nest expansion is disabled"
-    );
-
-    // Smart formatting formats the original source; nest expansion is disabled.
-    assert_ne!(
-        source_text, NESTED_JSON_INPUT,
-        "smart formatting should have changed the source"
-    );
-    assert!(
-        !source_text.contains("\"inner\":42"),
-        "source should NOT be expanded; nest expansion is disabled. got: {source_text}"
-    );
+    assert_eq!(value["nested"], serde_json::json!({ "inner": 42 }));
+    assert_eq!(source_text, r#"{"nested":{"inner":42}}"#);
 }
 
 fn start_source_job(document_key: &str, language: &str) -> StartDocumentJobOutput {

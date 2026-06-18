@@ -561,7 +561,7 @@ fn append_path_segment(out: &mut String, segment: &str) {
     }
 }
 
-fn decode_with_nesting_depth(
+pub(crate) fn decode_with_nesting_depth(
     input: &str,
     nest_json: bool,
     nest_depth: usize,

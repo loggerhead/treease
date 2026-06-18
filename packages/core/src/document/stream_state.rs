@@ -2,6 +2,7 @@ use crate::core::streaming_graph_projector::StreamingGraphProjector;
 use crate::core::{LineIndex, StreamKind, stream_kind_for_language};
 use crate::stream::streaming_events::{Meta, StreamingEvent};
 use crate::stream::streaming_json::SourceRewrite;
+use crate::stream::streaming_json::streaming_parse::clamp_offset_to_u32;
 use crate::stream::tree_builder::Builder;
 
 #[derive(Debug, Default)]
@@ -20,7 +21,7 @@ struct AppliedRewrite {
     raw_end: usize,
     source_start: usize,
     replacement_len: usize,
-    cumulative_delta_after: isize,
+    cumulative_delta_after: i64,
 }
 
 #[derive(Debug, Default)]
@@ -99,7 +100,7 @@ impl StreamingSourceDoc {
         let source_start = self.source.len();
         self.append_source_text(&rewrite.replacement);
         self.raw_cursor = raw_end;
-        let cumulative_delta_after = self.source.len() as isize - self.raw_cursor as isize;
+        let cumulative_delta_after = self.source.len() as i64 - self.raw_cursor as i64;
         self.rewrites.push(AppliedRewrite {
             raw_start,
             raw_end,
@@ -188,8 +189,8 @@ impl StreamingSourceDoc {
             let clamped = inner.min(rewrite.replacement_len);
             return (rewrite.source_start + clamped).min(u32::MAX as usize) as u32;
         }
-        let mapped = raw as isize + rewrite.cumulative_delta_after;
-        mapped.max(0).min(u32::MAX as isize) as u32
+        let mapped = raw as i64 + rewrite.cumulative_delta_after;
+        clamp_offset_to_u32(mapped)
     }
     fn offset_to_line_column(&self, offset: usize) -> crate::core::LineColumn {
         let clamped = offset.min(self.source.len());

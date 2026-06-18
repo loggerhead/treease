@@ -640,23 +640,18 @@ mod tests {
         let input = br#"{"nested":"{\"inner\":42}"}"#;
         decoder.feed_bytes(input).expect("feed should succeed");
         let events = decoder.finish_events().expect("finish should succeed");
-        // Nest expansion is disabled (Wasm SourceRewrite bug).
-        // Verify that decode succeeds and produces normal scalar events
-        // (not nested tree events).
         assert!(
-            !decoder.nested_json_expanded(),
-            "nest expansion is disabled"
+            decoder.nested_json_expanded(),
+            "nest expansion should be enabled when nest_json=true"
         );
-        assert!(
-            decoder.take_source_rewrites().is_empty(),
-            "no source rewrites"
-        );
-        // Only 1 MapStart event (the outer object, no nested expansion)
+        let rewrites = decoder.take_source_rewrites();
+        assert_eq!(rewrites.len(), 1, "one nested source rewrite is expected");
+        assert_eq!(rewrites[0].replacement, r#"{"inner":42}"#);
         let map_starts = events
             .iter()
             .filter(|e| matches!(e, StreamingEvent::MapStart(_)))
             .count();
-        assert_eq!(map_starts, 1, "only outer MapStart, no nested expansion");
+        assert_eq!(map_starts, 2, "outer and nested MapStart should both exist");
     }
     #[test]
     fn emit_path_option_is_passed_to_json_decoder() {

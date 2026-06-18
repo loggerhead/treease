@@ -269,9 +269,9 @@ fn nested_json_materialize_keeps_analysis_value_consistent_with_nest_mode() {
     .expect("analysis value_json should parse");
     let nested = value.get("nested").expect("nested value should exist");
 
-    assert!(nested.is_string());
+    assert_eq!(nested, &serde_json::json!({ "inner": 42 }));
     assert_eq!(
         mapping_value_sem_type(&root, "nested"),
-        Some(SemType::Str as i32)
+        Some(SemType::Map as i32)
     );
 }

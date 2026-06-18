@@ -9,6 +9,31 @@ fn analyze_complex_fixture(document_key: &str) -> SnapshotId {
     snapshot_id
 }
 
+fn analyze_complex_fixture_with_nest(document_key: &str) -> SnapshotId {
+    let source = read_repo_fixture(COMPLEX_JSON_FIXTURE);
+    let started = start_document_job_impl(StartDocumentJobRequest {
+        document_key: document_key.to_owned(),
+        language: "json".to_owned(),
+        output_graph: true,
+        output_analysis: true,
+        builder_config: None,
+        base_snapshot_id: None,
+        edits: vec![],
+        settings: DocumentJobSettings {
+            parser: crate::document::protocol::DocumentParserSettings {
+                enable_nest: true,
+                nest_max_depth: 8,
+            },
+            formatting: crate::document::protocol::DocumentFormattingSettings::default(),
+        },
+    })
+    .expect("nested complex fixture job should start");
+
+    let _ = text_chunk(started.job_handle, &source);
+    let close_batch = close(started.job_handle);
+    snapshot_id_from_batch(&close_batch)
+}
+
 fn assert_find_anchors_ready(
     document_key: &str,
     snapshot_id: SnapshotId,
@@ -34,6 +59,15 @@ fn assert_find_anchors_ready(
                 "FindAnchors for {path} should return anchors, got empty. document_key={document_key} snapshot_id={}",
                 snapshot_id.0,
             );
+            for anchor in &data.anchors {
+                assert!(
+                    anchor.span_end >= anchor.span_start,
+                    "FindAnchors for {path} returned invalid span {}..{} for document_key={document_key} snapshot_id={}",
+                    anchor.span_start,
+                    anchor.span_end,
+                    snapshot_id.0,
+                );
+            }
         }
         SnapshotReadResult::SnapshotNotReady => {
             panic!("snapshot for {document_key} should be ready");
@@ -688,6 +722,52 @@ fn wasm_document_find_anchors_complex_fixture_deep_empty_key_target_key() {
     assert_find_anchors_ready("complex-deep-key", snapshot_id, &path, QueryTargetKind::Key);
 }
 
+#[test]
+fn wasm_document_find_anchors_complex_fixture_nested_json_first_level_with_nest() {
+    let _guard = lock_test_mutex();
+    reset_test_state();
+
+    let snapshot_id = analyze_complex_fixture_with_nest("complex-nested-first-level");
+    let path = format!("$.{COMPLEX_LONG_KEY}[0][\"inner object\"][0].object1[\"object in str\"].a");
+    assert_find_anchors_ready(
+        "complex-nested-first-level",
+        snapshot_id,
+        &path,
+        QueryTargetKind::Value,
+    );
+}
+
+#[test]
+fn wasm_document_find_anchors_complex_fixture_nested_json_recursive_with_nest() {
+    let _guard = lock_test_mutex();
+    reset_test_state();
+
+    let snapshot_id = analyze_complex_fixture_with_nest("complex-nested-recursive");
+    let path =
+        format!("$.{COMPLEX_LONG_KEY}[0][\"inner object\"][0].object1[\"object in str\"].b.c");
+    assert_find_anchors_ready(
+        "complex-nested-recursive",
+        snapshot_id,
+        &path,
+        QueryTargetKind::Value,
+    );
+}
+
+#[test]
+fn wasm_document_find_anchors_complex_fixture_deep_empty_key_with_nest() {
+    let _guard = lock_test_mutex();
+    reset_test_state();
+
+    let snapshot_id = analyze_complex_fixture_with_nest("complex-deep-with-nest");
+    let path = format!("$.{COMPLEX_LONG_KEY}[43][\"\"]");
+    assert_find_anchors_ready(
+        "complex-deep-with-nest",
+        snapshot_id,
+        &path,
+        QueryTargetKind::Value,
+    );
+}
+
 /// Verify that FindAnchors works for BOTH index 0 AND index 1+
 /// in the complex.1.json fixture through the direct Rust path.
 /// This is the same document that the Wasm test loads.
@@ -740,4 +820,91 @@ fn wasm_document_find_anchors_complex_no_graph_no_nest() {
             QueryTargetKind::Value,
         );
     }
+}
+
+#[test]
+fn wasm_document_find_anchors_complex_no_graph_with_nest() {
+    let _guard = lock_test_mutex();
+    reset_test_state();
+
+    let source = read_repo_fixture(COMPLEX_JSON_FIXTURE);
+
+    let started = start_document_job_impl(StartDocumentJobRequest {
+        document_key: "complex-nograph-nest".to_owned(),
+        language: "json".to_owned(),
+        output_graph: false,
+        output_analysis: true,
+        builder_config: None,
+        base_snapshot_id: None,
+        edits: vec![],
+        settings: DocumentJobSettings {
+            parser: crate::document::protocol::DocumentParserSettings {
+                enable_nest: true,
+                nest_max_depth: 8,
+            },
+            formatting: crate::document::protocol::DocumentFormattingSettings::default(),
+        },
+    })
+    .expect("job should start");
+
+    let job_handle = started.job_handle;
+    let _ = text_chunk(job_handle, &source);
+    let close_batch = close(job_handle);
+    let snapshot_id = snapshot_id_from_batch(&close_batch);
+
+    for idx in [0u32, 1, 2, 43] {
+        let path = format!("$.{COMPLEX_LONG_KEY}[{idx}][\"\"]");
+        assert_find_anchors_ready(
+            "complex-nograph-nest",
+            snapshot_id,
+            &path,
+            QueryTargetKind::Value,
+        );
+    }
+}
+
+#[test]
+fn wasm_document_find_anchors_complex_no_graph_with_nest_chunked_stream() {
+    let _guard = lock_test_mutex();
+    reset_test_state();
+
+    let source = read_repo_fixture(COMPLEX_JSON_FIXTURE);
+
+    let started = start_document_job_impl(StartDocumentJobRequest {
+        document_key: "complex-nograph-nest-chunked".to_owned(),
+        language: "json".to_owned(),
+        output_graph: false,
+        output_analysis: true,
+        builder_config: None,
+        base_snapshot_id: None,
+        edits: vec![],
+        settings: DocumentJobSettings {
+            parser: crate::document::protocol::DocumentParserSettings {
+                enable_nest: true,
+                nest_max_depth: 8,
+            },
+            formatting: crate::document::protocol::DocumentFormattingSettings::default(),
+        },
+    })
+    .expect("job should start");
+
+    for chunk in source.as_bytes().chunks(16 * 1024) {
+        let chunk = std::str::from_utf8(chunk).expect("fixture chunks should stay utf-8");
+        let _ = text_chunk(started.job_handle, chunk);
+    }
+    let close_batch = close(started.job_handle);
+    let snapshot_id = snapshot_id_from_batch(&close_batch);
+
+    assert_find_anchors_ready(
+        "complex-nograph-nest-chunked",
+        snapshot_id,
+        &format!("$.{COMPLEX_LONG_KEY}[43][\"\"]"),
+        QueryTargetKind::Value,
+    );
+    assert_find_anchors_ready(
+        "complex-nograph-nest-chunked",
+        snapshot_id,
+        &format!("$.{COMPLEX_LONG_KEY}[0][\"inner object\"][0].object1[\"object in str\"].b.c"),
+        QueryTargetKind::Value,
+    );
 }

@@ -367,27 +367,24 @@ fn streaming_json_keeps_nested_json_paths_stable() {
         .finish()
         .expect("nested json path decode should succeed");
 
-    // nest expansion is disabled: no expansion flag, no source rewrites.
     assert!(
-        !parser.nested_json_expanded(),
-        "nest_json=true should NOT set the nested_json_expanded flag — expansion is disabled"
+        parser.nested_json_expanded(),
+        "nest_json=true should mark nested source expansion when nested content materializes"
     );
     let rewrites = parser.take_source_rewrites();
     assert!(
-        rewrites.is_empty(),
-        "nest_json=true should NOT produce source rewrites — expansion is disabled, got {rewrites:?}"
+        rewrites.len() == 1 && rewrites[0].replacement == r#"{"inner":1,"tail":2}"#,
+        "nest_json=true should produce one rewrite for the expanded nested JSON, got {rewrites:?}"
     );
 
-    // The outer string scalar retains its path.
-    let has_outer_scalar = events.iter().any(|event| {
+    let has_nested_map_path = events.iter().any(|event| {
         matches!(
             event,
-            StreamingEvent::Scalar { meta, .. } if meta.path == "$.outer"
+            StreamingEvent::MapStart(meta) if meta.path == "$.outer"
         )
     });
-    assert!(has_outer_scalar, "expected Scalar at $.outer");
+    assert!(has_nested_map_path, "expected nested MapStart at $.outer");
 
-    // No nested paths — nest expansion no longer emits nested tree events.
     let nested_paths: Vec<String> = events
         .iter()
         .filter_map(|event| match event {
@@ -400,8 +397,8 @@ fn streaming_json_keeps_nested_json_paths_stable() {
         .collect();
 
     assert!(
-        !nested_paths.iter().any(|p| p.contains(".tail")),
-        "nest expansion no longer emits nested tree events — no '.tail' paths expected, got: {nested_paths:?}"
+        nested_paths.iter().any(|p| p == "$.outer.tail"),
+        "nested expansion should expose the inner tail path, got: {nested_paths:?}"
     );
 }
 

@@ -1,7 +1,10 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { analyzeDocumentAndStore } from '../../src/lib/services/EditorDiagnostics';
+import {
+  buildDocumentJobSettings,
+  runTextDocumentJobForGraph,
+} from '../../src/lib/graph-stream/document-job-runner';
 import { resolvePathSpan, resolveTreePath } from '../../src/lib/services/TreePathService';
 import { toWasmPathSeg } from '../../src/shared/brand-bridge';
 import { initWasmWorkerForTests, shutdownWasmWorkerForTests } from '../wasm-test-helpers';
@@ -9,6 +12,18 @@ import { initWasmWorkerForTests, shutdownWasmWorkerForTests } from '../wasm-test
 const COMPLEX_FIXTURE_PATH = join(process.cwd(), '..', '..', 'test', 'fixtures', 'json', 'complex.1.json');
 const COMPLEX_LONG_KEY =
   'we___are___such___stuff___as___dreams___are___made___on___and___our___little___life___is___rounded___with___sleep';
+const DOCUMENT_JOB_SETTINGS = buildDocumentJobSettings({
+  enableNest: true,
+  formatSourceOnClose: false,
+  formatting: {
+    indent: 2,
+    smart: true,
+    maxLineLength: 100,
+    maxInlineComplexity: 1,
+    maxArrayInlineItems: 6,
+    alignObjectArrays: true,
+  },
+});
 
 function createModel(text: string) {
   const lines = text.split('\n');
@@ -36,9 +51,16 @@ function getEditorPosition(text: string, needle: string, occurrence = 0) {
   };
 }
 
-async function seedStoredAnalysis(documentKey: string, language: string, text: string) {
-  const analysis = await analyzeDocumentAndStore(language as any, text, documentKey, true);
-  return analysis?.snapshotId ?? null;
+async function seedStoredSnapshot(documentKey: string, language: string, text: string) {
+  const result = await runTextDocumentJobForGraph({
+    documentKey,
+    language,
+    text,
+    settings: DOCUMENT_JOB_SETTINGS,
+    outputAnalysis: true,
+    outputGraph: true,
+  });
+  return result.snapshotId;
 }
 
 function readComplexFixture() {
@@ -56,7 +78,7 @@ describe('TreePathService worker integration', () => {
 
   it('resolves UTF-8 positions through the real worker', async () => {
     const text = '{"你":"值"}';
-    const snapshotId = await seedStoredAnalysis('vitest://tree-path/utf8', 'json', text);
+    const snapshotId = await seedStoredSnapshot('vitest://tree-path/utf8', 'json', text);
     const model = createModel(text);
     const position = getEditorPosition(text, '值');
 
@@ -67,7 +89,7 @@ describe('TreePathService worker integration', () => {
 
   it('returns null for a path that does not exist in the stored document', async () => {
     const text = '{"a":1}';
-    const snapshotId = await seedStoredAnalysis('vitest://tree-path/missing', 'json', text);
+    const snapshotId = await seedStoredSnapshot('vitest://tree-path/missing', 'json', text);
     const model = createModel(text);
 
     const resolved = await resolvePathSpan(
@@ -85,7 +107,7 @@ describe('TreePathService worker integration', () => {
 
   it('resolves top-level key path in complex.1.json fixture', async () => {
     const text = readComplexFixture();
-    const snapshotId = await seedStoredAnalysis('vitest://tree-path/complex-simple', 'json', text);
+    const snapshotId = await seedStoredSnapshot('vitest://tree-path/complex-simple', 'json', text);
 
     const path = [toWasmPathSeg({ tag: 0, key: 'empty array', index: 0 })];
 
@@ -105,7 +127,7 @@ describe('TreePathService worker integration', () => {
 
   it('resolves deep empty-key path in complex.1.json fixture', async () => {
     const text = readComplexFixture();
-    const snapshotId = await seedStoredAnalysis('vitest://tree-path/complex-deep', 'json', text);
+    const snapshotId = await seedStoredSnapshot('vitest://tree-path/complex-deep', 'json', text);
 
     const path = [
       toWasmPathSeg({ tag: 0, key: COMPLEX_LONG_KEY, index: 0 }),
