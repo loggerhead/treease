@@ -162,22 +162,6 @@ async function scrollTableCellIntoView(page: Page, wantedPath: string) {
       )
       .sort((a, b) => (a.rect?.top ?? 0) - (b.rect?.top ?? 0) || (a.rect?.left ?? 0) - (b.rect?.left ?? 0));
 
-    if (visibleTableCells.length === 0) {
-      const tblCells = probes.filter(p => p.isTableCell).map(p => p.path.join('.'));
-      const valueCells = probes.filter(p => p.target === 'value').map(p => p.path.join('.'));
-      const startsWithCells = probes.filter(p => p.path.join('.').startsWith(tablePrefix)).map(p => p.path.join('.'));
-      console.error('SCROLL_DEBUG:', JSON.stringify({
-        attempt,
-        tablePrefix,
-        probeCount: probes.length,
-        isTableCell: (probes.filter(p => p.isTableCell).length),
-        isValue: (probes.filter(p => p.target === 'value').length),
-        startsWith: (probes.filter(p => p.path.join('.').startsWith(tablePrefix)).length),
-        visible: (probes.filter(p => p.coord && p.coord.x >= 0).length),
-        sampleTablePaths: tblCells.slice(0, 10),
-        sampleVisibleCoords: probes.filter(p => p.coord && p.coord.x >= 0).slice(0, 5).map(p => ({ path: p.path && p.path.join('.'), coord: p.coord })),
-      }));
-    }
     const anchor = visibleTableCells.at(-1);
     if (!anchor?.coord) throw new Error(`no visible table cells while seeking ${wantedPath}`);
 

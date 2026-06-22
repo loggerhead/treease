@@ -58,7 +58,6 @@
   import { createGraphSceneController } from './graph-viewer/graph-scene';
   import type { GraphSceneViewData } from './graph-viewer/graph-scene-runtime';
   import { createGraphMeasurementController } from './graph-viewer/graph-measurement-controller';
-  import { appendGraphProgressDebug } from './graph-viewer/graph-progress-debug';
   import {
     buildGraphHighlightSignature,
     shouldApplyGraphHighlight,
@@ -370,15 +369,6 @@ const fullBuildReasonSet = new Set([
     });
   }
 
-  function pushGraphProgressDebug(event: Record<string, unknown>): void {
-    appendGraphProgressDebug(event, {
-      documentKey: documentKeyValue,
-      editorRevision: editorRevisionValue,
-      fullEditActive: $fullEditUiState?.active ?? false,
-      fullEditPhase: $fullEditUiState?.phase ?? 'unknown',
-    });
-  }
-
   function isFullEditInteractionBlocked(): boolean {
     const state = $fullEditUiState;
     return state?.active === true && Boolean(state.sessionId) && state.phase !== 'idle';
@@ -491,38 +481,14 @@ const fullBuildReasonSet = new Set([
     },
     updateStreamProgress: (event) => {
       if ($fullEditUiState?.active && $fullEditUiState.phase === 'idle') {
-        pushGraphProgressDebug({
-          kind: 'drop-progress',
-          streamRunId: String((event as { streamRunId?: string }).streamRunId ?? ''),
-          phase: String((event as { phase?: string }).phase ?? ''),
-          value: Number((event as { value?: number }).value ?? Number.NaN),
-        });
         return;
       }
-      pushGraphProgressDebug({
-        kind: 'handle-progress',
-        streamRunId: String((event as { streamRunId?: string }).streamRunId ?? ''),
-        phase: String((event as { phase?: string }).phase ?? ''),
-        value: Number((event as { value?: number }).value ?? Number.NaN),
-      });
       graphStreamProgressController.handleEvent(event as any);
     },
     resetStreamProgress: () => {
-      pushGraphProgressDebug({
-        kind: 'reset-progress',
-        streamRunId: streamProgressState.streamRunId,
-        phase: streamProgressState.phase,
-        value: streamProgressState.value,
-      });
       graphStreamProgressController.reset();
     },
     completeStreamProgress: () => {
-      pushGraphProgressDebug({
-        kind: 'complete-progress',
-        streamRunId: streamProgressState.streamRunId,
-        phase: streamProgressState.phase,
-        value: streamProgressState.value,
-      });
       graphStreamProgressController.completeIfActive();
     },
     clearGraphStateEffects: () => {
@@ -990,7 +956,6 @@ const fullBuildReasonSet = new Set([
     getHoverPreview: () => runtimeHoverPreviewState,
     getHoverPanelDebugState: () => runtimeHoverPanelDebugState,
     getHoverPanelPrewarmDebugSnapshot: () => hoverPanelController.getTooltipPanelPrewarmDebugSnapshot?.() ?? null,
-    getHoverPanelRuntimeDebugSnapshot: () => hoverPanelController.getTooltipPanelRuntimeDebugSnapshot?.() ?? null,
     getHitResult: (point: { x: number; y: number }) => getRuntimeHitResult(point),
     getLastGraphData: () => graphSceneController.getLastGraphData(),
     getInteractionState: () => getGraphInteractionState(),

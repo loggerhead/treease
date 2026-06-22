@@ -17,7 +17,6 @@ import { bindActiveDocumentSnapshotIfPresent, clearActiveDocumentSnapshot } from
 import { createFreshnessScope } from '../../guards/freshness-scope';
 import { streamDocumentJobText, type AdvanceDocumentJobRequest } from '../../../shared/document-job-stream';
 import type { FullEditDocumentJobSession } from '../../graph-stream/full-edit-document-job-session';
-import { appendGraphProgressDebug } from './graph-progress-debug';
 import {
   buildDocumentJobSettings,
   collectGraphDocumentJobResult,
@@ -629,13 +628,6 @@ export function createGraphRenderSession(deps: GraphRenderSessionDeps) {
     await dispose();
     const renderToken = ++activeRenderToken;
     activeExternalSessionId = session.sessionId;
-    appendGraphProgressDebug({
-      kind: 'attach-external-session',
-      sessionId: session.sessionId,
-      streamRunId: session.streamRunId,
-      revision: session.revision,
-      documentKey: session.documentKey,
-    });
     deps.resetStreamProgress();
     deps.clearErrorMessage();
     performance.mark('pipeline:render-document-graph:start');
@@ -726,14 +718,6 @@ export function createGraphRenderSession(deps: GraphRenderSessionDeps) {
     clearActiveDocumentSnapshot(selection.sourceDocumentKey, activeSnapshotId);
     activeSnapshotId = null;
     deps.clearErrorMessage();
-    appendGraphProgressDebug({
-      kind: 'render-json-block-selection',
-      sourceDocumentKey: selection.sourceDocumentKey,
-      blockDocumentKey: selection.blockDocumentKey,
-      revision: selection.revision,
-      startByte: selection.startByte,
-      endByte: selection.endByte,
-    });
     deps.resetStreamProgress();
 
     const freshness = createFreshnessScope(

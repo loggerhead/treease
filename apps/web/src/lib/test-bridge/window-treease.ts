@@ -119,7 +119,6 @@ export function ensureWindowTreease(): WindowTreease | null {
       getHoverPreview: () => getGraphRuntime().getHoverPreview?.() ?? null,
       getHoverPanelDebugState: () => getGraphRuntime().getHoverPanelDebugState?.() ?? null,
       getHoverPanelPrewarmDebugSnapshot: () => getGraphRuntime().getHoverPanelPrewarmDebugSnapshot?.() ?? null,
-      getHoverPanelRuntimeDebugSnapshot: () => getGraphRuntime().getHoverPanelRuntimeDebugSnapshot?.() ?? null,
       getHitResult: (point) => getGraphRuntime().getHitResult?.(point) ?? null,
       getLastGraphData: () => getGraphRuntime().getLastGraphData?.() ?? null,
       revealPath: (path, options) => {

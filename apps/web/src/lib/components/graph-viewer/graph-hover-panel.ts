@@ -768,26 +768,6 @@ export function createGraphHoverPanelController(deps: HoverPanelControllerDeps) 
     return tooltipPanelRuntime?.path ?? [];
   }
 
-  function getTooltipPanelRuntimeDebugSnapshot() {
-    const runtime = tooltipPanelRuntime;
-    if (!runtime) return null;
-    const edgeChildren = Array.isArray((runtime.edgeLayer as { children?: unknown[] }).children)
-      ? ((runtime.edgeLayer as { children?: unknown[] }).children?.length ?? 0)
-      : null;
-    const nodeChildren = Array.isArray((runtime.nodeLayer as { children?: unknown[] }).children)
-      ? ((runtime.nodeLayer as { children?: unknown[] }).children?.length ?? 0)
-      : null;
-    return {
-      pathKey: runtime.pathKey,
-      clickTargetCount: Object.keys(runtime.clickTargetsById).length,
-      tableRuntimeCount: runtime.tableRuntimes.length,
-      mountWidth: runtime.mount.style.width,
-      mountHeight: runtime.mount.style.height,
-      edgeChildren,
-      nodeChildren,
-    };
-  }
-
   function getTooltipPanelPrewarmDebugSnapshot(): TooltipPanelPrewarmDebugSnapshot {
     return {
       scheduledPaths: tooltipPanelPrewarmScheduledPaths.map((path) => clonePath(path)),
@@ -806,7 +786,6 @@ export function createGraphHoverPanelController(deps: HoverPanelControllerDeps) 
     getTooltipPanelClickTargets,
     getTooltipPanelPath,
     getTooltipPanelPrewarmDebugSnapshot,
-    getTooltipPanelRuntimeDebugSnapshot,
     hasTooltipPanelActivity,
     openTooltipPanelForCell,
     refreshTooltipPanelPlacement,

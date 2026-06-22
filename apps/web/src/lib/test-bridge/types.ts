@@ -110,7 +110,6 @@ export type TreeaseGraphRuntime = {
     completedPaths?: TreeaseRuntimePathSeg[][];
     inFlightPath?: TreeaseRuntimePathSeg[] | null;
   } | null;
-  getHoverPanelRuntimeDebugSnapshot?: () => unknown;
   getHitResult?: (point: { x: number; y: number }) => {
     scope?: 'root' | 'panel';
     point?: { x?: number; y?: number };
@@ -265,9 +264,6 @@ export type WindowTreease = {
     getHoverPanelDebugState: () => ReturnType<NonNullable<TreeaseGraphRuntime['getHoverPanelDebugState']>>;
     getHoverPanelPrewarmDebugSnapshot: () => ReturnType<
       NonNullable<TreeaseGraphRuntime['getHoverPanelPrewarmDebugSnapshot']>
-    >;
-    getHoverPanelRuntimeDebugSnapshot: () => ReturnType<
-      NonNullable<TreeaseGraphRuntime['getHoverPanelRuntimeDebugSnapshot']>
     >;
     getHitResult: (point: { x: number; y: number }) => ReturnType<NonNullable<TreeaseGraphRuntime['getHitResult']>>;
     getLastGraphData: () => ReturnType<NonNullable<TreeaseGraphRuntime['getLastGraphData']>>;
