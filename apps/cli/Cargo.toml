@@ -1,7 +1,19 @@
 [package]
 name = "treease-cli"
-version = "1.0.0"
+version = "1.0.3"
 edition = "2024"
+build = "build.rs"
+description = "Command-line interface for querying, transforming, and previewing structured documents with Treease"
+license-file = "LICENSE"
+readme = "README.md"
+repository = "https://github.com/loggerhead/treease"
+homepage = "https://github.com/loggerhead/treease"
+documentation = "https://github.com/loggerhead/treease/tree/main/apps/cli"
+keywords = ["treease", "cli", "yaml", "json", "jq"]
+categories = ["command-line-utilities", "text-processing"]
+
+[package.metadata.treease]
+wasm_release_date = "26062120"
 
 [lib]
 path = "src/lib.rs"
@@ -12,10 +24,13 @@ lite = ["treease-core/lite"]
 
 [dependencies]
 clap = { version = "4.6.1", default-features = false, features = ["std", "help", "usage", "error-context", "suggestions"] }
+dirs = "6"
 getrandom = "0.3"
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-treease-core = { path = "../../packages/core" }
+sha2 = "0.10"
+treease-core = { version = "1.0.3", path = "../../packages/core" }
 
 [[bin]]
 name = "treease"

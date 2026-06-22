@@ -11,6 +11,29 @@ pub mod wasm;
 pub mod wasm_document;
 pub mod wasm_types;
 
+#[cfg(target_arch = "wasm32")]
+mod wasm_wctype_shims {
+    // Some vendored tree-sitter grammars call wide-char classification helpers.
+    // On wasm these end up as unresolved `env.*` imports unless we provide them.
+    #[unsafe(no_mangle)]
+    pub extern "C" fn iswalpha(c: u32) -> i32 {
+        (((b'a' as u32)..=(b'z' as u32)).contains(&c)
+            || ((b'A' as u32)..=(b'Z' as u32)).contains(&c)) as i32
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn iswspace(c: u32) -> i32 {
+        matches!(c, 0x20 | 0x09..=0x0d) as i32
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn iswxdigit(c: u32) -> i32 {
+        (((b'0' as u32)..=(b'9' as u32)).contains(&c)
+            || ((b'a' as u32)..=(b'f' as u32)).contains(&c)
+            || ((b'A' as u32)..=(b'F' as u32)).contains(&c)) as i32
+    }
+}
+
 pub fn init() -> Result<core::RegistryOwner, core::CoreError> {
     Ok(core::RegistryOwner::init_owned())
 }

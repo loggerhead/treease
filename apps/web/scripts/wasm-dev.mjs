@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
 import { copyFile, mkdir, readFile, readdir, stat, unlink, writeFile } from 'node:fs/promises';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { watch } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -14,6 +14,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const webDir = path.resolve(here, '..');
 const rootDir = path.resolve(webDir, '..', '..');
 const coreDir = path.resolve(rootDir, 'packages', 'core');
+const coreManifest = path.resolve(coreDir, 'Cargo.toml');
 const versionFile = path.resolve(coreDir, 'output', 'core-web.version');
 const rustWasmOut = path.resolve(coreDir, 'target', 'wasm32-unknown-unknown', 'release', 'treease_core.wasm');
 const rustWasmOptimizedOut = path.resolve(
@@ -28,7 +29,7 @@ const watchDirs = [
   path.resolve(coreDir, 'tests'),
   path.resolve(coreDir, 'Cargo.toml'),
   path.resolve(coreDir, 'build.rs')
-];
+].filter((target) => existsSync(target));
 
 let building = false;
 let pending = false;
@@ -40,8 +41,18 @@ const debounceMs = 500;
 const minIntervalMs = 1000;
 const ignored = [/\.sw.$/, /~$/, /\.tmp$/, /\/target\//];
 
+function readManifestReleaseDate() {
+  if (!existsSync(coreManifest)) return null;
+  const manifest = readFileSync(coreManifest, 'utf8');
+  const match = manifest.match(/^\s*wasm_release_date\s*=\s*"([0-9]{8})"\s*$/m);
+  return match?.[1] ?? null;
+}
 
 async function readVersion(wasmPath) {
+  const manifestReleaseDate = readManifestReleaseDate();
+  if (manifestReleaseDate) {
+    return manifestReleaseDate;
+  }
   if (existsSync(versionFile)) {
     const version = (await readFile(versionFile, 'utf8')).trim();
     if (version) return version;
@@ -78,11 +89,11 @@ async function buildOnce() {
   const staticDir = path.resolve(webDir, 'static');
   await mkdir(staticDir, { recursive: true });
 
-  const rustVersionedTarget = path.resolve(staticDir, `core-web-rs.${version}.wasm`);
+  const rustVersionedTarget = path.resolve(staticDir, `core.${version}.wasm`);
   const rustStableTarget = path.resolve(staticDir, 'core-web-rs.wasm');
   const defaultVersionedTarget = path.resolve(staticDir, `core-web.${version}.wasm`);
   const defaultStableTarget = path.resolve(staticDir, 'core-web.wasm');
-  await removeStaleWasmFiles(staticDir, 'core-web-rs', path.basename(rustVersionedTarget));
+  await removeStaleWasmFiles(staticDir, 'core', path.basename(rustVersionedTarget));
   await removeStaleWasmFiles(staticDir, 'core-web', path.basename(defaultVersionedTarget));
   await copyFile(wasmSource, rustVersionedTarget);
   await copyFile(wasmSource, rustStableTarget);

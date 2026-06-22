@@ -18,20 +18,6 @@ trap cleanup_acceptance EXIT
 
 source "$SCRIPT_DIR/helpers.sh"
 
-ACCEPTANCE_WEB_DIST="$TMP_ROOT/web-build"
-mkdir -p "$ACCEPTANCE_WEB_DIST/_app"
-cat >"$ACCEPTANCE_WEB_DIST/index.html" <<'HTML'
-<!doctype html>
-<html>
-  <body>
-    <main id="treease-cli-acceptance-web">treease cli graph shell</main>
-    <script type="module" src="/_app/app.js"></script>
-  </body>
-</html>
-HTML
-printf 'console.log("treease cli acceptance asset");\n' >"$ACCEPTANCE_WEB_DIST/_app/app.js"
-export TREEASE_WEB_DIST="$ACCEPTANCE_WEB_DIST"
-
 cargo build --locked --manifest-path "$CLI_DIR/Cargo.toml" --bin treease >/dev/null
 TREEASE_BIN="$CLI_DIR/target/debug/treease"
 [[ -x "$TREEASE_BIN" ]] || fail "treease binary not found: $TREEASE_BIN"

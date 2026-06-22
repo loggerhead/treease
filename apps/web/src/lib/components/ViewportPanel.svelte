@@ -23,15 +23,13 @@
   import GraphSearchInput from './GraphSearchInput.svelte'
   import SidecarEditor from './Editor/SidecarEditor.svelte'
   import {
-    Braces,
-    Share2,
     Search,
     ZoomIn,
     ZoomOut,
     GitCompareArrows,
     ArrowRightLeft,
-    ImageDown,
-    Upload
+    FileInput,
+    ImageDown
   } from 'lucide-svelte'
   import * as ButtonGroup from './ui/button-group'
   import { Button, IconButton } from './ui/button'
@@ -356,7 +354,7 @@
           title="Load compare file"
           on:click={openRightPanelFilePicker}
         >
-          <Upload size={12} />
+          <FileInput size={12} />
         </IconButton>
         <IconButton
           class="text-[var(--text-primary)]"

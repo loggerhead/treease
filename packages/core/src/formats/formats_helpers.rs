@@ -403,7 +403,7 @@ fn first_error_start_byte(node: tree_sitter::Node) -> Option<usize> {
         return Some(node.start_byte());
     }
     for i in 0..node.child_count() {
-        let Some(child) = node.child(i as u32) else {
+        let Some(child) = node.child(i as _) else {
             continue;
         };
         if false {
@@ -424,7 +424,7 @@ pub fn ts_for_each_named_child<E>(
 ) -> Result<(), CoreError> {
     let n = node.named_child_count();
     for i in 0..n {
-        if let Some(child) = node.named_child(i as u32) {
+        if let Some(child) = node.named_child(i as _) {
             f(ctx, child)?;
         }
     }
@@ -443,7 +443,7 @@ pub fn ts_root_value_node_skip_type<'a>(
     }
     let n = root.named_child_count();
     for i in 0..n {
-        if let Some(child) = root.named_child(i as u32) {
+        if let Some(child) = root.named_child(i as _) {
             if child.kind() == skip_type {
                 continue;
             }
@@ -467,7 +467,7 @@ pub fn ts_find_first_named_child_of_type<'a>(
 ) -> Option<tree_sitter::Node<'a>> {
     let n = node.named_child_count();
     for i in 0..n {
-        let child = node.named_child(i as u32)?;
+        let child = node.named_child(i as _)?;
         if types.contains(&child.kind()) {
             return Some(child);
         }

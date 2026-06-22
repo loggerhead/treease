@@ -11,6 +11,8 @@ docs/dev-loop/registry.yaml
 packages/core/target
 apps/cli/target
 apps/web/benchmarks/graph-stream-baseline.json
+apps/web/static/**/*.png
+apps/web/static/**/*.mp4
 guess-failure.md
 # wasm-pack test build output
 wasm-pkg-*/
@@ -29,6 +31,7 @@ test-results/
 .playwright-cli
 .dbg/
 apps/web/public/*.json
+apps/web/assets/r2/
 .svelte-kit
 *.wasm
 node_modules
@@ -51,6 +54,8 @@ bin
 build
 build-done
 .DS_Store
+!apps/cli/src/bin/
+!apps/cli/src/bin/**
 
 # Architecture specific extensions/prefixes
 *.[568vq]

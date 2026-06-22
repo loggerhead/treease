@@ -3,7 +3,7 @@
   import fuzzysort from 'fuzzysort'
   import SearchPanel from './SearchPanel.svelte'
   import { commandItems, type CommandId } from '../command-registry'
-  import { Wand2, Shrink, ArrowDownWideNarrow, Braces, WrapText, Code, Check } from 'lucide-svelte'
+  import { Wand2, Shrink, ArrowDownWideNarrow, ListFilter, WrapText, Code, Check } from 'lucide-svelte'
   import { settings, settingsStore } from '../settings/settings-store'
   import { languageId } from '../store/editor-store'
 
@@ -21,7 +21,7 @@
     format: Wand2,
     minify: Shrink,
     sort: ArrowDownWideNarrow,
-    'show-yq-input': Braces,
+    'show-yq-input': ListFilter,
     escape: WrapText,
     unescape: Code,
   }

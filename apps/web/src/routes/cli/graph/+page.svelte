@@ -9,11 +9,12 @@
     readCliGraphTokenFromSearch,
     type CliGraphResult,
   } from '$lib/cli-graph/result-client';
-  import wasmUrl from '@core-wasm/pkg/core.wasm?url';
+  import { getDefaultWasmURL } from '$lib/wasm/wasm-worker-singleton';
 
   let result: CliGraphResult | null = null;
   let errorMessage = '';
   let loading = true;
+  const wasmUrl = getDefaultWasmURL();
 
   async function loadCliGraphResult(): Promise<void> {
     loading = true;

@@ -7,12 +7,20 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const webDir = path.resolve(here, '..');
 const rootDir = path.resolve(webDir, '..', '..');
 const coreDir = path.resolve(rootDir, 'packages', 'core');
+const coreManifest = path.resolve(coreDir, 'Cargo.toml');
 const versionFile = path.resolve(coreDir, 'output', 'core-web.version');
 
 function readVersionFile() {
   if (!existsSync(versionFile)) return null;
   const value = readFileSync(versionFile, 'utf8').trim();
   return value || null;
+}
+
+function readManifestReleaseDate() {
+  if (!existsSync(coreManifest)) return null;
+  const manifest = readFileSync(coreManifest, 'utf8');
+  const match = manifest.match(/^\s*wasm_release_date\s*=\s*"([0-9]{8})"\s*$/m);
+  return match?.[1] ?? null;
 }
 
 function runGit(args) {
@@ -45,6 +53,8 @@ function gitCommitTimeIfClean() {
 }
 
 function resolveVersion() {
+  const fromManifest = readManifestReleaseDate();
+  if (fromManifest) return fromManifest;
   const fromFile = readVersionFile();
   if (fromFile) return fromFile;
   return buildTimestamp();

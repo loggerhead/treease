@@ -82,10 +82,24 @@ pub(super) fn error_report(err: &CliError) -> CliErrorReport {
             "docs/cli/README.md",
             vec!["treease web '.' file.yaml", "treease web '.' -"],
         ),
-        CliError::MissingWebAssets => report(
-            "MISSING_WEB_ASSETS",
-            "`treease web` assets are not available".to_string(),
-            "Build or install the web assets before starting the embedded web UI.",
+        CliError::WebAssetDownload(message) => report(
+            "WEB_ASSET_DOWNLOAD_ERROR",
+            message.clone(),
+            "Check network access to treease.com or override TREEASE_WEB_ASSET_BASE_URL for a different asset origin.",
+            "docs/cli/README.md",
+            vec!["treease web '.' file.yaml"],
+        ),
+        CliError::WebAssetManifest(message) => report(
+            "WEB_ASSET_MANIFEST_ERROR",
+            message.clone(),
+            "The downloaded web asset manifest or files are invalid. Rebuild and redeploy the web assets, then retry.",
+            "docs/cli/README.md",
+            vec!["treease web '.' file.yaml"],
+        ),
+        CliError::WebAssetCache(message) => report(
+            "WEB_ASSET_CACHE_ERROR",
+            message.clone(),
+            "Check whether the local cache directory is writable, or set TREEASE_WEB_CACHE_DIR to a writable path.",
             "docs/cli/README.md",
             vec!["treease web '.' file.yaml"],
         ),

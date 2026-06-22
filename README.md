@@ -1,5 +1,7 @@
 # Treease
 
+![Treease logo](apps/web/static/treease-logo.png)
+
 ## 项目目标
 - Treease 由 `apps/cli/`、`apps/web/` 与 `packages/core/` 组成，分别负责 CLI、Web UI/Worker 和可复用 Core 能力。
 

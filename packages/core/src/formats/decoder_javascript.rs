@@ -4,20 +4,9 @@ use super::formats_helpers::{
     self, missing_tree_node_error, new_map, new_scalar, new_seq, set_node_range,
 };
 
-// ---------------------------------------------------------------------------
-// tree-sitter JavaScript language (FFI)
-// ---------------------------------------------------------------------------
-
-fn tree_sitter_javascript_language() -> tree_sitter_language::LanguageFn {
-    unsafe extern "C" {
-        fn tree_sitter_javascript() -> *const ();
-    }
-    unsafe { tree_sitter_language::LanguageFn::from_raw(tree_sitter_javascript) }
-}
-
 fn js_language() -> tree_sitter::Language {
     tree_sitter_support::ensure_tree_sitter_runtime();
-    tree_sitter::Language::new(tree_sitter_javascript_language())
+    tree_sitter::Language::new(tree_sitter_javascript::LANGUAGE)
 }
 
 // ---------------------------------------------------------------------------
@@ -255,7 +244,7 @@ fn build_candidate_from_ts_node(
             let n = node.named_child_count();
             for _i in 0..n {
                 let pair = node
-                    .named_child(_i as u32)
+                    .named_child(_i as _)
                     .ok_or(CoreError::Parse(ParseError::InvalidJavaScript))?;
                 if pair.kind() != "pair" {
                     continue;
@@ -309,7 +298,7 @@ fn build_candidate_from_ts_node(
             let n = node.named_child_count();
             for i in 0..n {
                 let item_ts = node
-                    .named_child(i as u32)
+                    .named_child(i as _)
                     .ok_or(CoreError::Parse(ParseError::InvalidJavaScript))?;
 
                 let item_id = build_candidate_from_ts_node(store, source, item_ts, base_offset)?;
@@ -466,7 +455,7 @@ fn collect_top_level_nodes<'a>(
             // General case: collect all named children of the program.
             let mut nodes = Vec::with_capacity(n);
             for i in 0..n {
-                if let Some(child) = root.named_child(i as u32) {
+                if let Some(child) = root.named_child(i as _) {
                     nodes.push(child);
                 }
             }
@@ -492,7 +481,7 @@ fn collect_top_level_nodes<'a>(
             }
             let mut nodes = Vec::with_capacity(n);
             for i in 0..n {
-                if let Some(child) = root.named_child(i as u32) {
+                if let Some(child) = root.named_child(i as _) {
                     nodes.push(child);
                 }
             }

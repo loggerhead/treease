@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte'
-  import { Plus, X, Upload, Download, BookOpen, MessageCircle, Share2, User, ArrowRight } from 'lucide-svelte'
+  import { Plus, X, FileInput, FileOutput, BookOpen, MessageCircle, Share2, User, ArrowRight } from 'lucide-svelte'
   import { languageId as languageIdStore } from '../store/editor-store'
   import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from './ui/dropdown-menu'
   import * as Select from './ui/select'
@@ -100,7 +100,7 @@
         data-testid="topbar-import-button"
         on:click={toggleImportPanel}
       >
-        <Upload size={12} />
+        <FileInput size={12} />
       </IconButton>
       {#if importOpen}
         <div
@@ -171,7 +171,7 @@
         data-testid="topbar-export-button"
         on:click={toggleExportPanel}
       >
-        <Download size={12} />
+        <FileOutput size={12} />
       </IconButton>
       {#if exportOpen}
         <div

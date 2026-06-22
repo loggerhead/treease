@@ -20,7 +20,7 @@
   import { toast } from 'svelte-sonner';
   import { readImportSourceSample, resolveImportSourceFormat } from '../../lib/import/resolve-import-source';
   import { callSharedWasmWorker, getSharedWasmWorkerClient } from '../../lib/wasm/wasm-worker-singleton';
-  import wasmUrl from '@core-wasm/pkg/core.wasm?url';
+  import { getDefaultWasmURL } from '../../lib/wasm/wasm-worker-singleton';
   import { runYqPreview } from './yq-preview-controller';
   import { resolveExportDownloadDetails, resolveExportPreviewDetails } from './export-controller';
   import {
@@ -40,14 +40,15 @@
   import type { DiffPlan } from '../../lib/graph/diff-plan';
   import { serializePath } from '../../shared/document-anchor-utils';
   import {
-    SquareChevronLeft,
-    ArrowLeftToLine,
-    ArrowRightToLine,
-    Braces,
-    Share2,
+    FileCode,
+    GitGraph,
     GripVertical,
     Link2,
     Link2Off,
+    PanelLeftClose,
+    PanelLeftOpen,
+    PanelRightClose,
+    PanelRightOpen,
   } from 'lucide-svelte';
   import * as ButtonGroup from '../../lib/components/ui/button-group';
   import { IconButton } from '../../lib/components/ui/button';
@@ -80,6 +81,7 @@
   let yqBusy = false;
   let yqError = '';
   const maxTabs = 9;
+  const wasmUrl = getDefaultWasmURL();
   type ScrollPosition = { scrollTop: number; scrollLeft: number };
   type ScrollSyncOwner = 'editor' | 'viewer';
   type SplitLayoutState = ReturnType<typeof createSplitLayoutState>;
@@ -500,9 +502,9 @@
                     on:click={() => (viewerViewMode = viewerViewMode === 'graph' ? 'text' : 'graph')}
                   >
                     {#if viewerViewMode === 'graph'}
-                      <Braces size={12} />
+                      <FileCode size={12} />
                     {:else}
-                      <Share2 size={12} />
+                      <GitGraph size={12} />
                     {/if}
                   </IconButton>
                   <IconButton
@@ -524,7 +526,7 @@
                     title="Collapse viewer"
                     on:click={collapseViewer}
                   >
-                    <ArrowRightToLine size={12} />
+                    <PanelRightClose size={12} />
                   </IconButton>
                   <IconButton
                     class="text-[var(--text-primary)]"
@@ -532,7 +534,7 @@
                     title="Collapse editor"
                     on:click={collapseEditor}
                   >
-                    <ArrowLeftToLine size={12} />
+                    <PanelLeftClose size={12} />
                   </IconButton>
                 </ButtonGroup.Root>
               </div>
@@ -572,7 +574,7 @@
                 title="Expand viewer"
                 on:click={expandSplitLayout}
               >
-                <SquareChevronLeft size={12} />
+                <PanelRightOpen size={12} />
               </IconButton>
             </ButtonGroup.Root>
           {:else if layoutMode === 'right-only'}
@@ -583,7 +585,7 @@
                 title="Expand editor"
                 on:click={expandSplitLayout}
               >
-                <ArrowRightToLine size={12} />
+                <PanelLeftOpen size={12} />
               </IconButton>
             </ButtonGroup.Root>
           {/if}

@@ -1,0 +1,32 @@
+# treease-cli
+
+`treease-cli` is the command-line interface for Treease.
+
+## Quick Start
+
+```bash
+treease '.a.b' file.yaml
+treease -p yaml -o json '.' file.yaml
+treease web '.services.api' config.yaml
+```
+
+## What It Includes
+
+- Expression evaluation over structured documents
+- Format conversion and in-place writes
+- Operator and format discovery commands
+- A downloaded-and-cached readonly local Web graph UI served by `treease web`
+
+## Repository
+
+- Source: <https://github.com/loggerhead/treease>
+- Core crate: `treease-core`
+- CLI usage guide: <https://github.com/loggerhead/treease/tree/main/docs/cli>
+
+## Local Verification
+
+```bash
+cd apps/cli
+cargo nextest run --locked --lib
+bash tests/acceptance/run.sh
+```

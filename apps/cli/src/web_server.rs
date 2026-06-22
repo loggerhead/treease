@@ -1,8 +1,9 @@
 use std::io::{Read, Write};
 use std::net::{SocketAddr, TcpListener, TcpStream};
+use std::path::PathBuf;
 use std::time::Duration;
 
-use super::web_assets::{self, EmbeddedAsset};
+use super::web_assets;
 use super::{CliError, errors};
 
 const LOCALHOST: &str = "127.0.0.1:0";
@@ -14,7 +15,7 @@ const REQUEST_IO_TIMEOUT: Duration = Duration::from_secs(5);
 pub(super) struct WebServerState {
     pub token: String,
     pub result_json: Vec<u8>,
-    pub assets: &'static [EmbeddedAsset],
+    pub assets_dir: PathBuf,
 }
 
 #[allow(dead_code)]
@@ -26,15 +27,11 @@ pub(super) struct WebServer {
 
 #[allow(dead_code)]
 impl WebServer {
-    pub(super) fn bind(result_json: Vec<u8>) -> Result<Self, CliError> {
-        if !web_assets::assets_available() {
-            return Err(CliError::MissingWebAssets);
-        }
-
+    pub(super) fn bind(result_json: Vec<u8>, assets_dir: PathBuf) -> Result<Self, CliError> {
         Self::bind_with_state(WebServerState {
             token: generate_token()?,
             result_json,
-            assets: web_assets::embedded_assets(),
+            assets_dir,
         })
     }
 
@@ -160,11 +157,7 @@ fn handle_request(state: &WebServerState, request: &str) -> HttpResponse {
         return asset_response(state, target);
     }
 
-    if is_static_asset_path(path) {
-        return asset_response(state, target);
-    }
-
-    HttpResponse::not_found()
+    asset_response(state, target)
 }
 
 fn parse_request_line(request: &str) -> Option<(&str, &str)> {
@@ -195,14 +188,17 @@ fn token_matches(target: &str, expected: &str) -> bool {
     })
 }
 
-fn is_static_asset_path(path: &str) -> bool {
-    path.starts_with("/_app/")
-}
-
 fn asset_response(state: &WebServerState, target: &str) -> HttpResponse {
-    web_assets::find_asset(state.assets, target).map_or_else(HttpResponse::not_found, |asset| {
-        HttpResponse::ok(asset.content_type, asset.bytes.to_vec())
-    })
+    web_assets::find_asset(&state.assets_dir, target).map_or_else(
+        HttpResponse::not_found,
+        |asset| match web_assets::read_asset_bytes(&asset) {
+            Ok(bytes) => HttpResponse::ok(asset.content_type, bytes),
+            Err(error) => HttpResponse::text(
+                "500 Internal Server Error",
+                &format!("failed to read asset: {error}\n"),
+            ),
+        },
+    )
 }
 
 fn generate_token() -> Result<String, CliError> {
@@ -253,7 +249,7 @@ impl HttpResponse {
         Self::text("405 Method Not Allowed", "method not allowed\n")
     }
 
-    fn text(status: &'static str, body: &'static str) -> Self {
+    fn text(status: &'static str, body: &str) -> Self {
         Self {
             status,
             content_type: "text/plain; charset=utf-8",

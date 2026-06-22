@@ -715,7 +715,7 @@ fn first_named_child_skip<'tree>(
 fn named_children<'tree>(
     node: tree_sitter::Node<'tree>,
 ) -> impl Iterator<Item = tree_sitter::Node<'tree>> {
-    (0..node.named_child_count()).filter_map(move |index| node.named_child(index as u32))
+    (0..node.named_child_count()).filter_map(move |index| node.named_child(index as _))
 }
 
 fn node_text<'a>(source: &'a str, node: tree_sitter::Node) -> &'a str {

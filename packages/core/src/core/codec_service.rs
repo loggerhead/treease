@@ -188,7 +188,7 @@ fn split_yaml_documents(input: &str) -> Result<Option<Vec<&str>>, CoreError> {
 
     let mut documents = Vec::new();
     for index in 0..tree.root_node().named_child_count() {
-        let Some(child) = tree.root_node().named_child(index as u32) else {
+        let Some(child) = tree.root_node().named_child(index as _) else {
             continue;
         };
         if child.kind() != "document" {

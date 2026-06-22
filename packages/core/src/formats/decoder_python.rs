@@ -450,7 +450,7 @@ fn build_candidate_from_ts_node(
 
             let n = node.named_child_count();
             for i in 0..n {
-                let Some(pair) = node.named_child(i as u32) else {
+                let Some(pair) = node.named_child(i as _) else {
                     continue;
                 };
                 if pair.kind() != "pair" {
@@ -540,7 +540,7 @@ fn build_candidate_from_ts_node(
 
             let n = node.named_child_count();
             for i in 0..n {
-                let Some(item_ts) = node.named_child(i as u32) else {
+                let Some(item_ts) = node.named_child(i as _) else {
                     continue;
                 };
                 let child_id = build_candidate_from_ts_node(store, source, item_ts, base_offset)?;
@@ -647,6 +647,19 @@ fn node_text<'a>(source: &'a [u8], node: tree_sitter::Node) -> &'a str {
     std::str::from_utf8(bytes).unwrap_or("")
 }
 
+fn unwrap_python_value_node(mut node: tree_sitter::Node) -> tree_sitter::Node {
+    loop {
+        let next = match node.kind() {
+            "module" | "expression_statement" | "parenthesized_expression" => node.named_child(0),
+            _ => None,
+        };
+        match next {
+            Some(child) => node = child,
+            None => return node,
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // PythonDecoder – the top-level decoder
 // ---------------------------------------------------------------------------
@@ -685,13 +698,7 @@ impl Decode for PythonDecoder {
         let tree = ts_parse_checked_fail_fast(language, slice)?;
         let root = tree.root_node();
 
-        // The tree-sitter Python grammar wraps everything in a `module` node.
-        // Extract the first named child as the value node.
-        let value_node = if root.named_child_count() != 0 {
-            root.named_child(0).unwrap_or(root)
-        } else {
-            root
-        };
+        let value_node = unwrap_python_value_node(root);
 
         if value_node.has_error() {
             return Err(CoreError::Parse(ParseError::InvalidPython));

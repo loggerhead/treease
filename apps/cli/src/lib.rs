@@ -90,7 +90,9 @@ enum CliError {
     MultipleInputFilesForInplace,
     UnsupportedWebFlag(&'static str),
     InvalidWebInputCount,
-    MissingWebAssets,
+    WebAssetDownload(String),
+    WebAssetManifest(String),
+    WebAssetCache(String),
     #[allow(dead_code)]
     WebServer(String),
     #[allow(dead_code)]
@@ -195,7 +197,8 @@ fn run_web_command(parsed: &ParsedArgs) -> Result<i32, CliError> {
     let payload = web_payload::build_cli_graph_result_payload(parsed, &inputs)?;
     let result_json =
         serde_json::to_vec(&payload).map_err(|error| CliError::Eval(error.to_string()))?;
-    let server = web_server::WebServer::bind(result_json)?;
+    let assets_dir = web_assets::ensure_available()?;
+    let server = web_server::WebServer::bind(result_json, assets_dir)?;
 
     let mut stdout = io::stdout();
     writeln!(stdout, "{}", server.graph_url())?;
@@ -586,7 +589,7 @@ fn execute_metadata_command(parsed: &ParsedArgs) -> Result<Vec<u8>, CliError> {
             render_metadata_value(&catalog::search_examples(query), json)?
         }
         CommandKind::Doctor => render_metadata_value(&catalog::doctor_info(), json)?,
-        CommandKind::Web => return Err(CliError::MissingWebAssets),
+        CommandKind::Web => return Err(CliError::InvalidFlagCombination),
         CommandKind::Run => return Err(CliError::InvalidFlagCombination),
     };
 
@@ -636,21 +639,11 @@ pub mod internal_metadata {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
     use std::io::{Read, Write};
     use std::net::TcpStream;
-
-    static TEST_WEB_ASSETS: &[web_assets::EmbeddedAsset] = &[
-        web_assets::EmbeddedAsset {
-            path: "/index.html",
-            content_type: "text/html; charset=utf-8",
-            bytes: b"<html><body>graph</body></html>",
-        },
-        web_assets::EmbeddedAsset {
-            path: "/_app/app.js",
-            content_type: "text/javascript; charset=utf-8",
-            bytes: b"console.log('graph')",
-        },
-    ];
+    use std::path::PathBuf;
+    use std::time::{SystemTime, UNIX_EPOCH};
 
     fn request_web_server_once(state: web_server::WebServerState, target: &str) -> Vec<u8> {
         let server = web_server::WebServer::bind_for_test(state).expect("server should bind");
@@ -678,10 +671,15 @@ mod tests {
     }
 
     fn test_web_server_state() -> web_server::WebServerState {
+        let assets_dir = test_asset_dir(&[
+            ("index.html", b"<html><body>graph</body></html>".as_slice()),
+            ("_app/app.js", b"console.log('graph')".as_slice()),
+            ("core.26062120.wasm", b"\0asmtest".as_slice()),
+        ]);
         web_server::WebServerState {
             token: "test-token".to_string(),
             result_json: br#"{"ok":true}"#.to_vec(),
-            assets: TEST_WEB_ASSETS,
+            assets_dir,
         }
     }
 
@@ -703,45 +701,37 @@ mod tests {
 
     #[test]
     fn embedded_assets_lookup_normalizes_graph_route_to_index() {
-        let assets = [
-            web_assets::EmbeddedAsset {
-                path: "/index.html",
-                content_type: "text/html; charset=utf-8",
-                bytes: b"<html></html>",
-            },
-            web_assets::EmbeddedAsset {
-                path: "/_app/app.js",
-                content_type: "text/javascript; charset=utf-8",
-                bytes: b"console.log(1)",
-            },
-        ];
+        let asset_dir = test_asset_dir(&[
+            ("index.html", b"<html></html>".as_slice()),
+            ("_app/app.js", b"console.log(1)".as_slice()),
+        ]);
 
-        let index = web_assets::find_asset(&assets, "/cli/graph")
+        let index = web_assets::find_asset(&asset_dir, "/cli/graph")
             .expect("graph route should use index.html");
-        assert_eq!(index.path, "/index.html");
+        assert!(index.path.ends_with("index.html"));
 
-        let graph_with_query = web_assets::find_asset(&assets, "/cli/graph?token=x")
+        let graph_with_query = web_assets::find_asset(&asset_dir, "/cli/graph?token=x")
             .expect("graph route with query should use index.html");
-        assert_eq!(graph_with_query.path, "/index.html");
+        assert!(graph_with_query.path.ends_with("index.html"));
 
-        let script = web_assets::find_asset(&assets, "/_app/app.js?hash=1")
+        let script = web_assets::find_asset(&asset_dir, "/_app/app.js?hash=1")
             .expect("static asset should resolve directly");
         assert_eq!(script.content_type, "text/javascript; charset=utf-8");
 
         assert!(
-            web_assets::find_asset(&assets, "/missing").is_none(),
+            web_assets::find_asset(&asset_dir, "/missing").is_none(),
             "unknown extensionless route should not fallback"
         );
         assert!(
-            web_assets::find_asset(&assets, "/api/status").is_none(),
+            web_assets::find_asset(&asset_dir, "/api/status").is_none(),
             "api-looking route should not fallback"
         );
         assert!(
-            web_assets::find_asset(&assets, "/missing.txt").is_none(),
+            web_assets::find_asset(&asset_dir, "/missing.txt").is_none(),
             "missing static asset should not fallback"
         );
         assert!(
-            web_assets::find_asset(&assets, "/cli/graph/anything").is_none(),
+            web_assets::find_asset(&asset_dir, "/cli/graph/anything").is_none(),
             "graph fallback should not cover unknown subpaths"
         );
     }
@@ -759,6 +749,23 @@ mod tests {
         assert_response_contains(&matching, "HTTP/1.1 200 OK");
         assert_response_contains(&matching, "Content-Type: application/json; charset=utf-8");
         assert_eq!(response_body(&matching), br#"{"ok":true}"#);
+    }
+
+    fn test_asset_dir(files: &[(&str, &[u8])]) -> PathBuf {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("time should be monotonic enough for tests")
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!("treease-cli-test-assets-{unique}"));
+        fs::create_dir_all(&root).expect("test asset root should be creatable");
+        for (relative, bytes) in files {
+            let path = root.join(relative);
+            if let Some(parent) = path.parent() {
+                fs::create_dir_all(parent).expect("test asset parent should be creatable");
+            }
+            fs::write(path, bytes).expect("test asset file should write");
+        }
+        root
     }
 
     #[test]
@@ -783,10 +790,20 @@ mod tests {
         assert_eq!(response_body(&static_asset), b"console.log('graph')");
 
         let root = request_web_server_once(test_web_server_state(), "/");
-        assert_response_contains(&root, "HTTP/1.1 404 Not Found");
+        assert_response_contains(&root, "HTTP/1.1 200 OK");
+        assert_eq!(response_body(&root), b"<html><body>graph</body></html>");
 
         let direct_index = request_web_server_once(test_web_server_state(), "/index.html");
-        assert_response_contains(&direct_index, "HTTP/1.1 404 Not Found");
+        assert_response_contains(&direct_index, "HTTP/1.1 200 OK");
+        assert_eq!(
+            response_body(&direct_index),
+            b"<html><body>graph</body></html>"
+        );
+
+        let wasm_asset = request_web_server_once(test_web_server_state(), "/core.26062120.wasm");
+        assert_response_contains(&wasm_asset, "HTTP/1.1 200 OK");
+        assert_response_contains(&wasm_asset, "Content-Type: application/wasm");
+        assert_eq!(response_body(&wasm_asset), b"\0asmtest");
 
         let graph_subpath = request_web_server_once(
             test_web_server_state(),

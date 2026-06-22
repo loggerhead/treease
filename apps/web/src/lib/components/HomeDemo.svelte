@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { ArrowRightLeft } from 'lucide-svelte'
+
   const sourceText = `{
   "service": "treease",
   "focus": "graph sync",
@@ -68,7 +70,9 @@
 
     <div class="readonly-divider" aria-hidden="true">
       <span class="readonly-divider__bar"></span>
-      <span class="readonly-divider__icon">⟷</span>
+      <span class="readonly-divider__icon">
+        <ArrowRightLeft size={12} aria-hidden="true" />
+      </span>
     </div>
 
     <section class="panel panel--graph">

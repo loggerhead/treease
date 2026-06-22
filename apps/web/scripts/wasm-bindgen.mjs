@@ -30,8 +30,8 @@ export function runBindgen() {
   });
 
   // 2. Build WASM with wasm-pack (generates pkg/ with wasm-bindgen bindings)
-  execFileSync('wasm-pack', ['build', 'packages/core', '--target', 'web', '--out-dir', 'wasm/pkg', '--out-name', 'core'], {
-    cwd: rootDir,
+  execFileSync('wasm-pack', ['build', '.', '--target', 'web', '--out-dir', 'wasm/pkg', '--out-name', 'core'], {
+    cwd: coreDir,
     stdio: 'inherit'
   });
 

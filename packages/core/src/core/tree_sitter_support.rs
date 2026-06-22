@@ -276,47 +276,16 @@ pub(crate) fn tree_sitter_language_for_spec(spec: &LangSpec<'_>) -> Option<tree_
         // use the JavaScript grammar, which can parse JSON object/array literals
         // and supports the `pair key:/value:` queries exercised by the tests.
         // Actual JSON semantic tokens still go through the streaming codec path.
-        "json" => Some(tree_sitter::Language::new(tree_sitter_javascript_language())),
+        "json" => Some(tree_sitter::Language::new(tree_sitter_javascript::LANGUAGE)),
         #[cfg(not(feature = "lite"))]
-        "yaml" => Some(tree_sitter::Language::new(tree_sitter_yaml_language())),
+        "yaml" => Some(tree_sitter::Language::new(tree_sitter_yaml::LANGUAGE)),
         #[cfg(not(feature = "lite"))]
-        "toml" => Some(tree_sitter::Language::new(tree_sitter_toml_language())),
+        "toml" => Some(tree_sitter::Language::new(tree_sitter_toml_ng::LANGUAGE)),
         #[cfg(not(feature = "lite"))]
-        "python" => Some(tree_sitter::Language::new(tree_sitter_python_language())),
-        "javascript" => Some(tree_sitter::Language::new(tree_sitter_javascript_language())),
+        "python" => Some(tree_sitter::Language::new(tree_sitter_python::LANGUAGE)),
+        "javascript" => Some(tree_sitter::Language::new(tree_sitter_javascript::LANGUAGE)),
         _ => None,
     }
-}
-
-#[cfg(not(feature = "lite"))]
-fn tree_sitter_yaml_language() -> tree_sitter_language::LanguageFn {
-    unsafe extern "C" {
-        fn tree_sitter_yaml() -> *const ();
-    }
-    unsafe { tree_sitter_language::LanguageFn::from_raw(tree_sitter_yaml) }
-}
-
-#[cfg(not(feature = "lite"))]
-fn tree_sitter_toml_language() -> tree_sitter_language::LanguageFn {
-    unsafe extern "C" {
-        fn tree_sitter_toml() -> *const ();
-    }
-    unsafe { tree_sitter_language::LanguageFn::from_raw(tree_sitter_toml) }
-}
-
-#[cfg(not(feature = "lite"))]
-fn tree_sitter_python_language() -> tree_sitter_language::LanguageFn {
-    unsafe extern "C" {
-        fn tree_sitter_python() -> *const ();
-    }
-    unsafe { tree_sitter_language::LanguageFn::from_raw(tree_sitter_python) }
-}
-
-fn tree_sitter_javascript_language() -> tree_sitter_language::LanguageFn {
-    unsafe extern "C" {
-        fn tree_sitter_javascript() -> *const ();
-    }
-    unsafe { tree_sitter_language::LanguageFn::from_raw(tree_sitter_javascript) }
 }
 
 fn deepest_named_descendant(

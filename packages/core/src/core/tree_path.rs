@@ -259,7 +259,7 @@ pub fn normalize_key_text(text: &str) -> String {
 fn get_first_non_punctuation_child(node: tree_sitter::Node<'_>) -> Option<tree_sitter::Node<'_>> {
     let count = node.child_count();
     for i in 0..count {
-        let child = node.child(i as u32)?;
+        let child = node.child(i as _)?;
         if is_punctuation_type(child.kind()) {
             continue;
         }
@@ -292,7 +292,7 @@ fn collect_toml_key_parts_from_node(
     if typ == "dotted_key" {
         let count = key_node.child_count();
         for i in 0..count {
-            let child = match key_node.child(i as u32) {
+            let child = match key_node.child(i as _) {
                 Some(c) => c,
                 None => continue,
             };
@@ -341,7 +341,7 @@ fn find_array_index(
             let mut index: usize = 0;
             let mut matched_item_type = false;
             for i in 0..count {
-                let child = array_node.child(i as u32)?;
+                let child = array_node.child(i as _)?;
                 if child.kind() == item_type {
                     matched_item_type = true;
                     if node_contains_node(child, target) {
@@ -357,7 +357,7 @@ fn find_array_index(
     }
     let mut index: usize = 0;
     for i in 0..count {
-        let child = array_node.child(i as u32)?;
+        let child = array_node.child(i as _)?;
         if is_punctuation_type(child.kind()) {
             continue;
         }
@@ -421,7 +421,7 @@ fn build_structured_tree_path_segments(
             let count = parent.child_count();
             let mut key_node: Option<tree_sitter::Node<'_>> = None;
             for i in 0..count {
-                let child = match parent.child(i as u32) {
+                let child = match parent.child(i as _) {
                     Some(c) => c,
                     None => continue,
                 };
@@ -536,7 +536,7 @@ fn find_node_at_position(
     }
     let count = node.child_count();
     for i in 0..count {
-        let child = node.child(i as u32)?;
+        let child = node.child(i as _)?;
         if !node_contains_point(child, point) {
             continue;
         }
@@ -927,7 +927,7 @@ fn structured_pair_fields(
     }
 
     let mut children =
-        (0..pair_node.named_child_count()).filter_map(|index| pair_node.named_child(index as u32));
+        (0..pair_node.named_child_count()).filter_map(|index| pair_node.named_child(index as _));
     (children.next(), children.next())
 }
 
@@ -979,7 +979,7 @@ fn recover_structured_path_span(
     }
 
     for index in 0..node.named_child_count() {
-        let child = match node.named_child(index as u32) {
+        let child = match node.named_child(index as _) {
             Some(child) => child,
             None => continue,
         };
