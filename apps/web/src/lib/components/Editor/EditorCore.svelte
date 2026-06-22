@@ -387,7 +387,8 @@
       }
       const previousLanguage = languageIdValue;
       const next = nextValue as SupportedEditorLanguageId;
-      const isManualLanguageSwitch = !shouldSuppressLanguageExample;
+      const languageChanged = next !== previousLanguage;
+      const isManualLanguageSwitch = languageChanged && !shouldSuppressLanguageExample;
       const hadUserInput = activeTabHasUserInput(previousLanguage);
       languageIdValue = next;
       activeTempModel.update((current) => ({ ...current, error: '' }));
@@ -420,7 +421,7 @@
             language: languageSwitchPolicy.language,
             text: languageSwitchPolicy.text,
             reason: languageSwitchPolicy.reason,
-            isFresh: () => model === requestModel && requestModel.getValue() === languageSwitchSourceText,
+            isFresh: () => model === requestModel,
           });
         }
       }

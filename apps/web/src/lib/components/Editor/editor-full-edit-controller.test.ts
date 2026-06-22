@@ -247,6 +247,40 @@ describe('editor-full-edit-controller', () => {
     expect(mockStartDocumentJobForGraph).not.toHaveBeenCalled();
   });
 
+  for (const languageCase of [
+    { language: 'json', text: '{\n  "object": {\n    "int": 42\n  }\n}\n' },
+    { language: 'yaml', text: 'object:\n  int: 42\n' },
+    { language: 'toml', text: '[object]\nint = 42\n' },
+    { language: 'javascript', text: '{\n  object: {\n    int: 42,\n  },\n}\n' },
+    { language: 'python', text: "{\n  'object': {\n    'int': 42,\n  },\n}\n" },
+  ] as const) {
+    it(`language-example session for ${languageCase.language} should stay fresh when the same model remains active`, async () => {
+      mockStartDocumentJobForGraph.mockResolvedValueOnce({
+        snapshotId: 10,
+        analysis: { documentKey: 'doc-test', language: languageCase.language, tree: {}, value: {} },
+      });
+      const options = createOptions();
+      const controller = createEditorFullEditController(options as any);
+      const requestModel = options.getModel();
+
+      await controller.startFullEditSession({
+        language: languageCase.language as any,
+        text: languageCase.text,
+        reason: 'language-example',
+        isFresh: () => options.getModel() === requestModel,
+      });
+      await Promise.resolve();
+
+      expect(mockStartDocumentJobForGraph).toHaveBeenCalledWith(
+        expect.objectContaining({
+          language: languageCase.language,
+          text: languageCase.text,
+        }),
+      );
+      expect(mockApplyGraphAnalysis).toHaveBeenCalled();
+    });
+  }
+
   it('calls applyGraphAnalysis when graph analysis result is available', async () => {
     mockStartDocumentJobForGraph.mockResolvedValueOnce({
       snapshotId: 10,
