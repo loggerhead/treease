@@ -84,6 +84,7 @@ describe('wasm-worker-singleton', () => {
     await shutdownSharedWasmWorker();
     vi.restoreAllMocks();
     mocked.decodeGraphDeltaPayload.mockReset();
+    vi.unstubAllGlobals();
   });
 
   it('reuses one client during concurrent init', async () => {
@@ -323,6 +324,26 @@ describe('wasm-worker-singleton', () => {
     expect(typeof client.onEvent).toBe('function');
     expect(typeof client.dispose).toBe('function');
     expect(factoryCalls).toBe(2);
+  });
+
+  it('prefers preloaded wasm bytes during init when fetch is available', async () => {
+    const bytes = new Uint8Array([0, 97, 115, 109]).buffer;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({
+        ok: true,
+        arrayBuffer: async () => bytes,
+      })),
+    );
+
+    const { worker, state } = createMockWorker();
+    setWorkerFactory(() => worker);
+
+    await getWasmWorkerClient('http://127.0.0.1:4173/wasm/core.wasm');
+
+    const initPost = state.posts.find((item) => item.type === 'init');
+    expect(initPost?.payload.wasmBytes).toBeInstanceOf(ArrayBuffer);
+    expect(initPost?.payload.wasmBytes.byteLength).toBe(bytes.byteLength);
   });
 
 

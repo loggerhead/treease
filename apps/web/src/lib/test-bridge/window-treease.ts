@@ -109,6 +109,7 @@ export function ensureWindowTreease(): WindowTreease | null {
       reset: () => getSettingsBridge().reset(),
     },
     graph: {
+      getInteractionState: () => getGraphRuntime().getInteractionState?.() ?? null,
       getClickProbeTargets: (scope) => getGraphRuntime().getClickProbeTargets?.(scope) ?? [],
       getHighlightTarget: () => getGraphRuntime().getHighlightTarget?.() ?? null,
       getLastReveal: () => getGraphRuntime().getLastReveal?.() ?? null,

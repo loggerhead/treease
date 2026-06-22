@@ -14,6 +14,31 @@ const YAML_IMPORT_TEXT = "user:\n  name: Alice\ncount: 42\n";
 const TWO_MB_JSON_PATH = resolve("./test/fixtures/json/2mb.1.json");
 const TWO_MB_JSON_TEXT = readFileSync(TWO_MB_JSON_PATH, "utf8");
 const CAPTURE_FILTER = (process.env.TREEASE_LANDING_CAPTURE_FILTER ?? "").trim();
+const EXPORT_PREVIEW_JSON_TEXT = JSON.stringify(
+  {
+    title: "Example",
+    count: 42,
+    owner: {
+      name: "Treease",
+      region: "ap-singapore",
+      active: true,
+    },
+    flags: {
+      preview: true,
+      compare: true,
+      export: true,
+    },
+    items: [
+      { id: 1, name: "alpha", enabled: true },
+      { id: 2, name: "beta", enabled: false },
+      { id: 3, name: "gamma", enabled: true },
+      { id: 4, name: "delta", enabled: true },
+      { id: 5, name: "omega", enabled: false },
+    ],
+  },
+  null,
+  2,
+);
 
 mkdirSync(OUTPUT_DIR, { recursive: true });
 
@@ -110,7 +135,13 @@ async function waitForGraphRendered(page) {
       async () =>
         evaluateTreease(page, (treease) => {
           const state = treease.editor.getState();
-          return state.graphAppliedRevision >= state.editorRevision && state.editorRevision > 0;
+          const graph = treease.graph.getInteractionState?.();
+          return (
+            state.graphAppliedRevision >= state.editorRevision &&
+            state.editorRevision > 0 &&
+            graph?.current === true &&
+            graph?.pendingRenderWork === false
+          );
         }),
       { timeout: 10_000 },
     )
@@ -915,10 +946,10 @@ const workflowCaptures = [
   {
     name: "workflow-progress",
     outputBaseName: "workflow-progress",
-    viewport: { width: 920, height: 430 },
+    viewport: { width: 780, height: 486 },
     recordVideo: true,
     async prepare(page) {
-      await setSplitRatio(page, 0.34);
+      await setSplitRatio(page, 0.4);
       await dropFile(page, {
         targetTestId: "source-editor-region",
         fileName: "2mb.json",
@@ -939,18 +970,7 @@ const workflowCaptures = [
       return {
         settleMs: 0,
         captureBeforeAfterHook: true,
-        target: {
-          type: "union",
-          padding: 20,
-          items: [
-            { kind: "locator", locator: page.getByTestId("source-editor-region") },
-            { kind: "locator", locator: page.getByTestId("graph-viewer-canvas") },
-            {
-              kind: "box",
-              box: async () => progressBox,
-            },
-          ],
-        },
+        target: { type: "full" },
         afterCapture: async (capturePage) => {
           await waitForImportIdle(capturePage, 10_000);
           await capturePage.waitForTimeout(320);
@@ -961,11 +981,11 @@ const workflowCaptures = [
   {
     name: "workflow-export",
     outputBaseName: "workflow-export",
-    viewport: { width: 980, height: 360 },
+    viewport: { width: 780, height: 400 },
     async prepare(page) {
-      await setSplitRatio(page, 0.5);
+      await setSplitRatio(page, 0.46);
       await setEditorContent(page, {
-        sourceText: '{"title":"Example","count":42,"items":[1,2,3]}',
+        sourceText: EXPORT_PREVIEW_JSON_TEXT,
         language: "json",
       });
       await page.getByRole("button", { name: "Export", exact: true }).click();
@@ -977,15 +997,8 @@ const workflowCaptures = [
       await waitForRightPreviewText(page, "title: Example");
       await expect(page.getByText("Previewed JSON to YAML")).toBeVisible({ timeout: 5_000 });
     },
-    target(page) {
-      return {
-        type: "union",
-        padding: 20,
-        items: [
-          { kind: "locator", locator: page.getByTestId("export-panel") },
-          { kind: "locator", locator: page.getByTestId("right-panel-dropzone") },
-        ],
-      };
+    target() {
+      return { type: "full" };
     },
   },
 ];

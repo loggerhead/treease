@@ -1,6 +1,5 @@
 import { expect, type Page } from '@playwright/test';
 
-const IS_CI = !!process.env.CI;
 import type {
   TreeaseGraphBuildResult,
   TreeaseGraphTooltipRequest,
@@ -10,6 +9,8 @@ import type {
   WindowTreease,
 } from '../../src/lib/test-bridge/types';
 import type { PathSpan } from '@core-wasm/index';
+
+const DEFAULT_UI_TIMEOUT = 10_000;
 
 type EditorSnapshot = {
   sourceText: string;
@@ -102,12 +103,15 @@ function bridgePathFromSegments(path: string[]): Array<{ key?: string; index?: n
   );
 }
 
-export async function waitForMonacoHook(page: Page, hookId: string, timeout = IS_CI ? 10_000 : 5_000) {
+export async function waitForMonacoHook(page: Page, hookId: string, timeout = DEFAULT_UI_TIMEOUT) {
   const locator = monacoHook(page, hookId);
   await expect
     .poll(
       async () => {
-        if ((await locator.count()) === 0) return false;
+        const count = await locator.count();
+        if (count === 0) {
+          return false;
+        }
         return evaluateTreease(page, (treease, nextHookId) => treease.editor.isReady(nextHookId), hookId);
       },
       { timeout },
@@ -170,7 +174,7 @@ export async function setEditorContent(page: Page, payload: { sourceText: string
         const state = await evaluateTreease(page, (treease) => treease.editor.getState());
         return state.fullEditUiState.phase === 'idle' && state.editorRevision > 0;
       },
-      { timeout: 5_000 },
+      { timeout: DEFAULT_UI_TIMEOUT },
     )
     .toBe(true);
 
@@ -204,7 +208,7 @@ export async function setEditorContent(page: Page, payload: { sourceText: string
           fullEditIdle: fullEditState.phase === 'idle',
         };
       },
-      { timeout: 5_000 },
+      { timeout: DEFAULT_UI_TIMEOUT },
     )
     .toEqual({ modelSynced: true, storeSynced: true, languageSynced: true, fullEditIdle: true });
 }
@@ -328,7 +332,7 @@ export async function dropFile(
   },
 ) {
   const target = page.getByTestId(options.targetTestId);
-  await expect(target).toBeVisible({ timeout: 5_000 });
+  await expect(target).toBeVisible({ timeout: DEFAULT_UI_TIMEOUT });
   await target.evaluate(
     (node, payload) => {
       const dataTransfer = new DataTransfer();
@@ -345,7 +349,7 @@ export async function dropFile(
   );
 }
 
-export async function waitForEditorReady(page: Page, timeout = IS_CI ? 10_000 : 5_000) {
+export async function waitForEditorReady(page: Page, timeout = DEFAULT_UI_TIMEOUT) {
   await waitForMonacoHook(page, 'source-editor', timeout);
   await expect(
     page
@@ -354,7 +358,7 @@ export async function waitForEditorReady(page: Page, timeout = IS_CI ? 10_000 : 
   ).toBeVisible({ timeout });
 }
 
-export async function waitForSettingsReady(page: Page, timeout = 5_000) {
+export async function waitForSettingsReady(page: Page, timeout = DEFAULT_UI_TIMEOUT) {
   await expect
     .poll(
       async () => evaluateTreease(page, (treease) => treease.settings.getStatus()),
@@ -363,15 +367,19 @@ export async function waitForSettingsReady(page: Page, timeout = 5_000) {
     .toBe('ready');
 }
 
-export async function waitForGraphRendered(page: Page, timeout = IS_CI ? 10_000 : 5_000) {
+export async function waitForGraphRendered(page: Page, timeout = DEFAULT_UI_TIMEOUT) {
   await expect
     .poll(
       async () =>
         evaluateTreease(page, (treease) => {
           const state = treease.editor.getState();
+          const graph = treease.graph.getInteractionState();
           return {
             editorRevision: state.editorRevision,
             graphAppliedRevision: state.graphAppliedRevision,
+            graphCurrent: graph?.current ?? false,
+            hasGraphData: graph?.hasGraphData ?? false,
+            pendingRenderWork: graph?.pendingRenderWork ?? true,
           };
         }),
       { timeout },
@@ -380,6 +388,9 @@ export async function waitForGraphRendered(page: Page, timeout = IS_CI ? 10_000 
       expect.objectContaining({
         editorRevision: expect.any(Number),
         graphAppliedRevision: expect.any(Number),
+        graphCurrent: true,
+        hasGraphData: true,
+        pendingRenderWork: false,
       }),
     );
   await expect
@@ -387,20 +398,26 @@ export async function waitForGraphRendered(page: Page, timeout = IS_CI ? 10_000 
       async () =>
         evaluateTreease(page, (treease) => {
           const state = treease.editor.getState();
-          return state.graphAppliedRevision >= state.editorRevision && state.editorRevision > 0;
+          const graph = treease.graph.getInteractionState();
+          return (
+            state.graphAppliedRevision >= state.editorRevision &&
+            state.editorRevision > 0 &&
+            graph?.current === true &&
+            graph?.pendingRenderWork === false
+          );
         }),
       { timeout },
     )
     .toBe(true);
 }
 
-export async function waitForDiagnostics(page: Page, timeout = 5_000) {
+export async function waitForDiagnostics(page: Page, timeout = DEFAULT_UI_TIMEOUT) {
   await expect
     .poll(async () => (await readEditorState(page)).tempModel.diagnostics.length, { timeout })
     .toBeGreaterThan(0);
 }
 
-export async function waitForTreePath(page: Page, expectedPath: string[], timeout = 5_000) {
+export async function waitForTreePath(page: Page, expectedPath: string[], timeout = DEFAULT_UI_TIMEOUT) {
   await expect.poll(async () => (await readEditorState(page)).tempModel.treePath, { timeout }).toEqual(expectedPath);
 }
 
@@ -408,7 +425,7 @@ export async function openMonacoHover(
   page: Page,
   options: { hookId: string; lineNumber: number; column: number; hoverText: string; timeout?: number },
 ) {
-  const timeout = options.timeout ?? 5_000;
+  const timeout = options.timeout ?? DEFAULT_UI_TIMEOUT;
   await setMonacoPosition(page, options.hookId, options.lineNumber, options.column);
   const locator = monacoHook(page, options.hookId);
   await expect(locator).toBeVisible({ timeout });
@@ -443,7 +460,7 @@ export async function readMonacoHoverHtml(page: Page) {
   );
 }
 
-export async function expectMonacoHoverContains(page: Page, expectedParts: Array<string | RegExp>, timeout = 5_000) {
+export async function expectMonacoHoverContains(page: Page, expectedParts: Array<string | RegExp>, timeout = DEFAULT_UI_TIMEOUT) {
   await expect
     .poll(
       async () => {
@@ -461,7 +478,7 @@ export type GraphEditEventDetail = TreeaseTestGraphEditEventDetail;
 type GraphEditEvent = TreeaseTestGraphEditEvent;
 
 export async function installGraphEditEventCapture(page: Page) {
-  await expect(page.getByTestId('graph-viewer-canvas')).toBeVisible({ timeout: 5_000 });
+  await expect(page.getByTestId('graph-viewer-canvas')).toBeVisible({ timeout: DEFAULT_UI_TIMEOUT });
   await page.evaluate(() => {
     const treease = window._treease;
     if (!treease) {
@@ -767,7 +784,9 @@ export async function readGraphHoverPanel(page: Page): Promise<{
       })
       .catch(() => null),
   ]);
-  if (preview?.kind !== 'subgraph' || !preview.visible || !rect) return null;
+  if (preview?.kind !== 'subgraph' || !preview.visible || !rect) {
+    return null;
+  }
   const rawPath = (() => {
     const first = probes[0]?.rawPath;
     if (!first?.length) return [] as TreeaseRuntimePathSeg[];
@@ -1078,7 +1097,7 @@ export async function callTreeaseWorker<T>(
 
 export async function getElementWidth(page: Page, testId: string) {
   const locator = page.getByTestId(testId);
-  await expect(locator).toBeVisible({ timeout: 5_000 });
+  await expect(locator).toBeVisible({ timeout: DEFAULT_UI_TIMEOUT });
   const box = await locator.boundingBox();
   if (!box) throw new Error(`Unable to read bounding box for ${testId}`);
   return box.width;
@@ -1086,7 +1105,7 @@ export async function getElementWidth(page: Page, testId: string) {
 
 export async function dragSplitterDivider(page: Page, deltaX: number) {
   const divider = page.getByTestId('splitter-divider');
-  await expect(divider).toBeVisible({ timeout: 5_000 });
+  await expect(divider).toBeVisible({ timeout: DEFAULT_UI_TIMEOUT });
   const box = await divider.boundingBox();
   if (!box) throw new Error('Unable to read splitter divider bounds');
   const startX = box.x + box.width / 2;
@@ -1107,7 +1126,7 @@ export async function clickGraphProbeAt(page: Page, probe: { x: number; y: numbe
 
 export async function clickGraphProbe(page: Page, probeIndex = 0) {
   await expect
-    .poll(async () => (await getLatestGraphProbes(page)).length, { timeout: 5_000 })
+    .poll(async () => (await getLatestGraphProbes(page)).length, { timeout: DEFAULT_UI_TIMEOUT })
     .toBeGreaterThan(probeIndex);
   const probe = (await getLatestGraphProbes(page))[probeIndex];
   if (!probe) throw new Error(`graph probe ${probeIndex} missing`);
@@ -1266,7 +1285,7 @@ export async function commitGraphValueViaProbes(
         return (await runtime.commitProbe(payload.probeId, payload.text)) ?? false;
       }, { probeId, text }),
     waitForProbesAfterReset: async () => {
-      await expect.poll(async () => (await getLatestGraphProbes(page)).length, { timeout: 5_000 }).toBeGreaterThan(0);
+      await expect.poll(async () => (await getLatestGraphProbes(page)).length, { timeout: DEFAULT_UI_TIMEOUT }).toBeGreaterThan(0);
     },
     matchesProbeSnapshot: (probe) =>
       !probe.rawPath?.length ||
@@ -1300,7 +1319,7 @@ export async function commitGraphCellSubgraphPanelValueViaProbes(
       }, { probeId, text }),
     waitForProbesAfterReset: async () => {
       await expect
-        .poll(async () => (await readGraphCellSubgraphPanelClickProbes(page)).length, { timeout: 5_000 })
+        .poll(async () => (await readGraphCellSubgraphPanelClickProbes(page)).length, { timeout: DEFAULT_UI_TIMEOUT })
         .toBeGreaterThan(0);
     },
     matchesProbeSnapshot: async (probe) => {

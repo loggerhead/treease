@@ -65,6 +65,7 @@ let initializedWasmURL: string | null = null;
 let isReady = false;
 let chunkSizeConfig: Record<string, number> | null = null;
 let sharedWasmBytes: ArrayBuffer | null = null;
+let sharedWasmBytesPromise: Promise<ArrayBuffer | null> | null = null;
 let workerFactory: (() => WorkerLike | Promise<WorkerLike>) | null = null;
 const debouncedTypes = new Set([
   'diagnostics',
@@ -151,6 +152,29 @@ export function setSharedWasmBytes(bytes: ArrayBuffer): void {
     throw new Error('WASM already initialized; cannot override wasm bytes');
   }
   sharedWasmBytes = bytes;
+}
+
+async function ensureSharedWasmBytes(wasmURL: string): Promise<ArrayBuffer | null> {
+  if (sharedWasmBytes) return sharedWasmBytes;
+  if (sharedWasmBytesPromise) return sharedWasmBytesPromise;
+  if (typeof fetch !== 'function') return null;
+  sharedWasmBytesPromise = (async () => {
+    try {
+      const response = await fetch(wasmURL);
+      if (!response.ok) {
+        throw new Error(`failed to fetch wasm: ${response.status} ${response.statusText}`);
+      }
+      const bytes = await response.arrayBuffer();
+      sharedWasmBytes = bytes;
+      return bytes;
+    } catch (error) {
+      console.warn('[wasm] preload bytes failed; falling back to URL init', error);
+      return null;
+    } finally {
+      sharedWasmBytesPromise = null;
+    }
+  })();
+  return sharedWasmBytesPromise;
 }
 
 
@@ -432,6 +456,9 @@ export async function getWasmWorkerClient(wasmURL: string): Promise<WorkerClient
     }
     initError = null;
     isReady = false;
+    if (!sharedWasmBytes) {
+      await ensureSharedWasmBytes(wasmURL);
+    }
     if (!sharedWorker) {
       if (workerFactory) {
         sharedWorker = await workerFactory();
@@ -448,7 +475,7 @@ export async function getWasmWorkerClient(wasmURL: string): Promise<WorkerClient
       if (sharedWasmBytes) {
         initPayload.wasmBytes = sharedWasmBytes;
       }
-      const initCall = sharedClient.call('init', initPayload, sharedWasmBytes ? [sharedWasmBytes] : []);
+      const initCall = sharedClient.call('init', initPayload, []);
       let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
       const timeout = new Promise<never>((_, reject) => {
         timeoutHandle = setTimeout(() => {
@@ -503,6 +530,7 @@ function cleanupSharedState(): void {
   initializedWasmURL = null;
   isReady = false;
   sharedWasmBytes = null;
+  sharedWasmBytesPromise = null;
   workerFactory = null;
 }
 

@@ -127,7 +127,6 @@ export function attachMonacoTestHook(editor: TestHookEditor, hookId: string, tok
       return null;
     },
   });
-
   return () => {
     disposed = true;
     if (domMarkFrame != null) {

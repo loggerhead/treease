@@ -207,4 +207,3 @@ export function createColorProviderRegistrar(options: DocumentColorRegistrarOpti
     refreshVisibleColors: ensureDocumentColorProvider.refreshVisibleColors,
   });
 }
-

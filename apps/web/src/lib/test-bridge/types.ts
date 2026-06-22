@@ -66,7 +66,22 @@ export type TreeaseGraphProbe = {
   } | null;
 };
 
+export type TreeaseGraphInteractionState = {
+  documentKey?: string;
+  revision?: number;
+  snapshotId?: number | null;
+  renderToken?: number;
+  mode?: 'committed' | 'streaming' | 'json-block';
+  current?: boolean;
+  hasGraphData?: boolean;
+  nodeCount?: number;
+  rootProbeCount?: number;
+  pendingRenderWork?: boolean;
+  interactiveReady?: boolean;
+};
+
 export type TreeaseGraphRuntime = {
+  getInteractionState?: () => TreeaseGraphInteractionState | null;
   getClickProbeTargets?: (scope?: 'root' | 'panel') => TreeaseGraphProbe[];
   getHighlightTarget?: () => {
     path?: TreeaseRuntimePathSeg[];
@@ -239,6 +254,7 @@ export type WindowTreease = {
     reset: () => Promise<void>;
   };
   graph: {
+    getInteractionState: () => ReturnType<NonNullable<TreeaseGraphRuntime['getInteractionState']>>;
     getClickProbeTargets: (scope?: 'root' | 'panel') => TreeaseGraphProbe[];
     getHighlightTarget: () => ReturnType<NonNullable<TreeaseGraphRuntime['getHighlightTarget']>>;
     getLastReveal: () => ReturnType<NonNullable<TreeaseGraphRuntime['getLastReveal']>>;

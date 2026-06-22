@@ -6,6 +6,7 @@
 	"scripts": {
 		"assets:r2:upload": "node ./scripts/upload-r2-assets.mjs",
 		"assets:r2:check": "node ./scripts/check-r2-assets.mjs",
+		"assets:tinify:png": "node ./scripts/tinify-pngs.mjs",
 		"dev": "node ./scripts/wasm-dev.mjs",
 		"dev:vite": "VITE_WASM_VERSION=$(node ./scripts/wasm-version.mjs) vp dev",
 		"dev:wasm": "pnpm wasm:sync && pnpm dev:vite",

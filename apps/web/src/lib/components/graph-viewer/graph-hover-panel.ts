@@ -663,12 +663,11 @@ export function createGraphHoverPanelController(deps: HoverPanelControllerDeps) 
     runtime.app.updateClientBounds?.();
     runtime.app.update?.();
     if (requestToken !== tooltipPanelRequestToken) return;
-    await refreshTooltipPanelPlacement(runtime);
-    if (requestToken !== tooltipPanelRequestToken) return;
     setTooltipPanelLoadingState(host, false);
     tooltipPanelPendingPathKey = '';
     deps.setRuntimeHoverPreviewState({ kind: 'subgraph', visible: true });
     deps.setRuntimeHoverPanelDebugState({ phase: 'panel-ready', error: '' });
+    await refreshTooltipPanelPlacement(runtime);
   }
 
   async function openTooltipPanelForCell(host: HTMLElement, cell: GraphCell, targetKind: 'key' | 'value' | 'node'): Promise<void> {

@@ -17,6 +17,7 @@ import { bindActiveDocumentSnapshotIfPresent, clearActiveDocumentSnapshot } from
 import { createFreshnessScope } from '../../guards/freshness-scope';
 import { streamDocumentJobText, type AdvanceDocumentJobRequest } from '../../../shared/document-job-stream';
 import type { FullEditDocumentJobSession } from '../../graph-stream/full-edit-document-job-session';
+import { appendGraphProgressDebug } from './graph-progress-debug';
 import {
   buildDocumentJobSettings,
   collectGraphDocumentJobResult,
@@ -59,6 +60,14 @@ type GraphRenderSceneBridge = {
   getLastRenderedGraph: () => GraphRenderResult | null;
 };
 
+export type GraphRenderGuard = {
+  documentKey: string;
+  revision: number;
+  snapshotId: SnapshotId | null;
+  renderToken: number;
+  mode: 'committed' | 'streaming' | 'json-block';
+};
+
 type GraphRenderSessionDeps = {
   getContainer: () => HTMLElement | null;
   getLanguageId: () => string;
@@ -92,7 +101,11 @@ type GraphRenderSessionDeps = {
     analysis: DocumentAnalysisResult | null,
     snapshotId: SnapshotId | null,
   ) => void;
-  onStreamFinalRedraw: (mode: 'committed' | 'streaming' | 'json-block', revision: number) => void;
+  onStreamFinalRedraw: (
+    mode: 'committed' | 'streaming' | 'json-block',
+    revision: number,
+    guard: GraphRenderGuard,
+  ) => void;
   updateStreamProgress: (event: { event: string; phase: string; processedBytes: number; totalBytes: number; final: boolean }) => void;
   resetStreamProgress: () => void;
   completeStreamProgress: () => void;
@@ -109,8 +122,6 @@ type DocumentJobFinalEvent =
   | Extract<EventBatch['events'][number], { type: 'parseFailed' }>;
 
 const textEncoder = new TextEncoder();
-
-
 
 function buildGraphProgressEvent(streamRunId: string, processedBytes: number, totalBytes: number) {
   return {
@@ -174,11 +185,12 @@ export function createGraphRenderSession(deps: GraphRenderSessionDeps) {
   async function flushSceneAndRedraw(
     mode: 'committed' | 'streaming' | 'json-block',
     revision: number,
+    guard: GraphRenderGuard,
     freshness?: { isCurrent: () => boolean },
   ): Promise<void> {
     await getSceneBridge().flushPendingRenderWork();
     if (freshness && !freshness.isCurrent()) return;
-    deps.onStreamFinalRedraw(mode, revision);
+    deps.onStreamFinalRedraw(mode, revision, guard);
   }
 
   function mutateGraphStreamState(mutator: (state: Record<string, any>) => void): void {
@@ -313,16 +325,12 @@ export function createGraphRenderSession(deps: GraphRenderSessionDeps) {
     totalBytes: number,
     streamRunId: string,
     onProjectionApplied?: () => void,
-    onGraphVisiblyComplete?: () => void,
   ) {
     let projectionApplied = false;
     return async (batch: EventBatch): Promise<void> => {
       await processGraphBatchEvents(batch, totalBytes, {
         onProgress: (processedBytes: number, total: number) => {
           deps.updateStreamProgress(buildGraphProgressEvent(streamRunId, processedBytes, total));
-          if (projectionApplied && total > 0 && processedBytes >= total) {
-            onGraphVisiblyComplete?.();
-          }
         },
         onProjection: async (delta, version) => {
           await applyTrackedProjectionDelta(delta, version);
@@ -355,6 +363,7 @@ export function createGraphRenderSession(deps: GraphRenderSessionDeps) {
     batch: EventBatch;
     analysis: DocumentAnalysisResult | null;
     snapshotId: SnapshotId | null;
+    renderToken: number;
     freshness: ReturnType<typeof createFreshnessScope>;
     streamedProjectionApplied: boolean;
   }): Promise<GraphRenderResult | null> {
@@ -407,7 +416,18 @@ export function createGraphRenderSession(deps: GraphRenderSessionDeps) {
     );
 
     deps.completeStreamProgress();
-    await flushSceneAndRedraw(params.redrawMode, params.revision);
+    await flushSceneAndRedraw(
+      params.redrawMode,
+      params.revision,
+      {
+        documentKey: params.documentKey,
+        revision: params.revision,
+        snapshotId,
+        renderToken: params.renderToken,
+        mode: params.redrawMode,
+      },
+      params.freshness,
+    );
     performance.mark('pipeline:render-document-graph:end');
     performance.measure('pipeline:render-document-graph', 'pipeline:render-document-graph:start', 'pipeline:render-document-graph:end');
     markGraphStreamDone();
@@ -505,21 +525,11 @@ export function createGraphRenderSession(deps: GraphRenderSessionDeps) {
         chunkSize,
       );
       let streamedProjectionApplied = false;
-      let graphVisiblyCompleted = false;
       const applyProjectionEvents = createProjectionEventApplier(
         totalBytes,
         streamRunId,
         () => {
           streamedProjectionApplied = true;
-        },
-        () => {
-          if (graphVisiblyCompleted) return;
-          graphVisiblyCompleted = true;
-          void flushSceneAndRedraw(
-            request.kind === 'incremental' ? 'committed' : 'streaming',
-            request.revision,
-            freshness,
-          );
         },
       );
 
@@ -587,6 +597,7 @@ export function createGraphRenderSession(deps: GraphRenderSessionDeps) {
         batch: result.batch,
         analysis: result.analysis,
         snapshotId: result.snapshotId,
+        renderToken,
         freshness,
         streamedProjectionApplied,
       });
@@ -618,6 +629,13 @@ export function createGraphRenderSession(deps: GraphRenderSessionDeps) {
     await dispose();
     const renderToken = ++activeRenderToken;
     activeExternalSessionId = session.sessionId;
+    appendGraphProgressDebug({
+      kind: 'attach-external-session',
+      sessionId: session.sessionId,
+      streamRunId: session.streamRunId,
+      revision: session.revision,
+      documentKey: session.documentKey,
+    });
     deps.resetStreamProgress();
     deps.clearErrorMessage();
     performance.mark('pipeline:render-document-graph:start');
@@ -648,17 +666,11 @@ export function createGraphRenderSession(deps: GraphRenderSessionDeps) {
       session.chunkSize ?? 0,
     );
     let streamedProjectionApplied = false;
-    let graphVisiblyCompleted = false;
     const applyProjectionEvents = createProjectionEventApplier(
       totalBytes,
       streamRunId,
       () => {
         streamedProjectionApplied = true;
-      },
-      () => {
-        if (graphVisiblyCompleted) return;
-        graphVisiblyCompleted = true;
-        deps.onStreamFinalRedraw('streaming', session.revision);
       },
     );
 
@@ -685,6 +697,7 @@ export function createGraphRenderSession(deps: GraphRenderSessionDeps) {
         batch: result.batch,
         analysis: result.analysis,
         snapshotId: result.snapshotId,
+        renderToken,
         freshness,
         streamedProjectionApplied,
       });
@@ -713,6 +726,14 @@ export function createGraphRenderSession(deps: GraphRenderSessionDeps) {
     clearActiveDocumentSnapshot(selection.sourceDocumentKey, activeSnapshotId);
     activeSnapshotId = null;
     deps.clearErrorMessage();
+    appendGraphProgressDebug({
+      kind: 'render-json-block-selection',
+      sourceDocumentKey: selection.sourceDocumentKey,
+      blockDocumentKey: selection.blockDocumentKey,
+      revision: selection.revision,
+      startByte: selection.startByte,
+      endByte: selection.endByte,
+    });
     deps.resetStreamProgress();
 
     const freshness = createFreshnessScope(
@@ -815,8 +836,6 @@ export function createGraphRenderSession(deps: GraphRenderSessionDeps) {
           failed: true,
         });
       }
-      const rendered = getSceneBridge().getLastRenderedGraph() ?? emptyRenderResult();
-
       const analysis = result.analysis ?? normalizeDocumentJobAnalysisPayload(
         selection.blockDocumentKey,
         selection.language,
@@ -831,9 +850,20 @@ export function createGraphRenderSession(deps: GraphRenderSessionDeps) {
         deps.setErrorMessage('JSON block graph analysis unavailable');
       }
       deps.completeStreamProgress();
-      deps.onStreamFinalRedraw('json-block', selection.revision);
+      await flushSceneAndRedraw(
+        'json-block',
+        selection.revision,
+        {
+          documentKey: selection.blockDocumentKey,
+          revision: selection.revision,
+          snapshotId: snapshotId ?? null,
+          renderToken,
+          mode: 'json-block',
+        },
+        freshness,
+      );
       markGraphStreamDone();
-      return rendered;
+      return getSceneBridge().getLastRenderedGraph() ?? emptyRenderResult();
     } catch (error) {
       deps.handleError(error, {
         component: 'GraphViewer',

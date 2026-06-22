@@ -32,6 +32,13 @@ export type GraphSceneViewData = {
   edges: GraphEdge[];
 };
 
+export type GraphSceneInteractionState = {
+  hasGraphData: boolean;
+  nodeCount: number;
+  rootProbeCount: number;
+  pendingRenderWork: boolean;
+};
+
 type GraphSceneDelta = NormalizedGraphDelta | RawGraphDelta;
 
 type TrackedCellBinding = {
@@ -700,6 +707,27 @@ export function createGraphSceneRuntime(deps: GraphSceneRuntimeDeps) {
     await (pendingViewportRedrawDone ?? Promise.resolve());
   }
 
+  function hasPendingRenderWork(): boolean {
+    return Boolean(
+      pendingStreamPatch ||
+        pendingStreamFrame ||
+        pendingStreamRedrawDone ||
+        pendingViewportRedrawFrame ||
+        pendingViewportRedrawDone ||
+        pendingNodeBuffer.length > 0 ||
+        pendingBufferTimer,
+    );
+  }
+
+  function getInteractionState(): GraphSceneInteractionState {
+    return {
+      hasGraphData: !!lastGraphData,
+      nodeCount: lastGraphData?.nodes.length ?? 0,
+      rootProbeCount: deps.getClickTargetProbes().length,
+      pendingRenderWork: hasPendingRenderWork(),
+    };
+  }
+
   function scheduleNodeBufferFlush(): void {
     if (pendingBufferTimer) return;
     pendingBufferTimer = setTimeout(() => {
@@ -896,6 +924,7 @@ export function createGraphSceneRuntime(deps: GraphSceneRuntimeDeps) {
     applyGraphDelta,
     updateViewport,
     flushPendingRenderWork,
+    getInteractionState,
     scheduleViewportRedraw,
     cancelActiveRenderWork,
     getLastGraphData,

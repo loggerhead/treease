@@ -421,7 +421,9 @@ async function installGraphProgressObservation(page: Page) {
         };
       };
       __treeaseGraphProgressObservation?: GraphProgressObservation;
+      __treeaseGraphProgressDebug?: Array<Record<string, unknown>>;
     };
+    runtimeWindow.__treeaseGraphProgressDebug = [];
     runtimeWindow.__treeaseGraphProgressObservation = {
       stopped: false,
       samples: [],
@@ -469,11 +471,15 @@ async function stopGraphProgressObservation(page: Page) {
           phase: string | null;
         }>;
       };
+      __treeaseGraphProgressDebug?: Array<Record<string, unknown>>;
     };
     const observation = runtimeWindow.__treeaseGraphProgressObservation;
     if (!observation) return null;
     observation.stopped = true;
-    return observation;
+    return {
+      ...observation,
+      debug: runtimeWindow.__treeaseGraphProgressDebug ?? [],
+    };
   });
 }
 
@@ -846,7 +852,7 @@ test('importing the 1mb json fixture via file input never lets an older progress
     .filter((streamRunId, index, all) => index === 0 || streamRunId !== all[index - 1]);
   const resurrectedRuns = runOrder.filter((streamRunId, index) => runOrder.indexOf(streamRunId) !== index);
 
-  expect(runOrder.length).toBeGreaterThan(0);
+  expect(runOrder.length, JSON.stringify(observation?.debug ?? [])).toBeGreaterThan(0);
   expect(resurrectedRuns, JSON.stringify(observation?.samples ?? [])).toEqual([]);
 });
 

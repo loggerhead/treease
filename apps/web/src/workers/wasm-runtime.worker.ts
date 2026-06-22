@@ -1,9 +1,9 @@
 // 职责：WASM Worker 入口：init/dispose 生命周期、消息分发、runtime state 组装、freeStreams 管理
 import {
-  guessLanguage,
   initWasm,
   TOKEN_TYPES,
 } from '@core-wasm/index';
+import { guessLanguage } from '@core-wasm/guess-language';
 import {
   handleDiagnostics,
   handleParseAndStore,

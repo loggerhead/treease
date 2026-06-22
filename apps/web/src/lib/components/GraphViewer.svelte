@@ -54,10 +54,11 @@
     getClientProbeCoordFromBoxLike,
     getWorldRectFromBoxLike,
   } from './graph-viewer/graph-geometry';
-  import { createGraphRenderSession } from './graph-viewer/graph-render-session';
+  import { createGraphRenderSession, type GraphRenderGuard } from './graph-viewer/graph-render-session';
   import { createGraphSceneController } from './graph-viewer/graph-scene';
   import type { GraphSceneViewData } from './graph-viewer/graph-scene-runtime';
   import { createGraphMeasurementController } from './graph-viewer/graph-measurement-controller';
+  import { appendGraphProgressDebug } from './graph-viewer/graph-progress-debug';
   import {
     buildGraphHighlightSignature,
     shouldApplyGraphHighlight,
@@ -131,6 +132,7 @@
   let documentKeyValue = '';
   let languageIdValue: SupportedEditorLanguageId = editorLanguageFallback;
   let editorRevisionValue = 0;
+  let graphRenderGuard: GraphRenderGuard | null = null;
   let editorIOValue: EditorIO | null = null;
   let pendingHoverPanelPrewarmRevision = -1;
   let lastAutoOffset: { x: number; y: number } | null = null;
@@ -368,13 +370,43 @@ const fullBuildReasonSet = new Set([
     });
   }
 
-  function nowMs(): number {
-    return typeof performance !== 'undefined' && typeof performance.now === 'function' ? performance.now() : Date.now();
+  function pushGraphProgressDebug(event: Record<string, unknown>): void {
+    appendGraphProgressDebug(event, {
+      documentKey: documentKeyValue,
+      editorRevision: editorRevisionValue,
+      fullEditActive: $fullEditUiState?.active ?? false,
+      fullEditPhase: $fullEditUiState?.phase ?? 'unknown',
+    });
   }
 
   function isFullEditInteractionBlocked(): boolean {
     const state = $fullEditUiState;
     return state?.active === true && Boolean(state.sessionId) && state.phase !== 'idle';
+  }
+
+  function isGraphRenderGuardCurrent(guard: GraphRenderGuard | null): boolean {
+    if (!guard) return false;
+    if (guard.mode === 'json-block') {
+      const selection = $jsonBlockSelection;
+      return selection?.blockDocumentKey === guard.documentKey && selection.revision === guard.revision;
+    }
+    return guard.documentKey === documentKeyValue && guard.revision === editorRevisionValue;
+  }
+
+  function getGraphInteractionState() {
+    const sceneState = graphSceneController.getInteractionState();
+    const current = isGraphRenderGuardCurrent(graphRenderGuard);
+    const interactiveReady =
+      current &&
+      sceneState.hasGraphData &&
+      !sceneState.pendingRenderWork &&
+      sceneState.rootProbeCount > 0;
+    return {
+      ...(graphRenderGuard ?? {}),
+      current,
+      ...sceneState,
+      interactiveReady,
+    };
   }
 
 
@@ -437,14 +469,12 @@ const fullBuildReasonSet = new Set([
       }
       clearTreeState(requestId, 'graph', revision);
     },
-    onStreamFinalRedraw: (mode, revision) => {
+    onStreamFinalRedraw: (mode, revision, guard) => {
       if (
-        isDocumentRevisionGuardCurrent(
-          { documentKey: documentKeyValue, revision },
-          { documentKey: documentKeyValue, revision: editorRevisionValue },
-        ) &&
+        isGraphRenderGuardCurrent(guard) &&
         (mode === 'committed' || mode === 'streaming' || mode === 'json-block')
       ) {
+        graphRenderGuard = guard;
         const renderedDocumentKey =
           mode === 'json-block' ? ($jsonBlockSelection?.blockDocumentKey ?? documentKeyValue) : documentKeyValue;
         const renderedText = mode === 'json-block' ? ($jsonBlockSelection?.text ?? '') : $sourceText;
@@ -454,21 +484,45 @@ const fullBuildReasonSet = new Set([
         pendingHoverPanelPrewarmRevision = revision;
         replaceGraphStreamState({
           ...(window._treease?.graph.getStreamState() ?? { partialSeen: false, finalSeen: false }),
-          appliedAtMs: nowMs(),
+          appliedAtMs:
+            typeof performance !== 'undefined' && typeof performance.now === 'function' ? performance.now() : Date.now(),
         });
-      } else {
       }
     },
     updateStreamProgress: (event) => {
       if ($fullEditUiState?.active && $fullEditUiState.phase === 'idle') {
+        pushGraphProgressDebug({
+          kind: 'drop-progress',
+          streamRunId: String((event as { streamRunId?: string }).streamRunId ?? ''),
+          phase: String((event as { phase?: string }).phase ?? ''),
+          value: Number((event as { value?: number }).value ?? Number.NaN),
+        });
         return;
       }
+      pushGraphProgressDebug({
+        kind: 'handle-progress',
+        streamRunId: String((event as { streamRunId?: string }).streamRunId ?? ''),
+        phase: String((event as { phase?: string }).phase ?? ''),
+        value: Number((event as { value?: number }).value ?? Number.NaN),
+      });
       graphStreamProgressController.handleEvent(event as any);
     },
     resetStreamProgress: () => {
+      pushGraphProgressDebug({
+        kind: 'reset-progress',
+        streamRunId: streamProgressState.streamRunId,
+        phase: streamProgressState.phase,
+        value: streamProgressState.value,
+      });
       graphStreamProgressController.reset();
     },
     completeStreamProgress: () => {
+      pushGraphProgressDebug({
+        kind: 'complete-progress',
+        streamRunId: streamProgressState.streamRunId,
+        phase: streamProgressState.phase,
+        value: streamProgressState.value,
+      });
       graphStreamProgressController.completeIfActive();
     },
     clearGraphStateEffects: () => {
@@ -939,6 +993,7 @@ const fullBuildReasonSet = new Set([
     getHoverPanelRuntimeDebugSnapshot: () => hoverPanelController.getTooltipPanelRuntimeDebugSnapshot?.() ?? null,
     getHitResult: (point: { x: number; y: number }) => getRuntimeHitResult(point),
     getLastGraphData: () => graphSceneController.getLastGraphData(),
+    getInteractionState: () => getGraphInteractionState(),
     getStreamProgressState: () => streamProgressState,
     revealPath: (path: PathSeg[], options?: { target?: 'key' | 'value' | 'node'; navigate?: boolean }) =>
       revealPath(path, options),

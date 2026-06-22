@@ -269,7 +269,11 @@ describe('graph-render-session coordinator', () => {
       expect.objectContaining({ baseGraphVersion: 0, graphVersion: 0 }),
     );
     expect(renderResult).toEqual({ nodes: [{ id: 1 }], edges: [] });
-    expect(deps.onStreamFinalRedraw).toHaveBeenCalledWith('committed', 5);
+    expect(deps.onStreamFinalRedraw).toHaveBeenCalledWith(
+      'committed',
+      5,
+      expect.objectContaining({ documentKey: 'test-key', revision: 5, snapshotId: 2, mode: 'committed' }),
+    );
     expect(bindActiveDocumentSnapshotIfPresent).toHaveBeenCalledWith(
       expect.objectContaining({ documentKey: 'test-key', revision: 5 }),
     );
@@ -312,7 +316,11 @@ describe('graph-render-session coordinator', () => {
     releaseFlush?.();
     await renderPromise;
 
-    expect(deps.onStreamFinalRedraw).toHaveBeenCalledWith('committed', 5);
+    expect(deps.onStreamFinalRedraw).toHaveBeenCalledWith(
+      'committed',
+      5,
+      expect.objectContaining({ documentKey: 'test-key', revision: 5, snapshotId: 23, mode: 'committed' }),
+    );
   });
 
   it('skips the snapshot main graph when streaming already applied a projection', async () => {
@@ -396,7 +404,11 @@ describe('graph-render-session coordinator', () => {
       expect.objectContaining({ value: { a: 1 } }),
       12,
     );
-    expect(deps.onStreamFinalRedraw).toHaveBeenCalledWith('streaming', 5);
+    expect(deps.onStreamFinalRedraw).toHaveBeenCalledWith(
+      'streaming',
+      5,
+      expect.objectContaining({ documentKey: 'test-key', revision: 5, snapshotId: 12, mode: 'streaming' }),
+    );
     expect(renderResult).toEqual({ nodes: [{ id: 1 }], edges: [] });
   });
 
@@ -708,7 +720,11 @@ describe('graph-render-session coordinator', () => {
       kind: 'textChunk',
       text: '{"nested":true}',
     });
-    expect(deps.onStreamFinalRedraw).toHaveBeenCalledWith('json-block', 8);
+    expect(deps.onStreamFinalRedraw).toHaveBeenCalledWith(
+      'json-block',
+      8,
+      expect.objectContaining({ documentKey: 'block-key', revision: 8, snapshotId: 7, mode: 'json-block' }),
+    );
   });
 
   it('renderJsonBlockSelection resets stream progress before starting a new transient block render', async () => {
@@ -782,7 +798,11 @@ describe('graph-render-session coordinator', () => {
       }),
     );
     expect(deps.completeStreamProgress).toHaveBeenCalledTimes(1);
-    expect(deps.onStreamFinalRedraw).toHaveBeenCalledWith('json-block', 8);
+    expect(deps.onStreamFinalRedraw).toHaveBeenCalledWith(
+      'json-block',
+      8,
+      expect.objectContaining({ documentKey: 'block-key', revision: 8, snapshotId: 7, mode: 'json-block' }),
+    );
   });
 
   it('renderJsonBlockSelection publishes tree state when analysis is available', async () => {

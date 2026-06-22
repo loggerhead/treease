@@ -104,6 +104,7 @@ export function createGraphSceneController(deps: GraphSceneControllerDeps) {
     applyGraphDelta: runtime.applyGraphDelta,
     updateViewport: runtime.updateViewport,
     flushPendingRenderWork: runtime.flushPendingRenderWork,
+    getInteractionState: runtime.getInteractionState,
     scheduleViewportRedraw: runtime.scheduleViewportRedraw,
     cancelActiveRenderWork: runtime.cancelActiveRenderWork,
     getLastGraphData: runtime.getLastGraphData,

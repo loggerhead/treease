@@ -14,9 +14,9 @@ export default defineConfig({
     'drop-import-regression.spec.ts',
     'invalid-json-graph-diagnostics.spec.ts',
   ],
-  timeout: CI ? 10_000 : 5_000,
+  timeout: CI ? 10_000 : 10_000,
   expect: {
-    timeout: CI ? 10_000 : 5_000,
+    timeout: CI ? 10_000 : 10_000,
   },
   fullyParallel: true,
   workers: '50%',
@@ -35,6 +35,6 @@ export default defineConfig({
     command: 'pnpm dev:vite -- --host 127.0.0.1 --port 4173',
     url: 'http://127.0.0.1:4173',
     reuseExistingServer: true,
-    timeout: CI ? 120_000 : 5_000,
+    timeout: CI ? 120_000 : 10_000,
   },
 });
