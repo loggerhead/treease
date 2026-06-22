@@ -219,9 +219,9 @@ dependencies = [
 
 [[package]]
 name = "quote"
-version = "1.0.45"
+version = "1.0.46"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "41f2619966050689382d2b44f664f4bc593e129785a36d6ee376ddf37259b924"
+checksum = "dfbc457d0c7a0759a614551b11a6409e5951f6c7537be1f1b7682b9ae9230368"
 dependencies = [
  "proc-macro2",
 ]
@@ -442,6 +442,8 @@ dependencies = [
 [[package]]
 name = "treease-ts-javascript"
 version = "0.25.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "eaf2ecd179a502b28a48e83f3528e333144020ebc02e3a3e98736ca0cf4ea611"
 dependencies = [
  "cc",
  "tree-sitter-language",
@@ -450,6 +452,8 @@ dependencies = [
 [[package]]
 name = "treease-ts-python"
 version = "0.25.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ca073c6e1f77e7d055e355daf4b10d055d2096f59359544ba32bd43183edf74c"
 dependencies = [
  "cc",
  "tree-sitter",
@@ -459,6 +463,8 @@ dependencies = [
 [[package]]
 name = "treease-ts-toml"
 version = "0.7.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3fb3c644d258a744e36d897f1704795f2a7a28600b60ef604f03f9e09c5fe410"
 dependencies = [
  "cc",
  "tree-sitter-language",
@@ -467,6 +473,8 @@ dependencies = [
 [[package]]
 name = "treease-ts-yaml"
 version = "0.7.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "842080d74193108bfa5696c1c52ce403f3692df8be59ad97d622a5af2a1fdade"
 dependencies = [
  "cc",
  "tree-sitter-language",

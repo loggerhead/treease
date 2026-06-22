@@ -650,7 +650,9 @@ fn node_text<'a>(source: &'a [u8], node: tree_sitter::Node) -> &'a str {
 fn unwrap_python_value_node(mut node: tree_sitter::Node) -> tree_sitter::Node {
     loop {
         let next = match node.kind() {
-            "module" | "expression_statement" | "parenthesized_expression" => node.named_child(0),
+            "module" | "source_file" | "expression_statement" | "parenthesized_expression" => {
+                node.named_child(0)
+            }
             _ => None,
         };
         match next {

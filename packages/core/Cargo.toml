@@ -37,10 +37,10 @@ wasm-bindgen = "0.2.121"
 serde-wasm-bindgen = "0.6"
 tree-sitter = "0.26.9"
 tree-sitter-language = "0.1.7"
-tree-sitter-javascript = { package = "treease-ts-javascript", version = "0.25.1", path = "../../deps/tree-sitter-javascript" }
-tree-sitter-yaml = { package = "treease-ts-yaml", version = "0.7.3", path = "../../deps/tree-sitter-yaml" }
-tree-sitter-toml-ng = { package = "treease-ts-toml", version = "0.7.1", path = "../../deps/tree-sitter-toml" }
-tree-sitter-python = { package = "treease-ts-python", version = "0.25.1", path = "../../deps/tree-sitter-python" }
+tree-sitter-javascript = { package = "treease-ts-javascript", version = "0.25.1" }
+tree-sitter-yaml = { package = "treease-ts-yaml", version = "0.7.3" }
+tree-sitter-toml-ng = { package = "treease-ts-toml", version = "0.7.1" }
+tree-sitter-python = { package = "treease-ts-python", version = "0.25.1" }
 
 [dev-dependencies]
 insta = { version = "1", features = ["yaml"] }

@@ -1,3 +1,7 @@
+.worktrees/
+.private-journal/
+.claude/
+.superpowers/
 *.txt
 .agents/
 .codex/
