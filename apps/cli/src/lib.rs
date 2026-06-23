@@ -651,7 +651,10 @@ mod tests {
         let assets_dir = test_asset_dir(&[
             ("index.html", b"<html><body>graph</body></html>".as_slice()),
             ("_app/app.js", b"console.log('graph')".as_slice()),
-            ("core.26062120.wasm", b"\0asmtest".as_slice()),
+            (
+                "_app/immutable/assets/core.testhash.wasm",
+                b"\0asmtest".as_slice(),
+            ),
         ]);
         web_server::WebServerState {
             token: "test-token".to_string(),
@@ -777,7 +780,10 @@ mod tests {
             b"<html><body>graph</body></html>"
         );
 
-        let wasm_asset = request_web_server_once(test_web_server_state(), "/core.26062120.wasm");
+        let wasm_asset = request_web_server_once(
+            test_web_server_state(),
+            "/_app/immutable/assets/core.testhash.wasm",
+        );
         assert_response_contains(&wasm_asset, "HTTP/1.1 200 OK");
         assert_response_contains(&wasm_asset, "Content-Type: application/wasm");
         assert_eq!(response_body(&wasm_asset), b"\0asmtest");
