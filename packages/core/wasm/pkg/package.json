@@ -1,0 +1,29 @@
+{
+  "name": "treease-core",
+  "type": "module",
+  "description": "Core parsing, evaluation, formatting, and graph runtime for Treease",
+  "version": "1.0.4",
+  "license": "SEE LICENSE IN LICENSE",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/loggerhead/treease"
+  },
+  "files": [
+    "core.wasm",
+    "core.js",
+    "core.d.ts"
+  ],
+  "main": "core.js",
+  "homepage": "https://github.com/loggerhead/treease",
+  "types": "core.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ],
+  "keywords": [
+    "treease",
+    "tree-sitter",
+    "structured-data",
+    "yaml",
+    "json"
+  ]
+}

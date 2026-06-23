@@ -75,7 +75,7 @@ pub(super) fn root_command_spec() -> CliCommandSpec {
     command_spec(
         CliCommandId::Root,
         &["treease"],
-        "treease [OPTIONS] [EXPRESSION] [FILE]...",
+        "treease [OPTIONS] [EXPRESSION] [FILE]",
         "Evaluate Treease expressions over structured documents.",
         vec![
             CliArgumentSpec {
@@ -88,9 +88,9 @@ pub(super) fn root_command_spec() -> CliCommandSpec {
             CliArgumentSpec {
                 name: "file".to_string(),
                 required: false,
-                repeated: true,
-                multiple: true,
-                help: "Input files. Reads stdin when omitted.".to_string(),
+                repeated: false,
+                multiple: false,
+                help: "Input file. Reads stdin when omitted.".to_string(),
             },
         ],
         {

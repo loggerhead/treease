@@ -57,9 +57,13 @@ fn collect_slice(
 pub fn collect_object_operator(
     ctx: Context,
     d: &mut TreeEngine,
-    _expression_node: &mut ExpressionNode,
+    expression_node: &mut ExpressionNode,
 ) -> Result<Context, CoreError> {
-    let mut writable_ctx = ctx.clone();
+    let mut writable_ctx = if let Some(rhs) = expression_node.rhs.as_deref_mut() {
+        get_matching_nodes(d, &ctx, Some(rhs))?
+    } else {
+        ctx.clone()
+    };
     writable_ctx.dont_auto_create = false;
 
     if writable_ctx.matching_nodes.is_empty() {

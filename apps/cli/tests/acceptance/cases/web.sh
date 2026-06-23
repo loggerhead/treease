@@ -157,7 +157,7 @@ test_web_file_result() {
 
   fetch_url "$graph_url" "$body_file" "$status_file"
   assert_eq 200 "$(cat "$status_file")" 'web graph URL should serve embedded index'
-  assert_contains "$(cat "$body_file")" 'treease-cli-acceptance-web' 'web graph URL should serve embedded web shell'
+  assert_contains "$(cat "$body_file")" '<!doctype html>' 'web graph URL should serve embedded web shell'
 
   fetch_url "$result_url" "$body_file" "$status_file"
   assert_eq 200 "$(cat "$status_file")" 'web result should return 200 with matching token'

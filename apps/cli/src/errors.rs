@@ -54,6 +54,13 @@ pub(super) fn error_report(err: &CliError) -> CliErrorReport {
             "docs/cli/README.md",
             vec!["treease -i '.a = 1' file.yaml"],
         ),
+        CliError::MultipleInputFiles => report(
+            "INVALID_INPUT_COUNT",
+            "This command accepts at most one input file".to_string(),
+            "Pass one file path, or omit the file to read stdin.",
+            "docs/cli/README.md",
+            vec!["treease '.a' file.yaml", "treease '.a'"],
+        ),
         CliError::MultipleInputFilesForInplace => report(
             "INVALID_FLAG_COMBINATION",
             "The argument '--inplace' requires exactly one input file".to_string(),
@@ -113,7 +120,7 @@ pub(super) fn error_report(err: &CliError) -> CliErrorReport {
         CliError::UnknownCommand(command) => report(
             "UNKNOWN_COMMAND",
             format!("unknown command: {command}"),
-            "Use `treease [OPTIONS] [EXPRESSION] [FILE]...`; legacy eval subcommands were removed.",
+            "Use `treease [OPTIONS] [EXPRESSION] [FILE]`; legacy eval subcommands were removed.",
             "docs/cli/README.md",
             vec!["treease '.a.b' file.yaml", "treease --help"],
         ),

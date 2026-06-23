@@ -676,7 +676,7 @@ fn operator_examples(name: &str) -> &'static [&'static str] {
         "max" => &["treease '.items | max' sample.yml"],
         "create_map" => &[r#"treease '{user: .name}' sample.yml"#],
         "collect" => &["treease '[.a, .b]' sample.yml"],
-        "collect_object" => &[r#"treease '{name: .name, pet: .pets[]}' sample.yml"#],
+        "collect_object" => &[r#"treease '{"name": .name, "pet": .pets[]}' sample.yml"#],
         "map" => &["treease '.items | map(. + 1)' sample.yml"],
         "map_values" => &["treease '.labels | map_values(. + \"-x\")' sample.yml"],
         "pick" => &[r#"treease 'pick(["a", "c"])' sample.yml"#],

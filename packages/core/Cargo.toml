@@ -1,6 +1,6 @@
 [package]
 name = "treease-core"
-version = "1.0.3"
+version = "1.0.4"
 edition = "2024"
 description = "Core parsing, evaluation, formatting, and graph runtime for Treease"
 license-file = "LICENSE"
@@ -17,7 +17,7 @@ categories = ["parser-implementations", "parsing"]
 # MM: two-digit month
 # DD: two-digit day of month
 # HH: two-digit hour in 24-hour time
-wasm_release_date = "26062120"
+wasm_release_date = "26062410"
 
 [lib]
 path = "src/lib.rs"

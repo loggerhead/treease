@@ -1334,6 +1334,10 @@ fn tree_node_to_value(store: &CoreTreeStore, id: NodeId) -> Result<EvalValue, Ev
 
 /// Convert a scalar [`CoreTreeNode`] to an [`EvalValue`].
 fn scalar_node_to_value(node: &CoreTreeNode) -> Result<EvalValue, EvaluationError> {
+    if node.resolved_sem_type() == Some(SemType::Int) && node.value.parse::<i64>().is_err() {
+        return Ok(EvalValue::String(node.value.clone()));
+    }
+
     match node.get_value_rep() {
         Ok(crate::core::tree_node::ValueRep::Nil) => Ok(EvalValue::Null),
         Ok(crate::core::tree_node::ValueRep::Boolean(value)) => Ok(EvalValue::Bool(value)),

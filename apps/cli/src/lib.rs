@@ -82,6 +82,7 @@ enum CliError {
     UnsupportedFormat(String),
     UnsupportedOperator(String),
     InvalidFlagCombination,
+    MultipleInputFiles,
     MultipleInputFilesForInplace,
     UnsupportedWebFlag(&'static str),
     InvalidWebInputCount,
@@ -477,6 +478,10 @@ fn validate_args(parsed: &ParsedArgs) -> Result<(), CliError> {
         }
     }
 
+    if parsed.command == CommandKind::Run && parsed.files.len() > 1 {
+        return Err(CliError::MultipleInputFiles);
+    }
+
     if parsed.inplace {
         if parsed.null_input {
             return Err(CliError::InvalidFlagCombination);
@@ -817,7 +822,7 @@ mod tests {
             &parse_args(&["treease".to_string(), "--help".to_string()]).expect("help should parse"),
         );
 
-        assert!(help.contains("treease [OPTIONS] [EXPRESSION] [FILE]..."));
+        assert!(help.contains("treease [OPTIONS] [EXPRESSION] [FILE]"));
         assert!(!help.contains("treease eval"));
         assert!(!help.contains("eval-all"));
     }
@@ -828,7 +833,7 @@ mod tests {
             &parse_args(&["treease".to_string(), "--help".to_string()]).expect("help should parse"),
         );
 
-        assert!(help.contains("treease [OPTIONS] [EXPRESSION] [FILE]..."));
+        assert!(help.contains("treease [OPTIONS] [EXPRESSION] [FILE]"));
         assert!(help.contains("treease help --format json"));
         assert!(help.contains("treease operators list"));
         assert!(help.contains("treease formats list"));
@@ -846,7 +851,7 @@ mod tests {
         );
         assert_eq!(
             json.get("usage").and_then(serde_json::Value::as_str),
-            Some("treease [OPTIONS] [EXPRESSION] [FILE]...")
+            Some("treease [OPTIONS] [EXPRESSION] [FILE]")
         );
         assert!(
             json.get("subcommands")
@@ -1013,6 +1018,20 @@ mod tests {
         let output = execute_command(&parsed, &inputs).expect("command should succeed");
 
         assert_eq!(String::from_utf8(output).unwrap(), "1\n");
+    }
+
+    #[test]
+    fn oversized_json_integer_does_not_block_unrelated_field_query() {
+        let parsed = parse_args(&["treease".to_string(), ".BaseResp.StatusCode".to_string()])
+            .expect("parse should succeed");
+        let inputs = vec![InputPayload {
+            name: "base.json".to_string(),
+            bytes: br#"{"BaseResp":{"StatusCode":0},"Huge":9999999999999999999}"#.to_vec(),
+        }];
+
+        let output = execute_command(&parsed, &inputs).expect("command should succeed");
+
+        assert_eq!(String::from_utf8(output).unwrap(), "0\n");
     }
 
     #[test]
@@ -1212,7 +1231,7 @@ mod tests {
         assert!(
             report
                 .hint
-                .contains("treease [OPTIONS] [EXPRESSION] [FILE]...")
+                .contains("treease [OPTIONS] [EXPRESSION] [FILE]")
         );
     }
 
@@ -1242,7 +1261,7 @@ mod tests {
 
         assert!(help.contains("treease operators <COMMAND>"));
         assert!(help.contains("treease operators list"));
-        assert!(!help.contains("treease [OPTIONS] [EXPRESSION] [FILE]..."));
+        assert!(!help.contains("treease [OPTIONS] [EXPRESSION] [FILE]"));
     }
 
     #[test]
@@ -1302,19 +1321,12 @@ mod tests {
 
     #[test]
     fn root_invocation_with_web_file_name_is_not_prechecked_as_web_command() {
-        let parsed = parse_args(&[
-            "treease".to_string(),
-            ".".to_string(),
-            "web".to_string(),
-            "a.yaml".to_string(),
-            "b.yaml".to_string(),
-            "c.yaml".to_string(),
-        ])
-        .expect("root invocation should parse");
+        let parsed = parse_args(&["treease".to_string(), ".".to_string(), "web".to_string()])
+            .expect("root invocation should parse");
 
         assert_eq!(parsed.command, CommandKind::Run);
         assert_eq!(parsed.expression, ".");
-        assert_eq!(parsed.files, vec!["web", "a.yaml", "b.yaml", "c.yaml"]);
+        assert_eq!(parsed.files, vec!["web"]);
     }
 
     #[test]

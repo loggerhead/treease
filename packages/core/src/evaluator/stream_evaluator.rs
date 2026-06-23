@@ -619,6 +619,10 @@ fn tree_to_value(store: &TreeStore, id: NodeId) -> Result<Value, EvaluationError
 }
 
 fn scalar_node_to_value(node: &TreeNode) -> Result<Value, EvaluationError> {
+    if node.resolved_sem_type() == Some(SemType::Int) && node.value.parse::<i64>().is_err() {
+        return Ok(Value::String(node.value.clone()));
+    }
+
     match node.get_value_rep()? {
         crate::core::ValueRep::Nil => Ok(Value::Null),
         crate::core::ValueRep::Boolean(value) => Ok(Value::Bool(value)),

@@ -7,6 +7,7 @@ pub(super) fn parse_args_with_clap(argv: &[String]) -> Result<ParsedArgs, CliErr
     reject_removed_legacy_eval_commands(argv)?;
     reject_removed_discovery_commands(argv)?;
     reject_invalid_web_invocation(argv)?;
+    reject_too_many_root_positionals(argv)?;
 
     #[cfg(not(target_arch = "wasm32"))]
     {
@@ -93,6 +94,42 @@ fn root_subcommand_index(argv: &[String]) -> Option<usize> {
     }
 
     None
+}
+
+fn reject_too_many_root_positionals(argv: &[String]) -> Result<(), CliError> {
+    if !should_parse_as_root_invocation(argv) {
+        return Ok(());
+    }
+
+    let mut positional_count = 0;
+    let mut index = 1;
+    while index < argv.len() {
+        match argv[index].as_str() {
+            "-p" | "--input-format" | "-o" | "--output-format" | "-I" | "--indent" => {
+                index += 2;
+                continue;
+            }
+            "-n" | "--null-input" | "-e" | "--exit-status" | "-P" | "--prettyPrint" | "-r"
+            | "--unwrapScalar" | "-N" | "--no-doc" | "-i" | "--inplace" | "-h" | "--help" => {
+                index += 1;
+                continue;
+            }
+            _ if argv[index].starts_with('-') && argv[index] != "-" => return Ok(()),
+            _ => {
+                positional_count += 1;
+                index += 1;
+            }
+        }
+    }
+
+    if positional_count > 2 {
+        if argv.iter().any(|arg| arg == "-i" || arg == "--inplace") {
+            return Err(CliError::MultipleInputFilesForInplace);
+        }
+        return Err(CliError::MultipleInputFiles);
+    }
+
+    Ok(())
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -260,6 +297,7 @@ fn build_option(option: spec::CliOptionSpec) -> Arg {
 
 #[cfg(not(target_arch = "wasm32"))]
 fn build_argument(argument: spec::CliArgumentSpec) -> Arg {
+    let argument_name = argument.name.clone();
     let mut arg = Arg::new(leak(argument.name)).help(argument.help.clone());
 
     if !argument.required {
@@ -276,6 +314,8 @@ fn build_argument(argument: spec::CliArgumentSpec) -> Arg {
         } else {
             arg = arg.num_args(0..);
         }
+        arg = arg.allow_hyphen_values(true);
+    } else if argument_name == "file" {
         arg = arg.allow_hyphen_values(true);
     }
 

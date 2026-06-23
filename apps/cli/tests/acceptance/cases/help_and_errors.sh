@@ -4,7 +4,7 @@ test_help_and_errors() {
   run_cli '' '--help'
   assert_eq 0 "$LAST_EXIT_CODE" 'root help should exit 0'
   assert_contains "$LAST_STDOUT" 'Usage:' 'root help should include usage'
-  assert_contains "$LAST_STDOUT" "treease [OPTIONS] [EXPRESSION] [FILE]..." 'root help should include default invocation'
+  assert_contains "$LAST_STDOUT" "treease [OPTIONS] [EXPRESSION] [FILE]" 'root help should include default invocation'
   assert_not_contains "$LAST_STDOUT" 'treease eval' 'root help should not include eval subcommand'
   assert_not_contains "$LAST_STDOUT" 'eval-all' 'root help should not include eval-all subcommand'
   assert_contains "$LAST_STDOUT" '--help' 'root help should include help flag'
