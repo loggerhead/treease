@@ -49,10 +49,6 @@ enum CommandKind {
     OperatorsSearch,
     FormatsList,
     FormatsGet,
-    ExamplesList,
-    ExamplesGet,
-    ExamplesSearch,
-    Doctor,
 }
 
 impl Default for ParsedArgs {
@@ -85,7 +81,6 @@ enum CliError {
     InvalidIndent(String),
     UnsupportedFormat(String),
     UnsupportedOperator(String),
-    UnknownExample(String),
     InvalidFlagCombination,
     MultipleInputFilesForInplace,
     UnsupportedWebFlag(&'static str),
@@ -571,24 +566,6 @@ fn execute_metadata_command(parsed: &ParsedArgs) -> Result<Vec<u8>, CliError> {
                 .ok_or_else(|| CliError::UnsupportedFormat(name.to_string()))?;
             render_metadata_value(&format, json)?
         }
-        CommandKind::ExamplesList => render_metadata_value(&catalog::examples(), json)?,
-        CommandKind::ExamplesGet => {
-            let name = parsed
-                .metadata_target
-                .as_deref()
-                .ok_or(CliError::MissingValue("example name"))?;
-            let example = catalog::find_example(name)
-                .ok_or_else(|| CliError::UnknownExample(name.to_string()))?;
-            render_metadata_value(&example, json)?
-        }
-        CommandKind::ExamplesSearch => {
-            let query = parsed
-                .metadata_target
-                .as_deref()
-                .ok_or(CliError::MissingValue("example search query"))?;
-            render_metadata_value(&catalog::search_examples(query), json)?
-        }
-        CommandKind::Doctor => render_metadata_value(&catalog::doctor_info(), json)?,
         CommandKind::Web => return Err(CliError::InvalidFlagCombination),
         CommandKind::Run => return Err(CliError::InvalidFlagCombination),
     };
@@ -849,8 +826,7 @@ mod tests {
         assert!(help.contains("treease help --format json"));
         assert!(help.contains("treease operators list"));
         assert!(help.contains("treease formats list"));
-        assert!(help.contains("treease examples list"));
-        assert!(help.contains("treease doctor"));
+        assert!(help.contains("treease --null-input '.hello = \"world\"'"));
         assert!(!help.contains("eval-all"));
     }
 
@@ -1039,6 +1015,47 @@ mod tests {
             .expect("parse should succeed");
         let output = execute_command(&parsed, &[]).expect("command should succeed");
         assert_eq!(String::from_utf8(output).unwrap(), "1\n");
+    }
+
+    #[test]
+    fn null_input_empty_object_renders_object_not_array() {
+        let parsed = parse_args(&["treease".to_string(), "-n".to_string(), "{}".to_string()])
+            .expect("parse should succeed");
+
+        let output = execute_command(&parsed, &[]).expect("command should succeed");
+
+        assert_eq!(String::from_utf8(output).unwrap(), "{}\n");
+    }
+
+    #[test]
+    fn null_input_object_literal_renders_object() {
+        let parsed = parse_args(&[
+            "treease".to_string(),
+            "-n".to_string(),
+            "{\"wrap\": \"frog\"}".to_string(),
+        ])
+        .expect("parse should succeed");
+
+        let output = execute_command(&parsed, &[]).expect("command should succeed");
+
+        assert_eq!(String::from_utf8(output).unwrap(), "wrap: frog\n");
+    }
+
+    #[test]
+    fn null_input_assignment_pipeline_renders_object_without_outer_array() {
+        let parsed = parse_args(&[
+            "treease".to_string(),
+            "-n".to_string(),
+            "(.a.b = \"foo\") | (.d.e = \"bar\")".to_string(),
+        ])
+        .expect("parse should succeed");
+
+        let output = execute_command(&parsed, &[]).expect("command should succeed");
+
+        assert_eq!(
+            String::from_utf8(output).unwrap(),
+            "a:\n  b: foo\nd:\n  e: bar\n"
+        );
     }
 
     #[test]

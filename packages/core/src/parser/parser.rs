@@ -429,7 +429,7 @@ fn to_postfix(
                     ),
                     TokenKind::CloseCollectObject | TokenKind::CloseBrace => (
                         StackItemKind::OpenCollectObject,
-                        Operation::new(OperationId::CollectObject, "collect_object", 0, 50),
+                        Operation::new(OperationId::CollectObject, "collect_object", 1, 50),
                     ),
                     _ => unreachable!(),
                 };
@@ -445,11 +445,6 @@ fn to_postfix(
 
                 // Push collect operation
                 output.push(collect_op.clone());
-
-                // For collect_object, push short_pipe
-                if collect_op.operation_type.id == OperationId::CollectObject {
-                    output.push(Operation::binary(OperationId::ShortPipe, "short_pipe", 45));
-                }
 
                 // traverse_array_op_type flush: check if stack top is traverse_array
                 // and flush it with optional_traverse from ]?
@@ -710,10 +705,9 @@ mod tests {
                 OperationId::Value,
                 OperationId::CreateMap,
                 OperationId::CollectObject,
-                OperationId::ShortPipe,
             ]
         );
-        assert_eq!(postfix[3].operation_type.num_args, 0);
+        assert_eq!(postfix[3].operation_type.num_args, 1);
         build_expression_tree_from_postfix_ops(&postfix).expect("collect_object tree should build");
     }
 

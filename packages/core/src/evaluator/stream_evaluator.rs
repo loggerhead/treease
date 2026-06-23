@@ -17,7 +17,7 @@ use crate::{
     stream::{build_tree_from_events, streaming_decoder, streaming_events::StreamingEvent},
 };
 
-use super::all_at_once_evaluator::value_to_tree_node;
+use super::all_at_once_evaluator::{AllAtOnceEvaluator, value_to_tree_node};
 use super::{EvaluationError, Value};
 
 /// Input descriptor for reader-based streaming evaluation.
@@ -100,7 +100,7 @@ impl StreamEvaluator {
         E: Encoder,
         W: PrinterWriter,
     {
-        let values = expression_pipeline::execute_many(&[Value::Null], node)?;
+        let values = AllAtOnceEvaluator::new().evaluate_many(&[Value::Null], node)?;
         let mut result_store = TreeStore::new();
         let mut result_ids = Vec::with_capacity(values.len());
         for value in &values {

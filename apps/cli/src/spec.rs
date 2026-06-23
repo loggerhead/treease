@@ -13,11 +13,6 @@ pub(super) enum CliCommandId {
     Formats,
     FormatsList,
     FormatsGet,
-    Examples,
-    ExamplesList,
-    ExamplesGet,
-    ExamplesSearch,
-    Doctor,
 }
 
 #[allow(dead_code)]
@@ -109,7 +104,7 @@ pub(super) fn root_command_spec() -> CliCommandSpec {
                 description: "Read a field from a structured document.".to_string(),
             },
             CliExampleSpec {
-                command: "treease --null-input '{hello:\"world\"}'".to_string(),
+                command: "treease --null-input '.hello = \"world\"'".to_string(),
                 description: "Evaluate an expression without input files.".to_string(),
             },
         ],
@@ -230,63 +225,6 @@ pub(super) fn root_command_spec() -> CliCommandSpec {
                         Vec::new(),
                     ),
                 ],
-            ),
-            command_spec(
-                CliCommandId::Examples,
-                &["treease", "examples"],
-                "treease examples <COMMAND>",
-                "Inspect bundled examples.",
-                Vec::new(),
-                Vec::new(),
-                vec![CliExampleSpec {
-                    command: "treease examples list".to_string(),
-                    description: "Show example invocations.".to_string(),
-                }],
-                vec![
-                    command_spec(
-                        CliCommandId::ExamplesList,
-                        &["treease", "examples", "list"],
-                        "treease examples list [--format text|json]",
-                        "List runnable examples.",
-                        Vec::new(),
-                        metadata_options(),
-                        Vec::new(),
-                        Vec::new(),
-                    ),
-                    command_spec(
-                        CliCommandId::ExamplesGet,
-                        &["treease", "examples", "get"],
-                        "treease examples get <name> [--format text|json]",
-                        "Show a single example.",
-                        vec![required_argument("name", "Example name.")],
-                        metadata_options(),
-                        Vec::new(),
-                        Vec::new(),
-                    ),
-                    command_spec(
-                        CliCommandId::ExamplesSearch,
-                        &["treease", "examples", "search"],
-                        "treease examples search <query>",
-                        "Search examples.",
-                        vec![required_argument("query", "Search query.")],
-                        Vec::new(),
-                        Vec::new(),
-                        Vec::new(),
-                    ),
-                ],
-            ),
-            command_spec(
-                CliCommandId::Doctor,
-                &["treease", "doctor"],
-                "treease doctor [--format text|json]",
-                "Run CLI diagnostics.",
-                Vec::new(),
-                metadata_options(),
-                vec![CliExampleSpec {
-                    command: "treease doctor".to_string(),
-                    description: "Run local CLI diagnostics.".to_string(),
-                }],
-                Vec::new(),
             ),
         ],
     )
@@ -627,10 +565,15 @@ fn render_root_command_text_help(root: &CliCommandSpec) -> String {
         .collect::<Vec<_>>()
         .join("\n");
     let discovery = root
-        .subcommands
+        .examples
         .iter()
-        .filter_map(|command| command.examples.first())
         .map(|example| format!("  {}", example.command))
+        .chain(
+            root.subcommands
+                .iter()
+                .filter_map(|command| command.examples.first())
+                .map(|example| format!("  {}", example.command)),
+        )
         .collect::<Vec<_>>()
         .join("\n");
 

@@ -19,15 +19,6 @@ test_discovery() {
   assert_json_field_eq "$LAST_STDOUT" 'can_decode' 'True' 'format get should report decode support'
   assert_eq '' "$LAST_STDERR" 'format get should not print stderr'
 
-  run_cli '' 'examples' 'get' 'filter-array' '--format' 'json'
-  assert_eq 0 "$LAST_EXIT_CODE" 'example get should exit 0'
-  assert_json_field_eq "$LAST_STDOUT" 'name' 'filter-array' 'example get should include name'
-  assert_contains "$LAST_STDOUT" "treease '.[] | select(.enabled)' sample.yml" 'example should include command'
-
-  run_cli '' 'doctor' '--format' 'json'
-  assert_eq 0 "$LAST_EXIT_CODE" 'doctor should exit 0'
-  assert_json_field_eq "$LAST_STDOUT" 'binary' 'treease' 'doctor should include binary name'
-
   run_cli '' '--bad-flag'
   assert_eq 1 "$LAST_EXIT_CODE" 'unknown flag should exit 1'
   assert_contains "$LAST_STDERR" 'UNKNOWN_FLAG' 'unknown flag should include stable error code'

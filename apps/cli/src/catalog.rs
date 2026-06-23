@@ -8,11 +8,7 @@ use treease_core::operators::{OpFlags, append_ops};
 
 const NO_ALIASES: &[&str] = &[];
 const ANY_INPUT_KINDS: &[&str] = &["any"];
-const NO_EXAMPLES: &[&str] = &[];
-const NO_RELATED: &[&str] = &[];
-const DOCS_LIMITATION: &[&str] = &[
-    "Detailed operator guidance is still being expanded; consult docs/operators/ for full semantics.",
-];
+const NO_LIMITATIONS: &[&str] = &[];
 const SELECT_INPUT_KINDS: &[&str] = &["array", "map", "scalar"];
 const SELECT_EXAMPLES: &[&str] = &["treease '.[] | select(.enabled)' sample.yml"];
 const SELECT_RELATED: &[&str] = &["equals", "not_equals", "relational", "test", "filter"];
@@ -54,26 +50,6 @@ pub(super) struct FormatPreferenceInfo {
     pub indent: i32,
     pub unwrap_scalar: bool,
     pub print_doc_separators: bool,
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub(super) struct ExampleInfo {
-    pub name: &'static str,
-    pub title: &'static str,
-    pub input: &'static str,
-    pub command: &'static str,
-    pub output: &'static str,
-    pub operators: &'static [&'static str],
-    pub formats: &'static [&'static str],
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub(super) struct DoctorInfo {
-    pub binary: &'static str,
-    pub version: &'static str,
-    pub supported_formats: Vec<&'static str>,
-    pub supported_operator_count: usize,
-    pub notes: Vec<&'static str>,
 }
 
 #[cfg(not(feature = "lite"))]
@@ -159,122 +135,19 @@ pub(super) fn find_format(name: &str) -> Option<FormatInfo> {
         .find(|format| format.name == canonical)
 }
 
-pub(super) fn examples() -> Vec<ExampleInfo> {
-    vec![
-        ExampleInfo {
-            name: "filter-array",
-            title: "Filter enabled array items",
-            input: "- name: a\n  enabled: true\n- name: b\n  enabled: false\n",
-            command: "treease '.[] | select(.enabled)' sample.yml",
-            output: "name: a\nenabled: true\n",
-            operators: &["select"],
-            formats: &["yaml"],
-        },
-        ExampleInfo {
-            name: "read-field",
-            title: "Read a nested field from a document",
-            input: "a:\n  b: value\n",
-            command: "treease '.a.b' file.yaml",
-            output: "value\n",
-            operators: &["self", "traverse_path"],
-            formats: &["yaml"],
-        },
-        ExampleInfo {
-            name: "transcode-json",
-            title: "Transcode YAML input to JSON output",
-            input: "name: treease\nversion: 1\n",
-            command: "treease -p yaml -o json '.' file.yaml",
-            output: "{\n  \"name\": \"treease\",\n  \"version\": 1\n}\n",
-            operators: &["self"],
-            formats: &["yaml", "json"],
-        },
-    ]
-}
-
-pub(super) fn find_example(name: &str) -> Option<ExampleInfo> {
-    let normalized = name.trim().to_ascii_lowercase();
-    examples()
-        .into_iter()
-        .find(|example| example.name.eq_ignore_ascii_case(&normalized))
-}
-
-pub(super) fn search_examples(query: &str) -> Vec<ExampleInfo> {
-    examples()
-        .into_iter()
-        .filter(|example| {
-            let haystack = format!(
-                "{} {} {} {} {}",
-                example.name,
-                example.title,
-                example.command,
-                example.operators.join(" "),
-                example.formats.join(" ")
-            );
-            matches_query(&haystack, query)
-        })
-        .collect()
-}
-
-pub(super) fn doctor_info() -> DoctorInfo {
-    let supported_formats = formats()
-        .into_iter()
-        .map(|format| format.name)
-        .collect::<Vec<_>>();
-    let supported_operator_count = operators().len();
-
-    DoctorInfo {
-        binary: "treease",
-        version: env!("CARGO_PKG_VERSION"),
-        supported_formats,
-        supported_operator_count,
-        notes: vec![
-            "Default execution keeps stdout reserved for data output.",
-            "Use `treease help --format json` for machine-readable command discovery.",
-        ],
-    }
-}
-
 fn operator_info(name: &'static str) -> OperatorInfo {
-    match name {
-        "select" => OperatorInfo {
-            name,
-            aliases: NO_ALIASES,
-            category: "special",
-            summary: "Filter arrays and maps by a boolean expression.",
-            syntax: "select(EXPR)",
-            input_kinds: SELECT_INPUT_KINDS,
-            output_kind: "matching values",
-            examples: SELECT_EXAMPLES,
-            related: SELECT_RELATED,
-            yq_compat: "partial",
-            limitations: SELECT_LIMITATIONS,
-        },
-        "length" => OperatorInfo {
-            name,
-            aliases: NO_ALIASES,
-            category: "collection",
-            summary: "Return the length of strings, arrays, maps, and null.",
-            syntax: "length",
-            input_kinds: LENGTH_INPUT_KINDS,
-            output_kind: "number",
-            examples: LENGTH_EXAMPLES,
-            related: LENGTH_RELATED,
-            yq_compat: "partial",
-            limitations: LENGTH_LIMITATIONS,
-        },
-        _ => OperatorInfo {
-            name,
-            aliases: operator_aliases(name),
-            category: operator_category(name),
-            summary: operator_summary(name),
-            syntax: operator_syntax(name),
-            input_kinds: ANY_INPUT_KINDS,
-            output_kind: "varies",
-            examples: NO_EXAMPLES,
-            related: NO_RELATED,
-            yq_compat: "unknown",
-            limitations: DOCS_LIMITATION,
-        },
+    OperatorInfo {
+        name,
+        aliases: operator_aliases(name),
+        category: operator_category(name),
+        summary: operator_summary(name),
+        syntax: operator_syntax(name),
+        input_kinds: operator_input_kinds(name),
+        output_kind: operator_output_kind(name),
+        examples: operator_examples(name),
+        related: operator_related(name),
+        yq_compat: operator_yq_compat(name),
+        limitations: operator_limitations(name),
     }
 }
 
@@ -346,6 +219,8 @@ fn operator_summary(name: &str) -> &'static str {
         "alternative" => "Return the right-hand value when the left-hand side is empty.",
         "any" => "Return true when any value is truthy.",
         "all" => "Return true when all values are truthy.",
+        "any_condition" => "Return true when any array element satisfies the condition.",
+        "all_condition" => "Return true when all array elements satisfy the condition.",
         "assign" => "Assign the right-hand value to matching nodes.",
         "add_assign" | "subtract_assign" | "multiply_assign" => {
             "Update matching nodes in place with an arithmetic operation."
@@ -369,6 +244,7 @@ fn operator_summary(name: &str) -> &'static str {
         "unique_by" => "Remove duplicates based on a derived key.",
         "group_by" => "Group values by a derived key.",
         "flatten" => "Flatten nested arrays.",
+        "length" => "Return the length of strings, arrays, maps, and null.",
         "encode" => "Encode values into a target format.",
         "decode" => "Decode formatted text into structured values.",
         "to_entries" => "Convert objects or arrays into entry objects.",
@@ -396,6 +272,8 @@ fn operator_summary(name: &str) -> &'static str {
         "get_key" => "Return the key for an object entry.",
         "is_key" => "Return whether the current node is a key.",
         "keys" => "Return object keys or array indexes.",
+        "get_parent" => "Return an ancestor of the current node.",
+        "get_parents" => "Return all ancestors of the current node.",
         "contains" => "Return whether a value contains another value.",
         "has" => "Return whether a key or index exists.",
         "reduce" => "Fold a stream of values into an accumulator.",
@@ -403,8 +281,9 @@ fn operator_summary(name: &str) -> &'static str {
         "empty" => "Produce no output.",
         "with" => "Update a subtree with a scoped expression.",
         "first" => "Return the first matching value.",
+        "select" => "Filter arrays and maps by a boolean expression.",
         "filter" => "Keep values that satisfy a predicate.",
-        _ => "Built-in Treease operator.",
+        _ => unreachable!("unknown operator summary: {name}"),
     }
 }
 
@@ -455,6 +334,7 @@ fn operator_syntax(name: &str) -> &'static str {
         "unique_by" => "unique_by(EXPR)",
         "group_by" => "group_by(EXPR)",
         "flatten" => "flatten(DEPTH?)",
+        "length" => "length",
         "encode" => "@json | to_json",
         "decode" => "@jsond | from_json",
         "to_entries" => "to_entries",
@@ -482,6 +362,8 @@ fn operator_syntax(name: &str) -> &'static str {
         "get_key" => "key",
         "is_key" => "is_key",
         "keys" => "keys",
+        "get_parent" => "parent(N?)",
+        "get_parents" => "parents",
         "contains" => "contains(EXPR)",
         "has" => "has(KEY)",
         "reduce" => "reduce EXPR as $item (...)",
@@ -489,8 +371,361 @@ fn operator_syntax(name: &str) -> &'static str {
         "empty" => "empty",
         "with" => "with(PATH; EXPR)",
         "first" => "first",
+        "select" => "select(EXPR)",
         "filter" => "filter(EXPR)",
-        _ => "See operator docs for syntax.",
+        _ => unreachable!("unknown operator syntax: {name}"),
+    }
+}
+
+fn operator_input_kinds(name: &str) -> &'static [&'static str] {
+    match name {
+        "pipe"
+        | "short_pipe"
+        | "self"
+        | "assign"
+        | "add_assign"
+        | "subtract_assign"
+        | "multiply_assign"
+        | "assign_variable"
+        | "or"
+        | "and"
+        | "not"
+        | "alternative"
+        | "equals"
+        | "not_equals"
+        | "relational"
+        | "create_map"
+        | "collect"
+        | "collect_object"
+        | "encode"
+        | "to_string"
+        | "string_interpolation"
+        | "get_variable"
+        | "get_tag"
+        | "get_kind"
+        | "contains"
+        | "get_parent"
+        | "get_parents"
+        | "get_path"
+        | "set_path"
+        | "del_paths"
+        | "delete"
+        | "reduce"
+        | "block"
+        | "empty"
+        | "with"
+        | "filter"
+        | "first"
+        | "union" => ANY_INPUT_KINDS,
+        "select" => SELECT_INPUT_KINDS,
+        "traverse_path" => &["map"],
+        "traverse_array" => &["array", "map"],
+        "recursive_descent" => &["map", "array", "scalar"],
+        "any" | "all" | "any_condition" | "all_condition" => &["array"],
+        "add" => &["number", "string", "array", "map", "null"],
+        "subtract" => &["number", "array", "datetime", "null"],
+        "multiply" => &["number", "string", "array", "map", "null"],
+        "divide" => &["number", "string"],
+        "modulo" => &["number"],
+        "min" | "max" => &["array"],
+        "map" | "group_by" | "flatten" | "unique" | "unique_by" | "join" | "sort_by" | "sort"
+        | "reverse" | "shuffle" => &["array"],
+        "map_values" | "with_entries" | "sort_keys" => &["map"],
+        "pick" | "omit" | "keys" | "has" => &["map", "array"],
+        "length" => LENGTH_INPUT_KINDS,
+        "decode" => &["string"],
+        "to_entries" => &["map", "array", "null"],
+        "from_entries" => &["array"],
+        "to_number" => &["string", "number"],
+        "sub" | "match" | "capture" | "test" | "split" | "change_case" | "trim" => &["string"],
+        "get_key" | "is_key" => &["entry"],
+        _ => unreachable!("unknown operator input kinds: {name}"),
+    }
+}
+
+fn operator_output_kind(name: &str) -> &'static str {
+    match name {
+        "pipe" | "traverse_path" | "traverse_array" | "recursive_descent" | "select" | "filter"
+        | "first" => "matching values",
+        "short_pipe" | "block" | "union" => "combined result stream",
+        "self" => "input value",
+        "get_path" | "keys" | "collect" | "flatten" | "split" => "array",
+        "set_path" | "del_paths" | "delete" | "assign" | "add_assign" | "subtract_assign"
+        | "multiply_assign" | "with" => "updated document",
+        "or" | "and" | "not" | "any" | "all" | "any_condition" | "all_condition" | "equals"
+        | "not_equals" | "relational" | "contains" | "has" | "is_key" | "test" => "boolean",
+        "alternative" => "lhs if present, otherwise rhs",
+        "assign_variable" => "original input context",
+        "add" | "subtract" | "multiply" => "computed value or merged collection",
+        "divide" | "modulo" | "length" | "to_number" => "number",
+        "min" | "max" => "extreme value",
+        "create_map" => "map entry stream",
+        "collect_object" | "from_entries" => "map",
+        "map" | "unique" | "unique_by" | "reverse" | "shuffle" | "sort" => "array",
+        "map_values" => "map",
+        "pick" | "omit" => "same collection shape as input",
+        "group_by" => "array of groups",
+        "encode" | "join" | "sub" | "get_key" | "get_kind" | "get_tag" | "to_string" | "trim"
+        | "change_case" => "string",
+        "decode" => "decoded structured value",
+        "to_entries" => "entry array",
+        "with_entries" => "rewritten map",
+        "match" | "capture" => "match detail map or map stream",
+        "string_interpolation" => "interpolated string",
+        "get_variable" => "bound value",
+        "get_parent" => "ancestor node",
+        "get_parents" => "ancestor sequence",
+        "reduce" => "accumulator result",
+        "empty" => "no output",
+        "sort_by" => "sorted array",
+        "sort_keys" => "key-sorted map",
+        _ => unreachable!("unknown operator output kind: {name}"),
+    }
+}
+
+fn operator_related(name: &str) -> &'static [&'static str] {
+    match name {
+        "pipe" => &["short_pipe", "self", "union"],
+        "short_pipe" => &["pipe", "block", "union"],
+        "self" => &["traverse_path", "pipe", "select"],
+        "traverse_path" => &["self", "traverse_array", "recursive_descent"],
+        "traverse_array" => &["traverse_path", "recursive_descent", "select"],
+        "recursive_descent" => &["traverse_path", "traverse_array", "select"],
+        "get_path" => &["set_path", "del_paths", "delete"],
+        "set_path" => &["get_path", "del_paths", "assign"],
+        "del_paths" => &["get_path", "set_path", "delete"],
+        "delete" => &["del_paths", "select", "filter"],
+        "or" | "and" | "not" => &["any", "all", "select"],
+        "alternative" => &["or", "assign", "has"],
+        "any" | "all" | "any_condition" | "all_condition" => &["or", "and", "select"],
+        "assign" | "add_assign" | "subtract_assign" | "multiply_assign" => {
+            &["assign_variable", "with", "set_path"]
+        }
+        "assign_variable" | "get_variable" => &["pipe", "reduce", "with"],
+        "add" | "subtract" | "multiply" | "divide" | "modulo" => &["assign", "to_number", "map"],
+        "equals" | "not_equals" | "relational" => &["select", "filter", "contains"],
+        "min" | "max" => &["sort", "group_by", "relational"],
+        "create_map" | "collect_object" => &["collect", "to_entries", "with_entries"],
+        "collect" => &["collect_object", "union", "map"],
+        "map" | "map_values" => &["filter", "select", "with_entries"],
+        "pick" | "omit" => &["keys", "has", "delete"],
+        "union" => &["collect", "pipe", "short_pipe"],
+        "unique" | "unique_by" => &["group_by", "sort", "map"],
+        "group_by" => &["sort_by", "unique_by", "map"],
+        "flatten" => &["map", "collect", "traverse_array"],
+        "length" => &LENGTH_RELATED,
+        "encode" | "decode" => &["to_string", "to_number", "with_entries"],
+        "to_entries" | "from_entries" | "with_entries" => &["create_map", "collect_object", "keys"],
+        "to_number" => &["add", "subtract", "to_string"],
+        "join" | "split" => &["to_string", "map", "collect"],
+        "sub" | "match" | "capture" | "test" => &["split", "change_case", "select"],
+        "change_case" | "trim" | "to_string" | "string_interpolation" => &["join", "split", "sub"],
+        "get_tag" | "get_kind" | "get_key" | "is_key" | "keys" => {
+            &["get_parent", "get_path", "has"]
+        }
+        "get_parent" | "get_parents" => &["get_path", "recursive_descent", "keys"],
+        "contains" | "has" => &["equals", "keys", "select"],
+        "reduce" => &["assign_variable", "get_variable", "collect"],
+        "block" => &["short_pipe", "pipe", "union"],
+        "empty" => &["select", "filter", "delete"],
+        "with" => &["assign", "set_path", "map"],
+        "first" => &["select", "filter", "sort"],
+        "select" => &SELECT_RELATED,
+        "filter" => &["select", "map", "first"],
+        "sort_by" | "sort" | "sort_keys" | "reverse" | "shuffle" => {
+            &["unique", "group_by", "first"]
+        }
+        _ => unreachable!("unknown operator related set: {name}"),
+    }
+}
+
+fn operator_yq_compat(name: &str) -> &'static str {
+    match name {
+        "short_pipe" | "block" | "empty" | "string_interpolation" => "unknown",
+        "traverse_path" | "traverse_array" | "recursive_descent" | "multiply_assign" | "add"
+        | "multiply" | "equals" | "not_equals" | "relational" | "create_map" | "collect"
+        | "map" | "map_values" | "omit" | "union" | "encode" | "decode" | "join" | "sub"
+        | "capture" | "split" | "change_case" | "to_string" | "get_kind" | "contains"
+        | "reduce" | "sort_keys" => "partial",
+        _ => "compatible",
+    }
+}
+
+fn operator_limitations(name: &str) -> &'static [&'static str] {
+    match name {
+        "create_map" => &[
+            "This is an internal pair-builder; multi-result object construction is surfaced through object syntax and `collect_object`.",
+        ],
+        "collect" => &[
+            "Array collection follows Treease's evaluate-together semantics, so multi-candidate contexts may collect per candidate.",
+        ],
+        "map" => &[
+            "Mapping over an object yields a sequence of transformed values rather than rewriting the object in place.",
+        ],
+        "map_values" => &[
+            "Only map values are rewritten, and when RHS yields multiple values Treease keeps the first one.",
+        ],
+        "omit" => &["Non-collection inputs are returned unchanged instead of raising an error."],
+        "union" => &[
+            "Treease avoids duplicating results when both sides resolve to the same passthrough list.",
+        ],
+        "encode" | "decode" => &[
+            "Supported formats are limited to the codecs registered in the current build; unknown codecs return an error.",
+        ],
+        "traverse_path" => &[
+            "Missing paths can synthesize null placeholders, and merge keys are treated as ordinary keys rather than YAML merge semantics.",
+        ],
+        "traverse_array" => &[
+            "Array traversal also powers slices and index-based expansion, including null-padding behavior for some out-of-range lookups.",
+        ],
+        "join" => &[
+            "Join expects an array input and does not serialize nested maps or arrays into YAML text first.",
+        ],
+        "multiply_assign" => &[
+            "Relative multiplication inherits Treease's current multiply semantics, including shallow map merge behavior.",
+        ],
+        "add" => &[
+            "Map addition is shallow and Treease also supports scalar-plus-map combinations that are not emphasized in yq docs.",
+        ],
+        "multiply" => &[
+            "Map multiplication currently behaves as a shallow merge rather than yq's full deep-merge feature set.",
+        ],
+        "equals" | "not_equals" => &[
+            "String equality supports wildcard-style matching, so equality is broader than strict byte-for-byte comparison.",
+        ],
+        "relational" => &[
+            "Current relational comparisons cover scalar ordering but do not expose the broader datetime/documentation surface yq describes.",
+        ],
+        "sub" => &[
+            "Replacement expansion is narrower than yq's full syntax and currently focuses on whole-match and indexed captures.",
+        ],
+        "capture" => &[
+            "Capture results include numeric keys and the full-match key `0` in addition to named groups.",
+        ],
+        "split" => {
+            &["Null inputs are skipped rather than converted into an empty-string split result."]
+        }
+        "change_case" => &[
+            "The CLI exposes `upcase` and `downcase` aliases; `change_case` is the internal canonical name.",
+        ],
+        "to_string" => &[
+            "Maps and arrays stringify to their tag-like representation rather than serialized YAML content.",
+        ],
+        "get_tag" => &[
+            "Current metadata covers reading tags via `tag`/`type`; mutation forms are not surfaced here.",
+        ],
+        "get_kind" => &[
+            "Treease exposes additional kinds such as `alias` and `unknown` beyond the core `map`/`seq`/`scalar` set.",
+        ],
+        "contains" => &["Type mismatches can surface an error instead of simply returning false."],
+        "reduce" => &[
+            "Treease documents the current infix `... as $x reduce (...)` form rather than yq's `ireduce` naming.",
+        ],
+        "block" => &[
+            "This is primarily a syntax-carrier for paired expressions like `with(path; update)` rather than a standalone user-facing operator.",
+        ],
+        "empty" => &[
+            "Treease uses `empty` as a real empty-stream operator, but its yq documentation coverage is much thinner than most operators.",
+        ],
+        "recursive_descent" => &[
+            "The `..` form is documented here; key-inclusive recursive descent remains a separate preference-driven variant.",
+        ],
+        "sort_keys" => &[
+            "Sorting keys does not attempt to preserve YAML anchor or merge-key semantics in every case.",
+        ],
+        "length" => LENGTH_LIMITATIONS,
+        "select" => SELECT_LIMITATIONS,
+        _ => NO_LIMITATIONS,
+    }
+}
+
+fn operator_examples(name: &str) -> &'static [&'static str] {
+    match name {
+        "pipe" => &["treease '.a | .b' sample.yml"],
+        "short_pipe" => &["treease '.a.b' sample.yml"],
+        "self" => &["treease '.' sample.yml"],
+        "traverse_path" => &["treease '.a.b' sample.yml"],
+        "traverse_array" => &["treease '.items[]' sample.yml"],
+        "recursive_descent" => &["treease '.. | .name' sample.yml"],
+        "get_path" => &["treease '.a[] | path' sample.yml"],
+        "set_path" => &[r#"treease -n 'setpath(["a", 0]; "x")'"#],
+        "del_paths" => &[r#"treease 'delpaths([["a","debug"],["a","tmp"]])' sample.yml"#],
+        "delete" => &["treease 'del(.a.debug)' sample.yml"],
+        "or" => &["treease -n 'true or false'"],
+        "and" => &["treease -n 'true and false'"],
+        "not" => &["treease -n 'true | not'"],
+        "alternative" => &[r#"treease '.nickname // "anonymous"' sample.yml"#],
+        "any" => &["treease '.flags | any' sample.yml"],
+        "all" => &["treease '.flags | all' sample.yml"],
+        "any_condition" => &["treease '.items | any(.enabled)' sample.yml"],
+        "all_condition" => &["treease '.items | all(.enabled)' sample.yml"],
+        "assign" => &["treease '.a = .b' sample.yml"],
+        "add_assign" => &["treease '.count += 1' sample.yml"],
+        "subtract_assign" => &["treease '.count -= 1' sample.yml"],
+        "multiply_assign" => &["treease '.count *= 2' sample.yml"],
+        "assign_variable" => &["treease '.a as $x | $x' sample.yml"],
+        "add" => &["treease '.a + .b' sample.yml"],
+        "subtract" => &["treease '.count - 1' sample.yml"],
+        "multiply" => &["treease '.count * 2' sample.yml"],
+        "divide" => &["treease '.path / \"/\"' sample.yml"],
+        "modulo" => &["treease '.count % 2' sample.yml"],
+        "equals" => &[r#"treease '.kind == "cat"' sample.yml"#],
+        "not_equals" => &[r#"treease '.kind != "cat"' sample.yml"#],
+        "relational" => &["treease '.count >= 10' sample.yml"],
+        "min" => &["treease '.items | min' sample.yml"],
+        "max" => &["treease '.items | max' sample.yml"],
+        "create_map" => &[r#"treease '{user: .name}' sample.yml"#],
+        "collect" => &["treease '[.a, .b]' sample.yml"],
+        "collect_object" => &[r#"treease '{name: .name, pet: .pets[]}' sample.yml"#],
+        "map" => &["treease '.items | map(. + 1)' sample.yml"],
+        "map_values" => &["treease '.labels | map_values(. + \"-x\")' sample.yml"],
+        "pick" => &[r#"treease 'pick(["a", "c"])' sample.yml"#],
+        "omit" => &[r#"treease 'omit(["debug"])' sample.yml"#],
+        "union" => &["treease '.a, .b' sample.yml"],
+        "unique" => &["treease '.items | unique' sample.yml"],
+        "unique_by" => &["treease '.users | unique_by(.id)' sample.yml"],
+        "group_by" => &["treease '.users | group_by(.team)' sample.yml"],
+        "flatten" => &["treease '.items | flatten(1)' sample.yml"],
+        "length" => LENGTH_EXAMPLES,
+        "encode" => &["treease '.value | to_json(0)' sample.yml"],
+        "decode" => &["treease '.raw | from_json' sample.yml"],
+        "to_entries" => &["treease '.labels | to_entries' sample.yml"],
+        "from_entries" => &["treease '.pairs | from_entries' sample.yml"],
+        "with_entries" => &["treease '.labels | with_entries(.value |= upcase)' sample.yml"],
+        "to_number" => &["treease '.count | to_number' sample.yml"],
+        "join" => &["treease '.tags | join(\",\")' sample.yml"],
+        "sub" => &[r#"treease '.name | sub("cat"; "dog")' sample.yml"#],
+        "match" => &[r#"treease '.name | match("cat")' sample.yml"#],
+        "capture" => &[r#"treease '.name | capture("(?P<animal>cat)")' sample.yml"#],
+        "test" => &[r#"treease '.name | test("cat")' sample.yml"#],
+        "split" => &[r#"treease '.name | split(",")' sample.yml"#],
+        "change_case" => &["treease '.name | upcase' sample.yml"],
+        "trim" => &["treease '.name | trim' sample.yml"],
+        "to_string" => &["treease '.value | to_string' sample.yml"],
+        "string_interpolation" => &[r#"treease '"Hello \(.name)"' sample.yml"#],
+        "get_variable" => &["treease '.a as $x | $x' sample.yml"],
+        "get_tag" => &["treease '.. | tag' sample.yml"],
+        "get_kind" => &["treease '.. | kind' sample.yml"],
+        "get_key" => &["treease '.a | key' sample.yml"],
+        "is_key" => &["treease '... | is_key' sample.yml"],
+        "keys" => &["treease '.labels | keys' sample.yml"],
+        "get_parent" => &["treease '.a.b | parent' sample.yml"],
+        "get_parents" => &["treease '.a.b.c | parents' sample.yml"],
+        "contains" => &["treease '.tags | contains([\"prod\"])' sample.yml"],
+        "has" => &[r#"treease '.items[] | has("enabled")' sample.yml"#],
+        "reduce" => &["treease '.items[] as $item reduce (0; . + $item)' sample.yml"],
+        "block" => &[r#"treease 'with(.a; . = "x")' sample.yml"#],
+        "empty" => &["treease -n 'empty'"],
+        "with" => &[r#"treease 'with(.a; . = "x")' sample.yml"#],
+        "first" => &["treease '.items | first(.enabled)' sample.yml"],
+        "select" => SELECT_EXAMPLES,
+        "filter" => &["treease '.items | filter(.enabled)' sample.yml"],
+        "sort_by" => &["treease '.users | sort_by(.name, .age)' sample.yml"],
+        "sort" => &["treease '.items | sort' sample.yml"],
+        "sort_keys" => &["treease 'sort_keys(..)' sample.yml"],
+        "reverse" => &["treease '.items | reverse' sample.yml"],
+        "shuffle" => &["treease '.items | shuffle' sample.yml"],
+        _ => unreachable!("unknown operator example set: {name}"),
     }
 }
 

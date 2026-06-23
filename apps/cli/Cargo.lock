@@ -1220,8 +1220,6 @@ dependencies = [
 [[package]]
 name = "treease-core"
 version = "1.0.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9383584ca6b2dce61a550a39fde544129e01abcb7d7b6840754ef86b16c5f702"
 dependencies = [
  "regex-lite",
  "serde",

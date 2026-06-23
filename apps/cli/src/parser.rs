@@ -5,6 +5,7 @@ use super::{CliError, CommandKind, ParsedArgs, spec};
 
 pub(super) fn parse_args_with_clap(argv: &[String]) -> Result<ParsedArgs, CliError> {
     reject_removed_legacy_eval_commands(argv)?;
+    reject_removed_discovery_commands(argv)?;
     reject_invalid_web_invocation(argv)?;
 
     #[cfg(not(target_arch = "wasm32"))]
@@ -23,6 +24,18 @@ fn reject_removed_legacy_eval_commands(argv: &[String]) -> Result<(), CliError> 
     };
 
     if matches!(first_arg.as_str(), "e" | "eval-all" | "ea") {
+        return Err(CliError::UnknownCommand(first_arg.clone()));
+    }
+
+    Ok(())
+}
+
+fn reject_removed_discovery_commands(argv: &[String]) -> Result<(), CliError> {
+    let Some(first_arg) = argv.get(1) else {
+        return Ok(());
+    };
+
+    if matches!(first_arg.as_str(), "examples" | "doctor") {
         return Err(CliError::UnknownCommand(first_arg.clone()));
     }
 
@@ -131,10 +144,7 @@ fn should_parse_as_root_invocation(argv: &[String]) -> bool {
 }
 
 fn is_root_subcommand(value: &str) -> bool {
-    matches!(
-        value,
-        "web" | "help" | "operators" | "formats" | "examples" | "doctor"
-    )
+    matches!(value, "web" | "help" | "operators" | "formats")
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -309,20 +319,15 @@ fn apply_matches(
             parsed.metadata_category = matches.get_one::<String>("category").cloned();
             parsed.metadata_format = matches.get_one::<String>("format").cloned();
         }
-        spec::CliCommandId::OperatorsGet
-        | spec::CliCommandId::FormatsGet
-        | spec::CliCommandId::ExamplesGet => {
+        spec::CliCommandId::OperatorsGet | spec::CliCommandId::FormatsGet => {
             parsed.metadata_target = matches.get_one::<String>("name").cloned();
             parsed.metadata_format = matches.get_one::<String>("format").cloned();
         }
-        spec::CliCommandId::FormatsList | spec::CliCommandId::ExamplesList => {
+        spec::CliCommandId::FormatsList => {
             parsed.metadata_format = matches.get_one::<String>("format").cloned();
         }
-        spec::CliCommandId::OperatorsSearch | spec::CliCommandId::ExamplesSearch => {
+        spec::CliCommandId::OperatorsSearch => {
             parsed.metadata_target = matches.get_one::<String>("query").cloned();
-        }
-        spec::CliCommandId::Doctor => {
-            parsed.metadata_format = matches.get_one::<String>("format").cloned();
         }
         _ => {}
     }
@@ -350,13 +355,7 @@ fn command_kind_for_id(command_id: &spec::CliCommandId) -> Option<CommandKind> {
         spec::CliCommandId::OperatorsSearch => Some(CommandKind::OperatorsSearch),
         spec::CliCommandId::FormatsList => Some(CommandKind::FormatsList),
         spec::CliCommandId::FormatsGet => Some(CommandKind::FormatsGet),
-        spec::CliCommandId::ExamplesList => Some(CommandKind::ExamplesList),
-        spec::CliCommandId::ExamplesGet => Some(CommandKind::ExamplesGet),
-        spec::CliCommandId::ExamplesSearch => Some(CommandKind::ExamplesSearch),
-        spec::CliCommandId::Doctor => Some(CommandKind::Doctor),
-        spec::CliCommandId::Operators
-        | spec::CliCommandId::Formats
-        | spec::CliCommandId::Examples => None,
+        spec::CliCommandId::Operators | spec::CliCommandId::Formats => None,
     }
 }
 

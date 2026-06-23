@@ -298,8 +298,7 @@ impl AllAtOnceEvaluator {
 
                     return self.evaluate_assign(input, lhs, assigned);
                 }
-                let current = self.evaluate_node(input, lhs)?;
-                let assigned = self.evaluate_node(&current, rhs)?;
+                let assigned = self.evaluate_node(input, rhs)?;
                 self.evaluate_assign(input, lhs, assigned)
             }
             CreateMap => {

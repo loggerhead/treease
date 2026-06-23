@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::io::Cursor;
 
 use treease_core::core::{
@@ -159,6 +160,45 @@ fn stream_evaluator_should_use_real_reader_pipeline_for_empty_inputs() {
         .expect("empty inputs should fall back through the real stream evaluator path");
 
     assert!(printer.printed_anything());
+}
+
+#[test]
+fn stream_evaluator_no_input_keeps_empty_object_as_object() {
+    let mut inputs: [ReaderInput<'_>; 0] = [];
+
+    let results =
+        evaluate_readers_values(Some("{}"), &mut inputs).expect("empty object should evaluate");
+
+    assert_eq!(results, vec![Value::Object(BTreeMap::new())]);
+}
+
+#[test]
+fn stream_evaluator_no_input_supports_object_literals() {
+    let mut inputs: [ReaderInput<'_>; 0] = [];
+    let mut expected = BTreeMap::new();
+    expected.insert("wrap".to_string(), Value::String("frog".to_string()));
+
+    let results = evaluate_readers_values(Some(r#"{"wrap": "frog"}"#), &mut inputs)
+        .expect("object literal should evaluate");
+
+    assert_eq!(results, vec![Value::Object(expected)]);
+}
+
+#[test]
+fn stream_evaluator_no_input_assignment_pipeline_returns_object_not_array() {
+    let mut inputs: [ReaderInput<'_>; 0] = [];
+    let mut inner_a = BTreeMap::new();
+    inner_a.insert("b".to_string(), Value::String("foo".to_string()));
+    let mut inner_d = BTreeMap::new();
+    inner_d.insert("e".to_string(), Value::String("bar".to_string()));
+    let mut expected = BTreeMap::new();
+    expected.insert("a".to_string(), Value::Object(inner_a));
+    expected.insert("d".to_string(), Value::Object(inner_d));
+
+    let results = evaluate_readers_values(Some(r#"(.a.b = "foo") | (.d.e = "bar")"#), &mut inputs)
+        .expect("assignment pipeline should evaluate");
+
+    assert_eq!(results, vec![Value::Object(expected)]);
 }
 
 #[test]

@@ -47,13 +47,6 @@ pub(super) fn error_report(err: &CliError) -> CliErrorReport {
                 "treease operators get select --format json",
             ],
         ),
-        CliError::UnknownExample(value) => report(
-            "UNKNOWN_EXAMPLE",
-            format!("unknown example: {value}"),
-            "Run `treease examples list` to see available examples.",
-            "docs/cli/README.md",
-            vec!["treease examples list", "treease examples get filter-array"],
-        ),
         CliError::InvalidFlagCombination => report(
             "INVALID_FLAG_COMBINATION",
             "The argument '--inplace' cannot be used with --null-input or stdin".to_string(),
