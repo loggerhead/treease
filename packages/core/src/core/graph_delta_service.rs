@@ -116,6 +116,7 @@ pub(crate) fn build_incremental_graph_delta_with_index(
         layout_builder.nodes = std::mem::take(&mut merged_nodes);
         layout_builder.edges = std::mem::take(&mut merged_edges);
         layout_builder.layout_graph(root_temp_idx);
+        layout_builder.apply_node_bounds();
         layout_builder.apply_edge_bezier_args();
         merged_nodes = layout_builder.nodes;
         merged_edges = layout_builder.edges;
@@ -276,7 +277,7 @@ fn build_impacted_direct_delta_candidate(
     old_index: &GraphModelIndex,
     model: &GraphModel,
     impacted_stable_ids: &[u64],
-    impacted_old_render_handles: &HashSet<u32>,
+    _impacted_old_render_handles: &HashSet<u32>,
 ) -> GraphDelta {
     let impacted_set: HashSet<u64> = impacted_stable_ids.iter().copied().collect();
     let mut nodes_added = Vec::new();
@@ -297,11 +298,6 @@ fn build_impacted_direct_delta_candidate(
 
     let mut edges_added = Vec::new();
     for edge in &model.edges {
-        if !(impacted_old_render_handles.contains(&edge.from_render_handle)
-            || impacted_old_render_handles.contains(&edge.to_render_handle))
-        {
-            continue;
-        }
         let key = old_index.edge_key_for(edge);
         let new_hash = crate::core::graph_model_index::hash_edge(edge);
         if old_index.edge_hash(&key) != Some(new_hash) {
@@ -485,6 +481,7 @@ fn build_table_scalar_cell_delta(
         layout_builder.nodes = std::mem::take(&mut merged_nodes);
         layout_builder.edges = std::mem::take(&mut merged_edges);
         layout_builder.layout_graph(root_temp_idx);
+        layout_builder.apply_node_bounds();
         layout_builder.apply_edge_bezier_args();
         merged_nodes = layout_builder.nodes;
         merged_edges = layout_builder.edges;

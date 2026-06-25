@@ -1017,6 +1017,75 @@ fn view_layout_graph_table_missing_row_fixture_siblings_keep_one_web_vgap() {
     );
 }
 
+#[test]
+fn view_layout_trajectory_fixture_edges_follow_bezier_contract() {
+    let fixture_json = include_str!("../../../test/fixtures/json/trajectory.1.json");
+    let model = build_from_json_with_config(fixture_json, web_default_config());
+
+    assert!(
+        !model.edges.is_empty(),
+        "trajectory fixture should produce graph edges"
+    );
+    assert_bezier_contract(&model);
+}
+
+#[test]
+fn graph_delta_service_emits_changed_trajectory_edges_after_subtree_growth() {
+    let old_source = include_str!("../../../test/fixtures/json/trajectory.1.json");
+    let needle = "\"duration\":\"88865\"";
+    let insert_at = old_source
+        .find(needle)
+        .expect("trajectory fixture should contain basic_info.duration")
+        + needle.len();
+    let insertion = ",\n      \"ended_at\": \"2025-02-24T00:00:00Z\"";
+    let new_source = format!(
+        "{}{}{}",
+        &old_source[..insert_at],
+        insertion,
+        &old_source[insert_at..]
+    );
+
+    let old_decoded = JsonDecoder
+        .decode_str(old_source)
+        .expect("old trajectory json should decode");
+    let new_decoded = JsonDecoder
+        .decode_str(&new_source)
+        .expect("new trajectory json should decode");
+
+    let old_root = decoded_root_to_graph_tree(&old_decoded);
+
+    let mut old_builder = GraphBuilder::new(web_default_config(), GraphLanguage::Json);
+    let old_model = old_builder.build(&old_root);
+
+    let edit = DocumentTextEdit {
+        start_byte: insert_at as u32,
+        old_end_byte: insert_at as u32,
+        new_end_byte: (insert_at + insertion.len()) as u32,
+        replacement: insertion.to_owned(),
+    };
+
+    let actual = build_incremental_graph_delta(
+        &old_model,
+        &new_decoded.store,
+        new_decoded.root,
+        &edit,
+        web_default_config(),
+        GraphLanguage::Json,
+    )
+    .expect("trajectory subtree growth should stay incremental");
+    let actual_model = actual.model_snapshot.materialize();
+
+    assert!(
+        actual
+            .delta
+            .edges_added
+            .iter()
+            .any(|edge| edge.from_render_handle != edge.to_render_handle),
+        "trajectory edit must move at least one edge to cover the regression"
+    );
+    assert_incremental_layout_relations(&actual_model);
+}
+
 // ---------------------------------------------------------------------------
 // Test 12: view layout: large headerless table sibling spacing uses subtree
 // bottom

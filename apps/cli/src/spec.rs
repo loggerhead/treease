@@ -96,6 +96,7 @@ pub(super) fn root_command_spec() -> CliCommandSpec {
         {
             let mut options = execution_options();
             options.push(help_option());
+            options.push(version_option());
             options
         },
         vec![
@@ -470,6 +471,19 @@ fn format_option() -> CliOptionSpec {
         false,
         CliOptionScope::HelpOnly,
         "Select help output format.",
+    )
+}
+
+fn version_option() -> CliOptionSpec {
+    option_spec(
+        "version",
+        Some("-V"),
+        "--version",
+        false,
+        None,
+        false,
+        CliOptionScope::Global,
+        "Show the CLI version.",
     )
 }
 

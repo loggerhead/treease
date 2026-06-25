@@ -85,7 +85,8 @@ fn root_subcommand_index(argv: &[String]) -> Option<usize> {
                 index += 2;
             }
             "-n" | "--null-input" | "-e" | "--exit-status" | "-P" | "--prettyPrint" | "-r"
-            | "--unwrapScalar" | "-N" | "--no-doc" | "-i" | "--inplace" | "-h" | "--help" => {
+            | "--unwrapScalar" | "-N" | "--no-doc" | "-i" | "--inplace" | "-h" | "--help"
+            | "-V" | "--version" => {
                 index += 1;
             }
             _ if argv[index].starts_with('-') => return None,
@@ -152,6 +153,10 @@ fn parse_args_with_clap_impl(argv: &[String]) -> Result<ParsedArgs, CliError> {
     if matches.get_flag("help") {
         parsed.command = CommandKind::Help;
         parsed.help = true;
+    }
+    if matches.get_flag("version") {
+        parsed.command = CommandKind::Version;
+        parsed.version = true;
     }
 
     if let Some((subcommand_name, submatches)) = matches.subcommand() {
@@ -240,10 +245,12 @@ fn build_command(spec: spec::CliCommandSpec) -> Command {
         spec.id != spec::CliCommandId::Root && !spec.subcommands.is_empty();
     let mut command = Command::new(name)
         .disable_help_flag(true)
+        .disable_version_flag(true)
         .disable_help_subcommand(true)
         .subcommand_required(requires_leaf_subcommand)
         .arg_required_else_help(false)
-        .about(spec.summary.clone());
+        .about(spec.summary.clone())
+        .version(env!("CARGO_PKG_VERSION"));
 
     if !spec.usage.is_empty() {
         command = command.override_usage(spec.usage.clone());
@@ -440,6 +447,10 @@ fn parse_args_fallback(argv: &[String]) -> Result<ParsedArgs, CliError> {
             "-h" | "--help" => {
                 parsed.help = true;
                 parsed.command = CommandKind::Help;
+            }
+            "-V" | "--version" => {
+                parsed.version = true;
+                parsed.command = CommandKind::Version;
             }
             "-n" | "--null-input" => parsed.null_input = true,
             "-e" | "--exit-status" => parsed.exit_status = true,

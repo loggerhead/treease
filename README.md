@@ -1,69 +1,101 @@
 # Treease
 
-![Treease logo](apps/web/static/treease-logo.png)
+Treease is a structured text workspace for inspecting, tracing, editing, comparing, and exporting JSON, YAML, TOML, CSV, and embedded payloads.
 
-## 项目目标
-- Treease 由 `apps/cli/`、`apps/web/` 与 `packages/core/` 组成，分别负责 CLI、Web UI/Worker 和可复用 Core 能力。
+## Why Treease
 
-## 快速入口
-- Agent 最短路径：`docs/agent-entrypoints.md`
-- Agent 全局语境：`CONTEXT.md`（只在 protocol / runtime / snapshot 相关任务时补读）
-- 架构总览：`ARCHITECTURE.md`
-- 文档索引：`docs/README.md`
-- CLI 入口：`apps/cli/AGENTS.md`
-- Web 入口：`apps/web/AGENTS.md`
-- Core 入口：`packages/core/AGENTS.md`
+Raw structured text becomes hard to follow long before it becomes hard to edit. Treease keeps source text and graph context attached to the same document state so you can see the structure first, then trace fields, review changes, compare results, and export with confidence.
 
-## 核心链路
-- 主文档链路：`apps/web/src/lib/components/Editor.svelte`（核心实现在 `Editor/EditorCore.svelte`）→ `apps/web/src/workers/wasm-runtime.worker.ts` → `packages/core/wasm/index.ts` → `packages/core/src/wasm_document.rs` → `packages/core/src/document/`
-- 图形视图链路：`GraphViewer.svelte / ViewportPanel.svelte` → `graph-render-session.ts` / `graph-scene-runtime.ts` → `apps/web/src/workers/runtime/document-job.ts` / `graph-stream-events.ts` → WASM 适配层 → `packages/core/src/core/graph_builder.rs` → `GraphDelta`
-- 文档协议链路：`packages/core/src/document/protocol.rs` → `cargo run --locked --bin export_document_protocol` → `packages/core/wasm/document-protocol.generated.ts` → worker / UI 消费
+Instead of switching between a plain editor, an isolated viewer, and one-off conversion commands, Treease keeps the document, its visual structure, and the next action in the same workflow.
 
-```mermaid
-flowchart LR
-  UI[apps/web/src] --> Worker[apps/web/src/workers]
-  Worker --> WasmTS[packages/core/wasm]
-  WasmTS --> WasmDoc[packages/core/src/wasm_document.rs]
-  WasmDoc --> Protocol[packages/core/src/document]
-  Protocol --> Core[packages/core/src]
+## Core Capabilities
+
+- Open a local structured file and see its real shape without leaving the source.
+- Trace a field across graph, tree path, and source text without losing place.
+- Format, minify, sort keys, and edit while keeping visual context attached to the same document.
+- Compare structure before trusting a text diff, and preview converted output before export.
+- Query, convert, and visualize structured documents from the CLI, including a readonly local web graph view.
+
+## Quick Start
+
+### Web
+
+```bash
+pnpm install
+pnpm dev
 ```
 
-## 常用命令
-- Web：在 `apps/web/` 执行 `pnpm dev`、`pnpm build`、`pnpm test`
-- Web 分层测试：在 `apps/web/` 执行 `pnpm test:unit`、`pnpm test:integration`、`pnpm test:e2e`
-- 文档协议：在 `packages/core/` 执行 `cargo run --locked --bin export_document_protocol`
-- WASM 构建 / 协议生成：在 `apps/web/` 执行 `pnpm wasm:bindgen`；影响运行时编解码时继续执行 `pnpm wasm:sync`
-- Core：在 `packages/core/` 执行 `cargo nextest run --locked`；fixture corpus 可执行 `cargo nextest run --locked --test corpus_runner --no-capture`
-- Core 辅助生成：在 `packages/core/` 执行 `cargo run --locked --bin export_language_support`、`cargo run --locked --bin sync_examples`、`cargo run --locked --bin export_registry_doc`
-- CLI：默认实现在 `apps/cli/src/lib.rs`；常用命令：`cd apps/cli && cargo nextest run --locked --lib`、`cd apps/cli && cargo run --locked --bin treease -- [args]`、`cd apps/cli && bash tests/acceptance/run.sh`、`cd apps/cli && cargo run --locked --bin export_cli_metadata`
-- 文档一致性：在仓库根目录执行 `node scripts/check-docs.mjs`
+### CLI
 
-## 当前技术栈
-- Core：`packages/core/rust-toolchain.toml` 固定 Rust `1.95.0`
-- CLI：目录入口见 `apps/cli/AGENTS.md`
-- Web：TypeScript `5.9.3`、Svelte `5`、SvelteKit `2`、Vite `^8`
-- CI：Node `20`、pnpm `9`
+```bash
+cargo install treease-cli
 
-## 当前 CI
-- `core-tests`：当前 workflow 位于 `.github/workflows/core.yml`
-- `web-tests`：当前 workflow 位于 `.github/workflows/web.yml`（先跑覆盖率，再跑 E2E core）
-- 文档一致性：在 `web-tests` 内执行 `node scripts/check-docs.mjs`
+# Quick examples
+treease '.services.api.url' example.json
+treease -o yaml '.' example.json
+treease web '.services.api' example.json
 
-## 文档地图
-- 完整索引见 `docs/README.md`。
-- Agent 领域术语与文档运行时规范见 `CONTEXT.md`。
-- 全局规则：`docs/CODING.md`、`docs/TESTING.md`、`docs/FRONTEND.md`、`docs/CORE.md`
-- 产品与能力参考：`docs/user-stories.md`、`docs/operators/README.md`、`docs/formats/README.md`、`docs/references/README.md`
+# Read a value
+treease '.a.b' file.yaml
 
-## 高频任务
-- 修改文档协议字段：先改 `packages/core/src/document/protocol.rs`，再在 `packages/core/` 执行 `cargo run --locked --bin export_document_protocol`
-- 刷新 CLI 帮助 / 算子 / 格式快照：运行 `cd apps/cli && cargo run --locked --bin export_cli_metadata`
-- `pnpm wasm:bindgen` 已重新用于文档协议生成：运行 `cargo run --locked --bin export_document_protocol` + `wasm-pack build`；旧 `types.json` / 旧 binding 体系已清理删除。
-- 调整 CLI 行为：先读 `apps/cli/AGENTS.md` 与 `apps/cli/src/main.rs`
-- 调整 Web 行为：先读 `apps/web/AGENTS.md` 与 `docs/FRONTEND.md`
-- 调整 Core 能力：先读 `packages/core/AGENTS.md` 与 `docs/CORE.md`
+# Convert one format to another
+treease -p yaml -o json '.' file.yaml
 
-## 维护原则
-- 根入口只保留导航与稳定事实，不堆叠实现细节；人类读者从本文件进入。
-- 仓库内文档必须能映射到真实路径、命令、版本和 CI。
-- 详细的实现说明优先写入 `docs/` 或模块目录，而不是继续膨胀根 README。
+# Write a change back to the file
+treease -i '.a = 1' file.yaml
+
+# Inspect CLI capabilities
+treease help --format json
+treease operators list
+treease formats list --format json
+treease examples search "filter array"
+treease doctor --format json
+```
+
+## Development
+
+### Repository Layout
+
+- `apps/web/`: Svelte web application, editor UI, graph UI, and browser worker boundary.
+- `apps/cli/`: standalone CLI crate, acceptance tests, and CLI metadata export.
+- `packages/core/`: Rust parser, formatter, operators, evaluation, graph build, snapshots, and WASM exports.
+
+### Common Commands
+
+```bash
+cd apps/web
+pnpm dev
+pnpm build
+pnpm test
+pnpm test:unit
+pnpm test:integration
+pnpm test:e2e
+
+cd ../../packages/core
+cargo nextest run --locked
+
+cd ../../apps/cli
+cargo nextest run --locked --lib
+bash tests/acceptance/run.sh
+```
+
+### Protocol and WASM Regeneration
+
+When changing the document protocol or Rust/WASM boundary:
+
+```bash
+cd packages/core
+cargo run --locked --bin export_document_protocol
+
+cd ../../apps/web
+pnpm wasm:bindgen
+pnpm wasm:sync
+```
+
+### Documentation Consistency
+
+After changing documentation, run:
+
+```bash
+node scripts/check-docs.mjs
+```

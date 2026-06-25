@@ -611,7 +611,12 @@ impl LayoutEngine {
             }
         }
 
-        let mut refreshed_edges = model.edge_indexes_incident_to_handles(edge_seed_handles);
+        let mut edge_refresh_handles = bounds_handles.to_vec();
+        edge_refresh_handles.extend_from_slice(edge_seed_handles);
+        edge_refresh_handles.sort_unstable();
+        edge_refresh_handles.dedup();
+
+        let mut refreshed_edges = model.edge_indexes_incident_to_handles(&edge_refresh_handles);
         refreshed_edges.extend_from_slice(extra_edge_indexes);
         refreshed_edges.sort_unstable();
         refreshed_edges.dedup();
@@ -808,6 +813,7 @@ fn compute_y(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::core::graph_builder::PathSeg;
     use crate::core::graph_materialize::materialize_into_current_model;
     use crate::core::graph_projection_service;
     use crate::core::graph_shape::NodeShapeBuilder;
@@ -851,13 +857,42 @@ mod tests {
     }
 
     #[test]
-    fn changed_region_refreshes_only_edges_incident_to_changed_handles() {
+    fn changed_region_refreshes_edges_for_siblings_repositioned_by_seed_growth() {
         let (topology, mut model, root) =
             model_from_json(r#"{"left":{"v":1},"right":{"v":2},"tail":{"v":3}}"#);
         let cfg = graph_projection_service::projection_builder_config().to_graph_builder_config();
         let engine = LayoutEngine::new(cfg);
         let mut state = LayoutState::default();
         engine.layout_full_with_topology(&mut state, &topology, &mut model, root);
+
+        let right_handle = model
+            .nodes
+            .iter()
+            .find(|node| {
+                node.path.len() == 1 && matches!(&node.path[0], PathSeg::Key(key) if key == "right")
+            })
+            .map(|node| node.render_handle)
+            .expect("right node should exist");
+        let tail_handle = model
+            .nodes
+            .iter()
+            .find(|node| {
+                node.path.len() == 1 && matches!(&node.path[0], PathSeg::Key(key) if key == "tail")
+            })
+            .map(|node| node.render_handle)
+            .expect("tail node should exist");
+        let right_edge_before = model
+            .edges
+            .iter()
+            .find(|edge| edge.to_render_handle == right_handle)
+            .map(|edge| edge.bezier_args)
+            .expect("root -> right edge should exist");
+        let tail_edge_before = model
+            .edges
+            .iter()
+            .find(|edge| edge.to_render_handle == tail_handle)
+            .map(|edge| edge.bezier_args)
+            .expect("root -> tail edge should exist");
 
         let seed = 1u32;
         model.nodes[seed as usize].height += 7;
@@ -871,18 +906,43 @@ mod tests {
             &[],
         );
 
-        assert!(!changed.edge_indexes().is_empty());
-        for &edge_index in changed.edge_indexes() {
-            let edge = &model.edges[edge_index];
-            assert!(
-                edge.from_render_handle == seed || edge.to_render_handle == seed,
-                "refreshed edge should be incident to the changed layout seed"
-            );
-        }
         assert!(
-            state.metrics().edge_indexes_refreshed
-                <= model.edge_indexes_incident_to_handles(&[seed]).len(),
-            "changed-region relayout should not refresh non-incident graph edges"
+            changed.edge_indexes().iter().any(|&edge_index| {
+                model
+                    .edges
+                    .get(edge_index)
+                    .is_some_and(|edge| edge.to_render_handle == right_handle)
+            }),
+            "right sibling edge must refresh when left seed growth replays later y layout"
+        );
+        assert!(
+            changed.edge_indexes().iter().any(|&edge_index| {
+                model
+                    .edges
+                    .get(edge_index)
+                    .is_some_and(|edge| edge.to_render_handle == tail_handle)
+            }),
+            "tail sibling edge must refresh when left seed growth replays later y layout"
+        );
+        let right_edge_after = model
+            .edges
+            .iter()
+            .find(|edge| edge.to_render_handle == right_handle)
+            .map(|edge| edge.bezier_args)
+            .expect("root -> right edge should still exist");
+        let tail_edge_after = model
+            .edges
+            .iter()
+            .find(|edge| edge.to_render_handle == tail_handle)
+            .map(|edge| edge.bezier_args)
+            .expect("root -> tail edge should still exist");
+        assert!(
+            right_edge_after != right_edge_before,
+            "right sibling edge geometry must update after sibling reposition"
+        );
+        assert!(
+            tail_edge_after != tail_edge_before,
+            "tail sibling edge geometry must update after sibling reposition"
         );
     }
 }

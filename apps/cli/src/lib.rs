@@ -25,6 +25,7 @@ struct ParsedArgs {
     expression: String,
     files: Vec<String>,
     help: bool,
+    version: bool,
     null_input: bool,
     exit_status: bool,
     input_format: Option<String>,
@@ -44,6 +45,7 @@ enum CommandKind {
     Run,
     Web,
     Help,
+    Version,
     OperatorsList,
     OperatorsGet,
     OperatorsSearch,
@@ -58,6 +60,7 @@ impl Default for ParsedArgs {
             expression: ".".to_string(),
             files: Vec::new(),
             help: false,
+            version: false,
             null_input: false,
             exit_status: false,
             input_format: None,
@@ -160,6 +163,10 @@ fn run(raw_args: &[String]) -> Result<i32, CliError> {
     match parsed.command {
         CommandKind::Help => {
             print!("{}", render_help(&parsed));
+            return Ok(0);
+        }
+        CommandKind::Version => {
+            print!("{}", render_version());
             return Ok(0);
         }
         CommandKind::Web => return run_web_command(&parsed),
@@ -517,6 +524,10 @@ fn render_help(parsed: &ParsedArgs) -> String {
     }
 }
 
+fn render_version() -> String {
+    format!("treease {}\n", env!("CARGO_PKG_VERSION"))
+}
+
 fn resolve_help_target(target: Option<&str>) -> Option<spec::CliCommandSpec> {
     let target = target?;
     let segments = target.split_whitespace().collect::<Vec<_>>();
@@ -571,6 +582,7 @@ fn execute_metadata_command(parsed: &ParsedArgs) -> Result<Vec<u8>, CliError> {
                 .ok_or_else(|| CliError::UnsupportedFormat(name.to_string()))?;
             render_metadata_value(&format, json)?
         }
+        CommandKind::Version => return Err(CliError::InvalidFlagCombination),
         CommandKind::Web => return Err(CliError::InvalidFlagCombination),
         CommandKind::Run => return Err(CliError::InvalidFlagCombination),
     };
@@ -825,6 +837,16 @@ mod tests {
         assert!(help.contains("treease [OPTIONS] [EXPRESSION] [FILE]"));
         assert!(!help.contains("treease eval"));
         assert!(!help.contains("eval-all"));
+    }
+
+    #[test]
+    fn version_flag_parses_without_reading_stdin() {
+        let parsed = parse_args(&["treease".to_string(), "--version".to_string()])
+            .expect("version should parse");
+
+        assert_eq!(parsed.command, CommandKind::Version);
+        assert!(parsed.version);
+        assert!(parsed.files.is_empty());
     }
 
     #[test]
