@@ -816,6 +816,69 @@ mod tests {
     }
 
     #[test]
+    fn web_asset_manifest_requires_matching_index_asset_version() {
+        let manifest = serde_json::json!({
+            "version": "26062410",
+            "assetVersion": "1761465123456",
+            "files": [
+                { "path": "index.html" },
+                { "path": "_app/app.js" }
+            ]
+        });
+        let asset_dir = test_asset_dir(&[
+            (
+                "index.html",
+                br#"<html data-treease-cli-asset-version="1761465123456"></html>"#,
+            ),
+            ("_app/app.js", b"console.log(1)".as_slice()),
+        ]);
+        fs::write(
+            asset_dir.join("manifest.json"),
+            serde_json::to_vec(&manifest).expect("manifest should serialize"),
+        )
+        .expect("manifest should write");
+
+        assert!(
+            web_assets::cache_is_complete_for_test(&asset_dir),
+            "matching assetVersion should be accepted"
+        );
+
+        fs::write(
+            asset_dir.join("index.html"),
+            br#"<html data-treease-cli-asset-version="1761465999999"></html>"#,
+        )
+        .expect("index should rewrite");
+
+        assert!(
+            !web_assets::cache_is_complete_for_test(&asset_dir),
+            "mismatched assetVersion should invalidate cache"
+        );
+    }
+
+    #[test]
+    fn web_asset_index_parser_extracts_asset_version_from_html_attribute() {
+        let html = br#"<!doctype html>
+<html lang="en" data-treease-cli-asset-version="1761465123456">
+  <body></body>
+</html>
+"#;
+        assert_eq!(
+            web_assets::read_index_asset_version_for_test(html),
+            Some("1761465123456".to_string())
+        );
+        assert_eq!(
+            web_assets::read_index_asset_version_for_test(
+                br#"<html data-treease-cli-asset-version='abc-123'></html>"#
+            ),
+            Some("abc-123".to_string())
+        );
+        assert_eq!(
+            web_assets::read_index_asset_version_for_test(br#"<html lang="en"></html>"#),
+            None
+        );
+    }
+
+    #[test]
     fn default_invocation_parses_expression_and_files() {
         let raw = vec![
             "treease".to_string(),

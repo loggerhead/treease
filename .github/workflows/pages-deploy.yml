@@ -48,5 +48,5 @@ jobs:
         with:
           zig-version: ${{ env.ZIG_VERSION }}
       - name: Deploy to Cloudflare Pages production
-        run: pnpm build && pnpm assets:r2:check && npx wrangler pages deploy build --project-name treease --branch main
+        run: pnpm build && pnpm assets:r2:check && npx wrangler pages deploy build --project-name treease --branch main && pnpm cli-assets:check
         working-directory: ${{ github.workspace }}/apps/web

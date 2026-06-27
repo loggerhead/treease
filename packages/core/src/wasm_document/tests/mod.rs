@@ -236,7 +236,7 @@ fn streaming_close_emits_expanded_snapshot_for_top_level_nested_string_when_nest
             _ => None,
         })
         .expect("nested top-level string should emit expanded source text");
-    assert_eq!(source_text, r#"{"a":1}"#);
+    assert_eq!(source_text, "{\"a\": 1}\n");
 }
 
 #[test]

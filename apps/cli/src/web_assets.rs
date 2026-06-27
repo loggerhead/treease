@@ -6,7 +6,6 @@ use std::time::Duration;
 
 use reqwest::blocking::Client;
 use serde::Deserialize;
-use sha2::{Digest, Sha256};
 
 use super::CliError;
 
@@ -14,6 +13,8 @@ include!(concat!(env!("OUT_DIR"), "/treease_web_config.rs"));
 
 const DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 const DEFAULT_READ_TIMEOUT: Duration = Duration::from_secs(30);
+const INDEX_ASSET_PATH: &str = "index.html";
+const INDEX_ASSET_VERSION_ATTRIBUTE: &str = "data-treease-cli-asset-version";
 
 #[derive(Debug, Clone)]
 pub(super) struct DiskAsset {
@@ -24,14 +25,14 @@ pub(super) struct DiskAsset {
 #[derive(Debug, Deserialize)]
 struct WebAssetManifest {
     version: String,
+    #[serde(rename = "assetVersion")]
+    asset_version: String,
     files: Vec<WebAssetManifestFile>,
 }
 
 #[derive(Debug, Deserialize)]
 struct WebAssetManifestFile {
     path: String,
-    sha256: String,
-    size: u64,
 }
 
 pub(super) fn ensure_available() -> Result<PathBuf, CliError> {
@@ -96,6 +97,11 @@ fn download_version_into_cache(version_dir: &Path) -> Result<(), CliError> {
             WEB_ASSET_VERSION, manifest.version
         )));
     }
+    if manifest.asset_version.is_empty() {
+        return Err(CliError::WebAssetManifest(
+            "manifest assetVersion must not be empty".to_string(),
+        ));
+    }
 
     let cache_root = version_dir
         .parent()
@@ -127,6 +133,7 @@ fn download_manifest_files(
     manifest: &WebAssetManifest,
     temp_dir: &Path,
 ) -> Result<(), CliError> {
+    let mut downloaded_index_asset_version: Option<String> = None;
     for file in &manifest.files {
         let relative_path = safe_relative_path(&file.path)?;
         let asset_url = format!(
@@ -145,28 +152,27 @@ fn download_manifest_files(
         let bytes = response.bytes().map_err(|error| {
             CliError::WebAssetDownload(format!("failed to read {}: {error}", asset_url))
         })?;
-        if bytes.len() as u64 != file.size {
-            return Err(CliError::WebAssetManifest(format!(
-                "asset size mismatch for {}: expected {}, got {}",
-                file.path,
-                file.size,
-                bytes.len()
-            )));
-        }
-        let actual_sha = sha256_hex(&bytes);
-        if actual_sha != file.sha256 {
-            return Err(CliError::WebAssetManifest(format!(
-                "asset hash mismatch for {}: expected {}, got {}",
-                file.path, file.sha256, actual_sha
-            )));
-        }
         let target_path = temp_dir.join(relative_path);
         if let Some(parent) = target_path.parent() {
             fs::create_dir_all(parent).map_err(CliError::Io)?;
         }
         fs::write(&target_path, &bytes).map_err(CliError::Io)?;
+        if file.path == INDEX_ASSET_PATH {
+            downloaded_index_asset_version = parse_index_asset_version(&bytes);
+        }
     }
-    Ok(())
+
+    match downloaded_index_asset_version {
+        Some(index_asset_version) if index_asset_version == manifest.asset_version => Ok(()),
+        Some(index_asset_version) => Err(CliError::WebAssetManifest(format!(
+            "index assetVersion mismatch: expected {}, got {}",
+            manifest.asset_version, index_asset_version
+        ))),
+        None => Err(CliError::WebAssetManifest(format!(
+            "missing {} attribute in {}",
+            INDEX_ASSET_VERSION_ATTRIBUTE, INDEX_ASSET_PATH
+        ))),
+    }
 }
 
 fn write_manifest_copy(temp_dir: &Path, manifest_bytes: &[u8]) -> Result<(), CliError> {
@@ -174,24 +180,38 @@ fn write_manifest_copy(temp_dir: &Path, manifest_bytes: &[u8]) -> Result<(), Cli
 }
 
 fn cache_is_complete(version_dir: &Path) -> bool {
-    let manifest_path = version_dir.join("manifest.json");
-    let manifest_bytes = match fs::read(&manifest_path) {
-        Ok(bytes) => bytes,
-        Err(_) => return false,
-    };
-    let manifest: WebAssetManifest = match serde_json::from_slice(&manifest_bytes) {
-        Ok(manifest) => manifest,
-        Err(_) => return false,
+    let manifest = match read_cached_manifest(version_dir) {
+        Some(manifest) => manifest,
+        None => return false,
     };
     if manifest.version != WEB_ASSET_VERSION {
         return false;
     }
-    manifest.files.iter().all(|file| {
+    if manifest.asset_version.is_empty() {
+        return false;
+    }
+    let files_exist = manifest.files.iter().all(|file| {
         safe_relative_path(&file.path)
             .ok()
             .map(|relative_path| version_dir.join(relative_path).is_file())
             .unwrap_or(false)
-    })
+    });
+    if !files_exist {
+        return false;
+    }
+    let index_bytes = match fs::read(version_dir.join(INDEX_ASSET_PATH)) {
+        Ok(bytes) => bytes,
+        Err(_) => return false,
+    };
+    matches!(
+        parse_index_asset_version(&index_bytes),
+        Some(index_asset_version) if index_asset_version == manifest.asset_version
+    )
+}
+
+fn read_cached_manifest(version_dir: &Path) -> Option<WebAssetManifest> {
+    let manifest_bytes = fs::read(version_dir.join("manifest.json")).ok()?;
+    serde_json::from_slice(&manifest_bytes).ok()
 }
 
 fn normalize_asset_path(request_path: &str) -> Option<String> {
@@ -218,6 +238,21 @@ fn safe_relative_path(value: &str) -> Result<PathBuf, CliError> {
         )));
     }
     Ok(path.to_path_buf())
+}
+
+fn parse_index_asset_version(bytes: &[u8]) -> Option<String> {
+    let html = std::str::from_utf8(bytes).ok()?;
+    let marker = html.find(INDEX_ASSET_VERSION_ATTRIBUTE)?;
+    let remainder = &html[marker + INDEX_ASSET_VERSION_ATTRIBUTE.len()..];
+    let trimmed = remainder.trim_start();
+    let value = trimmed.strip_prefix('=')?.trim_start();
+    let quote = value.chars().next()?;
+    if quote != '"' && quote != '\'' {
+        return None;
+    }
+    let rest = &value[quote.len_utf8()..];
+    let end = rest.find(quote)?;
+    Some(rest[..end].to_string())
 }
 
 fn version_cache_dir() -> PathBuf {
@@ -258,24 +293,6 @@ fn http_client() -> Result<Client, CliError> {
         })
 }
 
-fn sha256_hex(bytes: &[u8]) -> String {
-    let digest = Sha256::digest(bytes);
-    let mut output = String::with_capacity(digest.len() * 2);
-    for byte in digest {
-        output.push(hex_char(byte >> 4));
-        output.push(hex_char(byte & 0x0f));
-    }
-    output
-}
-
-fn hex_char(value: u8) -> char {
-    match value {
-        0..=9 => (b'0' + value) as char,
-        10..=15 => (b'a' + value - 10) as char,
-        _ => unreachable!("hex nibble should be in range 0..=15"),
-    }
-}
-
 fn content_type_for(path: &Path) -> &'static str {
     match path.extension().and_then(|extension| extension.to_str()) {
         Some("html") => "text/html; charset=utf-8",
@@ -294,4 +311,14 @@ fn content_type_for(path: &Path) -> &'static str {
 #[allow(dead_code)]
 pub(super) fn read_asset_bytes(asset: &DiskAsset) -> io::Result<Vec<u8>> {
     fs::read(&asset.path)
+}
+
+#[cfg(test)]
+pub(super) fn cache_is_complete_for_test(version_dir: &Path) -> bool {
+    cache_is_complete(version_dir)
+}
+
+#[cfg(test)]
+pub(super) fn read_index_asset_version_for_test(bytes: &[u8]) -> Option<String> {
+    parse_index_asset_version(bytes)
 }

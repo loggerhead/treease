@@ -2,6 +2,11 @@
 
 TREEASE_WEB_PIDS=()
 TREEASE_WEB_LAST_PID=''
+TREEASE_WEB_ASSET_SERVER_PID=''
+TREEASE_WEB_ASSET_BASE_URL=''
+TREEASE_WEB_CACHE_DIR=''
+TREEASE_WEB_ASSET_VERSION=''
+TREEASE_WEB_ASSET_RUNTIME_VERSION='1762550945000'
 
 cleanup_web_servers() {
   local pid
@@ -12,6 +17,12 @@ cleanup_web_servers() {
     fi
   done
   TREEASE_WEB_PIDS=()
+
+  if [[ -n "$TREEASE_WEB_ASSET_SERVER_PID" ]] && kill -0 "$TREEASE_WEB_ASSET_SERVER_PID" 2>/dev/null; then
+    kill "$TREEASE_WEB_ASSET_SERVER_PID" 2>/dev/null || true
+    wait "$TREEASE_WEB_ASSET_SERVER_PID" 2>/dev/null || true
+  fi
+  TREEASE_WEB_ASSET_SERVER_PID=''
 }
 
 start_web_file() {
@@ -19,7 +30,9 @@ start_web_file() {
   local stderr_file="$2"
   shift 2
 
-  "$TREEASE_BIN" web "$@" >"$stdout_file" 2>"$stderr_file" &
+  TREEASE_WEB_ASSET_BASE_URL="$TREEASE_WEB_ASSET_BASE_URL" \
+    TREEASE_WEB_CACHE_DIR="$TREEASE_WEB_CACHE_DIR" \
+    "$TREEASE_BIN" web "$@" >"$stdout_file" 2>"$stderr_file" &
   local pid=$!
   TREEASE_WEB_PIDS+=("$pid")
   TREEASE_WEB_LAST_PID="$pid"
@@ -31,10 +44,59 @@ start_web_stdin() {
   local stderr_file="$3"
   shift 3
 
-  printf '%s' "$stdin_text" | "$TREEASE_BIN" web "$@" >"$stdout_file" 2>"$stderr_file" &
+  printf '%s' "$stdin_text" | \
+    TREEASE_WEB_ASSET_BASE_URL="$TREEASE_WEB_ASSET_BASE_URL" \
+    TREEASE_WEB_CACHE_DIR="$TREEASE_WEB_CACHE_DIR" \
+    "$TREEASE_BIN" web "$@" >"$stdout_file" 2>"$stderr_file" &
   local pid=$!
   TREEASE_WEB_PIDS+=("$pid")
   TREEASE_WEB_LAST_PID="$pid"
+}
+
+prepare_web_assets() {
+  TREEASE_WEB_ASSET_VERSION="$(python3 - <<'PY'
+import pathlib
+import re
+
+cargo = pathlib.Path("Cargo.toml").read_text()
+match = re.search(r'wasm_release_date\s*=\s*"([0-9]{8})"', cargo)
+if not match:
+    raise SystemExit("missing wasm_release_date")
+print(match.group(1))
+PY
+)"
+
+  local asset_root="$TMP_DIR/web-assets"
+  local version_dir="$asset_root/$TREEASE_WEB_ASSET_VERSION"
+  TREEASE_WEB_CACHE_DIR="$TMP_DIR/web-cache"
+  mkdir -p "$version_dir/_app"
+
+  cat >"$version_dir/index.html" <<EOF
+<!doctype html>
+<html data-treease-cli-asset-version="$TREEASE_WEB_ASSET_RUNTIME_VERSION">
+  <head>
+    <meta charset="utf-8" />
+    <script src="/_app/app.js"></script>
+  </head>
+  <body>graph</body>
+</html>
+EOF
+  printf 'console.log("graph")\n' >"$version_dir/_app/app.js"
+  cat >"$version_dir/manifest.json" <<EOF
+{
+  "version": "$TREEASE_WEB_ASSET_VERSION",
+  "assetVersion": "$TREEASE_WEB_ASSET_RUNTIME_VERSION",
+  "files": [
+    { "path": "index.html" },
+    { "path": "_app/app.js" }
+  ]
+}
+EOF
+
+  (cd "$asset_root" && python3 -m http.server 18766 >"$TMP_DIR/web-assets-server.log" 2>&1) &
+  TREEASE_WEB_ASSET_SERVER_PID=$!
+  TREEASE_WEB_ASSET_BASE_URL="http://127.0.0.1:18766"
+  sleep 1
 }
 
 wait_for_graph_url() {
@@ -197,11 +259,15 @@ test_web_multiple_files_error() {
 }
 
 test_web() {
+  prepare_web_assets
+
   test_web_file_result
   cleanup_web_servers
 
+  prepare_web_assets
   test_web_stdin_result
   cleanup_web_servers
 
+  prepare_web_assets
   test_web_multiple_files_error
 }

@@ -1,7 +1,7 @@
-import { copyFile, mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { existsSync, readFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import path from 'node:path';
-import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -10,9 +10,11 @@ const rootDir = path.resolve(webDir, '..', '..');
 const coreManifest = path.resolve(rootDir, 'packages', 'core', 'Cargo.toml');
 const buildDir = path.resolve(webDir, 'build');
 const cliAssetsRoot = path.resolve(buildDir, 'cli-assets');
+const indexAssetAttribute = 'data-treease-cli-asset-version';
 
 async function main() {
   const version = readManifestReleaseDate();
+  const assetVersion = readAssetVersion();
   if (!existsSync(buildDir)) {
     throw new Error(`missing build output: ${buildDir}`);
   }
@@ -22,11 +24,12 @@ async function main() {
   await mkdir(versionDir, { recursive: true });
 
   const files = [];
-  await copyBuildTree(buildDir, versionDir, files);
+  await copyBuildTree(buildDir, versionDir, files, assetVersion);
   files.sort((left, right) => left.path.localeCompare(right.path));
 
   const manifest = {
     version,
+    assetVersion,
     generatedAt: new Date().toISOString(),
     files,
   };
@@ -52,7 +55,28 @@ function readManifestReleaseDate() {
   return match[1];
 }
 
-async function copyBuildTree(sourceDir, targetDir, files, relativePrefix = '') {
+function readAssetVersion() {
+  const override = process.env.TREEASE_CLI_ASSET_VERSION;
+  if (override) {
+    return override;
+  }
+
+  const result = spawnSync('git', ['log', '-1', '--format=%ct'], {
+    cwd: rootDir,
+    encoding: 'utf8',
+  });
+  if (result.status !== 0) {
+    throw new Error(`failed to read git commit timestamp: ${result.stderr.trim() || result.stdout.trim()}`);
+  }
+
+  const seconds = result.stdout.trim();
+  if (!/^\d+$/.test(seconds)) {
+    throw new Error(`invalid git commit timestamp: ${seconds}`);
+  }
+  return `${seconds}000`;
+}
+
+async function copyBuildTree(sourceDir, targetDir, files, assetVersion, relativePrefix = '') {
   const entries = await readdir(sourceDir, { withFileTypes: true });
   for (const entry of entries) {
     if (entry.name.startsWith('.')) continue;
@@ -64,21 +88,32 @@ async function copyBuildTree(sourceDir, targetDir, files, relativePrefix = '') {
 
     if (entry.isDirectory()) {
       await mkdir(targetPath, { recursive: true });
-      await copyBuildTree(sourcePath, targetDir, files, relativePath);
+      await copyBuildTree(sourcePath, targetDir, files, assetVersion, relativePath);
       continue;
     }
     if (!entry.isFile()) continue;
 
     await mkdir(path.dirname(targetPath), { recursive: true });
-    await copyFile(sourcePath, targetPath);
-    const bytes = await readFile(sourcePath);
-    const size = (await stat(sourcePath)).size;
+    const sourceBytes = await readFile(sourcePath);
+    const outputBytes =
+      relativePath === 'index.html' ? injectAssetVersionAttribute(sourceBytes, assetVersion) : sourceBytes;
+    await writeFile(targetPath, outputBytes);
     files.push({
       path: relativePath.replaceAll(path.sep, '/'),
-      sha256: createHash('sha256').update(bytes).digest('hex'),
-      size,
     });
   }
+}
+
+function injectAssetVersionAttribute(bytes, assetVersion) {
+  const html = bytes.toString('utf8');
+  const updated = html.replace(
+    /<html\b([^>]*)>/i,
+    (_match, attrs) => `<html${attrs} ${indexAssetAttribute}="${assetVersion}">`
+  );
+  if (updated === html) {
+    throw new Error('failed to inject cli asset version into index.html');
+  }
+  return Buffer.from(updated, 'utf8');
 }
 
 main().catch((error) => {
