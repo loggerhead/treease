@@ -147,7 +147,7 @@ fn streaming_job_settings_materialize_nested_json_when_nest_enabled() {
 }
 
 #[test]
-fn streaming_close_writes_nested_json_source_when_nest_enabled() {
+fn streaming_close_formats_nested_json_source_when_nest_enabled() {
     let _guard = lock_test_mutex();
     reset_test_state();
 
@@ -189,10 +189,10 @@ fn streaming_close_writes_nested_json_source_when_nest_enabled() {
         .expect("snapshot ready");
 
     assert!(
-        source_text.contains("\"inner\":42"),
-        "source should be rewritten to the expanded nested JSON. got: {source_text}"
+        source_text.contains("\n  \"nested\": "),
+        "source should be smart-formatted after nested expansion. got: {source_text}"
     );
-    assert_eq!(source_text, r#"{"nested":{"inner":42}}"#);
+    assert_eq!(source_text, "{\n  \"nested\": {\"inner\": 42}\n}\n");
 }
 
 #[test]
@@ -503,7 +503,7 @@ fn streaming_close_materializes_nested_json_for_followup_graph_edits() {
     let value: serde_json::Value =
         serde_json::from_str(value_json).expect("valueJson should decode");
     assert_eq!(value["nested"], serde_json::json!({ "inner": 42 }));
-    assert_eq!(source_text, r#"{"nested":{"inner":42}}"#);
+    assert_eq!(source_text, "{\n  \"nested\": {\"inner\": 42}\n}\n");
 }
 
 fn start_source_job(document_key: &str, language: &str) -> StartDocumentJobOutput {

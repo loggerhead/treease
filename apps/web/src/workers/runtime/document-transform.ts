@@ -12,6 +12,7 @@ export async function handleFormat(
       language: message.language,
       text: resolvedText,
       indent: message.options?.indent,
+      nest: withNestOptions(message).nest,
       sortKeys: message.options?.sortKeys,
     });
     return result.text;

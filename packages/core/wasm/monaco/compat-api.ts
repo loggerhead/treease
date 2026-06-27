@@ -11,7 +11,13 @@ export async function parseValueToTree(input: ParseValueToTreeJsonInput): Promis
 
 export async function formatText(language: string, text: string, options?: FormatOptions): Promise<string> {
   return callWasm((mod) =>
-    mod.format_text({ language, text, indent: options?.indent ?? null, sortKeys: options?.sortKeys ?? null } as any),
+    mod.format_text({
+      language,
+      text,
+      indent: options?.indent ?? null,
+      nest: options?.nest ?? null,
+      sortKeys: options?.sortKeys ?? null,
+    } as any),
   );
 }
 
@@ -155,6 +161,7 @@ export type FormatJsonInput = {
   language: string;
   text: string;
   indent?: number | null;
+  nest?: boolean | null;
   sortKeys?: boolean | null;
 };
 
@@ -181,6 +188,7 @@ export async function parseValueToTreeJson(input: ParseValueToTreeJsonInput): Pr
 export async function formatJson(input: FormatJsonInput): Promise<FormatJsonOutput> {
   const text = await formatText(input.language, input.text, {
     indent: input.indent ?? undefined,
+    nest: input.nest ?? undefined,
     sortKeys: input.sortKeys ?? undefined,
   });
   return { text };

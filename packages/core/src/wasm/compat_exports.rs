@@ -71,6 +71,7 @@ pub struct FormatTextInput {
     language: String,
     text: String,
     indent: Option<i32>,
+    nest: Option<bool>,
     sort_keys: Option<bool>,
 }
 
@@ -134,6 +135,7 @@ fn format_text_impl(input: &FormatTextInput) -> Result<String, String> {
     let opts = crate::wasm::default_common_format_options();
     let options = CommonFormatOptions {
         indent: input.indent.unwrap_or(opts.indent),
+        nest: input.nest.unwrap_or(opts.nest),
         ..opts
     };
     crate::wasm::format_text(&input.language, &input.text, options, input.sort_keys)
@@ -623,10 +625,22 @@ mod tests {
                 language: "json".into(),
                 text: "{\"b\":2,\"a\":1}".into(),
                 indent: Some(2),
+                nest: None,
                 sort_keys: Some(true),
             })
             .expect("format text should succeed"),
             "{\"a\": 1, \"b\": 2}\n",
+        );
+        assert_eq!(
+            format_text_impl(&FormatTextInput {
+                language: "json".into(),
+                text: "{\"nested\":\"{\\\"inner\\\":42}\"}".into(),
+                indent: Some(2),
+                nest: Some(true),
+                sort_keys: Some(false),
+            })
+            .expect("nest-aware format text should succeed"),
+            "{\n  \"nested\": {\"inner\": 42}\n}\n",
         );
         assert_eq!(
             minify_text_impl(&MinifyTextInput {

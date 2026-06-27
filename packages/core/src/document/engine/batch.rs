@@ -181,12 +181,10 @@ pub(super) fn advance_close(
                 }
                 streaming_incremental_state = projector.take_incremental_state();
 
-                let has_expanded_source = decoder.nested_json_expanded();
                 match builder.take_document() {
                     Ok(mut document) => {
                         if job_settings.formatting.smart
                             && job_settings.formatting.format_source_on_close
-                            && !has_expanded_source
                         {
                             let prefs =
                                 format_preferences_from_job_settings(job_settings.formatting);
@@ -224,9 +222,9 @@ pub(super) fn advance_close(
             }
         };
 
-        // Nest expansion (or future content-expansion) rewrites the
-        // source text.  Propagate the canonical rewritten source when
-        // smart formatting didn't already produce a formatted version.
+        // Nest expansion (or future content-expansion) rewrites the source
+        // text. Propagate the canonical rewritten source when smart
+        // formatting didn't already produce the final source.
         let has_expanded_source = stream_state.has_expanded_source();
         if encoded_source_text.is_none() && has_expanded_source {
             encoded_source_text = Some(source.clone());

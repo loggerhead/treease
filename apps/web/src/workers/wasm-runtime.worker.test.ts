@@ -535,7 +535,13 @@ it('falls back to text diff when compareStructured returns false for structurall
       mocked.convertJson.mockImplementation(async () => ({ text: 'a: 1' }));
       mocked.runYqText.mockImplementation(async () => '{"name":"Alice"}');
 
-      const format = await send({ id: 10, type: 'format', language: 'json', text: '{"a":1}' });
+      const format = await send({
+        id: 10,
+        type: 'format',
+        language: 'json',
+        text: '{"a":1}',
+        options: { nest: true },
+      });
       const minify = await send({ id: 11, type: 'minify', language: 'json', text: '{\n  "a": 1\n}' });
       const sort = await send({ id: 12, type: 'sort', language: 'json', text: '{"b":2,"a":1}' });
       const convert = await send({
@@ -559,7 +565,13 @@ it('falls back to text diff when compareStructured returns false for structurall
       expect(sort.data).toBe('{"a":1,"b":2}');
       expect(convert.data).toBe('a: 1');
       expect(runYq.data).toBe('{"name":"Alice"}');
-      expect(mocked.formatJson).toHaveBeenCalledWith({ language: 'json', text: '{"a":1}', indent: undefined, sortKeys: undefined });
+      expect(mocked.formatJson).toHaveBeenCalledWith({
+        language: 'json',
+        text: '{"a":1}',
+        indent: undefined,
+        nest: true,
+        sortKeys: undefined,
+      });
       expect(mocked.minifyJson).toHaveBeenCalledWith({ language: 'json', text: '{\n  "a": 1\n}' });
       expect(mocked.sortText).toHaveBeenCalledWith('json', '{"b":2,"a":1}', expect.objectContaining({}));
       expect(mocked.convertJson).toHaveBeenCalledWith({ sourceLanguage: 'json', targetFormat: 'yaml', text: '{"a":1}', indent: undefined });
@@ -583,7 +595,13 @@ it('falls back to text diff when compareStructured returns false for structurall
 
       expect(res.ok).toBe(true);
       expect(res.data).toBe('{\n  "a": 1\n}');
-      expect(mocked.formatJson).toHaveBeenCalledWith({ language: 'json', text: '{"a":1}', indent: undefined, sortKeys: undefined });
+      expect(mocked.formatJson).toHaveBeenCalledWith({
+        language: 'json',
+        text: '{"a":1}',
+        indent: undefined,
+        nest: false,
+        sortKeys: undefined,
+      });
     });
   });
 

@@ -91,11 +91,12 @@ describe('core wasm facade split', () => {
       data: { clear: true, graphData: null },
     });
 
-    await compatApi.formatText('json', '{"a":1}', { indent: 2, sortKeys: true });
+    await compatApi.formatText('json', '{"a":1}', { indent: 2, nest: true, sortKeys: true });
     expect(mockedPkg.format_text).toHaveBeenCalledWith({
       language: 'json',
       text: '{"a":1}',
       indent: 2,
+      nest: true,
       sortKeys: true,
     });
 
