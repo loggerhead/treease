@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { expect, test } from './fixtures';
-import { dropFile, getMonacoValue, readEditorState, setEditorContent, setMonacoPositionByText, waitForEditorReady, waitForGraphRendered } from './utils';
+import { clickGraphProbeAt, dropFile, getMonacoValue, readEditorState, readGraphClickProbes, setEditorContent, setMonacoPositionByText, waitForEditorReady, waitForGraphRendered } from './utils';
 
 test.setTimeout(20_000);
 
@@ -131,4 +131,62 @@ test('trajectory fixture imported through source drop also converges rendered ed
   const edgeLayer = await readEdgeLayerSnapshot(page);
   expect(mismatches).toEqual([]);
   expect(edgeLayer.layerChildCount).toBe(edgeLayer.graphEdgeCount);
+});
+
+test('trajectory fixture subgraph workspace keeps pane-sized viewport but preserves scale-1 default rendering', async ({ page }) => {
+  await page.goto('/editor');
+  await waitForEditorReady(page);
+  await setEditorContent(page, {
+    sourceText: TRAJECTORY_FIXTURE_TEXT,
+    language: 'json',
+  });
+  await waitForGraphRendered(page, 15_000);
+
+  await page.evaluate(() => {
+    window._treease?.graph?.revealPath?.(
+      [
+        { tag: 0, key: 'agent_steps', index: 0 },
+        { tag: 1, key: '', index: 0 },
+        { tag: 0, key: 'steps', index: 0 },
+      ],
+      { target: 'value', navigate: true },
+    );
+  });
+
+  const probes = await readGraphClickProbes(page);
+  const targetProbe = probes.find(
+    (probe) => probe.target === 'value' && probe.path.join('.') === 'agent_steps.[0].steps' && probe.coord,
+  );
+  expect(targetProbe, JSON.stringify(probes.slice(0, 20), null, 2)).toBeTruthy();
+  if (!targetProbe?.coord) throw new Error('trajectory subgraph probe missing coord');
+
+  await clickGraphProbeAt(page, targetProbe.coord);
+
+  const pane = page.getByTestId('graph-subgraph-pane');
+  await expect(pane).toBeVisible({ timeout: 5_000 });
+  await expect(pane.locator('.graph-subgraph-pane__header')).toHaveText('agent_steps[0].steps');
+
+  const metrics = await pane.evaluate((node) => {
+    const canvasHost = node.querySelector('.graph-subgraph-pane__canvas') as HTMLDivElement | null;
+    const paneView = node.querySelector('.graph-subgraph-pane-view') as HTMLDivElement | null;
+    if (!canvasHost || !paneView) {
+      return null;
+    }
+    return {
+      clientWidth: canvasHost.clientWidth,
+      clientHeight: canvasHost.clientHeight,
+      scrollWidth: canvasHost.scrollWidth,
+      scrollHeight: canvasHost.scrollHeight,
+      viewWidth: paneView.clientWidth,
+      viewHeight: paneView.clientHeight,
+      viewportScale: canvasHost.dataset.viewportScale ?? '',
+    };
+  });
+  expect(metrics).not.toBeNull();
+  if (!metrics) throw new Error('trajectory subgraph pane metrics missing');
+  expect(metrics.viewportScale).toBe('1');
+  expect(metrics.viewWidth).toBe(metrics.clientWidth);
+  expect(metrics.viewHeight).toBe(metrics.clientHeight);
+  expect(metrics.scrollWidth).toBeLessThanOrEqual(metrics.clientWidth * 2);
+  expect(metrics.scrollHeight).toBeLessThanOrEqual(metrics.clientHeight * 2);
 });

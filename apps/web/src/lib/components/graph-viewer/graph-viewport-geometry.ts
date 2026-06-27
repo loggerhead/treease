@@ -17,6 +17,8 @@ export type ViewportBounds = {
   bottom: number;
 };
 
+export type GraphWorldBounds = ViewportBounds;
+
 export type ViewportState = {
   leafer: LeaferApp | null;
   container: HTMLDivElement | null;
@@ -35,6 +37,49 @@ export function getZoomScale(layer: LeaferZoomLayer | null | undefined): { scale
   const scaleX = layer?.scaleX ?? layer?.__?.scaleX ?? 1;
   const scaleY = layer?.scaleY ?? layer?.__?.scaleY ?? 1;
   return { scaleX, scaleY };
+}
+
+export function clampPanOffsetToGraphBounds(
+  viewport: {
+    viewportWidth: number;
+    viewportHeight: number;
+    scaleX: number;
+    scaleY: number;
+    offsetX: number;
+    offsetY: number;
+  },
+  bounds: GraphWorldBounds,
+  padding = 100,
+): { x: number; y: number } {
+  const normalizeZero = (value: number) => (Object.is(value, -0) ? 0 : value);
+  const left = bounds.left - padding;
+  const top = bounds.top - padding;
+  const right = bounds.right + padding;
+  const bottom = bounds.bottom + padding;
+  const contentWidth = (right - left) * viewport.scaleX;
+  const contentHeight = (bottom - top) * viewport.scaleY;
+
+  let minX = viewport.viewportWidth - right * viewport.scaleX;
+  let maxX = -left * viewport.scaleX;
+  let minY = viewport.viewportHeight - bottom * viewport.scaleY;
+  let maxY = -top * viewport.scaleY;
+
+  if (contentWidth <= viewport.viewportWidth) {
+    const centeredX = (viewport.viewportWidth - contentWidth) / 2 - left * viewport.scaleX;
+    minX = centeredX;
+    maxX = centeredX;
+  }
+
+  if (contentHeight <= viewport.viewportHeight) {
+    const centeredY = (viewport.viewportHeight - contentHeight) / 2 - top * viewport.scaleY;
+    minY = centeredY;
+    maxY = centeredY;
+  }
+
+  return {
+    x: normalizeZero(Math.min(maxX, Math.max(minX, viewport.offsetX))),
+    y: normalizeZero(Math.min(maxY, Math.max(minY, viewport.offsetY))),
+  };
 }
 
 export function getViewportBounds(container: HTMLElement | null, leafer: (LeaferApp & { zoomLayer?: LeaferZoomLayer }) | null): ViewportBounds | null {

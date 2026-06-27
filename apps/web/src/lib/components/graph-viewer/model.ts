@@ -33,6 +33,7 @@ export type LeaferAppLike = {
   resize?: (options: { width: number; height: number }) => void;
   updateClientBounds?: () => void;
   update?: () => void;
+  on?: (event: string, callback: (event: unknown) => void) => void;
   getClientPointByWorld?: (point: { x: number; y: number }) => { x?: number; y?: number } | null;
 };
 

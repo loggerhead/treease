@@ -22,7 +22,7 @@
   import { callSharedWasmWorker } from '../wasm/wasm-worker-singleton';
   import { getActiveDocumentSnapshotId } from '../services/DocumentSessionService';
   import { getFullEditDocumentJobSession } from '../graph-stream/full-edit-document-job-session';
-  import { type PathSeg } from '../store/tree-path';
+  import { buildReadablePath, type PathSeg } from '../store/tree-path';
   import { type MinimapViewData } from '../leafer-minimap';
   import GraphRuntimeHost from './graph-viewer/GraphRuntimeHost.svelte';
   import GraphRuntimeLoading from './graph-viewer/GraphRuntimeLoading.svelte';
@@ -39,6 +39,13 @@
   import { createGraphMinimapRuntimeController } from './graph-viewer/graph-minimap-runtime-controller';
   import { createGraphValueEditController } from './graph-viewer/graph-value-edit';
   import { createGraphViewportController, type LeaferZoomLayer } from './graph-viewer/graph-viewport-controller';
+  import {
+    buildSubgraphWorkspaceRenderSignature,
+    createSubgraphWorkspaceGraphCache,
+    destroySubgraphWorkspaceRuntime,
+    formatSubgraphWorkspacePath,
+    renderSubgraphWorkspaceGraph,
+  } from './graph-viewer/graph-subgraph-workspace';
   import {
     getCellEntry,
     registerCellBox as registerCellBoxEntry,
@@ -75,6 +82,7 @@
     LeaferInteractiveTarget,
     LeaferText,
     ScrollableBox,
+    TooltipPanelRuntime,
   } from './graph-viewer/model';
   import type {
     GraphRuntimeHoverPanelDebugState,
@@ -86,6 +94,7 @@
   import { GRAPH_CONFIG } from '../config/constants';
   import { type GraphCell, type GraphCellKind, type GraphNode } from '../graph/graph-viewer-render';
   import { buildPathKey, buildTooltipContent } from '../graph/graph-viewer-path';
+  import type { TooltipPanelGraphData } from './graph-viewer/graph-hover-panel-types';
   import { isDocumentRevisionGuardCurrent } from '../guards/document-revision-guard';
   import {
     clearGraphBridge,
@@ -180,6 +189,14 @@
   const unsubscribeGraphStreamProgress = graphStreamProgressController.subscribe((value) => {
     streamProgressState = value;
   });
+  let subgraphWorkspaceChain: SubgraphWorkspacePaneState[] = [];
+  let subgraphWorkspaceVisiblePanes: Array<SubgraphWorkspacePaneState & { visibleIndex: number; absoluteIndex: number }> = [];
+  let subgraphWorkspaceHostMap = new Map<string, HTMLDivElement>();
+  let subgraphWorkspaceRuntimeMap = new Map<string, TooltipPanelRuntime>();
+  let subgraphWorkspaceRenderSignature = '';
+  let subgraphWorkspaceRefreshSignature = '';
+  let subgraphWorkspaceRefreshRevision = -1;
+  let subgraphWorkspaceRefreshToken = 0;
 
   let graphSceneController: ReturnType<typeof createGraphSceneController>;
   let hoverPanelController: ReturnType<typeof createGraphHoverPanelController>;
@@ -209,12 +226,12 @@
 
   let renderConfig: GraphViewerConfig = $settings.viewer.graphViewer;
   $: renderConfig = $settings.viewer.graphViewer;
-const fullBuildReasonSet = new Set([
-  'import-file',
-  'drop-file',
-  'language-switch',
-  'whole-document-replacement',
-]);
+  const fullBuildReasonSet = new Set([
+    'import-file',
+    'drop-file',
+    'language-switch',
+    'whole-document-replacement',
+  ]);
   const measureTextSample = GRAPH_CONFIG.measureTextSample;
   let measureRoot: HTMLDivElement;
   let measureRow: HTMLDivElement;
@@ -231,6 +248,15 @@ const fullBuildReasonSet = new Set([
     label: string;
     path: PathSeg[];
     pathText: string;
+  };
+
+  type SubgraphWorkspacePaneState = {
+    path: PathSeg[];
+    pathKey: string;
+    title: string;
+    graph: TooltipPanelGraphData | null;
+    status: 'loading' | 'ready' | 'empty' | 'error';
+    error?: string;
   };
 
   const graphPointerController = createGraphPointerController({
@@ -256,6 +282,25 @@ const fullBuildReasonSet = new Set([
     getLastAutoOffset: () => lastAutoOffset,
     setLastAutoOffset: (value) => {
       lastAutoOffset = value;
+    },
+    getPanConstraintBounds: () => {
+      const graphData = graphSceneController?.getLastGraphData?.() ?? null;
+      const nodes = graphData?.nodes ?? [];
+      if (!nodes.length) return null;
+      let left = Number.POSITIVE_INFINITY;
+      let top = Number.POSITIVE_INFINITY;
+      let right = Number.NEGATIVE_INFINITY;
+      let bottom = Number.NEGATIVE_INFINITY;
+      for (const node of nodes) {
+        left = Math.min(left, Number(node.boxArgs.x ?? 0));
+        top = Math.min(top, Number(node.boxArgs.y ?? 0));
+        right = Math.max(right, Number(node.boxArgs.x ?? 0) + Math.max(0, Number(node.boxArgs.width ?? 0)));
+        bottom = Math.max(bottom, Number(node.boxArgs.y ?? 0) + Math.max(0, Number(node.boxArgs.height ?? 0)));
+      }
+      if (!Number.isFinite(left) || !Number.isFinite(top) || !Number.isFinite(right) || !Number.isFinite(bottom)) {
+        return null;
+      }
+      return { left, top, right, bottom };
     },
   });
 
@@ -355,6 +400,15 @@ const fullBuildReasonSet = new Set([
   const bindGraphEditorLifecycle = graphValueEditController.bindGraphEditorLifecycle;
   const resetActiveEditState = graphValueEditController.resetActiveEditState;
   const commitTooltipPanelProbe = graphValueEditController.commitTooltipPanelProbe;
+  const subgraphWorkspaceGraphCache = createSubgraphWorkspaceGraphCache({
+    getActiveSnapshotId: () => graphRenderCoordinator.getActiveSnapshotId(),
+    getDocumentKey: () => documentKeyValue,
+    getLanguageId: () => languageIdValue,
+    getRevision: () => editorRevisionValue,
+    getEnableNest: () => $settings.parser.enableNest,
+    getRenderConfig: () => renderConfig,
+    inferGraphPaths: (nodes, edges) => graphSceneController.inferGraphPaths(nodes, edges),
+  });
 
   function clearGraphViewerTestHooks(): void {
     clearGraphViewerTestHookState({
@@ -721,6 +775,11 @@ const fullBuildReasonSet = new Set([
       }
       emitReveal(path, target, source);
     },
+    onRegisteredTargetClick: async ({ path, target, cell, scope }) => {
+      if (scope !== 'root') return;
+      if (!canOpenSubgraphPreviewForCell(cell, target)) return;
+      await openSubgraphWorkspacePath(path, -1);
+    },
     commitTooltipPanelProbe,
   });
 
@@ -920,6 +979,184 @@ const fullBuildReasonSet = new Set([
   function resolveTooltipHoverTarget(node: LeaferInteractiveTarget | null): LeaferText | null {
     return resolveInteractiveHoverTarget(node);
   }
+
+  function updateVisibleSubgraphWorkspacePanes(): void {
+    const start = Math.max(0, subgraphWorkspaceChain.length - 3);
+    subgraphWorkspaceVisiblePanes = subgraphWorkspaceChain.slice(start).map((pane, index) => ({
+      ...pane,
+      visibleIndex: index,
+      absoluteIndex: start + index,
+    }));
+  }
+
+  function disposeSubgraphWorkspaceRuntimes(exceptPathKeys: string[] = []): void {
+    const preserved = new Set(exceptPathKeys);
+    for (const [pathKey, runtime] of subgraphWorkspaceRuntimeMap.entries()) {
+      if (preserved.has(pathKey)) continue;
+      destroySubgraphWorkspaceRuntime(runtime);
+      subgraphWorkspaceRuntimeMap.delete(pathKey);
+    }
+  }
+
+  function setSubgraphWorkspaceChain(nextChain: SubgraphWorkspacePaneState[]): void {
+    subgraphWorkspaceChain = nextChain;
+    updateVisibleSubgraphWorkspacePanes();
+    disposeSubgraphWorkspaceRuntimes(nextChain.map((pane) => pane.pathKey));
+  }
+
+  async function prepareSubgraphWorkspacePane(path: PathSeg[]): Promise<SubgraphWorkspacePaneState | null> {
+    const pathKey = buildPathKey(path);
+    if (!pathKey) return null;
+    const title = formatSubgraphWorkspacePath(path, renderConfig);
+    try {
+      const graph = await subgraphWorkspaceGraphCache.prepareGraph(path);
+      return {
+        path,
+        pathKey,
+        title,
+        graph,
+        status: graph ? 'ready' : 'empty',
+      };
+    } catch (error) {
+      handleError(error, {
+        component: 'GraphViewer',
+        operation: 'buildSubgraphWorkspaceProjection',
+        metadata: { documentKey: documentKeyValue, language: languageIdValue, pathKey },
+      });
+      return {
+        path,
+        pathKey,
+        title,
+        graph: null,
+        status: 'error',
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }
+
+  async function openSubgraphWorkspacePath(path: PathSeg[], parentAbsoluteIndex: number): Promise<void> {
+    const pathKey = buildPathKey(path);
+    if (!pathKey) return;
+    const currentChild = subgraphWorkspaceChain[parentAbsoluteIndex + 1] ?? null;
+    if (currentChild?.pathKey === pathKey) return;
+    const base = parentAbsoluteIndex >= 0 ? subgraphWorkspaceChain.slice(0, parentAbsoluteIndex + 1) : [];
+    const loadingPane: SubgraphWorkspacePaneState = {
+      path,
+      pathKey,
+      title: formatSubgraphWorkspacePath(path, renderConfig),
+      graph: null,
+      status: 'loading',
+    };
+    setSubgraphWorkspaceChain([...base, loadingPane]);
+    const pane = await prepareSubgraphWorkspacePane(path);
+    if (!pane) return;
+    const latestBase = parentAbsoluteIndex >= 0 ? subgraphWorkspaceChain.slice(0, parentAbsoluteIndex + 1) : [];
+    if (latestBase.some((entry, index) => base[index]?.pathKey !== entry.pathKey)) return;
+    setSubgraphWorkspaceChain([...latestBase, pane]);
+    await tick();
+    await renderSubgraphWorkspacePanes();
+  }
+
+  async function handleSubgraphWorkspaceActivate(
+    payload: { path: PathSeg[]; target: 'key' | 'value' | 'node'; cell: GraphCell },
+    parentAbsoluteIndex: number,
+  ): Promise<void> {
+    emitReveal(payload.path, payload.target, 'click');
+    if (!canOpenSubgraphPreviewForCell(payload.cell, payload.target)) return;
+    await openSubgraphWorkspacePath(payload.path, parentAbsoluteIndex);
+  }
+
+  function bindSubgraphWorkspaceHost(pathKey: string, host: HTMLDivElement | null): void {
+    if (host) {
+      subgraphWorkspaceHostMap.set(pathKey, host);
+    } else {
+      subgraphWorkspaceHostMap.delete(pathKey);
+      const runtime = subgraphWorkspaceRuntimeMap.get(pathKey);
+      destroySubgraphWorkspaceRuntime(runtime);
+      subgraphWorkspaceRuntimeMap.delete(pathKey);
+    }
+    subgraphWorkspaceRenderSignature = '';
+    void renderSubgraphWorkspacePanes();
+  }
+
+  function subgraphWorkspaceHostAction(node: HTMLDivElement, pathKey: string) {
+    let currentPathKey = pathKey;
+    bindSubgraphWorkspaceHost(currentPathKey, node);
+    return {
+      update(nextPathKey: string) {
+        if (nextPathKey === currentPathKey) return;
+        bindSubgraphWorkspaceHost(currentPathKey, null);
+        currentPathKey = nextPathKey;
+        bindSubgraphWorkspaceHost(currentPathKey, node);
+      },
+      destroy() {
+        bindSubgraphWorkspaceHost(currentPathKey, null);
+      },
+    };
+  }
+
+  async function renderSubgraphWorkspacePanes(): Promise<void> {
+    if (!renderRuntimeReady) return;
+    const visibleSignature = subgraphWorkspaceVisiblePanes
+      .map((pane) => `${pane.pathKey}:${pane.status}:${pane.absoluteIndex}`)
+      .join('|');
+    const nextSignature = `${visibleSignature}|${Boolean(LeaferCtor || PlainLeaferCtor)}|${Boolean(BoxCtor)}|${Boolean(TextCtor)}|${Boolean(PenCtor)}|${readonly}`;
+    if (nextSignature === subgraphWorkspaceRenderSignature) return;
+    subgraphWorkspaceRenderSignature = nextSignature;
+    const activeKeys = subgraphWorkspaceVisiblePanes
+      .filter((pane) => pane.status === 'ready' && pane.graph)
+      .map((pane) => pane.pathKey);
+    disposeSubgraphWorkspaceRuntimes(activeKeys);
+    for (const pane of subgraphWorkspaceVisiblePanes) {
+      const mount = subgraphWorkspaceHostMap.get(pane.pathKey);
+      if (!mount) continue;
+      if (pane.status !== 'ready' || !pane.graph) {
+        mount.replaceChildren();
+        continue;
+      }
+      const existingRuntime = subgraphWorkspaceRuntimeMap.get(pane.pathKey) as (TooltipPanelRuntime & {
+        __graphRef?: TooltipPanelGraphData | null;
+      }) | undefined;
+      if (existingRuntime && existingRuntime.host === mount && existingRuntime.__graphRef === pane.graph) {
+        continue;
+      }
+      destroySubgraphWorkspaceRuntime(existingRuntime);
+      const runtime = await renderSubgraphWorkspaceGraph(mount, pane.graph, {
+        getConstructors: () => ({ LeaferCtor, PlainLeaferCtor, BoxCtor, TextCtor, PenCtor }),
+        getRenderConfig: () => renderConfig,
+        getLanguageId: () => languageIdValue,
+        getValueTypeToSemType: () => valueTypeToSemType as Record<string, string>,
+        isReadonly: () => readonly,
+        bindGraphEditorLifecycle,
+        bindPointerClick: (target, handler) => graphPointerController.bindPointerClick(target, handler),
+        getMoveEventName: () => (MoveEventCtor?.BEFORE_MOVE ?? MoveEventCtor?.MOVE) as string | undefined,
+        bindVerticalScrollGesture: (target, handler) => graphPointerController.bindVerticalScrollGesture(target, handler),
+        bindPointerDown: (target, handler) => graphPointerController.bindPointerDown(target, handler),
+        getPointFromEvent: (hostApp, target, event, space) =>
+          graphPointerController.getPointFromEvent(hostApp, target, event, space),
+        resolveInteractiveCellPath,
+        onActivateCell: (payload) => handleSubgraphWorkspaceActivate(payload, pane.absoluteIndex),
+      });
+      if (runtime) {
+        (runtime as TooltipPanelRuntime & { __graphRef?: TooltipPanelGraphData | null }).__graphRef = pane.graph;
+        subgraphWorkspaceRuntimeMap.set(pane.pathKey, runtime);
+      }
+    }
+  }
+
+  async function refreshSubgraphWorkspacePanes(): Promise<void> {
+    if (!subgraphWorkspaceChain.length) return;
+    const token = ++subgraphWorkspaceRefreshToken;
+    const nextChain: SubgraphWorkspacePaneState[] = [];
+    for (const pane of subgraphWorkspaceChain) {
+      const nextPane = await prepareSubgraphWorkspacePane(pane.path);
+      if (token !== subgraphWorkspaceRefreshToken) return;
+      if (nextPane) nextChain.push(nextPane);
+    }
+    setSubgraphWorkspaceChain(nextChain);
+    await tick();
+    await renderSubgraphWorkspacePanes();
+  }
   
   export function revealSearchResult(result: GraphSearchResult): void {
     if (isFullEditInteractionBlocked()) return;
@@ -1007,6 +1244,8 @@ const fullBuildReasonSet = new Set([
     graphSceneController.dispose();
     resetActiveEditState();
     hoverPanelController.disposeTooltipEditor();
+    disposeSubgraphWorkspaceRuntimes();
+    subgraphWorkspaceGraphCache.clear();
     unsubscribeGraphStreamProgress();
     graphStreamProgressController.dispose();
     clearGraphBridge();
@@ -1030,6 +1269,28 @@ const fullBuildReasonSet = new Set([
 
   $: if ($settings) {
     hoverPanelController.applyTheme($settings);
+    subgraphWorkspaceGraphCache.clear();
+    subgraphWorkspaceRenderSignature = '';
+    void refreshSubgraphWorkspacePanes();
+  }
+
+  $: {
+    const nextRefreshSignature = [
+      documentKeyValue,
+      languageIdValue,
+      editorRevisionValue,
+      $graphAppliedRevision,
+      $settings.parser.enableNest ? 'nest' : 'flat',
+      buildSubgraphWorkspaceRenderSignature(renderConfig),
+    ].join('|');
+    if (nextRefreshSignature !== subgraphWorkspaceRefreshSignature) {
+      subgraphWorkspaceRefreshSignature = nextRefreshSignature;
+      subgraphWorkspaceRenderSignature = '';
+      if (subgraphWorkspaceRefreshRevision !== $graphAppliedRevision) {
+        subgraphWorkspaceRefreshRevision = $graphAppliedRevision;
+        void refreshSubgraphWorkspacePanes();
+      }
+    }
   }
   $: {
     const fullEditProgressActive = $fullEditUiState?.active === true && $fullEditUiState.phase !== 'idle';
@@ -1159,51 +1420,93 @@ const fullBuildReasonSet = new Set([
   }
 </script>
 
-<div class="relative h-full w-full bg-[#f8fafc]" data-testid="graph-viewer-root">
-  <div
-    class="absolute inset-0 z-0"
-    class:invisible={showRuntimeLoading}
-    class:pointer-events-none={showRuntimeLoading}
-  >
-    <div bind:this={container} class="absolute inset-0 touch-none" data-testid="graph-viewer-canvas"></div>
+<div class="graph-viewer-shell" data-testid="graph-viewer-root">
+  <div class="graph-viewer-main">
     <div
-      bind:this={minimapHost}
-      class="pointer-events-auto absolute bottom-4 right-4 z-[2] h-[150px] w-[220px] overflow-hidden rounded-[14px]
-        border border-[#cbd5e1] bg-white/95 shadow-[0_12px_28px_rgba(15,23,42,0.14)] backdrop-blur"
-      class:hidden={streamProgressState.visible ||
-        ($fullEditUiState?.active === true && $fullEditUiState.phase !== 'idle' && $fullEditUiState.phase !== 'settled')}
-      data-testid="graph-viewer-minimap"
-    ></div>
-    <GraphRuntimeHost
-      {container}
-      {minimapHost}
-      bind:graphRuntimeReady
-      bind:errorMessage
-      bind:leafer
-      bind:LeaferCtor
-      bind:PlainLeaferCtor
-      bind:BoxCtor
-      bind:TextCtor
-      bind:PenCtor
-      bind:MoveEventCtor
-      bind:ZoomEventCtor
-      bind:DragEventCtor
-      bind:LeaferEventCtor
-      bind:PointerEventCtor
-      tooltipRuntimeController={graphTooltipRuntimeController}
-      minimapRuntimeController={graphMinimapRuntimeController}
-      {registerViewportEvents}
-      {bindGraphEditorLifecycle}
-      {updateSize}
-      {scheduleMeasure}
-      minimapWidth={MINIMAP_WIDTH}
-      minimapHeight={MINIMAP_HEIGHT}
-    />
+      class="absolute inset-0 z-0"
+      class:invisible={showRuntimeLoading}
+      class:pointer-events-none={showRuntimeLoading}
+    >
+      <div bind:this={container} class="absolute inset-0 touch-none" data-testid="graph-viewer-canvas"></div>
+      <div
+        bind:this={minimapHost}
+        class="pointer-events-auto absolute bottom-4 right-4 z-[2] h-[150px] w-[220px] overflow-hidden rounded-[14px]
+          border border-[#cbd5e1] bg-white/95 shadow-[0_12px_28px_rgba(15,23,42,0.14)] backdrop-blur"
+        class:hidden={streamProgressState.visible ||
+          ($fullEditUiState?.active === true && $fullEditUiState.phase !== 'idle' && $fullEditUiState.phase !== 'settled')}
+        data-testid="graph-viewer-minimap"
+      ></div>
+      <GraphRuntimeHost
+        {container}
+        {minimapHost}
+        bind:graphRuntimeReady
+        bind:errorMessage
+        bind:leafer
+        bind:LeaferCtor
+        bind:PlainLeaferCtor
+        bind:BoxCtor
+        bind:TextCtor
+        bind:PenCtor
+        bind:MoveEventCtor
+        bind:ZoomEventCtor
+        bind:DragEventCtor
+        bind:LeaferEventCtor
+        bind:PointerEventCtor
+        tooltipRuntimeController={graphTooltipRuntimeController}
+        minimapRuntimeController={graphMinimapRuntimeController}
+        {registerViewportEvents}
+        {bindGraphEditorLifecycle}
+        {updateSize}
+        {scheduleMeasure}
+        minimapWidth={MINIMAP_WIDTH}
+        minimapHeight={MINIMAP_HEIGHT}
+      />
+    </div>
+    {#if showRuntimeLoading}
+      <GraphRuntimeLoading />
+    {/if}
+    <GraphStreamProgressOverlay state={streamProgressState} />
+    {#if errorMessage}
+      <div
+        data-testid="graph-error-message"
+        class="absolute left-4 top-4 rounded-[10px] border border-[#e2e8f0] bg-white px-3 py-2 text-[12px] text-[#0f172a]
+        shadow-[0_8px_24px_rgba(15,23,42,0.12)] font-mono"
+      >
+        {errorMessage}
+      </div>
+    {/if}
   </div>
-  {#if showRuntimeLoading}
-    <GraphRuntimeLoading />
+
+  {#if subgraphWorkspaceVisiblePanes.length}
+    <div class="graph-subgraph-workspace" data-testid="graph-subgraph-workspace">
+      <div class="graph-subgraph-workspace__track">
+        {#each subgraphWorkspaceVisiblePanes as pane (pane.pathKey)}
+          <section class="graph-subgraph-pane" data-testid="graph-subgraph-pane">
+            <header class="graph-subgraph-pane__header" title={buildReadablePath(pane.path)}>
+              {pane.title}
+            </header>
+            <div class="graph-subgraph-pane__body">
+              {#if pane.status === 'loading'}
+                <div class="graph-subgraph-pane__placeholder">Loading subgraph…</div>
+              {:else if pane.status === 'empty'}
+                <div class="graph-subgraph-pane__placeholder">No subgraph data</div>
+              {:else if pane.status === 'error'}
+                <div class="graph-subgraph-pane__placeholder graph-subgraph-pane__placeholder--error">
+                  {pane.error ?? 'Subgraph render failed'}
+                </div>
+              {/if}
+              <div
+                class="graph-subgraph-pane__canvas"
+                class:hidden={pane.status !== 'ready'}
+                use:subgraphWorkspaceHostAction={pane.pathKey}
+              ></div>
+            </div>
+          </section>
+        {/each}
+      </div>
+    </div>
   {/if}
-  <GraphStreamProgressOverlay state={streamProgressState} />
+
   <div bind:this={measureRoot} class="absolute -left-[9999px] -top-[9999px] pointer-events-none opacity-0">
     <div bind:this={measureRow} class="inline-block">
       <span bind:this={measureRowText} class="inline-block"></span>
@@ -1212,18 +1515,99 @@ const fullBuildReasonSet = new Set([
       <span bind:this={measureHeaderText} class="inline-block"></span>
     </div>
   </div>
-  {#if errorMessage}
-    <div
-      data-testid="graph-error-message"
-      class="absolute left-4 top-4 rounded-[10px] border border-[#e2e8f0] bg-white px-3 py-2 text-[12px] text-[#0f172a]
-      shadow-[0_8px_24px_rgba(15,23,42,0.12)] font-mono"
-    >
-      {errorMessage}
-    </div>
-  {/if}
 </div>
 
 <style>
+  .graph-viewer-shell {
+    position: relative;
+    display: grid;
+    height: 100%;
+    width: 100%;
+    min-height: 0;
+    background: #f8fafc;
+    grid-template-rows: minmax(0, 1fr) auto;
+  }
+
+  .graph-viewer-main {
+    position: relative;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .graph-subgraph-workspace {
+    border-top: 1px solid #dbe3ef;
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 250, 252, 0.98)),
+      linear-gradient(90deg, rgba(226, 232, 240, 0.5), rgba(255, 255, 255, 0));
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
+  }
+
+  .graph-subgraph-workspace__track {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(360px, 1fr);
+    gap: 0;
+    height: 260px;
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+
+  .graph-subgraph-pane {
+    display: grid;
+    min-width: 360px;
+    min-height: 0;
+    grid-template-rows: auto minmax(0, 1fr);
+    border-right: 1px solid #e2e8f0;
+    background: rgba(255, 255, 255, 0.74);
+  }
+
+  .graph-subgraph-pane__header {
+    overflow: hidden;
+    padding: 10px 14px 9px;
+    border-bottom: 1px solid #eef2f7;
+    color: #64748b;
+    font-size: 12px;
+    line-height: 1.4;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .graph-subgraph-pane__body {
+    position: relative;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .graph-subgraph-pane__canvas {
+    height: 100%;
+    overflow: auto;
+  }
+
+  .graph-subgraph-pane__placeholder {
+    display: grid;
+    place-items: center;
+    height: 100%;
+    padding: 16px;
+    color: #64748b;
+    font-size: 12px;
+    background:
+      radial-gradient(circle at top left, rgba(191, 219, 254, 0.18), transparent 42%),
+      linear-gradient(180deg, rgba(248, 250, 252, 0.9), rgba(255, 255, 255, 0.92));
+  }
+
+  .graph-subgraph-pane__placeholder--error {
+    color: #b91c1c;
+  }
+
+  .graph-subgraph-pane__canvas.hidden {
+    display: none;
+  }
+
+  :global(.graph-subgraph-pane-view) {
+    min-width: 100%;
+    min-height: 100%;
+  }
+
   :global(.leafer-x-tooltip) {
     max-width: 520px;
     padding: 8px;

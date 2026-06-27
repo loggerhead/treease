@@ -13,6 +13,7 @@ import type {
 } from './runtime/scene-types';
 
 type ActiveHighlightState = { path: any[]; target?: GraphHighlightTarget; box: LeaferBox | null } | null;
+type RegisteredTargetScope = 'root' | 'panel';
 
 type CreateGraphRuntimeProbeControllerOptions = {
   shouldAttachGraphViewerTestHooks: () => boolean;
@@ -36,9 +37,9 @@ type CreateGraphRuntimeProbeControllerOptions = {
   resolveTreePathByPosition: (row: number, column: number) => Promise<any[]>;
   resolveInteractiveCellPath: (cell: GraphCell, fallbackPath: any[]) => Promise<any[]>;
   emitReveal: (path: any[], target: 'key' | 'value' | 'node', source: 'click' | 'runtime-query') => void;
+  onRegisteredTargetClick?: (payload: { path: any[]; target: 'key' | 'value' | 'node'; cell: GraphCell; scope: 'root' | 'panel' }) => void | Promise<void>;
   commitTooltipPanelProbe: (probe: { cell: GraphCell; kind: GraphCellKind }, text: string) => Promise<boolean>;
 };
-
 
 function toRelativeClientPoint(point: GraphRuntimePoint | null, rect: DOMRect | null): GraphRuntimePoint | null {
   if (!point || !rect) return point;
@@ -121,7 +122,11 @@ export function createGraphRuntimeProbeController(options: CreateGraphRuntimePro
     return upsertProbe(clickTargetProbesById, clickTargetIdByTarget, box, cell, kind);
   }
 
-  async function revealRegisteredTarget(target: LeaferBox, optionsOverride?: { waitForPathIndex?: boolean }): Promise<void> {
+  async function revealRegisteredTarget(
+    target: LeaferBox,
+    scope: RegisteredTargetScope,
+    optionsOverride?: { waitForPathIndex?: boolean },
+  ): Promise<void> {
     if (options.isFullEditStreaming()) return;
     const targetCell = target.__graphCell as GraphCell | undefined;
     const targetKind = toGraphClickTarget((target.__graphCellKind as GraphCellKind | undefined) ?? 'meta');
@@ -134,16 +139,23 @@ export function createGraphRuntimeProbeController(options: CreateGraphRuntimePro
     }
     setGraphRevealTestState(interactivePath, targetKind);
     options.emitReveal(interactivePath, targetKind, 'click');
+    await options.onRegisteredTargetClick?.({
+      path: interactivePath,
+      target: targetKind,
+      cell: targetCell,
+      scope,
+    });
   }
 
   function bindClickReveal(
     target: LeaferBox,
     boundTargets: WeakSet<object>,
+    scope: RegisteredTargetScope,
     optionsOverride?: { waitForPathIndex?: boolean },
   ): void {
     if (boundTargets.has(target)) return;
     boundTargets.add(target);
-    options.bindPointerClick(target, () => revealRegisteredTarget(target, optionsOverride));
+    options.bindPointerClick(target, () => revealRegisteredTarget(target, scope, optionsOverride));
   }
 
   function registerRootClickTarget(
@@ -157,7 +169,7 @@ export function createGraphRuntimeProbeController(options: CreateGraphRuntimePro
     target.__graphCellKind = kind;
     target.__graphNodeKind = nodeKind;
     const clickTargetId = upsertClickTargetProbe(target, cell, kind);
-    bindClickReveal(target, clickBoundTargets);
+    bindClickReveal(target, clickBoundTargets, 'root');
     return clickTargetId;
   }
 
@@ -176,7 +188,7 @@ export function createGraphRuntimeProbeController(options: CreateGraphRuntimePro
     target.__graphCellKind = kind;
     target.__graphNodeKind = nodeKind;
     const clickTargetId = upsertProbe(store, targetIds, target, absoluteCell, kind);
-    bindClickReveal(target, boundTargets, { waitForPathIndex: false });
+    bindClickReveal(target, boundTargets, 'panel', { waitForPathIndex: false });
     return clickTargetId;
   }
 
