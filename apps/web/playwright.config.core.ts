@@ -13,6 +13,7 @@ export default defineConfig({
     'reveal-sync.spec.ts',
     'drop-import-regression.spec.ts',
     'invalid-json-graph-diagnostics.spec.ts',
+    'trajectory-edge-convergence.spec.ts',
   ],
   timeout: CI ? 10_000 : 10_000,
   expect: {

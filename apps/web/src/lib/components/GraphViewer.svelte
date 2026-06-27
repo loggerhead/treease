@@ -19,7 +19,7 @@
   import { type GraphViewerConfig } from '../settings/ui-settings';
   import { settings, settingsStore } from '../settings/settings-store';
   import { shouldShowGraphRuntimeLoading, type RuntimeStateEventDetail } from '../runtime-loading';
-  import { callSharedWasmWorker, getSharedWasmWorkerClient } from '../wasm/wasm-worker-singleton';
+  import { callSharedWasmWorker } from '../wasm/wasm-worker-singleton';
   import { getActiveDocumentSnapshotId } from '../services/DocumentSessionService';
   import { getFullEditDocumentJobSession } from '../graph-stream/full-edit-document-job-session';
   import { type PathSeg } from '../store/tree-path';
@@ -330,7 +330,6 @@ const fullBuildReasonSet = new Set([
   const clearSearchHighlight = graphTextLinkageController.clearSearchHighlight;
   const resolveTreePathByPosition = graphTextLinkageController.resolveTreePathByPosition;
   const ensurePathIndex = graphTextLinkageController.ensurePathIndex;
-  const hydrateResolvedGraphPaths = graphTextLinkageController.hydrateResolvedGraphPaths;
   const emitReveal = graphTextLinkageController.emitReveal;
 
   const graphValueEditController = createGraphValueEditController({
@@ -409,8 +408,6 @@ const fullBuildReasonSet = new Set([
   let graphRenderEffects: ReturnType<typeof createGraphViewerRenderEffects>;
 
   const graphRenderCoordinator = createGraphRenderSession({
-    getContainer: () => container,
-    getLanguageId: () => languageIdValue,
     getDocumentKey: () => documentKeyValue,
     getEnableNest: () => $settings.parser.enableNest,
     getRenderConfig: () => renderConfig,
@@ -419,9 +416,6 @@ const fullBuildReasonSet = new Set([
     shouldAttachGraphViewerTestHooks,
     getGraphStreamState: () => window._treease?.graph.getStreamState() ?? null,
     replaceGraphStreamState,
-    clearGraphViewerTestHooks: () => {
-      clearGraphViewerTestHooks();
-    },
     nextTreeToken: () => ++treeStateToken,
     publishTreeState,
     clearTreeState,
@@ -439,10 +433,6 @@ const fullBuildReasonSet = new Set([
       }
     },
     callWorker: (method, input) => callSharedWasmWorker(method as any, input),
-    getWorkerClient: () => getSharedWasmWorkerClient(),
-    hydrateResolvedGraphPaths: async (nodes, text) => {
-      return await hydrateResolvedGraphPaths(nodes, text);
-    },
     onStreamFinalAnalysis: (documentKey, language, revision, analysis) => {
       if (
         !isDocumentRevisionGuardCurrent(
@@ -490,9 +480,6 @@ const fullBuildReasonSet = new Set([
     },
     completeStreamProgress: () => {
       graphStreamProgressController.completeIfActive();
-    },
-    clearGraphStateEffects: () => {
-      activeTempModel.update((current) => ({ ...current, treePath: [], graphHighlight: null }));
     },
     setErrorMessage: (message) => setError(message),
     clearErrorMessage: () => {

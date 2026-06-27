@@ -4,7 +4,6 @@ import { type BuilderConfig, type EventBatch, type SnapshotId, type TreeNode } f
 import { selectGraphStreamChunkSize } from '../../graph-stream/chunk-size-policy';
 import type { GraphViewerConfig } from '../../settings/ui-settings';
 import type { GraphEdge, GraphNode } from '../../graph/graph-viewer-render';
-import type { WorkerClient } from '../../wasm/wasm-worker-singleton';
 import type { JsonBlockSelection } from '../../store/editor-store';
 import type {
   DocumentAnalysisResult,
@@ -17,11 +16,7 @@ import { bindActiveDocumentSnapshotIfPresent, clearActiveDocumentSnapshot } from
 import { createFreshnessScope } from '../../guards/freshness-scope';
 import { streamDocumentJobText, type AdvanceDocumentJobRequest } from '../../../shared/document-job-stream';
 import type { FullEditDocumentJobSession } from '../../graph-stream/full-edit-document-job-session';
-import {
-  buildDocumentJobSettings,
-  collectGraphDocumentJobResult,
-  startSharedGraphDocumentJob,
-} from '../../graph-stream/document-job-runner';
+import { buildDocumentJobSettings, collectGraphDocumentJobResult, startSharedGraphDocumentJob } from '../../graph-stream/document-job-runner';
 import { normalizeDocumentJobAnalysisPayload } from '../../../shared/document-job-result';
 
 const defaultGraphDocumentFormatting = {
@@ -68,8 +63,6 @@ export type GraphRenderGuard = {
 };
 
 type GraphRenderSessionDeps = {
-  getContainer: () => HTMLElement | null;
-  getLanguageId: () => string;
   getDocumentKey: () => string;
   getEnableNest: () => boolean;
   getRenderConfig: () => GraphViewerConfig;
@@ -78,7 +71,6 @@ type GraphRenderSessionDeps = {
   shouldAttachGraphViewerTestHooks: () => boolean;
   getGraphStreamState: () => Record<string, any> | null;
   replaceGraphStreamState: (state: Record<string, any>) => void;
-  clearGraphViewerTestHooks: () => void;
   nextTreeToken: () => number;
   publishTreeState: (
     requestId: number,
@@ -91,8 +83,6 @@ type GraphRenderSessionDeps = {
   clearTreeState: (requestId: number, source: 'editor' | 'graph', revision: number, snapshotId?: SnapshotId | null) => boolean;
   resetJsonBlockViewport: () => void;
   callWorker: <T>(method: string, input: unknown) => Promise<T>;
-  getWorkerClient: () => Promise<WorkerClient>;
-  hydrateResolvedGraphPaths: (nodes: GraphNode[], text: string) => Promise<void>;
   onStreamFinalAnalysis: (
     documentKey: string,
     language: string,
@@ -108,7 +98,6 @@ type GraphRenderSessionDeps = {
   updateStreamProgress: (event: { event: string; phase: string; processedBytes: number; totalBytes: number; final: boolean }) => void;
   resetStreamProgress: () => void;
   completeStreamProgress: () => void;
-  clearGraphStateEffects: () => void;
   setErrorMessage: (message: string) => void;
   clearErrorMessage: () => void;
   handleError: (
@@ -323,9 +312,7 @@ export function createGraphRenderSession(deps: GraphRenderSessionDeps) {
   function createProjectionEventApplier(
     totalBytes: number,
     streamRunId: string,
-    onProjectionApplied?: () => void,
   ) {
-    let projectionApplied = false;
     return async (batch: EventBatch): Promise<void> => {
       await processGraphBatchEvents(batch, totalBytes, {
         onProgress: (processedBytes: number, total: number) => {
@@ -333,8 +320,6 @@ export function createGraphRenderSession(deps: GraphRenderSessionDeps) {
         },
         onProjection: async (delta, version) => {
           await applyTrackedProjectionDelta(delta, version);
-          projectionApplied = true;
-          onProjectionApplied?.();
         },
       });
     };
@@ -364,7 +349,6 @@ export function createGraphRenderSession(deps: GraphRenderSessionDeps) {
     snapshotId: SnapshotId | null;
     renderToken: number;
     freshness: ReturnType<typeof createFreshnessScope>;
-    streamedProjectionApplied: boolean;
   }): Promise<GraphRenderResult | null> {
     const finalEvent = finalDocumentEvent(params.batch);
     const snapshotId = params.snapshotId ?? extractSnapshotIdFromBatch(params.batch);
@@ -382,9 +366,10 @@ export function createGraphRenderSession(deps: GraphRenderSessionDeps) {
       if (!finalDelta || !isRawGraphDelta(finalDelta)) {
         throw new Error('document graph projection decode failed');
       }
-      if (!(params.streamedProjectionApplied && finalDelta.clear === 1)) {
-        await applyTrackedProjectionDelta(finalDelta);
-      }
+      // SnapshotReady.mainGraph is the authoritative final graph. Always apply
+      // it so streaming-time approximation or stale edge geometry cannot leak
+      // into the settled scene state.
+      await applyTrackedProjectionDelta(finalDelta);
       if (!params.freshness.isCurrent()) return null;
       deps.clearErrorMessage();
       clearGraphStreamFailure();
@@ -523,14 +508,7 @@ export function createGraphRenderSession(deps: GraphRenderSessionDeps) {
         totalBytes,
         chunkSize,
       );
-      let streamedProjectionApplied = false;
-      const applyProjectionEvents = createProjectionEventApplier(
-        totalBytes,
-        streamRunId,
-        () => {
-          streamedProjectionApplied = true;
-        },
-      );
+      const applyProjectionEvents = createProjectionEventApplier(totalBytes, streamRunId);
 
       const builderConfig = getBuilderConfig();
       performance.mark('pipeline:wasm-start-job:start');
@@ -598,7 +576,6 @@ export function createGraphRenderSession(deps: GraphRenderSessionDeps) {
         snapshotId: result.snapshotId,
         renderToken,
         freshness,
-        streamedProjectionApplied,
       });
     } catch (error) {
       deps.handleError(error, {
@@ -657,14 +634,7 @@ export function createGraphRenderSession(deps: GraphRenderSessionDeps) {
       totalBytes,
       session.chunkSize ?? 0,
     );
-    let streamedProjectionApplied = false;
-    const applyProjectionEvents = createProjectionEventApplier(
-      totalBytes,
-      streamRunId,
-      () => {
-        streamedProjectionApplied = true;
-      },
-    );
+    const applyProjectionEvents = createProjectionEventApplier(totalBytes, streamRunId);
 
     try {
       await consumeGraphBatchStream({
@@ -691,7 +661,6 @@ export function createGraphRenderSession(deps: GraphRenderSessionDeps) {
         snapshotId: result.snapshotId,
         renderToken,
         freshness,
-        streamedProjectionApplied,
       });
     } catch (error) {
       deps.handleError(error, {

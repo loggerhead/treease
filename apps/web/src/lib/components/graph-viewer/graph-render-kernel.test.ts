@@ -97,6 +97,25 @@ function makeEdge(fromRow: number, toRenderHandle: number, fromY: number, toY: n
   };
 }
 
+function makeObjectNode(renderHandle: number, x: number, y: number, path: string[]): GraphNode {
+  const width = renderHandle === 1 ? 306 : 338;
+  return {
+    renderHandle,
+    kind: 'object',
+    depth: path.length - 1,
+    path: path.map((key) => ({ tag: 0, key, index: 0 })),
+    boxArgs: { x, y, width, height: 156, cornerRadius: 8 },
+    meta: null,
+    rows: Array.from({ length: 6 }, (_, index) => ({
+      index,
+      boxArgs: { x, y: y + index * 24, width, height: 24, cornerRadius: 0 },
+      cellBoxArgs: { x, y: y + index * 24, width, height: 24, cornerRadius: 0 },
+      cells: [],
+    })),
+    table: null,
+  };
+}
+
 describe('renderGraphEdges', () => {
   it('skips edges from table rows outside the visible runtime window', () => {
     const layer = { removeAll: vi.fn(), add: vi.fn() };
@@ -116,5 +135,45 @@ describe('renderGraphEdges', () => {
 
     expect(rendered).toEqual([visibleEdge]);
     expect(layer.add).toHaveBeenCalledTimes(1);
+  });
+
+  it('uses current node layout when rendering edges after incremental relayout', () => {
+    const layer = { removeAll: vi.fn(), add: vi.fn() };
+    const nodes = [
+      makeObjectNode(1, 486, 0, ['root_step']),
+      makeObjectNode(8, 1572, 2230, ['root_step', 'metrics_info']),
+    ];
+    const staleEdge: GraphEdge = {
+      fromRenderHandle: 1,
+      fromRow: 5,
+      toRenderHandle: 8,
+      toRow: 0,
+      bezierArgs: {
+        fromX: 792,
+        fromY: 132,
+        c1x: 954,
+        c1y: 132,
+        c2x: 954,
+        c2y: 2242,
+        toX: 1116,
+        toY: 2242,
+      },
+    };
+
+    const rendered = renderGraphEdges({
+      nodes,
+      edges: [staleEdge],
+      layer,
+      PenCtor: MockPen,
+      renderConfig: { colors: { edge: '#999' } } as any,
+      maxPerSource: null,
+    });
+
+    expect(rendered).toHaveLength(1);
+    expect(rendered[0]?.bezierArgs.fromX).toBe(792);
+    expect(rendered[0]?.bezierArgs.toX).toBe(1572);
+    const pen = vi.mocked(layer.add).mock.calls[0]?.[0] as MockPen;
+    expect(pen.moves[0]).toEqual({ x: 792, y: 132 });
+    expect(pen.curves[0]?.toX).toBe(1572);
   });
 });

@@ -131,6 +131,68 @@ function graphDataWithNode() {
   };
 }
 
+function graphDataWithParentChildEdge(toX: number) {
+  return {
+    nodesAdded: [
+      {
+        renderHandle: 1,
+        kind: 2,
+        depth: 0,
+        boxArgs: { x: 486, y: 0, width: 306, height: 156, cornerRadius: 8 },
+        path: [{ tag: 0, key: 'root_step', index: 0 }],
+        meta: null,
+        rows: [
+          {
+            boxArgs: { x: 486, y: 106, width: 306, height: 32, cornerRadius: 0 },
+            cellBoxArgs: { x: 486, y: 106, width: 306, height: 32, cornerRadius: 0 },
+            cells: [],
+          },
+        ],
+        table: null,
+      },
+      {
+        renderHandle: 8,
+        kind: 2,
+        depth: 1,
+        boxArgs: { x: 1572, y: 2230, width: 338, height: 156, cornerRadius: 8 },
+        path: [
+          { tag: 0, key: 'root_step', index: 0 },
+          { tag: 0, key: 'metrics_info', index: 0 },
+        ],
+        meta: null,
+        rows: [
+          {
+            boxArgs: { x: 1572, y: 2230, width: 338, height: 24, cornerRadius: 0 },
+            cellBoxArgs: { x: 1572, y: 2230, width: 338, height: 24, cornerRadius: 0 },
+            cells: [],
+          },
+        ],
+        table: null,
+      },
+    ],
+    nodesUpdated: [],
+    nodesRemoved: [],
+    edgesAdded: [
+      {
+        fromRenderHandle: 1,
+        from: { kind: 2, path: [{ tag: 0, key: 'root_step', index: 0 }] },
+        fromRow: 0,
+        toRenderHandle: 8,
+        to: {
+          kind: 2,
+          path: [
+            { tag: 0, key: 'root_step', index: 0 },
+            { tag: 0, key: 'metrics_info', index: 0 },
+          ],
+        },
+        toRow: 0,
+        bezierArgs: { fromX: 792, fromY: 122, c1x: 954, c1y: 122, c2x: 954, c2y: 2242, toX, toY: 2242 },
+      },
+    ],
+    edgesRemoved: [],
+  };
+}
+
 
 function projectionDelta(clear = true, graphData = graphDataWithNode()) {
   return {
@@ -145,8 +207,6 @@ function projectionDelta(clear = true, graphData = graphDataWithNode()) {
 function createDeps(overrides: Record<string, unknown> = {}) {
   let graphStreamState: Record<string, unknown> | null = null;
   return {
-    getContainer: () => null,
-    getLanguageId: () => 'json',
     getDocumentKey: () => 'test-key',
     getEnableNest: () => false,
     getRenderConfig: () => ({
@@ -166,20 +226,16 @@ function createDeps(overrides: Record<string, unknown> = {}) {
     replaceGraphStreamState: vi.fn((state: Record<string, unknown>) => {
       graphStreamState = state;
     }),
-    clearGraphViewerTestHooks: vi.fn(),
     nextTreeToken: vi.fn(() => 1),
     publishTreeState: vi.fn(() => true),
     clearTreeState: vi.fn(() => true),
     resetJsonBlockViewport: vi.fn(),
     callWorker: mockedCallWorker,
-    getWorkerClient: vi.fn(async () => ({ call: vi.fn() })),
-    hydrateResolvedGraphPaths: vi.fn(async () => {}),
     onStreamFinalRedraw: vi.fn(),
     onStreamFinalAnalysis: vi.fn(),
     updateStreamProgress: vi.fn(),
     resetStreamProgress: vi.fn(),
     completeStreamProgress: vi.fn(),
-    clearGraphStateEffects: vi.fn(),
     setErrorMessage: vi.fn(),
     clearErrorMessage: vi.fn(),
     handleError: vi.fn(),
@@ -323,19 +379,41 @@ describe('graph-render-session coordinator', () => {
     );
   });
 
-  it('skips the snapshot main graph when streaming already applied a projection', async () => {
+  it('applies the authoritative snapshot main graph after streamed projections', async () => {
     mockedCallWorker
       .mockResolvedValueOnce(startJobResult(22))
-      .mockResolvedValueOnce(textChunkBatch([projectionEvent(false)]))
-      .mockResolvedValueOnce(closeCompletedBatch(22, { mainGraph: projectionDelta(true) }));
+      .mockResolvedValueOnce(
+        textChunkBatch([projectionEvent(false, graphDataWithParentChildEdge(1116))]),
+      )
+      .mockResolvedValueOnce(
+        closeCompletedBatch(22, {
+          mainGraph: projectionDelta(true, graphDataWithParentChildEdge(1572)),
+        }),
+      );
 
     const deps = createDeps();
-    const bridge = createSceneBridge({ getLastRenderedGraph: () => ({ nodes: [{ id: 1 }], edges: [] }) });
+    let renderedGraph: any = { nodes: [], edges: [] };
+    const bridge = createSceneBridge({
+      applyGraphDelta: vi.fn(async (delta: any) => {
+        if (delta.clear === 1) {
+          renderedGraph = {
+            nodes: [...(delta.nodesAdded ?? [])],
+            edges: [...(delta.edgesAdded ?? [])],
+          };
+          return;
+        }
+        renderedGraph = {
+          nodes: [...(delta.nodesAdded ?? delta.nodesUpdated ?? [])],
+          edges: [...(delta.edgesAdded ?? [])],
+        };
+      }),
+      getLastRenderedGraph: () => renderedGraph,
+    });
     // Test helper uses a structurally complete dependency object.
     const coordinator = createGraphRenderSession(deps as unknown as Parameters<typeof createGraphRenderSession>[0]);
     coordinator.attachSceneBridge(bridge);
 
-    await coordinator.renderDocumentGraph({
+    const result = await coordinator.renderDocumentGraph({
       kind: 'incremental',
       documentKey: 'test-key',
       language: 'json',
@@ -343,17 +421,19 @@ describe('graph-render-session coordinator', () => {
       revision: 5,
     });
 
-    expect(bridge.applyGraphDelta).toHaveBeenCalledTimes(1);
-    expect(bridge.applyGraphDelta).toHaveBeenCalledWith(
-      expect.objectContaining({ clear: 0 }),
-      expect.objectContaining({ baseGraphVersion: 0, graphVersion: 0 }),
-    );
+    expect(result?.edges).toHaveLength(1);
+    expect(result?.edges[0]?.bezierArgs?.toX).toBe(1572);
   });
 
 
   it('attachExternalDocumentJobSession consumes an existing document job without starting a text job', async () => {
-    const streamedBatch = textChunkBatch([projectionEvent(false)], 1);
-    const finalBatch = closeCompletedBatch(12, { mainGraph: projectionDelta(true) });
+    const streamedBatch = textChunkBatch(
+      [projectionEvent(false, graphDataWithParentChildEdge(1116))],
+      1,
+    );
+    const finalBatch = closeCompletedBatch(12, {
+      mainGraph: projectionDelta(true, graphDataWithParentChildEdge(1572)),
+    });
     const mergedBatch = {
       requestSeq: 12,
       events: [...streamedBatch.events, ...finalBatch.events],
@@ -382,7 +462,23 @@ describe('graph-render-session coordinator', () => {
     };
 
     const deps = createDeps();
-    const bridge = createSceneBridge({ getLastRenderedGraph: () => ({ nodes: [{ id: 1 }], edges: [] }) });
+    let renderedGraph: any = { nodes: [], edges: [] };
+    const bridge = createSceneBridge({
+      applyGraphDelta: vi.fn(async (delta: any) => {
+        if (delta.clear === 1) {
+          renderedGraph = {
+            nodes: [...(delta.nodesAdded ?? [])],
+            edges: [...(delta.edgesAdded ?? [])],
+          };
+          return;
+        }
+        renderedGraph = {
+          nodes: [...(delta.nodesAdded ?? delta.nodesUpdated ?? [])],
+          edges: [...(delta.edgesAdded ?? [])],
+        };
+      }),
+      getLastRenderedGraph: () => renderedGraph,
+    });
     // Test helper uses a structurally complete dependency object.
     const coordinator = createGraphRenderSession(deps as unknown as Parameters<typeof createGraphRenderSession>[0]);
     coordinator.attachSceneBridge(bridge);
@@ -392,11 +488,6 @@ describe('graph-render-session coordinator', () => {
     );
 
     expect(mockedCallWorker).not.toHaveBeenCalled();
-    expect(bridge.applyGraphDelta).toHaveBeenCalledTimes(1);
-    expect(bridge.applyGraphDelta).toHaveBeenCalledWith(
-      expect.objectContaining({ clear: 0 }),
-      expect.objectContaining({ baseGraphVersion: 0, graphVersion: 0 }),
-    );
     expect(deps.onStreamFinalAnalysis).toHaveBeenCalledWith(
       'test-key',
       'json',
@@ -409,7 +500,8 @@ describe('graph-render-session coordinator', () => {
       5,
       expect.objectContaining({ documentKey: 'test-key', revision: 5, snapshotId: 12, mode: 'streaming' }),
     );
-    expect(renderResult).toEqual({ nodes: [{ id: 1 }], edges: [] });
+    expect(renderResult?.edges).toHaveLength(1);
+    expect(renderResult?.edges[0]?.bezierArgs?.toX).toBe(1572);
   });
 
   it('renderDocumentGraph publishes final analysis from snapshot events', async () => {
