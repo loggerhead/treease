@@ -29,7 +29,16 @@ fn graph_path_matches(path: &[GraphPathSeg], expected: &[&str]) -> bool {
         && path
             .iter()
             .zip(expected.iter())
-            .all(|(segment, key)| segment.tag == 0 && segment.key == *key)
+            .all(|(segment, expected_part)| {
+                if let Some(index_text) = expected_part
+                    .strip_prefix('[')
+                    .and_then(|value| value.strip_suffix(']'))
+                {
+                    segment.tag == 1 && segment.index.to_string() == index_text
+                } else {
+                    segment.tag == 0 && segment.key == *expected_part
+                }
+            })
 }
 
 fn graph_delta_contains_row_key(delta: &GraphDelta, row_key: &str) -> bool {
@@ -226,7 +235,7 @@ fn hover_subgraph_projection_marks_missing_header_table_fields_as_miss_without_c
         .graph_data
         .as_ref()
         .expect("hover projection should include graph data");
-    let table = find_table_node(delta, &[]);
+    let table = find_table_node(delta, &["agent_steps", "[0]", "steps"]);
     let model_info_col = table
         .columns
         .iter()
@@ -243,11 +252,17 @@ fn hover_subgraph_projection_marks_missing_header_table_fields_as_miss_without_c
     let present = &table.rows[2].cells[model_info_col];
     assert!(!present.is_missing);
     assert_eq!(present.text, "{1}");
-    assert_eq!(present.path.len(), 2);
-    assert_eq!(present.path[0].tag, 1);
-    assert_eq!(present.path[0].index, 2);
-    assert_eq!(present.path[1].tag, 0);
-    assert_eq!(present.path[1].key, "model_info");
+    assert_eq!(present.path.len(), 5);
+    assert_eq!(present.path[0].tag, 0);
+    assert_eq!(present.path[0].key, "agent_steps");
+    assert_eq!(present.path[1].tag, 1);
+    assert_eq!(present.path[1].index, 0);
+    assert_eq!(present.path[2].tag, 0);
+    assert_eq!(present.path[2].key, "steps");
+    assert_eq!(present.path[3].tag, 1);
+    assert_eq!(present.path[3].index, 2);
+    assert_eq!(present.path[4].tag, 0);
+    assert_eq!(present.path[4].key, "model_info");
 }
 
 #[test]

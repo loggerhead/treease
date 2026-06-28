@@ -392,6 +392,7 @@ pub(crate) fn build_hover_subgraph_delta(
     store: &TreeStore,
     root: NodeId,
     language: &str,
+    root_path: &[core_graph_builder::PathSeg],
 ) -> GraphDelta {
     let mut config = projection_builder_config().to_graph_builder_config();
     config.table_max_height = i32::MAX;
@@ -401,7 +402,7 @@ pub(crate) fn build_hover_subgraph_delta(
         graph_language_from_name(language),
     );
     adapter
-        .build_model(store, root, &[])
+        .build_model(store, root, root_path)
         .map(|model| model_to_graph_delta(&model))
         .unwrap_or_default()
 }

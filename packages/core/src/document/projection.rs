@@ -1,4 +1,5 @@
 use crate::core::{NodeId, TreeNodeKind, TreeStore, graph_projection_service};
+use crate::core::graph_builder::PathSeg as GraphPathSeg;
 
 use super::protocol::{ProjectionDelta, ProjectionRequest, SnapshotReadResult};
 use super::runtime::{DocumentRuntime, with_global_document_runtime};
@@ -33,12 +34,14 @@ fn build_hover_subgraph_projection_for_snapshot(
     let path = parse_snapshot_path(path).ok_or("invalid path")?;
     let root =
         resolve_node_for_path(&document.store, document.root, &path).unwrap_or(document.root);
+    let root_path = snapshot_path_to_graph_path(&path);
     Ok(ProjectionDelta {
         clear: true,
         graph_data: Some(graph_projection_service::build_hover_subgraph_delta(
             &document.store,
             root,
             &analysis.language,
+            &root_path,
         )),
         ..Default::default()
     })
@@ -117,4 +120,13 @@ fn parse_snapshot_path(path: &str) -> Option<Vec<SnapshotPathSeg>> {
         }
     }
     Some(segments)
+}
+
+fn snapshot_path_to_graph_path(path: &[SnapshotPathSeg]) -> Vec<GraphPathSeg> {
+    path.iter()
+        .map(|segment| match segment {
+            SnapshotPathSeg::Key(key) => GraphPathSeg::Key(key.clone()),
+            SnapshotPathSeg::Index(index) => GraphPathSeg::Index((*index).max(0) as usize),
+        })
+        .collect()
 }

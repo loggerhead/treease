@@ -110,15 +110,6 @@ export function shouldIgnoreSubgraphOpenCell(cell: GraphCell | null | undefined)
   return cell?.isMissing === true;
 }
 
-export function materializeSubgraphWorkspaceInteractiveCell(basePath: PathSeg[], cell: GraphCell): GraphCell {
-  const rebasedPath = rebaseSubgraphWorkspacePath(basePath, cell.path ?? []);
-  if (rebasedPath === cell.path) return cell;
-  return {
-    ...cell,
-    path: rebasedPath,
-  };
-}
-
 function buildWorkspacePathKey(path: PathSeg[]): string {
   if (!path.length) return '';
   return path.map((segment) => (isPathSegKey(segment) ? `k:${pathSegKeyValue(segment)}` : `i:${segment.index}`)).join('|');
@@ -420,10 +411,9 @@ export async function renderSubgraphWorkspaceGraph(
     return id;
   };
   const bindWorkspaceTarget = (targetBox: LeaferBox, targetCell: GraphCell, kind: GraphCellKind): string => {
-    const interactiveCell = materializeSubgraphWorkspaceInteractiveCell(graph.path, targetCell);
-    targetBox.__graphCell = interactiveCell;
+    targetBox.__graphCell = targetCell;
     targetBox.__graphCellKind = kind;
-    const targetId = registerWorkspaceProbe(targetBox, interactiveCell, kind);
+    const targetId = registerWorkspaceProbe(targetBox, targetCell, kind);
     if (runtime.clickBoundTargets?.has(targetBox)) return targetId;
     runtime.clickBoundTargets?.add(targetBox);
     deps.bindPointerClick(targetBox, async () => {

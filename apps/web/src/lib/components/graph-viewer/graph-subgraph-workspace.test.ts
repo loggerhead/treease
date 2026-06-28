@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import {
-  materializeSubgraphWorkspaceInteractiveCell,
   normalizeWorkspaceGraphEdgeRows,
   rebaseSubgraphWorkspacePath,
   shouldIgnoreSubgraphOpenCell,
@@ -144,60 +143,6 @@ describe('rebaseSubgraphWorkspacePath', () => {
 
   it('maps empty relative paths back to the workspace root path', () => {
     expect(rebaseSubgraphWorkspacePath([keySeg('preview')], [])).toEqual([keySeg('preview')]);
-  });
-});
-
-describe('materializeSubgraphWorkspaceInteractiveCell', () => {
-  it('rebases workspace table cell paths to absolute document paths for inline edit', () => {
-    const cell = materializeSubgraphWorkspaceInteractiveCell(
-      [keySeg('agent_steps'), indexSeg(0), keySeg('steps')],
-      {
-        text: 'confirm_action',
-        value: 'confirm_action',
-        valueType: 'string',
-        isIndex: false,
-        path: [indexSeg(1), keySeg('name')],
-        editable: true,
-        boxArgs: { x: 0, y: 0, width: 0, height: 0, cornerRadius: 0 },
-        textArgs: {
-          x: 0,
-          y: 0,
-          width: 0,
-          height: 0,
-          text: 'confirm_action',
-          textAlign: 'left',
-          verticalAlign: 'middle',
-          editable: true,
-        },
-      },
-    );
-
-    expect(cell.path).toEqual([keySeg('agent_steps'), indexSeg(0), keySeg('steps'), indexSeg(1), keySeg('name')]);
-  });
-
-  it('keeps already-absolute workspace cell paths untouched', () => {
-    const absolutePath = [keySeg('agent_steps'), indexSeg(0), keySeg('steps'), indexSeg(1), keySeg('name')];
-    const cell = {
-      text: 'confirm_action',
-      value: 'confirm_action',
-      valueType: 'string' as const,
-      isIndex: false,
-      path: absolutePath,
-      editable: true,
-      boxArgs: { x: 0, y: 0, width: 0, height: 0, cornerRadius: 0 },
-      textArgs: {
-        x: 0,
-        y: 0,
-        width: 0,
-        height: 0,
-        text: 'confirm_action',
-        textAlign: 'left' as const,
-        verticalAlign: 'middle' as const,
-        editable: true,
-      },
-    };
-
-    expect(materializeSubgraphWorkspaceInteractiveCell([keySeg('agent_steps')], cell)).toBe(cell);
   });
 });
 

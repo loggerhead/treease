@@ -258,7 +258,12 @@ test('trajectory fixture workspace projection keeps model_info cell paths aligne
   expect(rowSummaries, JSON.stringify(rowSummaries, null, 2)).toEqual(
     expect.arrayContaining([
       expect.objectContaining({ rowIndex: 5, type: 'tool', modelInfoText: 'miss', modelInfoPath: '' }),
-      expect.objectContaining({ rowIndex: 6, type: 'model', modelInfoText: '{6}', modelInfoPath: '[6].model_info' }),
+      expect.objectContaining({
+        rowIndex: 6,
+        type: 'model',
+        modelInfoText: '{6}',
+        modelInfoPath: 'agent_steps.[0].steps.[6].model_info',
+      }),
     ]),
   );
 });
