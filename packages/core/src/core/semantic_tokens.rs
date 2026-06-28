@@ -931,4 +931,10 @@ mod tests {
         let int_snippets = semantic_token_snippets(source, INT);
         assert!(!int_snippets.iter().any(|snippet| snippet.contains("0009")));
     }
+
+    #[test]
+    fn json_root_string_emits_str_semantic_token() {
+        let string_snippets = semantic_token_snippets(r#""left-string""#, STR);
+        assert_eq!(string_snippets, vec![r#""left-string""#.to_owned()]);
+    }
 }

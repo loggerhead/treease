@@ -10,6 +10,8 @@ import {
   closeWorkspaceTab,
   createEditorWorkspaceState,
   ensureSidecarTab,
+  ensureDetachedSidecarTab,
+  removeDetachedSidecarTab,
   summarizeWorkspaceTabs,
   syncWorkspaceEditorTab,
   syncSidecarLanguageFromPrimary,
@@ -770,6 +772,21 @@ function createEditorStore() {
             languageId: s.languageId,
             sourceText: payload.sourceText,
           }),
+        })),
+      ensureDetachedSidecarWorkspaceTab: (payload: { id: string; name: string; sourceText: string }) =>
+        updateState((s) => ({
+          ...s,
+          workspace: ensureDetachedSidecarTab(s.workspace, {
+            id: payload.id,
+            name: payload.name,
+            languageId: s.languageId,
+            sourceText: payload.sourceText,
+          }),
+        })),
+      removeDetachedSidecarWorkspaceTab: (tabId: string) =>
+        updateState((s) => ({
+          ...s,
+          workspace: removeDetachedSidecarTab(s.workspace, tabId),
         })),
       updateWorkspaceTab: (tabId: string, patch: EditorWorkspaceTabPatch) =>
         updateState((s) => {

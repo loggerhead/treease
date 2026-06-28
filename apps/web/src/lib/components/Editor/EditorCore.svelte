@@ -52,6 +52,7 @@
   import { createEditorFullEditController } from './editor-full-edit-controller';
   import { resolveLanguageSwitchPolicy } from './language-switch-policy';
   import { createEditorRuntimeController } from './editor-runtime-controller';
+  import { buildRootScalarHighlightDecorations, resolveRootScalarHighlightKind } from './root-scalar-highlight';
   import { commitEditorTabTextChange } from './editor-tab-edit-commit';
   import { settleWholeDocumentReplacement } from './whole-document-replacement';
   import type { EditorModelWithDocumentKey, EditorTab, TabSummary } from './types';
@@ -93,6 +94,7 @@
   let lastExternalTreeSelection: { path: PathSeg[]; target?: GraphHighlightTarget; source: string } | null = null;
   let diffDecorations: Monaco.editor.IEditorDecorationsCollection | null = null;
   let jsonBlockDecorations: Monaco.editor.IEditorDecorationsCollection | null = null;
+  let rootScalarDecorations: Monaco.editor.IEditorDecorationsCollection | null = null;
   let diffBlankZoneIds: string[] = [];
   let suppressGraphHighlightSync = 0;
   let suppressTreePathUpdate = 0;
@@ -153,6 +155,16 @@
     refreshSemanticTokensForLanguage(languageIdValue);
   }
 
+  function applyRootScalarHighlight(
+    analysis: import('./editor-analysis-apply').EditorAnalysisLike | null | undefined,
+  ): void {
+    if (!editor) return;
+    rootScalarDecorations ??= editor.createDecorationsCollection();
+    rootScalarDecorations.set(
+      buildRootScalarHighlightDecorations(monaco, model, resolveRootScalarHighlightKind(analysis)),
+    );
+  }
+
   function setActiveEditorIo(): void {
     editorIO.set({
       context: 'editor',
@@ -206,6 +218,13 @@
   const themeName = 'tree-sitter-light';
   const maxTabs = EDITOR_CONFIG.maxTabs;
   const initialCode = getLanguageExample('json');
+  $: rootScalarStyle = [
+    `--treease-root-scalar-str:${$settings.editor.semanticTypeColors.str}`,
+    `--treease-root-scalar-int:${$settings.editor.semanticTypeColors.int}`,
+    `--treease-root-scalar-float:${$settings.editor.semanticTypeColors.float}`,
+    `--treease-root-scalar-boolean:${$settings.editor.semanticTypeColors.boolean}`,
+    `--treease-root-scalar-nil:${$settings.editor.semanticTypeColors.nil}`,
+  ].join(';');
 
   let tabManager: TabManager;
   let dropZone: EditorDropZone;
@@ -245,6 +264,7 @@
     setJsonBlockSelection: (selection) => jsonBlockSelection.set(selection),
     updateActiveTempModel: updateCurrentTempModel,
     setTreeState: (value) => treeState.set(value),
+    applyRootScalarHighlight,
     primeSemanticTokensForDocument: (documentKey, semanticTokens) =>
       primeSemanticTokensForDocument(documentKey, semanticTokens),
     clearSemanticTokensForDocument: clearDocumentSemanticTokens,
@@ -489,6 +509,7 @@
       'source-editor',
       monaco.editor.tokenize,
     );
+    rootScalarDecorations = editor.createDecorationsCollection();
     ensureLanguageRegistered(languageIdValue);
     monaco.editor.setModelLanguage(model, languageIdValue);
     editorStore.actions.initWorkspaceFromPrimaryTab({ id: firstTab.id, name: firstTab.name });
@@ -528,6 +549,7 @@
       const previousLength = lastModelLength;
       const previousText = lastModelText;
       const nextText = activeModel.getValue();
+      applyRootScalarHighlight(null);
       syncColorViewportState('content');
       const changes = (event as unknown as { changes?: MonacoTextChange[] }).changes ?? [];
       isStoreUpdateSuppressed = true;
@@ -1338,6 +1360,8 @@
     tabManager?.disposeAll();
     hoverPreviewDisposable?.dispose();
     hoverPreviewDisposable = null;
+    rootScalarDecorations?.clear();
+    rootScalarDecorations = null;
     storeUnsub?.();
     storeUnsub = null;
     languageUnsub?.();
@@ -1392,11 +1416,35 @@
   }
 </script>
 
-<EditorDropZone
-  bind:this={dropZone}
-  onDrop={handleDrop}
-  onDragOver={handleDragOver}
-  loading={editorRuntimeOverlay.loading}
-  loadingPhase={editorRuntimeOverlay.phase}
-/>
-<TabManager bind:this={tabManager} {monaco} {maxTabs} initialLanguageId={languageIdValue} {initialCode} />
+<div class="contents" style={rootScalarStyle}>
+  <EditorDropZone
+    bind:this={dropZone}
+    onDrop={handleDrop}
+    onDragOver={handleDragOver}
+    loading={editorRuntimeOverlay.loading}
+    loadingPhase={editorRuntimeOverlay.phase}
+  />
+  <TabManager bind:this={tabManager} {monaco} {maxTabs} initialLanguageId={languageIdValue} {initialCode} />
+</div>
+
+<style>
+  :global(.treease-root-scalar-str) {
+    color: var(--treease-root-scalar-str) !important;
+  }
+
+  :global(.treease-root-scalar-int) {
+    color: var(--treease-root-scalar-int) !important;
+  }
+
+  :global(.treease-root-scalar-float) {
+    color: var(--treease-root-scalar-float) !important;
+  }
+
+  :global(.treease-root-scalar-boolean) {
+    color: var(--treease-root-scalar-boolean) !important;
+  }
+
+  :global(.treease-root-scalar-nil) {
+    color: var(--treease-root-scalar-nil) !important;
+  }
+</style>

@@ -2,6 +2,7 @@ import { expect, test, type Page } from './fixtures';
 import {
   chooseFile,
   evaluateTreease,
+  getMonacoInlineClassColor,
   getMonacoRenderedTokenColor,
   getMonacoValue,
   readEditorState,
@@ -168,4 +169,29 @@ test('right editor preserves semantic token colors after manual edits', async ({
   const workspace = await readEditorWorkspace(page);
   expect(state.sourceText).toBe('{"primary":true}');
   expect(workspace.tabsById['tab-sidecar'].sourceText).toContain('"float": 0.1');
+});
+
+test('right editor string highlighting matches the left editor', async ({ page }) => {
+  await setEditorContent(page, {
+    language: 'json',
+    sourceText: '"left-string"',
+  });
+
+  await expect
+    .poll(async () => getMonacoInlineClassColor(page, 'source-editor', 'treease-root-scalar-str'), { timeout: 5_000 })
+    .toBe('rgb(4, 81, 165)');
+
+  await openTextMode(page);
+  await chooseFile(page, {
+    triggerLabel: 'Load compare file',
+    inputLabel: 'Right panel file input',
+    fileName: 'sidecar.json',
+    content: '"right-string"',
+    mimeType: 'application/json',
+  });
+
+  await expect.poll(async () => getMonacoValue(page, 'right-editor'), { timeout: 5_000 }).toBe('"right-string"');
+  await expect
+    .poll(async () => getMonacoInlineClassColor(page, 'right-editor', 'treease-root-scalar-str'), { timeout: 5_000 })
+    .toBe('rgb(4, 81, 165)');
 });

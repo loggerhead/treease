@@ -15,7 +15,7 @@
 - 文档协议唯一来源是 `packages/core/src/document/protocol.rs`；生成物 `packages/core/wasm/document-protocol.generated.ts` 由 `cargo run --locked --bin export_document_protocol` 导出。
 - `SnapshotReady { snapshotId, analysis, mainGraph }` 是主文档权威终态；`AnalysisDelta` 只表达流式过程中的临时可见结果。
 - snapshot-bound read API 统一返回 `SnapshotReadResult<T>`；缺少 snapshot 时返回 `SnapshotNotReady`，不得偷偷创建 snapshot。
-- hover 子图唯一入口是 `buildHoverSubgraphProjection({ snapshotId, path })`；主图只来自 `DocumentJob` 事件与 `SnapshotReady.mainGraph`。
+- 子图工作区唯一 projection 入口是 `buildHoverSubgraphProjection({ snapshotId, path })`；主图只来自 `DocumentJob` 事件与 `SnapshotReady.mainGraph`。
 - `SnapshotReady.sourceText` 是 runtime 回传的权威源码。
 - `packages/core/src/wasm_document.rs` 是 document runtime 边界；`packages/core/src/wasm.rs` 只保留兼容 / 非 document ABI，不是协议真源。
 - same-language JSON TreeStore 契约固定：`Int` / `Float` 节点的 `value` 始终是合法 JSON number lexeme。

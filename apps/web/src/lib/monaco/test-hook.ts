@@ -88,22 +88,29 @@ export function attachMonacoTestHook(editor: TestHookEditor, hookId: string, tok
       const currentNode = editor.getDomNode?.() ?? node;
       if (!currentNode) return null;
       const lineSelector = lineNumber != null ? `.view-line:nth-child(${lineNumber})` : '.view-line';
+      const line = currentNode.querySelector(`.view-lines ${lineSelector}`) as HTMLElement | null;
       const spans = Array.from(
         currentNode.querySelectorAll(`.view-lines ${lineSelector} span, .view-lines ${lineSelector} *`),
       ) as HTMLElement[];
       const candidates = spans.filter((span) => (span.textContent ?? '').includes(tokenText));
       const target = candidates.sort((a, b) => (a.textContent ?? '').length - (b.textContent ?? '').length)[0];
       if (!target) return null;
+      const lineColor = line ? getComputedStyle(line).color : null;
       let current: HTMLElement | null = target;
       while (current) {
         const color = getComputedStyle(current).color;
-        if (color && color !== 'rgb(0, 0, 0)' && color !== 'rgba(0, 0, 0, 0)') {
+        if (
+          color &&
+          color !== 'rgb(0, 0, 0)' &&
+          color !== 'rgba(0, 0, 0, 0)' &&
+          color !== lineColor
+        ) {
           return color;
         }
+        if (current === line) break;
         current = current.parentElement;
-        if (current && !current.classList?.contains?.('view-line')) break;
       }
-      return getComputedStyle(target).color;
+      return lineColor ?? getComputedStyle(target).color;
     },
     getTokenTypeAt: (lineNumber: number, column: number) => {
       if (!tokenize) return 'no-tokenize';

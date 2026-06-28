@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { clampPanOffsetToGraphBounds } from './graph-viewport-geometry';
+import { GRAPH_PAN_CONSTRAINT_PADDING, clampPanOffsetToGraphBounds } from './graph-viewport-geometry';
 
 describe('clampPanOffsetToGraphBounds', () => {
   it('clamps drag offsets to graph bounds plus padding when content exceeds viewport', () => {
@@ -18,12 +18,12 @@ describe('clampPanOffsetToGraphBounds', () => {
         right: 700,
         bottom: 580,
       },
-      100,
+      GRAPH_PAN_CONSTRAINT_PADDING,
     );
 
     expect(result).toEqual({
-      x: 0,
-      y: -380,
+      x: 400,
+      y: -780,
     });
   });
 
@@ -43,12 +43,12 @@ describe('clampPanOffsetToGraphBounds', () => {
         right: 320,
         bottom: 300,
       },
-      100,
+      GRAPH_PAN_CONSTRAINT_PADDING,
     );
 
     expect(result).toEqual({
-      x: 90,
-      y: 40,
+      x: 30,
+      y: -50,
     });
   });
 });

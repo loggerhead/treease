@@ -37,6 +37,7 @@ type CreateEditorAnalysisControllerOptions = {
   setJsonBlockSelection: (selection: JsonBlockSelection | null) => void;
   updateActiveTempModel: (updater: (current: any) => any) => void;
   setTreeState: (value: { tree: TreeNode | null; value: unknown; source: 'editor'; revision: number }) => void;
+  applyRootScalarHighlight: (analysis: EditorAnalysisLike | null | undefined) => void;
   primeSemanticTokensForDocument: (documentKey: string, semanticTokens: ArrayBuffer) => void;
   clearSemanticTokensForDocument: (documentKey?: string) => void;
   refreshSemanticTokensForLanguage: (languageId?: string) => void;
@@ -327,6 +328,7 @@ export function createEditorAnalysisController(options: CreateEditorAnalysisCont
           resolvedAnalysis,
         );
       },
+      applyRootScalarHighlight: options.applyRootScalarHighlight,
       updateTempModel: options.updateActiveTempModel,
       primeSemanticTokensForDocument: options.primeSemanticTokensForDocument,
       clearSemanticTokensForDocument: options.clearSemanticTokensForDocument,

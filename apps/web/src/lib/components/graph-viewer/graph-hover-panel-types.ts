@@ -2,7 +2,7 @@
 import type { PathSeg } from '../../store/tree-path';
 import type { GraphCell, GraphEdge, GraphNode } from '../../graph/graph-viewer-render';
 
-export type GraphHoverPreviewKind = 'pre' | 'subgraph';
+export type GraphHoverPreviewKind = 'pre';
 
 export type GraphHoverPreviewTarget = {
   cell: GraphCell;

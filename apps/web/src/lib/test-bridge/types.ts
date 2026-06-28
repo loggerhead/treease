@@ -82,7 +82,7 @@ export type TreeaseGraphInteractionState = {
 
 export type TreeaseGraphRuntime = {
   getInteractionState?: () => TreeaseGraphInteractionState | null;
-  getClickProbeTargets?: (scope?: 'root' | 'panel') => TreeaseGraphProbe[];
+  getClickProbeTargets?: (scope?: 'root' | 'panel' | 'workspace') => TreeaseGraphProbe[];
   getHighlightTarget?: () => {
     path?: TreeaseRuntimePathSeg[];
     target?: 'key' | 'value' | 'node';
@@ -103,7 +103,7 @@ export type TreeaseGraphRuntime = {
     visible?: boolean;
     rect?: { left?: number; top?: number; width?: number; height?: number } | null;
   } | null;
-  getHoverPreview?: () => { kind?: 'pre' | 'subgraph'; text?: string; language?: string; visible?: boolean } | null;
+  getHoverPreview?: () => { kind?: 'pre'; text?: string; language?: string; visible?: boolean } | null;
   getHoverPanelDebugState?: () => { phase?: string; error?: string } | null;
   getHoverPanelPrewarmDebugSnapshot?: () => {
     scheduledPaths?: TreeaseRuntimePathSeg[][];
@@ -254,7 +254,7 @@ export type WindowTreease = {
   };
   graph: {
     getInteractionState: () => ReturnType<NonNullable<TreeaseGraphRuntime['getInteractionState']>>;
-    getClickProbeTargets: (scope?: 'root' | 'panel') => TreeaseGraphProbe[];
+    getClickProbeTargets: (scope?: 'root' | 'panel' | 'workspace') => TreeaseGraphProbe[];
     getHighlightTarget: () => ReturnType<NonNullable<TreeaseGraphRuntime['getHighlightTarget']>>;
     getLastReveal: () => ReturnType<NonNullable<TreeaseGraphRuntime['getLastReveal']>>;
     clearLastReveal: () => void;

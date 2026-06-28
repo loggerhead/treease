@@ -339,6 +339,16 @@ export function ensureSidecarTab(
 ): EditorWorkspaceState {
   const existingId = workspace.paneTabIds.right;
   if (existingId && workspace.tabsById[existingId]) return workspace;
+  const existing = workspace.tabsById[input.id];
+  if (existing?.role === 'sidecar') {
+    return {
+      ...workspace,
+      paneTabIds: {
+        ...workspace.paneTabIds,
+        right: existing.id,
+      },
+    };
+  }
   const sidecar: EditorWorkspaceTab = {
     id: input.id,
     role: 'sidecar',
@@ -362,6 +372,58 @@ export function ensureSidecarTab(
       ...workspace.paneTabIds,
       right: sidecar.id,
     },
+  };
+}
+
+export function ensureDetachedSidecarTab(
+  workspace: EditorWorkspaceState,
+  input: {
+    id: string;
+    name: string;
+    languageId: SupportedEditorLanguageId;
+    sourceText: string;
+  },
+): EditorWorkspaceState {
+  const existing = workspace.tabsById[input.id];
+  if (existing?.role === 'sidecar') return workspace;
+  if (existing) return workspace;
+  const sidecar: EditorWorkspaceTab = {
+    id: input.id,
+    role: 'sidecar',
+    name: input.name,
+    documentKey: sidecarDocumentKey(input.id),
+    languageId: input.languageId,
+    sourceText: input.sourceText,
+    revision: 0,
+    graphAppliedRevision: 0,
+    snapshotId: null,
+    tempModel: createCleanTempModel(input.sourceText),
+    fullEditUiState: createInactiveFullEditUiState(),
+  };
+  return {
+    ...workspace,
+    tabsById: {
+      ...workspace.tabsById,
+      [sidecar.id]: sidecar,
+    },
+  };
+}
+
+export function removeDetachedSidecarTab(workspace: EditorWorkspaceState, tabId: string): EditorWorkspaceState {
+  const current = workspace.tabsById[tabId];
+  if (!current || current.role !== 'sidecar') return workspace;
+  const nextTabsById = { ...workspace.tabsById };
+  delete nextTabsById[tabId];
+  return {
+    ...workspace,
+    tabsById: nextTabsById,
+    paneTabIds:
+      workspace.paneTabIds.right === tabId
+        ? {
+            ...workspace.paneTabIds,
+            right: null,
+          }
+        : workspace.paneTabIds,
   };
 }
 
@@ -399,9 +461,11 @@ export function updateWorkspaceTab(
 
 export function syncSidecarLanguageFromPrimary(workspace: EditorWorkspaceState): EditorWorkspaceState {
   const primary = workspace.tabsById[workspace.primaryTabId];
-  const sidecarId = workspace.paneTabIds.right;
-  if (!primary || !sidecarId) return workspace;
-  const sidecar = workspace.tabsById[sidecarId];
-  if (!sidecar || sidecar.languageId === primary.languageId) return workspace;
-  return updateWorkspaceTab(workspace, sidecarId, { languageId: primary.languageId });
+  if (!primary) return workspace;
+  let nextWorkspace = workspace;
+  for (const [tabId, tab] of Object.entries(workspace.tabsById)) {
+    if (tab.role !== 'sidecar' || tab.languageId === primary.languageId) continue;
+    nextWorkspace = updateWorkspaceTab(nextWorkspace, tabId, { languageId: primary.languageId });
+  }
+  return nextWorkspace;
 }

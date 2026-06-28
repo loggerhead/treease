@@ -31,6 +31,25 @@ function createSemanticTokenColors(colors: SemanticTypeColors) {
   return Object.fromEntries(TOKEN_TYPES.map((tokenType) => [tokenType, resolveTokenColor(tokenType, colors)])) as Record<TokenType, string>;
 }
 
+function createLexicalTokenRules(colors: SemanticTypeColors) {
+  return [
+    { token: 'string', foreground: colors.str.slice(1) },
+    { token: 'string.value', foreground: colors.str.slice(1) },
+    { token: 'string.value.json', foreground: colors.str.slice(1) },
+    { token: 'string.key', foreground: colors.key.slice(1) },
+    { token: 'string.key.json', foreground: colors.key.slice(1) },
+    { token: 'number', foreground: colors.int.slice(1) },
+    { token: 'number.float', foreground: colors.float.slice(1) },
+    { token: 'keyword', foreground: colors.boolean.slice(1) },
+    { token: 'keyword.json', foreground: colors.boolean.slice(1) },
+    { token: 'delimiter', foreground: neutralSyntaxColors.punctuation.slice(1) },
+    { token: 'delimiter.bracket', foreground: neutralSyntaxColors.punctuation.slice(1) },
+    { token: 'delimiter.array', foreground: neutralSyntaxColors.punctuation.slice(1) },
+    { token: 'delimiter.comma', foreground: neutralSyntaxColors.punctuation.slice(1) },
+    { token: 'delimiter.colon', foreground: neutralSyntaxColors.punctuation.slice(1) },
+  ];
+}
+
 export type GraphViewerConfig = typeof graphViewerConfig;
 export type SemanticTypeColors = typeof semanticTypeColors;
 export type SettingsDocument = Record<string, unknown>;
@@ -125,10 +144,13 @@ export const settingsJsonSchema = createJsonSchema(defaultSettings);
 
 export function buildEditorTheme(settings: Settings) {
   const semanticTokenColors = createSemanticTokenColors(settings.editor.semanticTypeColors);
-  const tokenRules = TOKEN_TYPES.map((tokenType) => ({
-    token: tokenType,
-    foreground: semanticTokenColors[tokenType].slice(1),
-  }));
+  const tokenRules = [
+    ...TOKEN_TYPES.map((tokenType) => ({
+      token: tokenType,
+      foreground: semanticTokenColors[tokenType].slice(1),
+    })),
+    ...createLexicalTokenRules(settings.editor.semanticTypeColors),
+  ];
   return {
     base: 'vs',
     inherit: true,

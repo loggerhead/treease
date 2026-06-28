@@ -14,7 +14,7 @@ export type GraphRuntimePoint = {
 };
 
 export type GraphRuntimeProbeTarget = {
-  scope: 'root' | 'panel';
+  scope: 'root' | 'panel' | 'workspace';
   id: string;
   target?: 'key' | 'value' | 'node';
   nodeType: string;
@@ -62,7 +62,7 @@ export type GraphRuntimePanelState = {
 };
 
 export type GraphRuntimeHoverPreviewState = {
-  kind: 'pre' | 'subgraph';
+  kind: 'pre';
   text?: string;
   language?: string;
   visible: boolean;
@@ -78,5 +78,3 @@ export type GraphRuntimeHoverPanelDebugState = {
   phase: string;
   error: string;
 };
-
-

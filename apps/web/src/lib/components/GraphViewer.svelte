@@ -22,12 +22,13 @@
   import { callSharedWasmWorker } from '../wasm/wasm-worker-singleton';
   import { getActiveDocumentSnapshotId } from '../services/DocumentSessionService';
   import { getFullEditDocumentJobSession } from '../graph-stream/full-edit-document-job-session';
-  import { buildReadablePath, type PathSeg } from '../store/tree-path';
+  import { buildReadablePath, isPathSegKey, pathSegKeyValue, type PathSeg } from '../store/tree-path';
   import { type MinimapViewData } from '../leafer-minimap';
   import GraphRuntimeHost from './graph-viewer/GraphRuntimeHost.svelte';
   import GraphRuntimeLoading from './graph-viewer/GraphRuntimeLoading.svelte';
   import GraphStreamProgressOverlay from './graph-viewer/GraphStreamProgressOverlay.svelte';
-  import { buildGraphTooltipPanelShellMarkup, canOpenSubgraphPreviewForCell, createGraphHoverPanelController } from './graph-viewer/graph-hover-panel';
+  import SidecarEditor from './Editor/SidecarEditor.svelte';
+  import { canOpenSubgraphPreviewForCell, createGraphHoverPanelController } from './graph-viewer/graph-hover-panel';
   import { createGraphPointerController, type LeaferEventTarget } from './graph-viewer/graph-pointer-controller';
   import { createGraphRuntimeProbeController } from './graph-viewer/graph-runtime-probe-controller';
   import {
@@ -44,6 +45,7 @@
     createSubgraphWorkspaceGraphCache,
     destroySubgraphWorkspaceRuntime,
     formatSubgraphWorkspacePath,
+    rebaseSubgraphWorkspacePath,
     renderSubgraphWorkspaceGraph,
   } from './graph-viewer/graph-subgraph-workspace';
   import {
@@ -87,13 +89,15 @@
   import type {
     GraphRuntimeHoverPanelDebugState,
     GraphRuntimeHoverPreviewState,
+    GraphRuntimeProbeTarget,
   } from './graph-viewer/runtime/scene-types';
   import { editorLanguageFallback, type SupportedEditorLanguageId } from '../monaco/language-support';
   import type { EditorIO, GraphHighlightTarget } from '../store/editor-store';
   import { handleError } from '../utils/error-handler';
   import { GRAPH_CONFIG } from '../config/constants';
-  import { type GraphCell, type GraphCellKind, type GraphNode } from '../graph/graph-viewer-render';
-  import { buildPathKey, buildTooltipContent } from '../graph/graph-viewer-path';
+  import { formatScalarLiteral } from '../graph/literal-display';
+  import { type GraphCell, type GraphCellKind, type GraphNode, type ValueType } from '../graph/graph-viewer-render';
+  import { buildPathKey, buildTooltipContent, getValueAtPath } from '../graph/graph-viewer-path';
   import type { TooltipPanelGraphData } from './graph-viewer/graph-hover-panel-types';
   import { isDocumentRevisionGuardCurrent } from '../guards/document-revision-guard';
   import {
@@ -193,6 +197,8 @@
   let subgraphWorkspaceVisiblePanes: Array<SubgraphWorkspacePaneState & { visibleIndex: number; absoluteIndex: number }> = [];
   let subgraphWorkspaceHostMap = new Map<string, HTMLDivElement>();
   let subgraphWorkspaceRuntimeMap = new Map<string, TooltipPanelRuntime>();
+  let subgraphWorkspacePendingEditMap = new Map<string, boolean>();
+  let subgraphWorkspaceQueuedEditMap = new Map<string, string>();
   let subgraphWorkspaceRenderSignature = '';
   let subgraphWorkspaceRefreshSignature = '';
   let subgraphWorkspaceRefreshRevision = -1;
@@ -250,11 +256,20 @@
     pathText: string;
   };
 
+  type SubgraphWorkspaceContentState = {
+    tabId: string;
+    tabName: string;
+    sourceText: string;
+    valueType: ValueType;
+  };
+
   type SubgraphWorkspacePaneState = {
     path: PathSeg[];
     pathKey: string;
     title: string;
+    kind: 'graph' | 'content';
     graph: TooltipPanelGraphData | null;
+    content: SubgraphWorkspaceContentState | null;
     status: 'loading' | 'ready' | 'empty' | 'error';
     error?: string;
   };
@@ -317,6 +332,44 @@
     graphRuntimeProbeController?.registerRootClickTarget(target, cell, kind, nodeKind) ?? '';
   const getRuntimeProbeTargets = (scope: 'root' | 'panel' = 'root') =>
     graphRuntimeProbeController?.getRuntimeProbeTargets(scope) ?? [];
+  const getSubgraphWorkspaceProbeTargets = (): GraphRuntimeProbeTarget[] => {
+    const workspaceHost = document.querySelector("[data-testid='graph-subgraph-workspace']") as HTMLElement | null;
+    const workspaceRect = workspaceHost?.getBoundingClientRect() ?? null;
+    if (!workspaceRect) return [];
+    return subgraphWorkspaceVisiblePanes.flatMap((pane) => {
+      const runtime = subgraphWorkspaceRuntimeMap.get(pane.pathKey);
+      if (!runtime) return [];
+      const app = runtime.app as LeaferAppLike | null;
+      return Object.values(runtime.clickTargetsById ?? {}).map((entry) => {
+        const path = rebaseSubgraphWorkspacePath(pane.path, entry.cell?.path ?? []);
+        const point = getClientProbeCoordFromBoxLike(entry.box, app);
+        return {
+          scope: 'workspace',
+          id: entry.id,
+          target: entry.target,
+          nodeType: String((entry.box as { tag?: string }).tag ?? ''),
+          coord:
+            point && workspaceRect
+              ? {
+                  x: Math.round(point.x - workspaceRect.left),
+                  y: Math.round(point.y - workspaceRect.top),
+                }
+              : null,
+          rect: getClientRectFromBoxLike(entry.box, app),
+          worldRect: getWorldRectFromBoxLike(entry.box),
+          cell: entry.cell
+            ? {
+                text: String(entry.cell.text ?? ''),
+                valueType: String(entry.cell.valueType ?? ''),
+                isTableCell: !!entry.cell.isTableCell,
+                isHeader: !!entry.cell.isHeader,
+                path,
+              }
+            : null,
+        };
+      });
+    });
+  };
   const getRuntimeHighlightTarget = () => graphRuntimeProbeController?.getRuntimeHighlightTarget() ?? null;
   const getRuntimeRowScrollState = (path?: PathSeg[] | null) =>
     graphRuntimeProbeController?.getRuntimeRowScrollState(path) ?? null;
@@ -397,6 +450,7 @@
     handleError,
   });
   const hasActiveEdit = graphValueEditController.hasActiveEdit;
+  const applyGraphEdit = graphValueEditController.applyGraphEdit;
   const bindGraphEditorLifecycle = graphValueEditController.bindGraphEditorLifecycle;
   const resetActiveEditState = graphValueEditController.resetActiveEditState;
   const commitTooltipPanelProbe = graphValueEditController.commitTooltipPanelProbe;
@@ -777,7 +831,8 @@
     },
     onRegisteredTargetClick: async ({ path, target, cell, scope }) => {
       if (scope !== 'root') return;
-      if (!canOpenSubgraphPreviewForCell(cell, target)) return;
+      void cell;
+      void target;
       await openSubgraphWorkspacePath(path, -1);
     },
     commitTooltipPanelProbe,
@@ -980,6 +1035,88 @@
     return resolveInteractiveHoverTarget(node);
   }
 
+  function hasResolvedWorkspaceValue(data: unknown, path: PathSeg[]): boolean {
+    if (!path.length) return data !== undefined;
+    let target: unknown = data;
+    for (const segment of path) {
+      if (target == null || typeof target !== 'object') return false;
+      if (Array.isArray(target)) {
+        if (segment.tag !== PathSegTag.INDEX || segment.index < 0 || segment.index >= target.length) return false;
+        target = target[segment.index];
+        continue;
+      }
+      if (!isPathSegKey(segment)) return false;
+      const key = pathSegKeyValue(segment);
+      if (!(key in (target as Record<string, unknown>))) return false;
+      target = (target as Record<string, unknown>)[key];
+    }
+    return true;
+  }
+
+  function inferWorkspaceValueType(value: unknown): ValueType {
+    if (value == null) return 'null';
+    if (Array.isArray(value)) return 'array';
+    if (typeof value === 'string') return 'string';
+    if (typeof value === 'number') return 'number';
+    if (typeof value === 'boolean') return 'boolean';
+    return 'object';
+  }
+
+  function buildSubgraphWorkspaceContentState(path: PathSeg[]): SubgraphWorkspaceContentState | null {
+    if (!hasResolvedWorkspaceValue(currentData, path)) return null;
+    const value = getValueAtPath(currentData, path);
+    const valueType = inferWorkspaceValueType(value);
+    if (valueType === 'object' || valueType === 'array') return null;
+    return {
+      tabId: `subgraph-content:${buildPathKey(path)}`,
+      tabName: formatSubgraphWorkspacePath(path, renderConfig),
+      sourceText:
+        valueType === 'string' && typeof value === 'string'
+          ? JSON.stringify(value)
+          : formatScalarLiteral(value == null ? 'null' : String(value), valueType, languageIdValue),
+      valueType,
+    };
+  }
+
+  function buildWorkspaceEditCell(path: PathSeg[], valueType: ValueType, text: string): GraphCell {
+    return {
+      text,
+      value: text,
+      valueType,
+      path,
+      editable: !readonly,
+      boxArgs: { x: 0, y: 0, width: 0, height: 0, cornerRadius: 0 },
+      textArgs: {
+        x: 0,
+        y: 0,
+        width: 0,
+        height: 0,
+        text,
+        textAlign: 'left',
+        verticalAlign: 'top',
+        editable: !readonly,
+      },
+    };
+  }
+
+  function setSubgraphWorkspacePendingEdit(pathKey: string, pending: boolean): void {
+    if (pending) {
+      subgraphWorkspacePendingEditMap.set(pathKey, true);
+      return;
+    }
+    subgraphWorkspacePendingEditMap.delete(pathKey);
+  }
+
+  function syncSubgraphWorkspaceTransientState(nextChain: SubgraphWorkspacePaneState[]): void {
+    const nextKeys = new Set(nextChain.map((pane) => pane.pathKey));
+    for (const pathKey of [...subgraphWorkspacePendingEditMap.keys()]) {
+      if (!nextKeys.has(pathKey)) subgraphWorkspacePendingEditMap.delete(pathKey);
+    }
+    for (const pathKey of [...subgraphWorkspaceQueuedEditMap.keys()]) {
+      if (!nextKeys.has(pathKey)) subgraphWorkspaceQueuedEditMap.delete(pathKey);
+    }
+  }
+
   function updateVisibleSubgraphWorkspacePanes(): void {
     const start = Math.max(0, subgraphWorkspaceChain.length - 3);
     subgraphWorkspaceVisiblePanes = subgraphWorkspaceChain.slice(start).map((pane, index) => ({
@@ -999,6 +1136,7 @@
   }
 
   function setSubgraphWorkspaceChain(nextChain: SubgraphWorkspacePaneState[]): void {
+    syncSubgraphWorkspaceTransientState(nextChain);
     subgraphWorkspaceChain = nextChain;
     updateVisibleSubgraphWorkspacePanes();
     disposeSubgraphWorkspaceRuntimes(nextChain.map((pane) => pane.pathKey));
@@ -1008,13 +1146,27 @@
     const pathKey = buildPathKey(path);
     if (!pathKey) return null;
     const title = formatSubgraphWorkspacePath(path, renderConfig);
+    const content = buildSubgraphWorkspaceContentState(path);
+    if (content) {
+      return {
+        path,
+        pathKey,
+        title,
+        kind: 'content',
+        graph: null,
+        content,
+        status: 'ready',
+      };
+    }
     try {
       const graph = await subgraphWorkspaceGraphCache.prepareGraph(path);
       return {
         path,
         pathKey,
         title,
+        kind: 'graph',
         graph,
+        content: null,
         status: graph ? 'ready' : 'empty',
       };
     } catch (error) {
@@ -1027,7 +1179,9 @@
         path,
         pathKey,
         title,
+        kind: 'graph',
         graph: null,
+        content: null,
         status: 'error',
         error: error instanceof Error ? error.message : String(error),
       };
@@ -1044,7 +1198,9 @@
       path,
       pathKey,
       title: formatSubgraphWorkspacePath(path, renderConfig),
+      kind: 'graph',
       graph: null,
+      content: null,
       status: 'loading',
     };
     setSubgraphWorkspaceChain([...base, loadingPane]);
@@ -1062,8 +1218,45 @@
     parentAbsoluteIndex: number,
   ): Promise<void> {
     emitReveal(payload.path, payload.target, 'click');
-    if (!canOpenSubgraphPreviewForCell(payload.cell, payload.target)) return;
+    void payload.cell;
     await openSubgraphWorkspacePath(payload.path, parentAbsoluteIndex);
+  }
+
+  function revealSubgraphWorkspacePane(path: PathSeg[], target: 'value' | 'node' = 'value'): void {
+    emitReveal(path, target, 'click');
+  }
+
+  function normalizeSubgraphWorkspaceDraft(valueType: ValueType, draft: string): string {
+    if (valueType !== 'string') return draft;
+    try {
+      const parsed = JSON.parse(draft);
+      if (typeof parsed === 'string') return parsed;
+    } catch {}
+    return draft;
+  }
+
+  async function commitSubgraphWorkspaceValueEdit(pane: SubgraphWorkspacePaneState, draft?: string): Promise<void> {
+    if (readonly || pane.kind !== 'content' || !pane.content) return;
+    const nextText = draft ?? pane.content.sourceText;
+    if (nextText === pane.content.sourceText) return;
+    if (subgraphWorkspacePendingEditMap.get(pane.pathKey) === true) {
+      subgraphWorkspaceQueuedEditMap.set(pane.pathKey, nextText);
+      return;
+    }
+    setSubgraphWorkspacePendingEdit(pane.pathKey, true);
+    try {
+      await applyGraphEdit(
+        buildWorkspaceEditCell(pane.path, pane.content.valueType, pane.content.sourceText),
+        'value',
+        normalizeSubgraphWorkspaceDraft(pane.content.valueType, nextText),
+      );
+    } finally {
+      setSubgraphWorkspacePendingEdit(pane.pathKey, false);
+    }
+    const queuedText = subgraphWorkspaceQueuedEditMap.get(pane.pathKey);
+    if (queuedText == null || queuedText === nextText) return;
+    subgraphWorkspaceQueuedEditMap.delete(pane.pathKey);
+    await commitSubgraphWorkspaceValueEdit(pane, queuedText);
   }
 
   function bindSubgraphWorkspaceHost(pathKey: string, host: HTMLDivElement | null): void {
@@ -1096,7 +1289,6 @@
   }
 
   async function renderSubgraphWorkspacePanes(): Promise<void> {
-    if (!renderRuntimeReady) return;
     const visibleSignature = subgraphWorkspaceVisiblePanes
       .map((pane) => `${pane.pathKey}:${pane.status}:${pane.absoluteIndex}`)
       .join('|');
@@ -1108,6 +1300,7 @@
       .map((pane) => pane.pathKey);
     disposeSubgraphWorkspaceRuntimes(activeKeys);
     for (const pane of subgraphWorkspaceVisiblePanes) {
+      if (pane.kind === 'content') continue;
       const mount = subgraphWorkspaceHostMap.get(pane.pathKey);
       if (!mount) continue;
       if (pane.status !== 'ready' || !pane.graph) {
@@ -1172,7 +1365,8 @@
   }
 
   const graphViewerRuntimeApi = {
-    getClickProbeTargets: (scope?: 'root' | 'panel') => getRuntimeProbeTargets(scope ?? 'root'),
+    getClickProbeTargets: (scope?: 'root' | 'panel' | 'workspace') =>
+      scope === 'workspace' ? getSubgraphWorkspaceProbeTargets() : getRuntimeProbeTargets(scope ?? 'root'),
     getHighlightTarget: () => getRuntimeHighlightTarget(),
     getLastReveal: () => getLastReveal(),
     clearLastReveal: () => clearLastReveal(),
@@ -1228,10 +1422,6 @@
   }
 
   function getRuntimeTooltipContent(target: LeaferText | null): string {
-    const previewTarget = hoverPanelController.resolveGraphHoverPreviewTarget(target);
-    if (previewTarget?.previewKind === 'subgraph') {
-      return buildGraphTooltipPanelShellMarkup();
-    }
     return buildTooltipContent(currentData, target as LeaferText, languageIdValue) as string;
   }
 
@@ -1486,7 +1676,28 @@
               {pane.title}
             </header>
             <div class="graph-subgraph-pane__body">
-              {#if pane.status === 'loading'}
+              {#if pane.kind === 'content' && pane.status === 'ready' && pane.content}
+                <div class="graph-subgraph-pane__content" data-testid="graph-subgraph-content-pane">
+                  <div class="graph-subgraph-pane__content-editor" data-testid="graph-subgraph-monaco-pane">
+                    <SidecarEditor
+                      tabId={pane.content.tabId}
+                      tabName={pane.content.tabName}
+                      language={languageIdValue}
+                      sourceText={pane.content.sourceText}
+                      runtimeHookId={pane.content.tabId}
+                      containerTestId="graph-subgraph-monaco-editor"
+                      attachToPane={false}
+                      destroyOnUnmount={true}
+                      onScroll={() => {}}
+                      onContentChange={(text) => {
+                        revealSubgraphWorkspacePane(pane.path, 'value');
+                        void commitSubgraphWorkspaceValueEdit(pane, text);
+                      }}
+                      onEditorBlur={(text) => void commitSubgraphWorkspaceValueEdit(pane, text)}
+                    />
+                  </div>
+                </div>
+              {:else if pane.status === 'loading'}
                 <div class="graph-subgraph-pane__placeholder">Loading subgraph…</div>
               {:else if pane.status === 'empty'}
                 <div class="graph-subgraph-pane__placeholder">No subgraph data</div>
@@ -1495,11 +1706,13 @@
                   {pane.error ?? 'Subgraph render failed'}
                 </div>
               {/if}
-              <div
-                class="graph-subgraph-pane__canvas"
-                class:hidden={pane.status !== 'ready'}
-                use:subgraphWorkspaceHostAction={pane.pathKey}
-              ></div>
+              {#if pane.kind === 'graph'}
+                <div
+                  class="graph-subgraph-pane__canvas"
+                  class:hidden={pane.status !== 'ready'}
+                  use:subgraphWorkspaceHostAction={pane.pathKey}
+                ></div>
+              {/if}
             </div>
           </section>
         {/each}
@@ -1576,6 +1789,29 @@
     position: relative;
     min-height: 0;
     overflow: hidden;
+  }
+
+  .graph-subgraph-pane__content {
+    display: grid;
+    height: 100%;
+    min-height: 0;
+    background:
+      radial-gradient(circle at top left, rgba(191, 219, 254, 0.18), transparent 42%),
+      linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(248, 250, 252, 0.98));
+  }
+
+  .graph-subgraph-pane__content-editor {
+    min-height: 0;
+    padding: 10px 12px 12px;
+  }
+
+  .graph-subgraph-pane__content-editor :global([data-testid='graph-subgraph-monaco-editor']) {
+    height: 100%;
+    border: 1px solid #dbe3ef;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.95);
+    overflow: hidden;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.75);
   }
 
   .graph-subgraph-pane__canvas {

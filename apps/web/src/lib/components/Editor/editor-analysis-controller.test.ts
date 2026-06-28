@@ -66,6 +66,7 @@ function createController(options: TestControllerOptions = {}) {
   const clearSemanticTokensForDocument = vi.fn();
   const refreshSemanticTokensForLanguage = vi.fn();
   const setTreeState = vi.fn();
+  const applyRootScalarHighlight = vi.fn();
   const updateActiveTempModel = vi.fn((updater: (current: any) => any) => {
     updater({});
   });
@@ -83,6 +84,7 @@ function createController(options: TestControllerOptions = {}) {
     setJsonBlockSelection,
     updateActiveTempModel,
     setTreeState,
+    applyRootScalarHighlight,
     primeSemanticTokensForDocument,
     clearSemanticTokensForDocument,
     refreshSemanticTokensForLanguage,
@@ -93,6 +95,7 @@ function createController(options: TestControllerOptions = {}) {
     setLanguage: (next: 'json' | 'yaml') => {
       language = next;
     },
+    applyRootScalarHighlight,
     getSelection: () => selection,
     setJsonBlockSelection,
     setTreeState,

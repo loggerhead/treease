@@ -403,7 +403,7 @@ test('graph mode renders no-header array through table runtime with click reveal
   await expect(page.locator('.leafer-x-tooltip [data-tooltip-panel]')).toHaveCount(0);
 });
 
-test('graph mode opens hover subgraph for structured cells in scrollable no-header array table', async ({
+test('graph mode does not open hover subgraph for structured cells in scrollable no-header array table', async ({
   page,
 }) => {
   await page.goto('/editor');
@@ -445,19 +445,15 @@ test('graph mode opens hover subgraph for structured cells in scrollable no-head
   expect(arrayProbeIndex).toBeGreaterThanOrEqual(0);
 
   await hoverGraphProbe(page, objectProbeIndex);
-  await expect
-    .poll(async () => readGraphHoverPreview(page), { timeout: 5_000 })
-    .toEqual(expect.objectContaining({ kind: 'subgraph', visible: true }));
-  await expect(page.locator('.leafer-x-tooltip [data-tooltip-panel]')).toHaveCount(1);
+  await expect.poll(async () => readGraphHoverPreview(page), { timeout: 2_000 }).toBeNull();
+  await expect(page.locator('.leafer-x-tooltip [data-tooltip-panel]')).toHaveCount(0);
 
   await movePointerOffGraph(page);
   await expect.poll(async () => readGraphHoverPreview(page), { timeout: 5_000 }).toBeNull();
 
   await hoverGraphProbe(page, arrayProbeIndex);
-  await expect
-    .poll(async () => readGraphHoverPreview(page), { timeout: 5_000 })
-    .toEqual(expect.objectContaining({ kind: 'subgraph', visible: true }));
-  await expect(page.locator('.leafer-x-tooltip [data-tooltip-panel]')).toHaveCount(1);
+  await expect.poll(async () => readGraphHoverPreview(page), { timeout: 2_000 }).toBeNull();
+  await expect(page.locator('.leafer-x-tooltip [data-tooltip-panel]')).toHaveCount(0);
 });
 
 test('graph mode does not show graph hover panel for non-table array value hover', async ({ page }) => {

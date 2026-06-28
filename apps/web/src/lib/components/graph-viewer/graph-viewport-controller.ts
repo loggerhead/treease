@@ -2,7 +2,14 @@
 import type { GraphNode } from '../../graph/graph-viewer-render';
 import type { LeaferAppLike, LeaferBox } from './model';
 import type { LeaferEventTarget } from './graph-pointer-controller';
-import { clampPanOffsetToGraphBounds, getViewportCenter as getViewportCenterFromContainer, getZoomScale, type GraphWorldBounds, type LeaferZoomLayer } from './graph-viewport-geometry';
+import {
+  GRAPH_PAN_CONSTRAINT_PADDING,
+  clampPanOffsetToGraphBounds,
+  getViewportCenter as getViewportCenterFromContainer,
+  getZoomScale,
+  type GraphWorldBounds,
+  type LeaferZoomLayer,
+} from './graph-viewport-geometry';
 
 export type { LeaferZoomLayer } from './graph-viewport-geometry';
 
@@ -39,7 +46,7 @@ export function createGraphViewportController(options: CreateGraphViewportContro
         offsetY: layer.y ?? 0,
       },
       bounds,
-      100,
+      GRAPH_PAN_CONSTRAINT_PADDING,
     );
     layer.x = clamped.x;
     layer.y = clamped.y;

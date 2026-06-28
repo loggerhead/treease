@@ -24,7 +24,7 @@
 - CLI 入口：`../apps/cli/src/main.rs`
 
 ## 深读触发器
-- `../CONTEXT.md`：Document Runtime、DocumentJob、DocumentSnapshot、snapshot-bound read、hover subgraph、ParseFailed、SnapshotReady
+- `../CONTEXT.md`：Document Runtime、DocumentJob、DocumentSnapshot、snapshot-bound read、subgraph workspace projection、ParseFailed、SnapshotReady
 - `./FRONTEND.md`：FreshnessScope、GraphViewer/worker runtime 职责、Monaco/Leafer 交互边界
 - `./CORE.md`：协议真源、WASM 边界、增量编辑约束、allocator / tree-sitter 规则
 - `./TESTING.md`：最小相关验证、真实覆盖、timeout / mock / E2E 规则

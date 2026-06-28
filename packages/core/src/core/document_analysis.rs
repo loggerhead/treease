@@ -788,6 +788,29 @@ pub(crate) fn encode_document_value_json(document: &DecodedDocument) -> Option<S
     Some(out)
 }
 
+#[cfg(test)]
+mod tests {
+    use super::{DocumentAnalysisDemand, analyze_document_internal_with_demand};
+
+    #[test]
+    fn json_root_string_keeps_semantic_tokens_in_document_analysis() {
+        let analysis = analyze_document_internal_with_demand(
+            "json",
+            br#""left-string""#,
+            false,
+            DocumentAnalysisDemand::full(),
+        );
+        let stored = analysis
+            .stored
+            .as_ref()
+            .expect("document analysis should keep stored artifacts");
+        assert!(
+            !stored.semantic_tokens_encoded.is_empty(),
+            "root string should keep semantic tokens in document analysis",
+        );
+    }
+}
+
 fn encode_analysis_node(
     document: &DecodedDocument,
     node_id: crate::core::NodeId,

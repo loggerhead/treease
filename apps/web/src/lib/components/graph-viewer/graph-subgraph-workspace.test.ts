@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { normalizeWorkspaceGraphEdgeRows } from './graph-subgraph-workspace';
+import { normalizeWorkspaceGraphEdgeRows, rebaseSubgraphWorkspacePath } from './graph-subgraph-workspace';
 import type { GraphEdge, GraphNode } from '../../graph/graph-viewer-render';
+import type { PathSeg } from '../../store/tree-path';
+import { PathSegTag } from '@core-wasm/index';
 
 function makeHeaderTableNode(renderHandle: number): GraphNode {
   return {
@@ -110,5 +112,32 @@ describe('normalizeWorkspaceGraphEdgeRows', () => {
     const normalized = normalizeWorkspaceGraphEdgeRows(nodes, edges);
 
     expect(normalized.map((edge) => edge.fromRow)).toEqual([1, 2]);
+  });
+});
+
+function keySeg(key: string): PathSeg {
+  return { tag: PathSegTag.KEY, key: key as any, index: 0 } as PathSeg;
+}
+
+function indexSeg(index: number): PathSeg {
+  return { tag: PathSegTag.INDEX, key: '' as any, index } as PathSeg;
+}
+
+describe('rebaseSubgraphWorkspacePath', () => {
+  it('rebases relative workspace cell paths onto the workspace root path', () => {
+    expect(
+      rebaseSubgraphWorkspacePath([keySeg('preview'), keySeg('uris')], [indexSeg(1)]),
+    ).toEqual([keySeg('preview'), keySeg('uris'), indexSeg(1)]);
+  });
+
+  it('preserves absolute paths that already include the workspace root', () => {
+    const absolutePath = [keySeg('preview'), keySeg('uris'), indexSeg(1)];
+    expect(
+      rebaseSubgraphWorkspacePath([keySeg('preview'), keySeg('uris')], absolutePath),
+    ).toBe(absolutePath);
+  });
+
+  it('maps empty relative paths back to the workspace root path', () => {
+    expect(rebaseSubgraphWorkspacePath([keySeg('preview')], [])).toEqual([keySeg('preview')]);
   });
 });

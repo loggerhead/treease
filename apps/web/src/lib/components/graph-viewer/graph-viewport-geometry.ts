@@ -18,6 +18,7 @@ export type ViewportBounds = {
 };
 
 export type GraphWorldBounds = ViewportBounds;
+export const GRAPH_PAN_CONSTRAINT_PADDING = 500;
 
 export type ViewportState = {
   leafer: LeaferApp | null;
@@ -49,7 +50,7 @@ export function clampPanOffsetToGraphBounds(
     offsetY: number;
   },
   bounds: GraphWorldBounds,
-  padding = 100,
+  padding = GRAPH_PAN_CONSTRAINT_PADDING,
 ): { x: number; y: number } {
   const normalizeZero = (value: number) => (Object.is(value, -0) ? 0 : value);
   const left = bounds.left - padding;

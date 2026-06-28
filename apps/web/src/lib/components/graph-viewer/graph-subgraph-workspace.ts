@@ -7,7 +7,12 @@ import type { SupportedEditorLanguageId } from '../../monaco/language-support';
 import { buildReadablePath, isPathSegKey, pathSegKeyValue, type PathSeg } from '../../store/tree-path';
 import type { DrawContext, GraphCell, GraphCellKind, GraphEdge, GraphNode } from '../../graph/graph-viewer-render';
 import { renderGraphEdges, renderGraphNode } from './graph-render-kernel';
-import { clampPanOffsetToGraphBounds, getZoomScale, type GraphWorldBounds } from './graph-viewport-geometry';
+import {
+  GRAPH_PAN_CONSTRAINT_PADDING,
+  clampPanOffsetToGraphBounds,
+  getZoomScale,
+  type GraphWorldBounds,
+} from './graph-viewport-geometry';
 import type {
   LeaferAppLike,
   LeaferBox,
@@ -80,6 +85,14 @@ function buildMetaPathText(path: PathSeg[]): string {
   if (readable.startsWith('$.')) return readable.slice(2);
   if (readable.startsWith('$[')) return readable.slice(1);
   return readable;
+}
+
+export function rebaseSubgraphWorkspacePath(basePath: PathSeg[], path: PathSeg[]): PathSeg[] {
+  if (!basePath.length) return path;
+  if (!path.length) return basePath;
+  const pathKey = buildWorkspacePathKey(path);
+  const basePathKey = buildWorkspacePathKey(basePath);
+  return pathKey === basePathKey || pathKey.startsWith(`${basePathKey}|`) ? path : [...basePath, ...path];
 }
 
 export function formatSubgraphWorkspacePath(path: PathSeg[], renderConfig: GraphViewerConfig): string {
@@ -333,7 +346,7 @@ function clampWorkspaceViewportPan(app: LeaferAppLike, mount: HTMLDivElement, gr
       offsetY: Number(layer.y ?? 0),
     },
     buildWorkspacePanConstraintBounds(graph),
-    100,
+    GRAPH_PAN_CONSTRAINT_PADDING,
   );
   layer.x = clamped.x;
   layer.y = clamped.y;
@@ -380,10 +393,24 @@ export async function renderSubgraphWorkspaceGraph(
   };
   deps.bindGraphEditorLifecycle(runtime.editor);
   const cellEntryBindings = createCellEntryBindings(runtime.cellBoxByPathMap);
+  let nextClickTargetSeq = 0;
+  const registerWorkspaceProbe = (targetBox: LeaferBox, targetCell: GraphCell, kind: GraphCellKind): string => {
+    const existingId = runtime.clickTargetIdByTarget?.get(targetBox);
+    const id = existingId ?? `${targetBox.tag === 'Text' ? 'text' : 'node'}-${nextClickTargetSeq++}`;
+    runtime.clickTargetIdByTarget?.set(targetBox, id);
+    runtime.clickTargetsById[id] = {
+      id,
+      box: targetBox,
+      cell: targetCell,
+      target: kind === 'key' ? 'key' : kind === 'value' ? 'value' : 'node',
+    };
+    return id;
+  };
   const bindWorkspaceTarget = (targetBox: LeaferBox, targetCell: GraphCell, kind: GraphCellKind): string => {
     targetBox.__graphCell = targetCell;
     targetBox.__graphCellKind = kind;
-    if (runtime.clickBoundTargets?.has(targetBox)) return '';
+    const targetId = registerWorkspaceProbe(targetBox, targetCell, kind);
+    if (runtime.clickBoundTargets?.has(targetBox)) return targetId;
     runtime.clickBoundTargets?.add(targetBox);
     deps.bindPointerClick(targetBox, async () => {
       const cell = targetBox.__graphCell as GraphCell | undefined;
@@ -391,11 +418,12 @@ export async function renderSubgraphWorkspaceGraph(
       if (!cell) return;
       const target = cellKind === 'key' ? 'key' : cellKind === 'value' ? 'value' : 'node';
       const fallbackPath = cell.path ?? [];
-      const path = target === 'node' ? fallbackPath : await deps.resolveInteractiveCellPath(cell, fallbackPath);
+      const resolvedPath = target === 'node' ? fallbackPath : await deps.resolveInteractiveCellPath(cell, fallbackPath);
+      const path = rebaseSubgraphWorkspacePath(graph.path, resolvedPath);
       if (!path.length) return;
       await deps.onActivateCell({ path, target, cell });
     });
-    return '';
+    return targetId;
   };
   const drawContext: DrawContext = {
     nodeLayer: runtime.nodeLayer,

@@ -118,7 +118,7 @@ describe('ui-settings', () => {
       expect(theme.semanticTokenColors.variable).toBe(defaultSettings.editor.semanticTypeColors[TOKEN_TYPE_THEME_KEY.variable]);
       expect(theme.semanticTokenColors.tag).toBe(defaultSettings.editor.semanticTypeColors[TOKEN_TYPE_THEME_KEY.tag]);
       expect(theme.semanticTokenColors.attribute).toBe(defaultSettings.editor.semanticTypeColors[TOKEN_TYPE_THEME_KEY.attribute]);
-      expect(theme.rules.map((r: any) => r.token)).toEqual(TOKEN_TYPES);
+      expect(TOKEN_TYPES.every((token) => theme.rules.some((r: any) => r.token === token))).toBe(true);
       const punctuationRule = theme.rules.find((r: any) => r.token === 'punctuation');
       const variableRule = theme.rules.find((r: any) => r.token === 'variable');
       const tagRule = theme.rules.find((r: any) => r.token === 'tag');
@@ -127,6 +127,21 @@ describe('ui-settings', () => {
       expect(variableRule?.foreground).toBe(theme.semanticTokenColors.variable.slice(1));
       expect(tagRule?.foreground).toBe(theme.semanticTokenColors.tag.slice(1));
       expect(attributeRule?.foreground).toBe(theme.semanticTokenColors.attribute.slice(1));
+    });
+
+    it('maps Monaco lexical fallback tokens to the same semantic colors', () => {
+      const theme = buildEditorTheme(defaultSettings);
+      expect(theme.rules).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ token: 'string', foreground: defaultSettings.editor.semanticTypeColors.str.slice(1) }),
+          expect.objectContaining({ token: 'string.value.json', foreground: defaultSettings.editor.semanticTypeColors.str.slice(1) }),
+          expect.objectContaining({ token: 'string.key.json', foreground: defaultSettings.editor.semanticTypeColors.key.slice(1) }),
+          expect.objectContaining({ token: 'number', foreground: defaultSettings.editor.semanticTypeColors.int.slice(1) }),
+          expect.objectContaining({ token: 'number.float', foreground: defaultSettings.editor.semanticTypeColors.float.slice(1) }),
+          expect.objectContaining({ token: 'keyword.json', foreground: defaultSettings.editor.semanticTypeColors.boolean.slice(1) }),
+          expect.objectContaining({ token: 'delimiter.colon', foreground: '4b5563' }),
+        ]),
+      );
     });
   });
 

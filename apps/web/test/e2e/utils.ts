@@ -258,6 +258,33 @@ export async function getMonacoValue(page: Page, hookId: string) {
   return evaluateTreease(page, (treease, nextHookId) => treease.editor.getValue(nextHookId), hookId);
 }
 
+export async function applyMonacoEdits(
+  page: Page,
+  hookId: string,
+  edits: Array<{
+    range: { startLineNumber: number; startColumn: number; endLineNumber: number; endColumn: number };
+    text: string;
+  }>,
+) {
+  await waitForMonacoHook(page, hookId);
+  await evaluateTreease(
+    page,
+    (
+      treease,
+      payload: {
+        hookId: string;
+        edits: Array<{
+          range: { startLineNumber: number; startColumn: number; endLineNumber: number; endColumn: number };
+          text: string;
+        }>;
+      },
+    ) => {
+      treease.editor.applyEdits(payload.hookId, payload.edits);
+    },
+    { hookId, edits },
+  );
+}
+
 export async function getMonacoScroll(page: Page, hookId: string) {
   await waitForMonacoHook(page, hookId);
   return evaluateTreease(page, (treease, nextHookId) => treease.editor.getScroll(nextHookId), hookId);
@@ -281,6 +308,12 @@ export async function getMonacoRenderedTokenColor(
       treease.editor.getRenderedTokenColor(payload.hookId, payload.tokenText, payload.lineNumber),
     { hookId, tokenText, lineNumber },
   );
+}
+
+export async function getMonacoInlineClassColor(page: Page, hookId: string, className: string) {
+  await waitForMonacoHook(page, hookId);
+  const locator = page.getByTestId(`monaco-${hookId}`).locator(`.${className}`).first();
+  return locator.evaluate((element) => getComputedStyle(element as HTMLElement).color);
 }
 
 export async function setMonacoScroll(page: Page, hookId: string, scrollTop: number, scrollLeft = 0) {
@@ -508,7 +541,7 @@ async function waitForGraphViewerPaint(page: Page) {
   );
 }
 
-type GraphRuntimeScope = 'root' | 'panel';
+type GraphRuntimeScope = 'root' | 'panel' | 'workspace';
 
 type GraphRuntimeHandle = WindowTreease['graph'];
 
@@ -756,6 +789,10 @@ export async function readGraphCellSubgraphPanelClickProbes(page: Page): Promise
   return readGraphClickProbesByKeys(page, 'panel');
 }
 
+export async function readSubgraphWorkspaceClickProbes(page: Page): Promise<GraphClickProbeSnapshot[]> {
+  return readGraphClickProbesByKeys(page, 'workspace');
+}
+
 export async function readGraphHoverPanelClickProbes(page: Page): Promise<GraphClickProbeSnapshot[]> {
   return readGraphCellSubgraphPanelClickProbes(page);
 }
@@ -784,7 +821,7 @@ export async function readGraphHoverPanel(page: Page): Promise<{
       })
       .catch(() => null),
   ]);
-  if (preview?.kind !== 'subgraph' || !preview.visible || !rect) {
+  if (!preview?.visible || !rect) {
     return null;
   }
   const rawPath = (() => {
@@ -807,7 +844,7 @@ export async function readGraphHoverPanel(page: Page): Promise<{
 
 export async function readGraphHoverPreview(
   page: Page,
-): Promise<{ kind: 'pre' | 'subgraph'; text: string; language: string | null; visible: boolean } | null> {
+): Promise<{ kind: 'pre'; text: string; language: string | null; visible: boolean } | null> {
   return evaluateGraphRuntime(page, (runtime) => {
     const preview = runtime.getHoverPreview?.();
     if (!preview?.kind) return null;
@@ -1121,6 +1158,14 @@ export async function clickGraphProbeAt(page: Page, probe: { x: number; y: numbe
   await waitForGraphViewerPaint(page);
   const box = await canvas.boundingBox();
   if (!box) throw new Error('graph-viewer-canvas bounding box missing');
+  await page.mouse.click(box.x + probe.x, box.y + probe.y);
+}
+
+export async function clickSubgraphWorkspaceProbeAt(page: Page, probe: { x: number; y: number }) {
+  const workspace = page.getByTestId('graph-subgraph-workspace');
+  await waitForGraphViewerPaint(page);
+  const box = await workspace.boundingBox();
+  if (!box) throw new Error('graph-subgraph-workspace bounding box missing');
   await page.mouse.click(box.x + probe.x, box.y + probe.y);
 }
 

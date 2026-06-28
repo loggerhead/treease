@@ -19,11 +19,24 @@
   import { createEditorFullEditController } from './editor-full-edit-controller';
   import { createWorkspaceTabFullEditSink } from './editor-full-edit-sink';
   import { commitEditorTabTextChange } from './editor-tab-edit-commit';
+  import {
+    buildRootScalarHighlightDecorations,
+    resolveJsonRootScalarHighlightKindFromText,
+    resolveRootScalarHighlightKind,
+  } from './root-scalar-highlight';
+  import { createSidecarExternalSync } from './sidecar-external-sync';
 
   export let tabId = 'tab-sidecar';
+  export let tabName = 'Right Editor';
   export let language: SupportedEditorLanguageId = editorLanguageFallback;
+  export let sourceText: string | null = null;
+  export let runtimeHookId = 'right-editor';
+  export let containerTestId = 'right-text-editor-container';
+  export let attachToPane = true;
+  export let destroyOnUnmount = false;
   export let onScroll: (payload: { scrollTop: number; scrollLeft: number }) => void = () => {};
-  export let onContentChange: () => void = () => {};
+  export let onContentChange: (text: string) => void = () => {};
+  export let onEditorBlur: (text: string) => void = () => {};
 
   let container: HTMLDivElement;
   let monaco: typeof import('monaco-editor') | undefined;
@@ -31,6 +44,7 @@
   let model: Monaco.editor.ITextModel | null = null;
   let cleanupTestHook: (() => void) | null = null;
   let diffDecorations: Monaco.editor.IEditorDecorationsCollection | null = null;
+  let rootScalarDecorations: Monaco.editor.IEditorDecorationsCollection | null = null;
   let diffBlankZoneIds: string[] = [];
   let runtimeToken = 0;
   let sidecarAnalysisSyncToken = 0;
@@ -39,15 +53,22 @@
   let lastModelText = '';
   let activeLanguage: SupportedEditorLanguageId = language;
   let lastPropLanguage: SupportedEditorLanguageId = language;
+  const externalSync = createSidecarExternalSync('');
   let ensureSemanticTokensProvider: (languageId: string) => void = () => {};
   let ensureDocumentColorProvider: (languageId: string) => void = () => {};
   let primeSemanticTokensForDocument: (documentKey: string, semanticTokens: ArrayBuffer) => void = () => {};
   let refreshSemanticTokensForLanguage: (languageId?: string) => void = () => {};
   let clearSemanticTokensForDocument: (documentKey?: string) => void = () => {};
+  $: rootScalarStyle = [
+    `--treease-root-scalar-str:${$settings.editor.semanticTypeColors.str}`,
+    `--treease-root-scalar-int:${$settings.editor.semanticTypeColors.int}`,
+    `--treease-root-scalar-float:${$settings.editor.semanticTypeColors.float}`,
+    `--treease-root-scalar-boolean:${$settings.editor.semanticTypeColors.boolean}`,
+    `--treease-root-scalar-nil:${$settings.editor.semanticTypeColors.nil}`,
+  ].join(';');
 
   $: sidecarTab = $editorWorkspace.tabsById[tabId] ?? null;
 
-  const SIDECAR_NAME = 'Right Editor';
   const fullEditSink = createWorkspaceTabFullEditSink(tabId);
 
   const fullEditController = createEditorFullEditController({
@@ -107,15 +128,44 @@
   }
 
   function ensureWorkspaceSidecarTab(sourceText: string): void {
-    editorStore.actions.ensureSidecarWorkspaceTab({
+    if (attachToPane) {
+      editorStore.actions.ensureSidecarWorkspaceTab({
+        id: tabId,
+        name: tabName,
+        sourceText,
+      });
+      return;
+    }
+    editorStore.actions.ensureDetachedSidecarWorkspaceTab({
       id: tabId,
-      name: SIDECAR_NAME,
+      name: tabName,
       sourceText,
     });
   }
 
   function setWorkspaceSidecarLanguage(languageId: SupportedEditorLanguageId): void {
     editorStore.actions.updateWorkspaceTab(tabId, { languageId });
+  }
+
+  function applyRootScalarHighlight(
+    analysis: import('./editor-analysis-apply').EditorAnalysisLike | null | undefined,
+  ): void {
+    if (!editor) return;
+    rootScalarDecorations ??= editor.createDecorationsCollection();
+    rootScalarDecorations.set(
+      buildRootScalarHighlightDecorations(monaco, model, resolveRootScalarHighlightKind(analysis)),
+    );
+  }
+
+  function applyRootScalarHighlightFromText(
+    text: string,
+    nextLanguage: SupportedEditorLanguageId = activeLanguage,
+  ): void {
+    if (!editor) return;
+    rootScalarDecorations ??= editor.createDecorationsCollection();
+    rootScalarDecorations.set(
+      buildRootScalarHighlightDecorations(monaco, model, resolveJsonRootScalarHighlightKindFromText(text, nextLanguage)),
+    );
   }
 
   function commitSidecarEditorState(): number {
@@ -167,6 +217,7 @@
       freshness,
       analysis,
       updateTempModel: updateSidecarTempModel,
+      applyRootScalarHighlight,
       primeSemanticTokensForDocument,
       clearSemanticTokensForDocument,
       refreshSemanticTokensForLanguage,
@@ -215,11 +266,24 @@
     return true;
   }
 
+  function shouldPreserveSubmittedJsonString(
+    text: string,
+    nextLanguage: SupportedEditorLanguageId,
+  ): boolean {
+    if (nextLanguage !== 'json') return false;
+    try {
+      return typeof JSON.parse(text) === 'string';
+    } catch {
+      return false;
+    }
+  }
+
   function setEditorValue(value: string): boolean {
     if (!model || model.getValue() === value) return false;
     if (!fullEditController.isImportActive()) return false;
     return setModelValueSilently(model, value, () => {
       updateSidecarSourceText(value);
+      externalSync.acceptExternalText(value);
     });
   }
 
@@ -248,6 +312,7 @@
     ensureDocumentColorProvider(activeLanguage);
 
     const tab = editorStore.get().workspace.tabsById[tabId];
+    externalSync.reset(tab?.sourceText ?? '');
     const uri = monaco.Uri.parse(`inmemory://sidecar/${tabId}`);
     model = monaco.editor.createModel(tab?.sourceText ?? '', activeLanguage, uri);
     syncLastModelSnapshot();
@@ -263,7 +328,9 @@
       colorDecoratorsActivatedOn: 'clickAndHover',
       'semanticHighlighting.enabled': true,
     });
-    cleanupTestHook = attachMonacoTestHook(editor, 'right-editor', monaco.editor.tokenize);
+    rootScalarDecorations = editor.createDecorationsCollection();
+    applyRootScalarHighlightFromText(tab?.sourceText ?? '', activeLanguage);
+    cleanupTestHook = attachMonacoTestHook(editor, runtimeHookId, monaco.editor.tokenize);
     editor.onDidChangeModelContent((event) => {
       const activeModel = model;
       if (!activeModel) return;
@@ -274,6 +341,8 @@
       const previousLength = lastModelLength;
       const previousText = lastModelText;
       const nextText = activeModel.getValue();
+      externalSync.recordLocalText(nextText);
+      applyRootScalarHighlight(null);
       const changes = (event as unknown as { changes?: MonacoTextChange[] }).changes ?? [];
       if (fullEditController.isImportActive()) {
         if (fullEditController.isActiveSessionText(nextText)) {
@@ -293,7 +362,7 @@
       if (wholeDocumentReplacement) {
         updateSidecarSourceText(nextText, { clearSnapshot: true });
         void runFullEditForCurrentText('whole-document-replacement', nextText, requestLanguage);
-        onContentChange();
+        onContentChange(nextText);
         return;
       }
       updateSidecarSourceText(nextText, { clearSnapshot: false });
@@ -329,9 +398,14 @@
             );
           },
           applyCommittedSourceText: (sourceTextValue) => {
+            const shouldApplyCommittedText = externalSync.shouldApplyExternalText(sourceTextValue, activeModel.getValue());
+            if (!shouldApplyCommittedText && sourceTextValue !== activeModel.getValue()) {
+              return;
+            }
             setModelValueSilently(activeModel, sourceTextValue, () => {
               updateSidecarSourceText(sourceTextValue, { clearSnapshot: false });
               syncLastModelSnapshot();
+              externalSync.acceptExternalText(sourceTextValue);
             });
           },
           bindSnapshot: fullEditSink.bindSnapshot,
@@ -340,10 +414,17 @@
       } else {
         commitSidecarEditorState();
       }
-      onContentChange();
+      onContentChange(nextText);
     });
     editor.onDidScrollChange((event) => {
       onScroll({ scrollTop: event.scrollTop, scrollLeft: event.scrollLeft });
+    });
+    editor.onDidFocusEditorText(() => {
+      externalSync.focus();
+    });
+    editor.onDidBlurEditorText(() => {
+      externalSync.blur();
+      onEditorBlur(model?.getValue() ?? '');
     });
   }
 
@@ -401,13 +482,34 @@
     nextLanguage: SupportedEditorLanguageId = language,
   ): Promise<void> {
     activeLanguage = nextLanguage;
-    onContentChange();
+    onContentChange(value);
     ensureWorkspaceSidecarTab(value);
     setWorkspaceSidecarLanguage(nextLanguage);
     updateSidecarSourceText(value);
+    externalSync.acceptExternalText(value);
     await tick();
     await ensureEditor();
     setModelLanguage(nextLanguage);
+    await runFullEditForCurrentText('whole-document-replacement', value, nextLanguage);
+  }
+
+  async function syncExternalSourceText(value: string, nextLanguage: SupportedEditorLanguageId = activeLanguage): Promise<void> {
+    ensureWorkspaceSidecarTab(value);
+    setWorkspaceSidecarLanguage(nextLanguage);
+    await tick();
+    await ensureEditor();
+    setModelLanguage(nextLanguage);
+    if (model && !externalSync.shouldApplyExternalText(value, model.getValue())) {
+      return;
+    }
+    updateSidecarSourceText(value);
+    if (model && model.getValue() !== value) {
+      setModelValueSilently(model, value, () => {
+        syncLastModelSnapshot();
+      });
+    }
+    externalSync.acceptExternalText(value);
+    applyRootScalarHighlightFromText(value, nextLanguage);
     await runFullEditForCurrentText('whole-document-replacement', value, nextLanguage);
   }
 
@@ -417,11 +519,13 @@
     nextLanguage: SupportedEditorLanguageId = activeLanguage,
   ): Promise<void> {
     if (!text.trim()) return;
+    const preserveSubmittedJsonString = shouldPreserveSubmittedJsonString(text, nextLanguage);
     await fullEditController.startFullEditSession({
       language: nextLanguage,
       text,
       reason,
-      sourceWritebackPolicy: 'intake',
+      sourceWritebackPolicy: preserveSubmittedJsonString ? 'submitted' : 'intake',
+      formatSourceOnClose: !preserveSubmittedJsonString,
       documentKey: sidecarDocumentKey(),
       isFresh: () => editorStore.get().workspace.tabsById[tabId]?.sourceText === text,
     });
@@ -459,15 +563,24 @@
   }
 
   $: if (model && sidecarTab && !suppressChange && sidecarTab.sourceText !== model.getValue()) {
-    setModelValueSilently(model, sidecarTab.sourceText, () => {
-      syncLastModelSnapshot();
-    });
+    if (externalSync.shouldApplyExternalText(sidecarTab.sourceText, model.getValue())) {
+      setModelValueSilently(model, sidecarTab.sourceText, () => {
+        syncLastModelSnapshot();
+        externalSync.acceptExternalText(sidecarTab.sourceText);
+      });
+    }
+  }
+
+  $: if (sourceText != null && sidecarTab && sidecarTab.sourceText !== sourceText && !suppressChange) {
+    void syncExternalSourceText(sourceText, activeLanguage);
   }
 
   onDestroy(() => {
     runtimeToken += 1;
     sidecarAnalysisSyncToken += 1;
     clearDiffPlan();
+    rootScalarDecorations?.clear();
+    rootScalarDecorations = null;
     cleanupTestHook?.();
     cleanupTestHook = null;
     editor?.dispose();
@@ -475,11 +588,37 @@
     model?.dispose();
     model = null;
     fullEditController.dispose();
+    if (destroyOnUnmount) {
+      editorStore.actions.removeDetachedSidecarWorkspaceTab(tabId);
+    }
   });
 </script>
 
 <div
   bind:this={container}
   class="min-h-0 min-w-0 flex-1 overflow-hidden"
-  data-testid="right-text-editor-container"
+  style={rootScalarStyle}
+  data-testid={containerTestId}
 ></div>
+
+<style>
+  :global(.treease-root-scalar-str) {
+    color: var(--treease-root-scalar-str) !important;
+  }
+
+  :global(.treease-root-scalar-int) {
+    color: var(--treease-root-scalar-int) !important;
+  }
+
+  :global(.treease-root-scalar-float) {
+    color: var(--treease-root-scalar-float) !important;
+  }
+
+  :global(.treease-root-scalar-boolean) {
+    color: var(--treease-root-scalar-boolean) !important;
+  }
+
+  :global(.treease-root-scalar-nil) {
+    color: var(--treease-root-scalar-nil) !important;
+  }
+</style>

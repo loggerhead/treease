@@ -162,7 +162,7 @@ test('trajectory fixture subgraph workspace keeps pane-sized viewport but preser
 
   await clickGraphProbeAt(page, targetProbe.coord);
 
-  const pane = page.getByTestId('graph-subgraph-pane');
+  const pane = page.getByTestId('graph-subgraph-pane').first();
   await expect(pane).toBeVisible({ timeout: 5_000 });
   await expect(pane.locator('.graph-subgraph-pane__header')).toHaveText('agent_steps[0].steps');
 
