@@ -5,7 +5,6 @@ import {
   clickGraphProbeAt,
   dropFile,
   evaluateTreease,
-  getMonacoValue,
   readEditorState,
   readGraphClickProbes,
   setEditorContent,
