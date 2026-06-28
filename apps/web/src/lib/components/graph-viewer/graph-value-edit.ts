@@ -146,6 +146,9 @@ export function createGraphValueEditController(deps: GraphValueEditControllerDep
     if (!editCell) {
       return false;
     }
+    if (editCell.isMissing) {
+      return false;
+    }
     const currentData = deps.getCurrentData();
     const editorIO = deps.getEditorIO();
     const getCurrentFreshnessContext = () => {

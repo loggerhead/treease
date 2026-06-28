@@ -597,4 +597,47 @@ describe('graph-value-edit', () => {
     expect(emitEditorMutation).not.toHaveBeenCalled();
     expect(publishTreeState).not.toHaveBeenCalled();
   });
+
+  it('rejects edits for missing placeholder cells', async () => {
+    const applyTextEdits = vi.fn(() => true);
+    const emitEditorMutation = vi.fn();
+    const publishTreeState = vi.fn(() => true);
+    const dispatchGraphEditEvent = vi.fn();
+    const controller = createGraphValueEditController({
+      getCurrentData: () => ({ user: {} }),
+      getSourceText: () => '{"user":{}}',
+      getDocumentKey: () => 'doc-key',
+      getLanguageId: () => 'json',
+      getEnableNest: () => true,
+      isReadonly: () => false,
+      getEditorIO: () => ({
+        context: 'editor',
+        getModel: () => ({ getVersionId: () => 1 }) as any,
+        applyTextEdits,
+      }) as any,
+      getEditorRevision: () => 3,
+      getActiveSnapshotId: () => 42,
+      resolveTreePathByPosition: vi.fn(async () => [{ key: 'user' }, { key: 'missing' }]),
+      nextTreeStateToken: () => 5,
+      publishTreeState,
+      emitEditorMutation,
+      updateActiveTempModel: vi.fn(),
+      dispatchGraphEditEvent,
+      handleError: vi.fn(),
+    });
+
+    await expect(
+      controller.applyGraphEdit(
+        { path: [], valueType: 'object', text: 'miss', value: 'miss', isMissing: true, editable: false } as any,
+        'value',
+        '{"name":"Ada"}',
+      ),
+    ).resolves.toBe(false);
+
+    expect(dispatchGraphEditEvent).not.toHaveBeenCalled();
+    expect(mocked.callSharedWasmWorker).not.toHaveBeenCalled();
+    expect(applyTextEdits).not.toHaveBeenCalled();
+    expect(emitEditorMutation).not.toHaveBeenCalled();
+    expect(publishTreeState).not.toHaveBeenCalled();
+  });
 });

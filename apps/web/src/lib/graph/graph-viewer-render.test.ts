@@ -546,6 +546,77 @@ describe('graph-viewer-render', () => {
     expect(readonlyText.editInner).toBeUndefined();
   });
 
+  it('respects cell-level non-editable state even when draw context is editable', () => {
+    const ctx: DrawContext = {
+      nodeLayer: { add: vi.fn() },
+      styleConfig: {
+        layout: { nodeBorderWidth: 1, rowHeight: 20, rowPaddingInline: 8, headerFontWeight: 600 },
+        colors: {
+          node: { background: '#fafafa', border: '#bbb' },
+          table: {
+            background: '#fff',
+            border: '#ccc',
+            headerBackground: '#fff',
+            headerBorder: '#ccc',
+            rowBackground: '#fff',
+            hoverRowBackground: '#eee',
+            rowBorder: '#ddd',
+            hoverCellBackground: '#f5f5f5',
+          },
+          semanticType: {
+            string: '#00f',
+            number: '#00f',
+            boolean: '#00f',
+            null: '#00f',
+            object: '#00f',
+            array: '#00f',
+            key: '#f00',
+          },
+          textMuted: '#999',
+        },
+        fontFamily: 'sans-serif',
+      },
+      languageIdValue: 'json',
+      fontSize: 12,
+      editable: true,
+      BoxCtor: MockBox,
+      TextCtor: MockText,
+      PenCtor: MockPen,
+      valueTypeToSemType: {
+        string: 'string',
+        number: 'number',
+        boolean: 'boolean',
+        null: 'null',
+        object: 'object',
+        array: 'array',
+      },
+      registerCellBox: vi.fn(),
+      registerRowBox: vi.fn(),
+      registerClickTarget: vi.fn(),
+    };
+    const parent = new MockBox();
+    const missingCell = {
+      ...createCell('miss', 'object', [], 0),
+      isMissing: true,
+      editable: false,
+      textArgs: {
+        x: 0,
+        y: 0,
+        width: 40,
+        height: 20,
+        text: 'miss',
+        textAlign: 'left' as const,
+        verticalAlign: 'middle' as const,
+        editable: false,
+      },
+    };
+
+    const text = createCellText(ctx, parent, missingCell, 'value', 'object') as MockText;
+
+    expect(text.editable).toBe(false);
+    expect(text.editInner).toBeUndefined();
+  });
+
   it('offsets table header and body cells into the inner content box', () => {
     const ctx: DrawContext = {
       nodeLayer: { add: vi.fn() },

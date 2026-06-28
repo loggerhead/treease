@@ -117,7 +117,8 @@ function buildCellTextProps(
   const resolvedMaxWidth = textArgs.width > 0 ? textArgs.width : undefined;
   const resolvedHeight = textArgs.height > 0 ? textArgs.height : ctx.styleConfig.layout.rowHeight;
   const isHeader = kind === 'header';
-  const isEditable = !isHeader && (ctx.editable ?? textArgs.editable);
+  const editingEnabledByContext = ctx.editable ?? true;
+  const isEditable = !isHeader && editingEnabledByContext && textArgs.editable;
   const textAlign =
     kind === 'value' && (nodeKind === 'object' || isHeaderlessSequenceTable(node)) ? 'right' : textArgs.textAlign;
   const semanticColors = ctx.styleConfig.colors.semanticType;
