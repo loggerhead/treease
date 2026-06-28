@@ -243,6 +243,7 @@ pub(crate) fn convert_cell(cell: &core_graph_builder::GraphCell) -> GraphCellDat
     let value = convert_cell_value(cell);
     GraphCellData {
         sem_type: str_sem_type_to_u32(cell.sem_type.as_deref()),
+        is_missing: cell.is_missing,
         path: convert_path(&cell.path),
         text: cell.text.clone(),
         value,

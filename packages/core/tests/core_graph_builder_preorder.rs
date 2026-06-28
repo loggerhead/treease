@@ -236,11 +236,8 @@ fn graph_builder_preorder_uses_event_path_for_sequence_mapping_cells() {
         table.rows[1][1].path,
         vec![PathSeg::Index(1), PathSeg::Key("Action".to_string())]
     );
-    assert_eq!(table.rows[1][2].text, "");
-    assert_eq!(
-        table.rows[1][2].path,
-        vec![PathSeg::Index(1), PathSeg::Key("Description".to_string())]
-    );
+    assert_eq!(table.rows[1][2].text, "miss");
+    assert!(table.rows[1][2].path.is_empty());
 }
 
 // ---------------------------------------------------------------------------

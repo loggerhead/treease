@@ -180,6 +180,7 @@ pub struct TextArgs {
 pub struct GraphCell {
     pub text: String,
     pub sem_type: Option<String>,
+    pub is_missing: bool,
     pub path: Vec<PathSeg>,
     pub value: String,
     pub editable: bool,

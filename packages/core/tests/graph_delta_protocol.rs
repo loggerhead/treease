@@ -821,6 +821,7 @@ fn projection_delta_with_graph_data_serializes() {
 fn graph_delta_with_table_round_trips() {
     let cell = GraphCellData {
         sem_type: 2, // Str
+        is_missing: false,
         path: vec![],
         text: "Alice".into(),
         value: "Alice".into(),

@@ -47,6 +47,18 @@ fn graph_delta_contains_node_path(delta: &GraphDelta, expected: &[&str]) -> bool
         .any(|node| graph_path_matches(&node.path, expected))
 }
 
+fn find_table_node<'a>(
+    delta: &'a GraphDelta,
+    node_path: &[&str],
+) -> &'a treease_core::document::protocol::GraphTableData {
+    delta
+        .nodes_added
+        .iter()
+        .find(|node| graph_path_matches(&node.path, node_path))
+        .and_then(|node| node.table.as_ref())
+        .expect("table node should exist at requested path")
+}
+
 fn assert_graph_json_path_keys_are_strings(value: &serde_json::Value) {
     match value {
         serde_json::Value::Array(items) => {
@@ -187,6 +199,55 @@ fn hover_subgraph_projection_for_header_table_nested_object_stays_inside_request
     assert!(graph_delta_contains_row_key(delta, "StrategicAccountLimit"));
     assert!(!graph_delta_contains_row_key(delta, "TemplateVersion"));
     assert!(!graph_delta_contains_node_path(delta, &["ApiList"]));
+}
+
+#[test]
+fn hover_subgraph_projection_marks_missing_header_table_fields_as_miss_without_clickable_path() {
+    init_wasm();
+    reset_runtime_for_tests();
+    store_analysis_snapshot(
+        "doc-hover-header-table-missing-field",
+        92,
+        "json",
+        r#"{"agent_steps":[{"steps":[{"type":"model","model_info":{"input_tokens":1}},{"type":"tool","name":"render_media"},{"type":"model","model_info":{"input_tokens":2}}]}]}"#,
+    );
+
+    let projection =
+        treease_core::document::projection::build_hover_subgraph_projection(&ProjectionRequest {
+            snapshot_id: SnapshotId(92),
+            path: "$.agent_steps[0].steps".into(),
+        })
+        .expect("header-table missing-field hover projection should build");
+
+    let SnapshotReadResult::Ready { data } = projection else {
+        panic!("hover projection should be ready");
+    };
+    let delta = data
+        .graph_data
+        .as_ref()
+        .expect("hover projection should include graph data");
+    let table = find_table_node(delta, &[]);
+    let model_info_col = table
+        .columns
+        .iter()
+        .position(|cell| cell.text == "model_info")
+        .expect("model_info column should exist");
+
+    let missing = &table.rows[1].cells[model_info_col];
+    assert!(missing.is_missing);
+    assert_eq!(missing.text, "miss");
+    assert_eq!(missing.value, "miss");
+    assert_eq!(missing.path, Vec::<GraphPathSeg>::new());
+    assert_eq!(missing.sem_type, SemType::Map as u32);
+
+    let present = &table.rows[2].cells[model_info_col];
+    assert!(!present.is_missing);
+    assert_eq!(present.text, "{1}");
+    assert_eq!(present.path.len(), 2);
+    assert_eq!(present.path[0].tag, 1);
+    assert_eq!(present.path[0].index, 2);
+    assert_eq!(present.path[1].tag, 0);
+    assert_eq!(present.path[1].key, "model_info");
 }
 
 #[test]

@@ -393,19 +393,18 @@ fn graph_builder_derives_table_columns_and_binds_cells_to_compute_nodes() {
     assert_eq!(table.rows[0][1].text, "1");
     assert_eq!(table.rows[0][1].sem_type, Some("!!int".to_string()));
     assert!(table.rows[0][1].source.is_some());
-    // Row 0: cell at column "c" is empty (no such key in row 0)
-    assert_eq!(table.rows[0][3].text, "");
+    // Row 0: missing header-table field is rendered as miss and is not clickable
+    assert_eq!(table.rows[0][3].text, "miss");
     assert!(table.rows[0][3].source.is_none());
-    assert_eq!(table.rows[0][3].path.len(), 2);
-    assert!(matches!(table.rows[0][3].path[0], PathSeg::Index(0)));
-    assert!(matches!(table.rows[0][3].path[1], PathSeg::Key(_)));
-    assert_eq!(table.rows[0][3].path[1], PathSeg::Key("c".to_owned()));
-    // Row 1: cell at column "a" is empty (no such key in row 1)
-    assert_eq!(table.rows[1][1].text, "");
+    assert!(table.rows[0][3].path.is_empty());
+    assert_eq!(table.rows[0][3].value, "miss");
+    assert_eq!(table.rows[0][3].sem_type, Some("!!int".to_string()));
+    // Row 1: missing header-table field is rendered as miss and is not clickable
+    assert_eq!(table.rows[1][1].text, "miss");
     assert!(table.rows[1][1].source.is_none());
-    assert_eq!(table.rows[1][1].path.len(), 2);
-    assert!(matches!(table.rows[1][1].path[0], PathSeg::Index(1)));
-    assert_eq!(table.rows[1][1].path[1], PathSeg::Key("a".to_owned()));
+    assert!(table.rows[1][1].path.is_empty());
+    assert_eq!(table.rows[1][1].value, "miss");
+    assert_eq!(table.rows[1][1].sem_type, Some("!!int".to_string()));
     // Row 1: cell at column "c" has text "4", source points to v4
     assert_eq!(table.rows[1][3].text, "4");
     assert!(table.rows[1][3].source.is_some());
@@ -1181,11 +1180,11 @@ fn graph_builder_keeps_dedicated_fallback_value_column_for_heterogeneous_header_
     assert_eq!(table.rows[0][1].text, "1");
     assert_eq!(table.rows[0][2].text, "");
 
-    // Row 1: scalar "2" -> "" in column "a", "2" in fallback
+    // Row 1: scalar "2" keeps the fallback value column; non-mapping rows still leave object columns empty
     assert_eq!(table.rows[1][1].text, "");
     assert_eq!(table.rows[1][2].text, "2");
 
-    // Row 2: sequence [3, 4] -> "" in column "a", "[2]" in fallback
+    // Row 2: sequence [3, 4] keeps the fallback value column; non-mapping rows still leave object columns empty
     assert_eq!(table.rows[2][1].text, "");
     assert_eq!(table.rows[2][2].text, "[2]");
     assert!(table.rows[2][2].editable);
@@ -1221,7 +1220,7 @@ fn graph_builder_preserves_object_columns_while_heterogeneous_rows_use_fallback_
     assert_eq!(table.rows[1][1].text, "2");
     assert_eq!(table.rows[1][2].text, "");
 
-    // Row 2: scalar "3" -> uses fallback column
+    // Row 2: scalar "3" -> uses fallback column while object column stays empty for non-mapping rows
     assert_eq!(table.rows[2][1].text, "");
     assert_eq!(table.rows[2][2].text, "3");
 }

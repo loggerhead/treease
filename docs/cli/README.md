@@ -34,7 +34,7 @@ cat payload.json | treease web -p json -o json '.' -
 
 The command prints a `127.0.0.1` URL containing a random token and keeps running in the foreground until interrupted. It does not auto-open a browser. The page can be refreshed while the command is still running.
 
-The graph page uses the same Web `ViewportPanel` / `GraphViewer` stack as the editor, but it is fullscreen, graph-only, and readonly. Search, zoom, export, hover previews, and minimap behavior remain available when applicable.
+The graph page uses the same Web `ViewportPanel` / `GraphViewer` stack as the editor, but it is fullscreen, graph-only, and readonly. Search, zoom, export, click reveal, and minimap behavior remain available when applicable.
 
 Supported web options are format/display options: `--input-format`, `--output-format`, `--prettyPrint`, `--indent`, `--unwrapScalar`, and `--no-doc`. `treease web` rejects `--inplace`, `--exit-status`, multiple input files, and `--null-input`.
 

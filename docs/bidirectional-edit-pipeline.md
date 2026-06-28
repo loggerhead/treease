@@ -68,6 +68,24 @@ Graph inline edit
   → Core/WASM plan_graph_value_edit(documentKey, snapshotId, language, path, preferKey, value)
 ```
 
+子图工作区在 Graph → Editor 方向上有两个入口，但 authority 相同：
+
+```text
+workspace graph pane（Leafer）
+  → 双击 cell / inline edit
+  → GraphValueEditController.activeEditState
+  → commitTextEdit
+  → applyGraphEdit
+
+workspace content pane（Monaco hidden sidecar tab）
+  → Monaco model 本地草稿
+  → onContentChange / onBlur
+  → commitSubgraphWorkspaceValueEdit
+  → applyGraphEdit
+```
+
+两条入口最终都必须收敛到同一个 `applyGraphEdit -> planGraphValueEdit -> DocumentTextEdit[] / replace` 主链；workspace 只是 UI 入口，不是新的 planner authority。
+
 ### planner 语义
 
 - planner 必须绑定 `documentKey + snapshotId + path`。
@@ -96,6 +114,14 @@ Graph inline edit
 - invalid path / replacement
 - unsafe edit
 - CSV key edit
+
+## 3. 子图工作区的编辑所有权
+
+- graph pane 的草稿真源是 Leafer inner editor；`GraphValueEditController.activeEditState` 记录当前正在编辑的 `cell/path/kind/initialText`。
+- content pane 的草稿真源是它自己的 Monaco model；`pane.content.sourceText` 只是最近一次 committed 文本，不是正在编辑时的 authority。
+- content pane 允许外部 committed 文本回灌 Monaco 的条件只有：pane 当前不 dirty 且未 focused。dirty 或 focused 时，外部 refresh 只能作为 pending committed state 存在，不能覆盖本地草稿。
+- 同一路径的 content pane 提交必须串行化：若前一次 `applyGraphEdit` 尚未完成，后续输入只能替换“最新待提交草稿”；当前提交完成后再补交最新草稿，避免 freshness/revision 保护把后续输入静默丢弃。
+- graph pane 与 content pane 都不应该在 `GraphViewer` 再复制一份完整 draft 文本；`GraphViewer` 负责 path、pane 生命周期与提交编排，不负责成为草稿 authority。
 
 ## 链路节点复杂度
 

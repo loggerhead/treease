@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { normalizeWorkspaceGraphEdgeRows, rebaseSubgraphWorkspacePath } from './graph-subgraph-workspace';
+import {
+  normalizeWorkspaceGraphEdgeRows,
+  rebaseSubgraphWorkspacePath,
+  shouldIgnoreSubgraphOpenCell,
+} from './graph-subgraph-workspace';
 import type { GraphEdge, GraphNode } from '../../graph/graph-viewer-render';
 import type { PathSeg } from '../../store/tree-path';
 import { PathSegTag } from '@core-wasm/index';
@@ -139,5 +143,39 @@ describe('rebaseSubgraphWorkspacePath', () => {
 
   it('maps empty relative paths back to the workspace root path', () => {
     expect(rebaseSubgraphWorkspacePath([keySeg('preview')], [])).toEqual([keySeg('preview')]);
+  });
+});
+
+describe('shouldIgnoreSubgraphOpenCell', () => {
+  it('ignores miss placeholder cells for subgraph expansion', () => {
+    expect(
+      shouldIgnoreSubgraphOpenCell({
+        text: 'miss',
+        value: 'miss',
+        isMissing: true,
+        valueType: 'object',
+        isIndex: false,
+        path: [],
+        editable: false,
+        boxArgs: { x: 0, y: 0, width: 0, height: 0, cornerRadius: 0 },
+        textArgs: { x: 0, y: 0, width: 0, height: 0, text: 'miss', textAlign: 'left', verticalAlign: 'middle', editable: false },
+      }),
+    ).toBe(true);
+  });
+
+  it('keeps real user values clickable even when their text is miss', () => {
+    expect(
+      shouldIgnoreSubgraphOpenCell({
+        text: 'miss',
+        value: 'miss',
+        isMissing: false,
+        valueType: 'string',
+        isIndex: false,
+        path: [keySeg('label')],
+        editable: true,
+        boxArgs: { x: 0, y: 0, width: 0, height: 0, cornerRadius: 0 },
+        textArgs: { x: 0, y: 0, width: 0, height: 0, text: 'miss', textAlign: 'left', verticalAlign: 'middle', editable: true },
+      }),
+    ).toBe(false);
   });
 });

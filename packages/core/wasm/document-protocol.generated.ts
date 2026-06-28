@@ -91,6 +91,7 @@ export interface GraphTextArgs {
 
 export interface GraphCellData {
     semType: number;
+    isMissing: boolean;
     path: GraphPathSeg[];
     text: string;
     value: string;

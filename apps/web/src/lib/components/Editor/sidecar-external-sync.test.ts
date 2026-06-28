@@ -13,7 +13,6 @@ describe('createSidecarExternalSync', () => {
       acceptedText: '"A"',
       dirty: true,
       focused: true,
-      pendingText: '"A"',
     });
 
     sync.blur();
@@ -24,7 +23,6 @@ describe('createSidecarExternalSync', () => {
       acceptedText: '"AB"',
       dirty: false,
       focused: false,
-      pendingText: null,
     });
   });
 
@@ -37,7 +35,6 @@ describe('createSidecarExternalSync', () => {
     expect(sync.snapshot()).toMatchObject({
       acceptedText: '"B"',
       dirty: false,
-      pendingText: null,
     });
   });
 });

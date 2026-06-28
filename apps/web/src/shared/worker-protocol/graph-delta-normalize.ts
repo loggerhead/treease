@@ -123,6 +123,7 @@ function emptyCellValue() {
   return {
     text: '',
     value: '',
+    isMissing: false,
     valueType: 'string' as const,
     isIndex: false,
     path: [],
@@ -159,6 +160,7 @@ export function normalizeRawCell(cell: any) {
   return {
     text: displayText,
     value,
+    isMissing: cell.isMissing === true || cell.is_missing === true,
     valueType,
     isIndex: cell.isIndex === true,
     path: normalizeDeltaPath(cell.path),

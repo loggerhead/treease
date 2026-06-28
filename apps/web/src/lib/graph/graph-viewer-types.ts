@@ -24,6 +24,7 @@ export type GraphCellKind = 'meta' | 'key' | 'value' | 'header';
 export type GraphCell = {
   text: string;
   value: string;
+  isMissing?: boolean;
   isTableCell?: boolean;
   isHeader?: boolean;
   isIndex?: boolean;

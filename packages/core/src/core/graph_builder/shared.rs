@@ -72,6 +72,26 @@ pub(super) fn header_table_needs_fallback_value_column(node: &TreeNode) -> bool 
     !has_mapping_key
 }
 
+pub(super) fn infer_header_table_column_sem_type(node: &TreeNode, key: &str) -> Option<String> {
+    for item in &node.content {
+        if item.kind != NodeKind::Mapping {
+            continue;
+        }
+        let mut index = 0;
+        while index + 1 < item.content.len() {
+            let key_node = &item.content[index];
+            let value_node = &item.content[index + 1];
+            if key_node.value == key {
+                return value_node
+                    .resolved_sem_type()
+                    .map(|sem| sem.tag().to_owned());
+            }
+            index += 2;
+        }
+    }
+    None
+}
+
 pub(super) fn set_row_bounds(row: &mut GraphRow, x: i32, y: i32, width: i32, height: i32) {
     set_bounds(&mut row.bounds, x, y, width, height);
     row.box_args = BoxArgs {

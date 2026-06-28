@@ -186,6 +186,7 @@ pub struct GraphTextArgs {
 #[serde(rename_all = "camelCase")]
 pub struct GraphCellData {
     pub sem_type: u32,
+    pub is_missing: bool,
     pub path: Vec<GraphPathSeg>,
     pub text: String,
     pub value: String,

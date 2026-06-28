@@ -2,7 +2,9 @@ use crate::operators::{NodeKind, TreeNode};
 
 use super::node_meta::display_text_for_node;
 use super::sequence_graph::sequence_presentation;
-use super::shared::{append_path, header_table_needs_fallback_value_column};
+use super::shared::{
+    append_path, header_table_needs_fallback_value_column, infer_header_table_column_sem_type,
+};
 use super::{GraphBuilder, GraphCell, GraphRow, GraphTable, PathSeg, SequencePresentation};
 use crate::core::graph_identity::canonical_path_key;
 
@@ -186,7 +188,7 @@ pub(super) fn build_header_table_columns(
     for k in &keys {
         cols.push(GraphCell {
             text: k.clone(),
-            sem_type: None,
+            sem_type: infer_header_table_column_sem_type(node, k),
             path: Vec::new(),
             value: String::new(),
             editable: false,
@@ -254,7 +256,7 @@ pub(super) fn build_table_rows(
                 if let Some(v) = value_node {
                     cells.push(cell_from_node_value(builder, v, &cell_path));
                 } else {
-                    cells.push(empty_cell(&cell_path));
+                    cells.push(missing_field_cell(col));
                 }
                 c += 1;
             }
@@ -319,6 +321,19 @@ fn empty_cell(path: &[PathSeg]) -> GraphCell {
         sem_type: None,
         path: path.to_vec(),
         value: String::new(),
+        editable: false,
+        source: None,
+        ..GraphCell::default()
+    }
+}
+
+fn missing_field_cell(column: &GraphCell) -> GraphCell {
+    GraphCell {
+        text: "miss".to_string(),
+        sem_type: column.sem_type.clone(),
+        is_missing: true,
+        path: Vec::new(),
+        value: "miss".to_string(),
         editable: false,
         source: None,
         ..GraphCell::default()

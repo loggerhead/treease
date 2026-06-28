@@ -127,7 +127,11 @@ pub(crate) fn build_aligned_row_from_mapping(
             }
         } else {
             GraphCell {
-                path: cell_path,
+                text: "miss".to_string(),
+                sem_type: column.sem_type.clone(),
+                is_missing: true,
+                value: "miss".to_string(),
+                editable: false,
                 ..GraphCell::default()
             }
         };

@@ -778,10 +778,36 @@ describe('StreamUpdateHandler', () => {
       const column = state.nodes.get(4)?.table?.columns?.[1];
       expect(column).toEqual(expect.objectContaining({
         text: 'b',
+        isMissing: false,
         valueType: 'object',
         boxArgs: { x: 50, y: 0, width: 100, height: 20, cornerRadius: 0 },
         textArgs: expect.objectContaining({ textAlign: 'right', verticalAlign: 'bottom' }),
       }));
+    });
+
+    it('preserves explicit missing-cell metadata from protocol', () => {
+      const state = createEmptyStreamState();
+      state.nodes.set(5, makeTableNode(5, ['a'], ['r1']));
+      const delta = {
+        normalized: true, clear: 0,
+        nodesAdded: [], nodesUpdated: [], nodesRemoved: [],
+        edgesAdded: [], edgesRemoved: [],
+        tablePatches: [{
+          kind: 'columnsAdded',
+          tableHandle: 5,
+          columns: [{
+            text: 'miss',
+            value: 'miss',
+            isMissing: true,
+            semType: 5,
+            boxArgs: { x: 50, y: 0, width: 100, height: 20, cornerRadius: 0 },
+            textArgs: { x: 50, y: 0, width: 100, height: 20, text: 'miss', textAlign: 0, textVerticalAlign: 1, editable: 0 },
+          }],
+        }],
+      };
+      applyGraphDeltaToState(delta, state);
+
+      expect(state.nodes.get(5)?.table?.columns?.[1]?.isMissing).toBe(true);
     });
   });
 

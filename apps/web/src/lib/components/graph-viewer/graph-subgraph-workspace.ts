@@ -106,6 +106,10 @@ export function formatSubgraphWorkspacePath(path: PathSeg[], renderConfig: Graph
   return `...${buildMetaPathText(tail)}`;
 }
 
+export function shouldIgnoreSubgraphOpenCell(cell: GraphCell | null | undefined): boolean {
+  return cell?.isMissing === true;
+}
+
 function buildWorkspacePathKey(path: PathSeg[]): string {
   if (!path.length) return '';
   return path.map((segment) => (isPathSegKey(segment) ? `k:${pathSegKeyValue(segment)}` : `i:${segment.index}`)).join('|');

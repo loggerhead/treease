@@ -1,6 +1,18 @@
 import { readFileSync } from 'node:fs';
 import { expect, test } from './fixtures';
-import { clickGraphProbeAt, dropFile, getMonacoValue, readEditorState, readGraphClickProbes, setEditorContent, setMonacoPositionByText, waitForEditorReady, waitForGraphRendered } from './utils';
+import {
+  callTreeaseWorker,
+  clickGraphProbeAt,
+  dropFile,
+  evaluateTreease,
+  getMonacoValue,
+  readEditorState,
+  readGraphClickProbes,
+  setEditorContent,
+  setMonacoPositionByText,
+  waitForEditorReady,
+  waitForGraphRendered,
+} from './utils';
 
 test.setTimeout(20_000);
 
@@ -189,4 +201,65 @@ test('trajectory fixture subgraph workspace keeps pane-sized viewport but preser
   expect(metrics.viewHeight).toBe(metrics.clientHeight);
   expect(metrics.scrollWidth).toBeLessThanOrEqual(metrics.clientWidth * 2);
   expect(metrics.scrollHeight).toBeLessThanOrEqual(metrics.clientHeight * 2);
+});
+
+test('trajectory fixture workspace projection keeps model_info cell paths aligned with row data', async ({ page }) => {
+  await page.goto('/editor');
+  await waitForEditorReady(page);
+  await setEditorContent(page, {
+    sourceText: TRAJECTORY_FIXTURE_TEXT,
+    language: 'json',
+  });
+  await waitForGraphRendered(page, 15_000);
+
+  const editorState = await readEditorState(page);
+  const interactionState = await evaluateTreease(page, (treease) => treease.graph.getInteractionState());
+  expect(interactionState?.snapshotId).toBeTruthy();
+
+  const projection = await callTreeaseWorker<{
+    status: string;
+    data?: { clear: boolean; graphData: Record<string, unknown> | null };
+  }>(page, 'buildHoverSubgraphProjection', {
+    documentKey: editorState.documentKey,
+    snapshotId: interactionState?.snapshotId,
+    path: '$.agent_steps[0].steps',
+  });
+
+  expect(projection.status).toBe('ready');
+  expect(projection.data?.graphData).toBeTruthy();
+  const rawNodes = Array.isArray((projection.data?.graphData as { nodesAdded?: unknown[] } | undefined)?.nodesAdded)
+    ? (((projection.data?.graphData as { nodesAdded?: unknown[] }).nodesAdded ?? []) as Array<Record<string, any>>)
+    : [];
+  const tableNode = rawNodes.find((node) => node?.table && Array.isArray(node.table?.rows));
+  expect(tableNode).toBeTruthy();
+  if (!tableNode?.table) throw new Error('trajectory steps table node missing');
+
+  const modelInfoColumnIndex = tableNode.table.columns.findIndex((cell: Record<string, any>) => cell?.text === 'model_info');
+  expect(modelInfoColumnIndex).toBeGreaterThanOrEqual(0);
+  const typeColumnIndex = tableNode.table.columns.findIndex((cell: Record<string, any>) => cell?.text === 'type');
+  const nameColumnIndex = tableNode.table.columns.findIndex((cell: Record<string, any>) => cell?.text === 'name');
+
+  const formatRawPath = (path: Array<Record<string, any>>) =>
+    path
+      .map((segment) => {
+        const key = typeof segment?.key === 'string' ? segment.key : '';
+        return key.length > 0 ? key : `[${Number(segment?.index ?? 0)}]`;
+      })
+      .join('.');
+
+  const rowSummaries = tableNode.table.rows.map((row: Record<string, any>, rowIndex: number) => ({
+    rowIndex,
+    type: row?.cells?.[typeColumnIndex]?.text ?? '',
+    name: row?.cells?.[nameColumnIndex]?.text ?? '',
+    modelInfoText: row?.cells?.[modelInfoColumnIndex]?.text ?? '',
+    modelInfoPath: formatRawPath(row?.cells?.[modelInfoColumnIndex]?.path ?? []),
+  }));
+  const modelInfoPaths = rowSummaries.map((row) => row.modelInfoPath);
+
+  expect(rowSummaries, JSON.stringify(rowSummaries, null, 2)).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ rowIndex: 5, type: 'tool', modelInfoText: 'miss', modelInfoPath: '' }),
+      expect.objectContaining({ rowIndex: 6, type: 'model', modelInfoText: '{6}', modelInfoPath: '[6].model_info' }),
+    ]),
+  );
 });
