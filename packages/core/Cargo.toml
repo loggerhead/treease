@@ -17,7 +17,7 @@ categories = ["parser-implementations", "parsing"]
 # MM: two-digit month
 # DD: two-digit day of month
 # HH: two-digit hour in 24-hour time
-wasm_release_date = "26062410"
+wasm_release_date = "26062907"
 
 [lib]
 path = "src/lib.rs"

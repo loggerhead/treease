@@ -1,7 +1,7 @@
 {
 	"name": "treease-web",
 	"private": true,
-	"version": "1.0.1",
+	"version": "1.0.2",
 	"type": "module",
 	"scripts": {
 		"assets:r2:upload": "node ./scripts/upload-r2-assets.mjs",
