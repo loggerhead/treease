@@ -1,4 +1,3 @@
-import { buildTooltipContent } from '../graph/graph-viewer-path';
 import { editorStore } from '../store/editor-store';
 import { settingsStore } from '../settings/settings-store';
 import { callSharedWasmWorker } from '../wasm/wasm-worker-singleton';
@@ -6,7 +5,6 @@ import type {
   TreeaseGraphBuildResult,
   TreeaseGraphRuntime,
   TreeaseGraphStreamState,
-  TreeaseGraphTooltipRequest,
 } from './types';
 import {
   clearTreeaseGraphRuntime,
@@ -26,14 +24,6 @@ export function clearGraphBridge(): void {
 
 export function installGraphExtrasBridge(): void {
   registerTreeaseGraphExtras({
-    buildTooltipContent: ({ target, currentData, language }: TreeaseGraphTooltipRequest) => {
-      const state = editorStore.get();
-      return buildTooltipContent(
-        currentData ?? state.treeState?.value ?? null,
-        target,
-        language ?? state.languageId,
-      );
-    },
     buildGraph: async () => {
       const state = editorStore.get();
       const settings = settingsStore.get();

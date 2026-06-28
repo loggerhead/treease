@@ -89,7 +89,7 @@ export default defineConfig({
     include: ['src/**/*.test.ts', 'test/integration/**/*.test.ts'],
     coverage: {
       provider: 'v8',
-      exclude: ['src/lib/components/ui/**', 'src/lib/leafer-x-tooltip/**', 'test/**', 'src/**/*_gen.ts'],
+      exclude: ['src/lib/components/ui/**', 'test/**', 'src/**/*_gen.ts'],
       reporter: ['text', 'html', 'lcov'],
       reportsDirectory: 'coverage',
       thresholds: {

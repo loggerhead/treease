@@ -22,13 +22,12 @@
   import { callSharedWasmWorker } from '../wasm/wasm-worker-singleton';
   import { getActiveDocumentSnapshotId } from '../services/DocumentSessionService';
   import { getFullEditDocumentJobSession } from '../graph-stream/full-edit-document-job-session';
-  import { buildReadablePath, isPathSegKey, pathSegKeyValue, type PathSeg } from '../store/tree-path';
+  import { buildReadablePath, type PathSeg } from '../store/tree-path';
   import { type MinimapViewData } from '../leafer-minimap';
   import GraphRuntimeHost from './graph-viewer/GraphRuntimeHost.svelte';
   import GraphRuntimeLoading from './graph-viewer/GraphRuntimeLoading.svelte';
   import GraphStreamProgressOverlay from './graph-viewer/GraphStreamProgressOverlay.svelte';
   import SidecarEditor from './Editor/SidecarEditor.svelte';
-  import { canOpenSubgraphPreviewForCell, createGraphHoverPanelController } from './graph-viewer/graph-hover-panel';
   import { createGraphPointerController, type LeaferEventTarget } from './graph-viewer/graph-pointer-controller';
   import { createGraphRuntimeProbeController } from './graph-viewer/graph-runtime-probe-controller';
   import {
@@ -36,7 +35,6 @@
     type GraphStreamProgressState,
   } from './graph-viewer/graph-stream-progress';
   import { createGraphTextLinkageController } from './graph-viewer/graph-text-linkage';
-  import { createGraphTooltipRuntimeController } from './graph-viewer/graph-tooltip-runtime-controller';
   import { createGraphMinimapRuntimeController } from './graph-viewer/graph-minimap-runtime-controller';
   import { createGraphValueEditController } from './graph-viewer/graph-value-edit';
   import { createGraphViewportController, type LeaferZoomLayer } from './graph-viewer/graph-viewport-controller';
@@ -47,6 +45,7 @@
     formatSubgraphWorkspacePath,
     rebaseSubgraphWorkspacePath,
     renderSubgraphWorkspaceGraph,
+    shouldIgnoreSubgraphOpenCell,
   } from './graph-viewer/graph-subgraph-workspace';
   import {
     getCellEntry,
@@ -70,7 +69,6 @@
   import {
     buildGraphHighlightSignature,
     shouldApplyGraphHighlight,
-    shouldRunHoverPanelPrewarm,
   } from './graph-viewer/graph-viewer-highlight-effects';
   import { createGraphViewerRenderEffects } from './graph-viewer/graph-viewer-render-effects';
   import {
@@ -81,14 +79,10 @@
     CellBoxEntry,
     LeaferAppLike,
     LeaferBox,
-    LeaferInteractiveTarget,
-    LeaferText,
     ScrollableBox,
     TooltipPanelRuntime,
   } from './graph-viewer/model';
   import type {
-    GraphRuntimeHoverPanelDebugState,
-    GraphRuntimeHoverPreviewState,
     GraphRuntimeProbeTarget,
   } from './graph-viewer/runtime/scene-types';
   import { editorLanguageFallback, type SupportedEditorLanguageId } from '../monaco/language-support';
@@ -97,7 +91,7 @@
   import { GRAPH_CONFIG } from '../config/constants';
   import { formatScalarLiteral } from '../graph/literal-display';
   import { type GraphCell, type GraphCellKind, type GraphNode, type ValueType } from '../graph/graph-viewer-render';
-  import { buildPathKey, buildTooltipContent, getValueAtPath } from '../graph/graph-viewer-path';
+  import { buildPathKey, getValueAtPath } from '../graph/graph-viewer-path';
   import type { TooltipPanelGraphData } from './graph-viewer/graph-hover-panel-types';
   import { isDocumentRevisionGuardCurrent } from '../guards/document-revision-guard';
   import {
@@ -146,7 +140,6 @@
   let editorRevisionValue = 0;
   let graphRenderGuard: GraphRenderGuard | null = null;
   let editorIOValue: EditorIO | null = null;
-  let pendingHoverPanelPrewarmRevision = -1;
   let lastAutoOffset: { x: number; y: number } | null = null;
   let edgeLayer: Box | null = null;
   let nodeLayer: Box | null = null;
@@ -174,8 +167,6 @@
   let nodeBoxMap = new Map<number, LeaferBox>();
   let pathKeyToRenderHandleMap = new Map<string, number>();
   let cellBoxByPathMap = new Map<string, CellBoxEntry>();
-  let runtimeHoverPreviewState: GraphRuntimeHoverPreviewState | null = null;
-  let runtimeHoverPanelDebugState: GraphRuntimeHoverPanelDebugState = { phase: 'idle', error: '' };
   let lastAppliedGraphHighlightSignature = '';
   let lastAppliedGraphHighlightRevision = -1;
   let treeStateToken = 0;
@@ -197,7 +188,7 @@
   let subgraphWorkspaceVisiblePanes: Array<SubgraphWorkspacePaneState & { visibleIndex: number; absoluteIndex: number }> = [];
   let subgraphWorkspaceHostMap = new Map<string, HTMLDivElement>();
   let subgraphWorkspaceRuntimeMap = new Map<string, TooltipPanelRuntime>();
-  let subgraphWorkspacePendingEditMap = new Map<string, boolean>();
+  let subgraphWorkspacePendingEditKeys = new Set<string>();
   let subgraphWorkspaceQueuedEditMap = new Map<string, string>();
   let subgraphWorkspaceRenderSignature = '';
   let subgraphWorkspaceRefreshSignature = '';
@@ -205,7 +196,6 @@
   let subgraphWorkspaceRefreshToken = 0;
 
   let graphSceneController: ReturnType<typeof createGraphSceneController>;
-  let hoverPanelController: ReturnType<typeof createGraphHoverPanelController>;
   let graphRuntimeProbeController: ReturnType<typeof createGraphRuntimeProbeController>;
   let lastFullEditProgressActive = false;
   let lastFullEditIncrementalActive = false;
@@ -330,7 +320,7 @@
   const centerOnNode = (node: GraphNode) => graphViewportController.centerOnNode(node);
   const registerClickTarget = (target: LeaferBox, cell: GraphCell, kind: GraphCellKind, nodeKind?: GraphNode['kind']) =>
     graphRuntimeProbeController?.registerRootClickTarget(target, cell, kind, nodeKind) ?? '';
-  const getRuntimeProbeTargets = (scope: 'root' | 'panel' = 'root') =>
+  const getRuntimeProbeTargets = (scope: 'root' = 'root') =>
     graphRuntimeProbeController?.getRuntimeProbeTargets(scope) ?? [];
   const getSubgraphWorkspaceProbeTargets = (): GraphRuntimeProbeTarget[] => {
     const workspaceHost = document.querySelector("[data-testid='graph-subgraph-workspace']") as HTMLElement | null;
@@ -445,7 +435,6 @@
     publishTreeState,
     emitEditorMutation: editorStore.actions.emitMutation,
     updateActiveTempModel: (updater) => activeTempModel.update(updater),
-    refreshTooltipVisibility: () => graphTooltipRuntimeController.refreshVisibility(),
     dispatchGraphEditEvent: (type, detail) => emitGraphEditEvent(type, detail),
     handleError,
   });
@@ -453,7 +442,6 @@
   const applyGraphEdit = graphValueEditController.applyGraphEdit;
   const bindGraphEditorLifecycle = graphValueEditController.bindGraphEditorLifecycle;
   const resetActiveEditState = graphValueEditController.resetActiveEditState;
-  const commitTooltipPanelProbe = graphValueEditController.commitTooltipPanelProbe;
   const subgraphWorkspaceGraphCache = createSubgraphWorkspaceGraphCache({
     getActiveSnapshotId: () => graphRenderCoordinator.getActiveSnapshotId(),
     getDocumentKey: () => documentKeyValue,
@@ -467,12 +455,6 @@
   function clearGraphViewerTestHooks(): void {
     clearGraphViewerTestHookState({
       clearRuntimeProbeState: () => graphRuntimeProbeController?.clearTestState(),
-      setRuntimeHoverPreviewState: (state) => {
-        runtimeHoverPreviewState = state;
-      },
-      setRuntimeHoverPanelDebugState: (state) => {
-        runtimeHoverPanelDebugState = state;
-      },
     });
   }
 
@@ -569,7 +551,6 @@
         const renderedLanguage = mode === 'json-block' ? 'json' : languageIdValue;
         graphRenderEffects?.markRendered(renderedDocumentKey, revision, renderedText, renderedLanguage);
         graphAppliedRevision.set(revision);
-        pendingHoverPanelPrewarmRevision = revision;
         replaceGraphStreamState({
           ...(window._treease?.graph.getStreamState() ?? { partialSeen: false, finalSeen: false }),
           appliedAtMs:
@@ -698,53 +679,6 @@
     getLastRenderedGraph: () => graphSceneController.getLastGraphData(),
   });
 
-  hoverPanelController = createGraphHoverPanelController({
-    getCurrentData: () => currentData,
-    getLanguageId: () => languageIdValue,
-    getActiveSnapshotId: () => graphRenderCoordinator.getActiveSnapshotId(),
-    getSourceText: () => $sourceText ?? '',
-    getDocumentKey: () => documentKeyValue,
-    getRevision: () => editorRevisionValue,
-    getEnableNest: () => $settings.parser.enableNest,
-    getRenderConfig: () => renderConfig,
-    getSettings: () => $settings,
-    getConstructors: () => ({ LeaferCtor, PlainLeaferCtor, BoxCtor, TextCtor, PenCtor }),
-    getTooltipEvents: () => ({ LeaferEvent: LeaferEventCtor, PointerEvent: PointerEventCtor }),
-    getValueTypeToSemType: () => valueTypeToSemType as Record<string, string>,
-    isReadonly: () => readonly,
-    getRootClickTargets: () => listClickTargetProbes(),
-    setRuntimeHoverPreviewState: (preview) => {
-      runtimeHoverPreviewState = preview;
-    },
-    setRuntimeHoverPanelDebugState: (state) => {
-      runtimeHoverPanelDebugState = state;
-    },
-    bindGraphEditorLifecycle,
-    canOpenSubgraphPreviewForCell,
-    resolveTreePathByPosition,
-    resolveInteractiveCellPath,
-    inferGraphPaths: graphSceneController.inferGraphPaths,
-    upsertCellEntry,
-    updateCellEntry,
-    registerPanelClickTarget: (store, targetIds, boundTargets, box, cell, kind, nodeKind) =>
-      graphRuntimeProbeController.registerPanelClickTarget(store, targetIds, boundTargets, box, cell, kind, nodeKind),
-    bindVerticalScrollGesture: (target, handler) => graphPointerController.bindVerticalScrollGesture(target, handler),
-    bindPointerDown: (target, handler) => graphPointerController.bindPointerDown(target, handler),
-    getPointFromEvent: (hostApp, target, event, space) =>
-      graphPointerController.getPointFromEvent(hostApp, target, event, space),
-    refreshTooltipPosition: () => graphTooltipRuntimeController.refreshPosition(),
-    handleError,
-  });
-  const graphTooltipRuntimeController = createGraphTooltipRuntimeController({
-    hoverPanelController,
-    resolveTooltipHoverTarget,
-    getTooltipContent: getRuntimeTooltipContent,
-    hasActiveEdit,
-    isFullEditInteractionBlocked,
-    setRuntimeHoverPanelDebugState: (state) => {
-      runtimeHoverPanelDebugState = state as GraphRuntimeHoverPanelDebugState;
-    },
-  });
   const graphMinimapRuntimeController = createGraphMinimapRuntimeController({
     getViewData: () => toMinimapViewData(graphSceneController.getLastGraphData()),
     onViewportChange: () => {
@@ -762,7 +696,6 @@
   function syncReadonlyEditability(): void {
     resetActiveEditState();
     closeGraphInnerEditor();
-    hoverPanelController.destroyTooltipPanelRuntime();
     const graphData = graphSceneController.getLastGraphData();
     if (!graphData) return;
     graphSceneController.replaceAll(graphData);
@@ -781,16 +714,6 @@
     bindPointerClick: (target, handler) => graphPointerController.bindPointerClick(target, handler),
     getContainerRect: () => container?.getBoundingClientRect() ?? null,
     getRootClickTargets: () => listClickTargetProbes(),
-    getPanelClickTargets: () =>
-      (
-        hoverPanelController as {
-          getTooltipPanelClickTargets?: () => ReturnType<typeof listClickTargetProbes>;
-        }
-      ).getTooltipPanelClickTargets?.() ?? [],
-    getPanelPath: () =>
-      (hoverPanelController as { getTooltipPanelPath?: () => PathSeg[] }).getTooltipPanelPath?.() ?? [],
-    getPanelApp: () =>
-      (hoverPanelController as { getTooltipPanelApp?: () => LeaferAppLike | null }).getTooltipPanelApp?.() ?? null,
     getRootApp: () => leafer as LeaferAppLike | null,
     getCellBoxByPathMap: () => cellBoxByPathMap,
     buildPathKey,
@@ -831,11 +754,20 @@
     },
     onRegisteredTargetClick: async ({ path, target, cell, scope }) => {
       if (scope !== 'root') return;
+      if (shouldIgnoreSubgraphOpenCell(cell)) return;
       void cell;
       void target;
       await openSubgraphWorkspacePath(path, -1);
     },
-    commitTooltipPanelProbe,
+    commitProbe: async ({ cell, kind }, text) => {
+      if (kind !== 'key' && kind !== 'value') return false;
+      emitGraphEditEvent('graph-edit-open', {
+        path: cell.path,
+        kind,
+        valueType: cell.valueType,
+      });
+      return applyGraphEdit(cell, kind, text, null);
+    },
   });
 
   function getLeaferContentRoot(target: LeaferAppOrLeafer | null): Box | null {
@@ -1020,39 +952,6 @@
     };
   }
 
-  function resolveInteractiveHoverTarget(target: LeaferInteractiveTarget | null): LeaferText | null {
-    let current = target;
-    while (current) {
-      if (current.__graphCell && current.__graphCellKind) {
-        return current as LeaferText;
-      }
-      current = current.parent ?? null;
-    }
-    return null;
-  }
-
-  function resolveTooltipHoverTarget(node: LeaferInteractiveTarget | null): LeaferText | null {
-    return resolveInteractiveHoverTarget(node);
-  }
-
-  function hasResolvedWorkspaceValue(data: unknown, path: PathSeg[]): boolean {
-    if (!path.length) return data !== undefined;
-    let target: unknown = data;
-    for (const segment of path) {
-      if (target == null || typeof target !== 'object') return false;
-      if (Array.isArray(target)) {
-        if (segment.tag !== PathSegTag.INDEX || segment.index < 0 || segment.index >= target.length) return false;
-        target = target[segment.index];
-        continue;
-      }
-      if (!isPathSegKey(segment)) return false;
-      const key = pathSegKeyValue(segment);
-      if (!(key in (target as Record<string, unknown>))) return false;
-      target = (target as Record<string, unknown>)[key];
-    }
-    return true;
-  }
-
   function inferWorkspaceValueType(value: unknown): ValueType {
     if (value == null) return 'null';
     if (Array.isArray(value)) return 'array';
@@ -1063,8 +962,8 @@
   }
 
   function buildSubgraphWorkspaceContentState(path: PathSeg[]): SubgraphWorkspaceContentState | null {
-    if (!hasResolvedWorkspaceValue(currentData, path)) return null;
     const value = getValueAtPath(currentData, path);
+    if (path.length > 0 && value === undefined) return null;
     const valueType = inferWorkspaceValueType(value);
     if (valueType === 'object' || valueType === 'array') return null;
     return {
@@ -1078,39 +977,10 @@
     };
   }
 
-  function buildWorkspaceEditCell(path: PathSeg[], valueType: ValueType, text: string): GraphCell {
-    return {
-      text,
-      value: text,
-      valueType,
-      path,
-      editable: !readonly,
-      boxArgs: { x: 0, y: 0, width: 0, height: 0, cornerRadius: 0 },
-      textArgs: {
-        x: 0,
-        y: 0,
-        width: 0,
-        height: 0,
-        text,
-        textAlign: 'left',
-        verticalAlign: 'top',
-        editable: !readonly,
-      },
-    };
-  }
-
-  function setSubgraphWorkspacePendingEdit(pathKey: string, pending: boolean): void {
-    if (pending) {
-      subgraphWorkspacePendingEditMap.set(pathKey, true);
-      return;
-    }
-    subgraphWorkspacePendingEditMap.delete(pathKey);
-  }
-
   function syncSubgraphWorkspaceTransientState(nextChain: SubgraphWorkspacePaneState[]): void {
     const nextKeys = new Set(nextChain.map((pane) => pane.pathKey));
-    for (const pathKey of [...subgraphWorkspacePendingEditMap.keys()]) {
-      if (!nextKeys.has(pathKey)) subgraphWorkspacePendingEditMap.delete(pathKey);
+    for (const pathKey of [...subgraphWorkspacePendingEditKeys]) {
+      if (!nextKeys.has(pathKey)) subgraphWorkspacePendingEditKeys.delete(pathKey);
     }
     for (const pathKey of [...subgraphWorkspaceQueuedEditMap.keys()]) {
       if (!nextKeys.has(pathKey)) subgraphWorkspaceQueuedEditMap.delete(pathKey);
@@ -1217,41 +1087,53 @@
     payload: { path: PathSeg[]; target: 'key' | 'value' | 'node'; cell: GraphCell },
     parentAbsoluteIndex: number,
   ): Promise<void> {
+    if (shouldIgnoreSubgraphOpenCell(payload.cell)) return;
     emitReveal(payload.path, payload.target, 'click');
     void payload.cell;
     await openSubgraphWorkspacePath(payload.path, parentAbsoluteIndex);
-  }
-
-  function revealSubgraphWorkspacePane(path: PathSeg[], target: 'value' | 'node' = 'value'): void {
-    emitReveal(path, target, 'click');
-  }
-
-  function normalizeSubgraphWorkspaceDraft(valueType: ValueType, draft: string): string {
-    if (valueType !== 'string') return draft;
-    try {
-      const parsed = JSON.parse(draft);
-      if (typeof parsed === 'string') return parsed;
-    } catch {}
-    return draft;
   }
 
   async function commitSubgraphWorkspaceValueEdit(pane: SubgraphWorkspacePaneState, draft?: string): Promise<void> {
     if (readonly || pane.kind !== 'content' || !pane.content) return;
     const nextText = draft ?? pane.content.sourceText;
     if (nextText === pane.content.sourceText) return;
-    if (subgraphWorkspacePendingEditMap.get(pane.pathKey) === true) {
+    if (subgraphWorkspacePendingEditKeys.has(pane.pathKey)) {
       subgraphWorkspaceQueuedEditMap.set(pane.pathKey, nextText);
       return;
     }
-    setSubgraphWorkspacePendingEdit(pane.pathKey, true);
+    subgraphWorkspacePendingEditKeys.add(pane.pathKey);
     try {
+      let nextDraft = nextText;
+      if (pane.content.valueType === 'string') {
+        try {
+          const parsed = JSON.parse(nextDraft);
+          if (typeof parsed === 'string') nextDraft = parsed;
+        } catch {}
+      }
       await applyGraphEdit(
-        buildWorkspaceEditCell(pane.path, pane.content.valueType, pane.content.sourceText),
+        {
+          text: pane.content.sourceText,
+          value: pane.content.sourceText,
+          valueType: pane.content.valueType,
+          path: pane.path,
+          editable: !readonly,
+          boxArgs: { x: 0, y: 0, width: 0, height: 0, cornerRadius: 0 },
+          textArgs: {
+            x: 0,
+            y: 0,
+            width: 0,
+            height: 0,
+            text: pane.content.sourceText,
+            textAlign: 'left',
+            verticalAlign: 'top',
+            editable: !readonly,
+          },
+        },
         'value',
-        normalizeSubgraphWorkspaceDraft(pane.content.valueType, nextText),
+        nextDraft,
       );
     } finally {
-      setSubgraphWorkspacePendingEdit(pane.pathKey, false);
+      subgraphWorkspacePendingEditKeys.delete(pane.pathKey);
     }
     const queuedText = subgraphWorkspaceQueuedEditMap.get(pane.pathKey);
     if (queuedText == null || queuedText === nextText) return;
@@ -1365,15 +1247,12 @@
   }
 
   const graphViewerRuntimeApi = {
-    getClickProbeTargets: (scope?: 'root' | 'panel' | 'workspace') =>
+    getClickProbeTargets: (scope?: 'root' | 'workspace') =>
       scope === 'workspace' ? getSubgraphWorkspaceProbeTargets() : getRuntimeProbeTargets(scope ?? 'root'),
     getHighlightTarget: () => getRuntimeHighlightTarget(),
     getLastReveal: () => getLastReveal(),
     clearLastReveal: () => clearLastReveal(),
     getRowScrollState: (path?: PathSeg[] | null) => getRuntimeRowScrollState(path),
-    getHoverPreview: () => runtimeHoverPreviewState,
-    getHoverPanelDebugState: () => runtimeHoverPanelDebugState,
-    getHoverPanelPrewarmDebugSnapshot: () => hoverPanelController.getTooltipPanelPrewarmDebugSnapshot?.() ?? null,
     getHitResult: (point: { x: number; y: number }) => getRuntimeHitResult(point),
     getLastGraphData: () => graphSceneController.getLastGraphData(),
     getInteractionState: () => getGraphInteractionState(),
@@ -1421,10 +1300,6 @@
     applyZoom(1 / 1.1);
   }
 
-  function getRuntimeTooltipContent(target: LeaferText | null): string {
-    return buildTooltipContent(currentData, target as LeaferText, languageIdValue) as string;
-  }
-
   onDestroy(() => {
     if (fullEditSettledCleanupHandle != null) cancelAnimationFrame(fullEditSettledCleanupHandle);
     if (fullEditIdleCleanupHandle != null) cancelAnimationFrame(fullEditIdleCleanupHandle);
@@ -1433,7 +1308,6 @@
     void graphRenderCoordinator.dispose();
     graphSceneController.dispose();
     resetActiveEditState();
-    hoverPanelController.disposeTooltipEditor();
     disposeSubgraphWorkspaceRuntimes();
     subgraphWorkspaceGraphCache.clear();
     unsubscribeGraphStreamProgress();
@@ -1458,7 +1332,6 @@
   }
 
   $: if ($settings) {
-    hoverPanelController.applyTheme($settings);
     subgraphWorkspaceGraphCache.clear();
     subgraphWorkspaceRenderSignature = '';
     void refreshSubgraphWorkspacePanes();
@@ -1529,24 +1402,6 @@
         fullEditIdleCleanupHandle = null;
         graphStreamProgressController.completeIfActive();
       });
-  }
-
-  $: if (
-    shouldRunHoverPanelPrewarm({
-      pendingRevision: pendingHoverPanelPrewarmRevision,
-      editorRevision: editorRevisionValue,
-      graphAppliedRevision: $graphAppliedRevision,
-      isBlocked: isFullEditInteractionBlocked(),
-    })
-  ) {
-    const revision = pendingHoverPanelPrewarmRevision;
-    pendingHoverPanelPrewarmRevision = -1;
-    requestAnimationFrame(() => {
-      if (editorRevisionValue !== revision || isFullEditInteractionBlocked() || $graphAppliedRevision < revision) {
-        return;
-      }
-      hoverPanelController.scheduleTooltipPanelPrewarm();
-    });
   }
 
   $: {
@@ -1642,7 +1497,6 @@
         bind:DragEventCtor
         bind:LeaferEventCtor
         bind:PointerEventCtor
-        tooltipRuntimeController={graphTooltipRuntimeController}
         minimapRuntimeController={graphMinimapRuntimeController}
         {registerViewportEvents}
         {bindGraphEditorLifecycle}
@@ -1690,7 +1544,7 @@
                       destroyOnUnmount={true}
                       onScroll={() => {}}
                       onContentChange={(text) => {
-                        revealSubgraphWorkspacePane(pane.path, 'value');
+                        emitReveal(pane.path, 'value', 'click');
                         void commitSubgraphWorkspaceValueEdit(pane, text);
                       }}
                       onEditorBlur={(text) => void commitSubgraphWorkspaceValueEdit(pane, text)}
@@ -1844,123 +1698,4 @@
     min-height: 100%;
   }
 
-  :global(.leafer-x-tooltip) {
-    max-width: 520px;
-    padding: 8px;
-    overflow: hidden;
-    pointer-events: auto;
-  }
-
-  :global(.leafer-x-tooltip *) {
-    pointer-events: auto;
-  }
-
-  :global(.leafer-x-tooltip.leafer-x-tooltip--interactive) {
-    pointer-events: auto;
-  }
-
-  :global(.leafer-x-tooltip.leafer-x-tooltip--interactive *) {
-    pointer-events: auto;
-  }
-
-  :global(.leafer-x-tooltip .graph-tooltip-panel-shell) {
-    overflow: hidden;
-    border-radius: 8px;
-  }
-
-  :global(.leafer-x-tooltip .graph-tooltip-pre-shell) {
-    max-width: min(640px, calc(100vw - 48px));
-    max-height: 320px;
-    overflow: auto;
-    border-radius: 6px;
-  }
-
-  :global(.leafer-x-tooltip .graph-tooltip-pre-shell pre) {
-    width: max-content;
-    min-width: 100%;
-    margin: 0;
-    padding: 8px;
-    white-space: pre;
-  }
-
-  :global(.leafer-x-tooltip .graph-tooltip-panel) {
-    min-width: 120px;
-    min-height: 80px;
-    overflow: hidden;
-  }
-
-  :global(.leafer-x-tooltip .graph-tooltip-panel--loading) {
-    display: flex;
-    align-items: stretch;
-    justify-content: stretch;
-  }
-
-  :global(.leafer-x-tooltip .graph-tooltip-panel-skeleton) {
-    display: flex;
-    width: 240px;
-    min-width: 120px;
-    min-height: 96px;
-    flex-direction: column;
-    gap: 10px;
-    padding: 14px;
-    box-sizing: border-box;
-    background: linear-gradient(180deg, rgba(248, 250, 252, 0.98), rgba(241, 245, 249, 0.98));
-  }
-
-  :global(.leafer-x-tooltip .graph-tooltip-panel-skeleton__bar) {
-    height: 12px;
-    border-radius: 999px;
-    background: linear-gradient(90deg, rgba(203, 213, 225, 0.7), rgba(226, 232, 240, 0.95), rgba(203, 213, 225, 0.7));
-  }
-
-  :global(.leafer-x-tooltip .graph-tooltip-panel-skeleton__bar--wide) {
-    width: 100%;
-  }
-
-  :global(.leafer-x-tooltip .graph-tooltip-panel-skeleton__bar--short) {
-    width: 58%;
-  }
-
-  :global(.leafer-x-tooltip .graph-tooltip-panel-view) {
-    width: 100%;
-    height: 100%;
-  }
-
-  :global(.leafer-x-tooltip .graph-tooltip-code-shell) {
-    width: 480px;
-    max-width: 480px;
-    max-height: 320px;
-    overflow: auto;
-    border-radius: 6px;
-  }
-
-  :global(.leafer-x-tooltip .graph-tooltip-code) {
-    width: 480px;
-    max-width: 480px;
-    min-height: 44px;
-  }
-
-  :global(.leafer-x-tooltip .graph-tooltip-meta-path) {
-    color: #6b7280;
-  }
-
-  :global(.leafer-x-tooltip .graph-tooltip-key) {
-    color: #a31515;
-  }
-
-  :global(.leafer-x-tooltip .graph-tooltip-value-boolean) {
-    color: #0451a5;
-  }
-
-  :global(.leafer-x-tooltip .graph-tooltip-value-null) {
-    color: #0451a5;
-  }
-
-  :global(.leafer-x-tooltip .graph-tooltip-value-string) {
-    color: #0451a5;
-  }
-
-  :global(.leafer-x-tooltip .graph-tooltip-value-number) {
-    color: #098658;
-  }
 </style>

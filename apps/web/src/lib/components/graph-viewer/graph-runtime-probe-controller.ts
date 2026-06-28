@@ -13,7 +13,7 @@ import type {
 } from './runtime/scene-types';
 
 type ActiveHighlightState = { path: any[]; target?: GraphHighlightTarget; box: LeaferBox | null } | null;
-type RegisteredTargetScope = 'root' | 'panel';
+type RegisteredTargetScope = 'root';
 
 type CreateGraphRuntimeProbeControllerOptions = {
   shouldAttachGraphViewerTestHooks: () => boolean;
@@ -22,9 +22,6 @@ type CreateGraphRuntimeProbeControllerOptions = {
   bindPointerClick: (target: LeaferBox, handler: (event: unknown) => void | Promise<void>) => void;
   getContainerRect: () => DOMRect | null;
   getRootClickTargets: () => GraphViewerClickTarget[];
-  getPanelClickTargets: () => GraphViewerClickTarget[];
-  getPanelPath: () => any[];
-  getPanelApp: () => LeaferAppLike | null;
   getRootApp: () => LeaferAppLike | null;
   getCellBoxByPathMap: () => Map<string, any>;
   buildPathKey: (path: any[]) => string;
@@ -37,8 +34,8 @@ type CreateGraphRuntimeProbeControllerOptions = {
   resolveTreePathByPosition: (row: number, column: number) => Promise<any[]>;
   resolveInteractiveCellPath: (cell: GraphCell, fallbackPath: any[]) => Promise<any[]>;
   emitReveal: (path: any[], target: 'key' | 'value' | 'node', source: 'click' | 'runtime-query') => void;
-  onRegisteredTargetClick?: (payload: { path: any[]; target: 'key' | 'value' | 'node'; cell: GraphCell; scope: 'root' | 'panel' }) => void | Promise<void>;
-  commitTooltipPanelProbe: (probe: { cell: GraphCell; kind: GraphCellKind }, text: string) => Promise<boolean>;
+  onRegisteredTargetClick?: (payload: { path: any[]; target: 'key' | 'value' | 'node'; cell: GraphCell; scope: 'root' }) => void | Promise<void>;
+  commitProbe: (probe: { cell: GraphCell; kind: GraphCellKind }, text: string) => Promise<boolean>;
 };
 
 function toRelativeClientPoint(point: GraphRuntimePoint | null, rect: DOMRect | null): GraphRuntimePoint | null {
@@ -47,22 +44,6 @@ function toRelativeClientPoint(point: GraphRuntimePoint | null, rect: DOMRect | 
     x: Math.round(point.x - rect.left),
     y: Math.round(point.y - rect.top),
   };
-}
-
-
-function toAbsolutePanelPath(path: any[], options: CreateGraphRuntimeProbeControllerOptions): any[] {
-  const basePath = options.getPanelPath();
-  if (!basePath.length) return path;
-  if (!path.length) return basePath;
-  const pathKey = options.buildPathKey(path);
-  const basePathKey = options.buildPathKey(basePath);
-  return pathKey === basePathKey || pathKey.startsWith(`${basePathKey}|`) ? path : [...basePath, ...path];
-}
-
-function toAbsolutePanelCell(cell: GraphCell, options: CreateGraphRuntimeProbeControllerOptions): GraphCell {
-  const path = cell.path ?? [];
-  const absolutePath = toAbsolutePanelPath(path, options);
-  return absolutePath === path ? cell : { ...cell, path: absolutePath };
 }
 
 function toGraphClickTarget(kind: GraphCellKind): 'key' | 'value' | 'node' {
@@ -173,25 +154,6 @@ export function createGraphRuntimeProbeController(options: CreateGraphRuntimePro
     return clickTargetId;
   }
 
-  function registerPanelClickTarget(
-    store: GraphViewerClickTargetStore,
-    targetIds: WeakMap<object, string>,
-    boundTargets: WeakSet<object>,
-    target: LeaferBox,
-    cell: GraphCell,
-    kind: GraphCellKind,
-    nodeKind?: GraphNode['kind'],
-  ): string {
-    if (!target || typeof target.on !== 'function') return '';
-    const absoluteCell = toAbsolutePanelCell(cell, options);
-    target.__graphCell = absoluteCell;
-    target.__graphCellKind = kind;
-    target.__graphNodeKind = nodeKind;
-    const clickTargetId = upsertProbe(store, targetIds, target, absoluteCell, kind);
-    bindClickReveal(target, boundTargets, 'panel', { waitForPathIndex: false });
-    return clickTargetId;
-  }
-
   function setGraphHighlightTestState(path: any[] | null, target?: GraphHighlightTarget, box?: LeaferBox | null): void {
     runtimeActiveHighlightState = path?.length ? { path, target, box: box ?? null } : null;
   }
@@ -208,13 +170,11 @@ export function createGraphRuntimeProbeController(options: CreateGraphRuntimePro
     runtimeLastRowScrollState = path?.length && typeof scrollY === 'number' ? { path, scrollY } : null;
   }
 
-  function getRuntimeProbeTargets(scope: 'root' | 'panel' = 'root'): GraphRuntimeProbeTarget[] {
-    const probes = scope === 'panel' ? options.getPanelClickTargets() : listRootClickTargets();
-    const app = scope === 'panel' ? options.getPanelApp() : options.getRootApp();
+  function getRuntimeProbeTargets(scope: 'root' = 'root'): GraphRuntimeProbeTarget[] {
+    const probes = listRootClickTargets();
+    const app = options.getRootApp();
     const containerRect = options.getContainerRect();
     return probes.map((entry) => {
-      const path = entry.cell?.path ?? [];
-      const absolutePath = scope === 'panel' ? toAbsolutePanelPath(path, options) : path;
       return {
         scope,
         id: entry.id,
@@ -229,7 +189,7 @@ export function createGraphRuntimeProbeController(options: CreateGraphRuntimePro
               valueType: String(entry.cell.valueType ?? ''),
               isTableCell: !!entry.cell.isTableCell,
               isHeader: !!entry.cell.isHeader,
-              path: absolutePath,
+              path: entry.cell.path ?? [],
             }
           : null,
       };
@@ -334,19 +294,12 @@ export function createGraphRuntimeProbeController(options: CreateGraphRuntimePro
   }
 
   async function commitRuntimeProbe(probeId: string, text: string): Promise<boolean> {
-    const probe = clickTargetProbesById[probeId] ?? options.getPanelClickTargets().find((candidate) => candidate.id === probeId);
+    const probe = clickTargetProbesById[probeId];
     if (!probe?.cell) {
       return false;
     }
     const kind: GraphCellKind = probe.target === 'key' ? 'key' : probe.target === 'value' ? 'value' : 'meta';
-    const cell =
-      clickTargetProbesById[probeId] != null
-        ? probe.cell
-        : {
-            ...probe.cell,
-            path: toAbsolutePanelPath(probe.cell.path ?? [], options),
-          };
-    const applied = await options.commitTooltipPanelProbe({ cell, kind }, text);
+    const applied = await options.commitProbe({ cell: probe.cell, kind }, text);
     return applied;
   }
 
@@ -358,7 +311,6 @@ export function createGraphRuntimeProbeController(options: CreateGraphRuntimePro
     getRootStore: () => clickTargetProbesById,
     getClickBoundTargets: () => clickBoundTargets,
     registerRootClickTarget,
-    registerPanelClickTarget,
     upsertProbe,
     upsertClickTargetProbe,
     setGraphHighlightTestState,

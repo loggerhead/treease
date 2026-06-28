@@ -35,10 +35,10 @@
 
 ## GraphViewer 边界
 - `apps/web/src/lib/components/GraphViewer.svelte` 是稳定入口，只负责生命周期、controller 组装、test runtime 暴露与跨域编排。
-- 主流程逻辑下沉到 `apps/web/src/lib/components/graph-viewer/`：scene runtime、render kernel、anchor、图文联动、hover panel、value edit、progress、dirty region、geometry、pointer、viewport、benchmark 与 probe。
+- 主流程逻辑下沉到 `apps/web/src/lib/components/graph-viewer/`：scene runtime、render kernel、anchor、图文联动、value edit、progress、dirty region、geometry、pointer、viewport、benchmark 与 probe。
 - `apps/web/src/lib/components/graph-viewer/runtime/` 承载 table runtime 与虚拟窗口等子域基础设施。
 - `apps/web/src/lib/leafer-minimap/`、`apps/web/src/lib/leafer-virtual-list/` 只处理 Leafer 相关渲染/滚动基础设施，不承载 graph 构建、tree 语义或 session 生命周期。
-- 子图工作区是 GraphViewer 底部的持久工作区，不是 hover panel 的样式变体。主图与工作区内的 graph pane 都通过 click 直接打开下一层 pane，不再依赖 hover 生命周期。
+- 子图工作区是 GraphViewer 底部的持久工作区。主图与工作区内的 graph pane 都通过 click 直接打开下一层 pane，不依赖 hover 生命周期。
 - 子图工作区唯一 authority 仍是 snapshot-bound `buildHoverSubgraphProjection({ snapshotId, path })`。主图或子图 pane 的点击只负责提供 `path` 与交互意图；workspace 不得自己构建主图，也不得绕过 active snapshot 读临时 projection。
 - 子图工作区的渲染逻辑必须复用 graph 组件语义：每个 pane 是一个独立 DOM host，内部挂同样的 Leafer canvas / node / edge 渲染链路，并保留与主图一致的默认缩放、拖动和平移边界约束。
 - 子图工作区链路遵循“最多保留 3 个 pane”的列栈规则。打开某个 pane 内的新子图时，只保留它的祖先链和新子图，丢弃右侧旧分支；不维护无限深历史。
@@ -46,6 +46,9 @@
 - 子图工作区点击 cell 时，业务语义分两段：一是继续走现有 reveal / editor 联动；二是在同一次点击里展开或替换底部 pane。`value` 打开对应 path，`key` 打开对应 key-value pair，`index/row` 打开对应 row；object/array 落 graph pane，scalar 落 content pane。主图与子图统一使用现有 cell 黄色高亮，不为 workspace 额外引入第二套高亮体系。
 - 子图工作区编辑逻辑复用当前 graph cell 编辑链路；workspace 自己不实现独立的 value edit authority。是否可编辑、如何提交、提交后如何回流，仍由现有 GraphViewer value-edit controller 和 Core/WASM edit plan 决定。
 - content pane 使用 Monaco hidden workspace tab 承载编辑器运行时，复用与右侧 sidecar editor 相同的 Monaco/runtime/full-edit 基础设施，但业务提交仍必须回到 `applyGraphEdit -> planGraphValueEdit -> Editor ApplyEdits` 主链，不能把 hidden tab 当成新的文档 authority。
+- content pane 的本地草稿 authority 是它自己的 Monaco model，不是 `GraphViewer` 的 `pane.content.sourceText`。外部 `sourceText` / snapshot refresh 只在 pane 处于 clean 且未聚焦时允许回灌；dirty 或 focused 时必须保留本地草稿，等 commit ack 对齐当前 model 后再清掉 dirty。
+- 子图 content pane 对同一路径的连续提交必须串行化。前一次 `applyGraphEdit` 尚未完成时，后续输入只能覆盖该路径的“最新待提交草稿”，待当前提交完成后继续补交，避免旧 revision/freshness 把新输入静默丢弃。
+- graph pane 内的双击编辑仍以 Leafer inner editor 为草稿 authority。`GraphValueEditController.activeEditState` 负责保护正在编辑的 cell，不把 graph 编辑过程复制成第二份 workspace 草稿 store。
 - content pane 不再单独展示 key 输入框；path 继续沿用子图 pane 的 header 风格展示，局部编辑默认只对 value 生效。
 - 子图工作区 graph cache 只缓存同一 documentKey / snapshotId / renderConfig 组合下的 projection 结果。renderConfig、revision、snapshot 或 enableNest 变化时必须整体失效并重建 pane 内容。
 - 子图工作区允许对平移做边界限制，但不要限制缩放、点击命中或编辑行为。限制口径是 graph world bounds 外扩 500px，主图和 workspace pane 统一使用同一套几何规则。

@@ -62,7 +62,6 @@ type GraphValueEditControllerDeps = {
   ) => boolean;
   emitEditorMutation: (mutation: { type: 'replaceSourceText'; payload: { text: string } }) => void;
   updateActiveTempModel: (updater: (current: any) => any) => void;
-  refreshTooltipVisibility: () => void;
   dispatchGraphEditEvent: (type: GraphEditEventType, detail: unknown) => void;
   handleError: (
     error: unknown,
@@ -125,7 +124,6 @@ export function createGraphValueEditController(deps: GraphValueEditControllerDep
         state.kind = null;
         state.initialText = null;
       }
-      deps.refreshTooltipVisibility();
       return;
     }
     for (const state of activeEditStateByEditor.values()) {
@@ -134,7 +132,6 @@ export function createGraphValueEditController(deps: GraphValueEditControllerDep
       state.kind = null;
       state.initialText = null;
     }
-    deps.refreshTooltipVisibility();
   }
 
   async function applyGraphEdit(
@@ -301,25 +298,6 @@ export function createGraphValueEditController(deps: GraphValueEditControllerDep
     return applied;
   }
 
-  async function commitTooltipPanelProbe(
-    probe: { cell: GraphCell; kind: GraphCellKind },
-    text: string,
-  ): Promise<boolean> {
-    if (isReadonly()) {
-      return false;
-    }
-    if (probe.kind !== 'key' && probe.kind !== 'value') {
-      return false;
-    }
-    deps.dispatchGraphEditEvent('graph-edit-open', {
-      path: probe.cell.path,
-      kind: probe.kind,
-      valueType: probe.cell.valueType,
-    });
-    const applied = await applyGraphEdit(probe.cell, probe.kind, text, null);
-    return applied;
-  }
-
   async function commitTextEdit(editor?: LeaferEditor | null): Promise<void> {
     if (isReadonly()) {
       resetActiveEditState(editor);
@@ -389,7 +367,6 @@ export function createGraphValueEditController(deps: GraphValueEditControllerDep
     applyGraphEdit,
     bindGraphEditorLifecycle,
     commitTextEdit,
-    commitTooltipPanelProbe,
     getActiveEditCellPath,
     hasActiveEdit,
     resetActiveEditState,

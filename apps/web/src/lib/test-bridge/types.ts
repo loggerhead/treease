@@ -103,15 +103,8 @@ export type TreeaseGraphRuntime = {
     visible?: boolean;
     rect?: { left?: number; top?: number; width?: number; height?: number } | null;
   } | null;
-  getHoverPreview?: () => { kind?: 'pre'; text?: string; language?: string; visible?: boolean } | null;
-  getHoverPanelDebugState?: () => { phase?: string; error?: string } | null;
-  getHoverPanelPrewarmDebugSnapshot?: () => {
-    scheduledPaths?: TreeaseRuntimePathSeg[][];
-    completedPaths?: TreeaseRuntimePathSeg[][];
-    inFlightPath?: TreeaseRuntimePathSeg[] | null;
-  } | null;
   getHitResult?: (point: { x: number; y: number }) => {
-    scope?: 'root' | 'panel';
+    scope?: 'root';
     point?: { x?: number; y?: number };
     hit?: {
       id?: string;
@@ -179,19 +172,12 @@ export type TreeaseGraphStreamState = Record<string, unknown> & {
   lastPhase?: string;
 };
 
-export type TreeaseGraphTooltipRequest = {
-  target: unknown;
-  currentData?: unknown;
-  language?: SupportedEditorLanguageId | string;
-};
-
 export type TreeaseGraphBuildResult = {
   nodes: GraphNode[];
   edges: GraphEdge[];
 };
 
 export type TreeaseGraphBridgeExtras = {
-  buildTooltipContent?: (request: TreeaseGraphTooltipRequest) => string;
   buildGraph?: () => Promise<TreeaseGraphBuildResult>;
 };
 
@@ -254,17 +240,12 @@ export type WindowTreease = {
   };
   graph: {
     getInteractionState: () => ReturnType<NonNullable<TreeaseGraphRuntime['getInteractionState']>>;
-    getClickProbeTargets: (scope?: 'root' | 'panel' | 'workspace') => TreeaseGraphProbe[];
+    getClickProbeTargets: (scope?: 'root' | 'workspace') => TreeaseGraphProbe[];
     getHighlightTarget: () => ReturnType<NonNullable<TreeaseGraphRuntime['getHighlightTarget']>>;
     getLastReveal: () => ReturnType<NonNullable<TreeaseGraphRuntime['getLastReveal']>>;
     clearLastReveal: () => void;
     getRowScrollState: (path?: TreeaseBridgePathSeg[] | null) => ReturnType<NonNullable<TreeaseGraphRuntime['getRowScrollState']>>;
     getPanelRect: () => ReturnType<NonNullable<TreeaseGraphRuntime['getPanelRect']>>;
-    getHoverPreview: () => ReturnType<NonNullable<TreeaseGraphRuntime['getHoverPreview']>>;
-    getHoverPanelDebugState: () => ReturnType<NonNullable<TreeaseGraphRuntime['getHoverPanelDebugState']>>;
-    getHoverPanelPrewarmDebugSnapshot: () => ReturnType<
-      NonNullable<TreeaseGraphRuntime['getHoverPanelPrewarmDebugSnapshot']>
-    >;
     getHitResult: (point: { x: number; y: number }) => ReturnType<NonNullable<TreeaseGraphRuntime['getHitResult']>>;
     getLastGraphData: () => ReturnType<NonNullable<TreeaseGraphRuntime['getLastGraphData']>>;
     revealPath: (
@@ -276,7 +257,6 @@ export type WindowTreease = {
     scrollTableToRow: (rowIndex: number) => void;
     getStreamState: () => TreeaseGraphStreamState | null;
     getStreamProgressState: () => ReturnType<NonNullable<TreeaseGraphRuntime['getStreamProgressState']>>;
-    buildTooltipContent: (request: TreeaseGraphTooltipRequest) => string;
     buildGraph: () => Promise<TreeaseGraphBuildResult>;
     refs?: unknown;
   };

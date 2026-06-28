@@ -32,11 +32,6 @@
   export let DragEventCtor: typeof DragEvent | undefined;
   export let LeaferEventCtor: typeof LeaferEvent | undefined;
   export let PointerEventCtor: typeof LeaferPointerEvent | undefined;
-  export let tooltipRuntimeController: {
-    ensureTooltipRuntime: () => Promise<void>;
-    attach: (app: unknown, events: { LeaferEvent?: unknown; PointerEvent?: unknown }) => void;
-    destroy: () => void;
-  };
   export let minimapRuntimeController: {
     attach: (input: {
       app: LeaferApp | Leafer;
@@ -72,7 +67,6 @@
   function cleanupRuntime() {
     resizeObserver?.disconnect();
     resizeObserver = null;
-    tooltipRuntimeController.destroy();
     minimapRuntimeController.destroy();
     leafer?.destroy();
     leafer = null;
@@ -99,7 +93,6 @@
         scheduleMeasure();
         void getSharedWasmWorkerClient().catch(() => {});
         const runtimeModules = await freshness.step(async () => {
-          await tooltipRuntimeController.ensureTooltipRuntime();
           await import('@leafer-in/viewport');
           await import('@leafer-in/editor');
           await import('@leafer-in/state');
@@ -141,10 +134,6 @@
           multiTouch: { disabled: false },
         });
         registerViewportEvents(leafer);
-        tooltipRuntimeController.attach(leafer, {
-          LeaferEvent: LeaferEventCtor,
-          PointerEvent: PointerEventCtor,
-        });
         const editor = (leafer as { editor?: unknown } | null)?.editor ?? null;
         bindGraphEditorLifecycle(editor);
         minimapRuntimeController.attach({

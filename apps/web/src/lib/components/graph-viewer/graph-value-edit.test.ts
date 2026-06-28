@@ -85,7 +85,6 @@ describe('graph-value-edit', () => {
       publishTreeState,
       emitEditorMutation,
       updateActiveTempModel: vi.fn(),
-      refreshTooltipVisibility: vi.fn(),
       dispatchGraphEditEvent: vi.fn(),
       handleError: vi.fn(),
     });
@@ -163,7 +162,6 @@ describe('graph-value-edit', () => {
       publishTreeState: vi.fn(() => true),
       emitEditorMutation: vi.fn(),
       updateActiveTempModel: vi.fn(),
-      refreshTooltipVisibility: vi.fn(),
       dispatchGraphEditEvent: vi.fn(),
       handleError: vi.fn(),
     });
@@ -253,7 +251,6 @@ describe('graph-value-edit', () => {
       publishTreeState: vi.fn(() => true),
       emitEditorMutation: vi.fn(),
       updateActiveTempModel: vi.fn(),
-      refreshTooltipVisibility: vi.fn(),
       dispatchGraphEditEvent: vi.fn(),
       handleError: vi.fn(),
     });
@@ -316,7 +313,6 @@ describe('graph-value-edit', () => {
       publishTreeState: vi.fn(() => true),
       emitEditorMutation,
       updateActiveTempModel: vi.fn(),
-      refreshTooltipVisibility: vi.fn(),
       dispatchGraphEditEvent: vi.fn(),
       handleError: vi.fn(),
     });
@@ -387,7 +383,6 @@ describe('graph-value-edit', () => {
       publishTreeState: vi.fn(() => true),
       emitEditorMutation: vi.fn(),
       updateActiveTempModel: vi.fn(),
-      refreshTooltipVisibility: vi.fn(),
       dispatchGraphEditEvent: vi.fn(),
       handleError: vi.fn(),
     });
@@ -449,7 +444,6 @@ describe('graph-value-edit', () => {
       publishTreeState,
       emitEditorMutation,
       updateActiveTempModel: vi.fn(),
-      refreshTooltipVisibility: vi.fn(),
       dispatchGraphEditEvent: vi.fn(),
       handleError: vi.fn(),
     });
@@ -515,7 +509,6 @@ describe('graph-value-edit', () => {
       publishTreeState,
       emitEditorMutation,
       updateActiveTempModel: vi.fn(),
-      refreshTooltipVisibility: vi.fn(),
       dispatchGraphEditEvent: vi.fn(),
       handleError: vi.fn(),
     });
@@ -550,7 +543,6 @@ describe('graph-value-edit', () => {
       publishTreeState,
       emitEditorMutation,
       updateActiveTempModel: vi.fn(),
-      refreshTooltipVisibility: vi.fn(),
       dispatchGraphEditEvent,
       handleError: vi.fn(),
     });
@@ -596,7 +588,6 @@ describe('graph-value-edit', () => {
     expect(emitEditorMutation).not.toHaveBeenCalled();
     expect(publishTreeState).not.toHaveBeenCalled();
 
-    await expect(controller.commitTooltipPanelProbe({ cell: cell as any, kind: 'value' }, 'next')).resolves.toBe(false);
     await expect(controller.applyGraphEdit(cell as any, 'value', 'next')).resolves.toBe(false);
 
     expect(dispatchGraphEditEvent).not.toHaveBeenCalled();

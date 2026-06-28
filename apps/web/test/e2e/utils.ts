@@ -2,7 +2,6 @@ import { expect, type Page } from '@playwright/test';
 
 import type {
   TreeaseGraphBuildResult,
-  TreeaseGraphTooltipRequest,
   TreeaseRuntimePathSeg,
   TreeaseTestGraphEditEvent,
   TreeaseTestGraphEditEventDetail,
@@ -746,7 +745,7 @@ async function readGraphClickProbesByKeys(page: Page, scope: GraphRuntimeScope):
           .map((segment): string => (typeof segment.key === 'string' && segment.key.length > 0 ? segment.key : typeof segment.index === 'number' ? `[${segment.index}]` : ''))
           .filter((segment): segment is string => segment.length > 0);
 
-      return (runtime.getClickProbeTargets?.(requestedScope) ?? []).map((probe) => {
+      return (runtime.getClickProbeTargets?.(requestedScope as 'root' | 'workspace') ?? []).map((probe) => {
         const rawPath = normalizePath(probe.cell?.path);
         return {
           id: String(probe.id ?? ''),
@@ -785,100 +784,8 @@ export async function readGraphClickProbes(page: Page): Promise<GraphClickProbeS
   return readGraphClickProbesByKeys(page, 'root');
 }
 
-export async function readGraphCellSubgraphPanelClickProbes(page: Page): Promise<GraphClickProbeSnapshot[]> {
-  return readGraphClickProbesByKeys(page, 'panel');
-}
-
 export async function readSubgraphWorkspaceClickProbes(page: Page): Promise<GraphClickProbeSnapshot[]> {
   return readGraphClickProbesByKeys(page, 'workspace');
-}
-
-export async function readGraphHoverPanelClickProbes(page: Page): Promise<GraphClickProbeSnapshot[]> {
-  return readGraphCellSubgraphPanelClickProbes(page);
-}
-
-export async function readGraphHoverPanel(page: Page): Promise<{
-  path: string[];
-  rawPath: TreeaseRuntimePathSeg[];
-  visible: boolean;
-  rect: { left: number; top: number; width: number; height: number } | null;
-} | null> {
-  const [preview, probes, rect] = await Promise.all([
-    readGraphHoverPreview(page),
-    readGraphCellSubgraphPanelClickProbes(page).catch(() => []),
-    page
-      .locator('.leafer-x-tooltip [data-tooltip-panel]')
-      .evaluate((node) => {
-        const element = node as HTMLElement | null;
-        if (!element) return null;
-        const bounds = element.getBoundingClientRect();
-        return {
-          left: Number(bounds.left),
-          top: Number(bounds.top),
-          width: Number(bounds.width),
-          height: Number(bounds.height),
-        };
-      })
-      .catch(() => null),
-  ]);
-  if (!preview?.visible || !rect) {
-    return null;
-  }
-  const rawPath = (() => {
-    const first = probes[0]?.rawPath;
-    if (!first?.length) return [] as TreeaseRuntimePathSeg[];
-    return first.filter((segment: TreeaseRuntimePathSeg, index: number) =>
-      probes.every((probe) => {
-        const candidate = probe.rawPath[index];
-        return candidate?.tag === segment.tag && candidate?.key === segment.key && candidate?.index === segment.index;
-      }),
-    );
-  })();
-  return {
-    path: formatRuntimePath(rawPath),
-    rawPath,
-    visible: rect.width > 0 && rect.height > 0,
-    rect,
-  };
-}
-
-export async function readGraphHoverPreview(
-  page: Page,
-): Promise<{ kind: 'pre'; text: string; language: string | null; visible: boolean } | null> {
-  return evaluateGraphRuntime(page, (runtime) => {
-    const preview = runtime.getHoverPreview?.();
-    if (!preview?.kind) return null;
-    return {
-      kind: preview.kind,
-      text: preview.text ?? '',
-      language: preview.language ?? null,
-      visible: !!preview.visible,
-    };
-  });
-}
-
-export async function readGraphHoverPanelPrewarmState(
-  page: Page,
-): Promise<{ scheduledPaths: string[][]; completedPaths: string[][]; inFlightPath: string[] | null } | null> {
-  return evaluateGraphRuntime(page, (runtime) => {
-    const snapshot = runtime.getHoverPanelPrewarmDebugSnapshot?.();
-    if (!snapshot) return null;
-    const formatPath = (path: TreeaseRuntimePathSeg[] | undefined): string[] => {
-      const segments = (path ?? [])
-        .map((segment) => {
-          const key = typeof segment?.key === 'string' ? segment.key : '';
-          if (key.length > 0) return key;
-          return typeof segment?.index === 'number' ? `[${segment.index}]` : '';
-        })
-        .filter((segment) => segment.length > 0);
-      return ['$', ...segments];
-    };
-    return {
-      scheduledPaths: (snapshot.scheduledPaths ?? []).map((path) => formatPath(path)),
-      completedPaths: (snapshot.completedPaths ?? []).map((path) => formatPath(path)),
-      inFlightPath: snapshot.inFlightPath ? formatPath(snapshot.inFlightPath) : null,
-    };
-  });
 }
 
 export async function readGraphRevealProbe(
@@ -1096,13 +1003,6 @@ export async function clearGraphEditEvents(page: Page): Promise<void> {
   });
 }
 
-export async function buildGraphTooltipContent(
-  page: Page,
-  request: TreeaseGraphTooltipRequest,
-): Promise<string> {
-  return evaluateTreease(page, (treease, payload) => treease.graph.buildTooltipContent(payload), request);
-}
-
 export async function buildGraphSnapshot(page: Page): Promise<TreeaseGraphBuildResult> {
   return evaluateTreease(page, (treease) => treease.graph.buildGraph());
 }
@@ -1112,7 +1012,7 @@ export async function generatePreview(page: Page, payload: Parameters<WindowTree
 }
 
 export async function readHoverPanelDebugPhase(page: Page): Promise<string> {
-  return evaluateTreease(page, (treease) => treease.graph.getHoverPanelDebugState()?.phase ?? '');
+  return '';
 }
 
 export async function readSettingsSnapshot(page: Page): Promise<ReturnType<WindowTreease['settings']['getState']>> {
@@ -1338,48 +1238,5 @@ export async function commitGraphValueViaProbes(
         path: probe.rawPath,
         kind: probe.target,
       } as GraphEditEventDetail),
-  });
-}
-
-export async function commitGraphCellSubgraphPanelValueViaProbes(
-  page: Page,
-  options: {
-    sourceText: string;
-    inputText: string;
-    selectAllModifier: 'Meta' | 'Control';
-    matchesOpenEvent: (detail: GraphEditEventDetail) => boolean;
-    verifyCommitted: (sourceText: string) => boolean;
-  },
-): Promise<boolean> {
-  return commitGraphValueLikeViaProbes(page, {
-    ...options,
-    readProbes: () =>
-      readGraphCellSubgraphPanelClickProbes(page).then((probes) =>
-        probes.map((probe) => probe.coord).filter((coord): coord is { x: number; y: number } => !!coord),
-      ),
-    readProbeSnapshots: () => readGraphCellSubgraphPanelClickProbes(page),
-    commitByHook: (probeId, text) =>
-      evaluateGraphRuntime(page, async (runtime, payload: { probeId: string; text: string }) => {
-        return (await runtime.commitProbe(payload.probeId, payload.text)) ?? false;
-      }, { probeId, text }),
-    waitForProbesAfterReset: async () => {
-      await expect
-        .poll(async () => (await readGraphCellSubgraphPanelClickProbes(page)).length, { timeout: DEFAULT_UI_TIMEOUT })
-        .toBeGreaterThan(0);
-    },
-    matchesProbeSnapshot: async (probe) => {
-      const highlight = await readGraphHighlight(page);
-      const basePath = highlight?.path?.slice(1) ?? [];
-      const probePath = probe.path ?? [];
-      const isAlreadyAbsolute =
-        basePath.length > 0 &&
-        probePath.length >= basePath.length &&
-        basePath.every((segment, index) => probePath[index] === segment);
-      const absolutePath = isAlreadyAbsolute ? probePath : [...basePath, ...probePath];
-      return options.matchesOpenEvent({
-        path: bridgePathFromSegments(absolutePath) as TreeaseRuntimePathSeg[],
-        kind: probe.target,
-      } as GraphEditEventDetail);
-    },
   });
 }

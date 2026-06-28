@@ -1,1 +1,0 @@
-export { TooltipPlugin } from './TooltipPlugin'

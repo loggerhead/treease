@@ -3,7 +3,6 @@ import {
   commitGraphValueViaProbes,
   readEditorState,
   readGraphClickProbes,
-  readGraphHoverPreview,
   setEditorContent,
   waitForEditorReady,
   waitForGraphRendered,
@@ -287,7 +286,7 @@ test('editor update refreshes headerless table graph cell', async ({ page }) => 
     .toEqual({ 'table_without_header.[0]': ['a1'] });
 });
 
-test('non-table object value hover does not open graph hover panel', async ({ page }) => {
+test('non-table object value hover stays side-effect free', async ({ page }) => {
   await page.goto('/editor');
   await waitForEditorReady(page);
 
@@ -307,8 +306,6 @@ test('non-table object value hover does not open graph hover panel', async ({ pa
     (probe) => probe.target === 'value' && probe.valueType === 'object' && probe.path.join('.') === 'profile',
   );
 
-  await expect.poll(async () => readGraphHoverPreview(page), { timeout: 2_000 }).toBeNull();
-  await expect(page.locator('.leafer-x-tooltip [data-tooltip-panel]')).toHaveCount(0);
 });
 
 test('graph table row 0 cell edit writes back to source editor', async ({ page }) => {

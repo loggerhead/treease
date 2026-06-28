@@ -1,6 +1,5 @@
 import { expect, test, type Page } from './fixtures';
 import {
-  buildGraphTooltipContent,
   clearGraphLastReveal,
   clickGraphProbe,
   getLatestGraphProbes,
@@ -8,7 +7,6 @@ import {
   installClipboardCapture,
   readEditorState,
   readGraphClickProbes,
-  readGraphHoverPreview,
   readGraphLastReveal,
   readClipboardWrites,
   setEditorContent,
@@ -208,47 +206,7 @@ test('python editor semantic colors keep key and value tokens aligned with curre
 });
 
 
-test('graph meta tooltip uses muted path color', async ({ page }) => {
-  await page.goto('/editor');
-  await waitForEditorReady(page);
-  await setEditorContent(page, {
-    sourceText: '{"user":{"name":"Alice","role":"admin"}}',
-    language: 'json',
-  });
-  await waitForGraphRendered(page);
-
-  const tooltipHtml = await buildGraphTooltipContent(page, {
-    currentData: { user: { name: 'Alice', role: 'admin' } },
-    target: {
-      __graphCell: {
-        value: '',
-        valueType: 'object',
-        path: [{ tag: 'KEY', key: 'user', index: 0 }],
-      },
-      __graphCellKind: 'meta',
-    },
-    language: 'json',
-  });
-  const color = await page.evaluate((html) => {
-    const host = document.createElement('div');
-    host.className = 'leafer-x-tooltip';
-    host.innerHTML = html;
-    document.body.appendChild(host);
-    const node = host.querySelector('.graph-tooltip-meta-path') as HTMLElement | null;
-    if (!node) throw new Error('meta tooltip node missing');
-    const result = {
-      text: node.textContent ?? '',
-      color: getComputedStyle(node).color,
-    };
-    host.remove();
-    return result;
-  }, tooltipHtml);
-
-  expect(color.text).toBe('$.user');
-  expect(color.color).toBe('rgb(107, 114, 128)');
-});
-
-test('graph mode resolves tooltip content and supports export image', async ({ page }) => {
+test('graph mode supports export image', async ({ page }) => {
   await page.goto('/editor');
   await waitForEditorReady(page);
   await setEditorContent(page, {
@@ -266,25 +224,6 @@ test('graph mode resolves tooltip content and supports export image', async ({ p
       (probe.valueType === 'object' || probe.valueType === 'array'),
   );
   expect(targetIndex).toBeGreaterThanOrEqual(0);
-
-  const tooltipHtml = await page.evaluate(
-    async ({ targetIndex }) => {
-      const treease = window._treease;
-      if (!treease) throw new Error('window._treease is unavailable');
-      const probes = treease.graph.getClickProbeTargets('root') ?? [];
-      if (!probes.length) throw new Error('graph runtime unavailable');
-      const probe = probes[targetIndex];
-      const state = treease.editor.getState();
-      return treease.graph.buildTooltipContent({
-        currentData: state.treeState?.value ?? null,
-        target: { __graphCell: probe?.cell, __graphCellKind: probe?.target },
-        language: state.languageId,
-      });
-    },
-    { targetIndex },
-  );
-  expect(tooltipHtml).toContain('Alice');
-  expect(tooltipHtml).toContain('admin');
 
   const downloadPromise = page.waitForEvent('download');
   await page.getByRole('button', { name: 'Export image', exact: true }).click();
@@ -317,7 +256,7 @@ test('graph mode does not render empty collections as separate child nodes', asy
   expect(nodeMetaTexts).not.toContain('[]');
 });
 
-test('graph mode renders no-header array through table runtime with click reveal and no graph hover panel', async ({
+test('graph mode renders no-header array through table runtime with click reveal', async ({
   page,
 }) => {
   await page.goto('/editor');
@@ -387,20 +326,9 @@ test('graph mode renders no-header array through table runtime with click reveal
         target: 'key',
       }),
     );
-  await expect.poll(async () => readGraphHoverPreview(page), { timeout: 2_000 }).toBeNull();
-  await expect(page.locator('.leafer-x-tooltip [data-tooltip-panel]')).toHaveCount(0);
-
   await hoverGraphProbe(page, objectProbeIndex);
-  await expect.poll(async () => readGraphHoverPreview(page), { timeout: 2_000 }).toBeNull();
-  await expect(page.locator('.leafer-x-tooltip [data-tooltip-panel]')).toHaveCount(0);
-
   await hoverGraphProbe(page, arrayProbeIndex);
-  await expect.poll(async () => readGraphHoverPreview(page), { timeout: 2_000 }).toBeNull();
-  await expect(page.locator('.leafer-x-tooltip [data-tooltip-panel]')).toHaveCount(0);
-
   await movePointerOffGraph(page);
-  await expect.poll(async () => readGraphHoverPreview(page), { timeout: 2_000 }).toBeNull();
-  await expect(page.locator('.leafer-x-tooltip [data-tooltip-panel]')).toHaveCount(0);
 });
 
 test('graph mode does not open hover subgraph for structured cells in scrollable no-header array table', async ({
@@ -445,18 +373,11 @@ test('graph mode does not open hover subgraph for structured cells in scrollable
   expect(arrayProbeIndex).toBeGreaterThanOrEqual(0);
 
   await hoverGraphProbe(page, objectProbeIndex);
-  await expect.poll(async () => readGraphHoverPreview(page), { timeout: 2_000 }).toBeNull();
-  await expect(page.locator('.leafer-x-tooltip [data-tooltip-panel]')).toHaveCount(0);
-
   await movePointerOffGraph(page);
-  await expect.poll(async () => readGraphHoverPreview(page), { timeout: 5_000 }).toBeNull();
-
   await hoverGraphProbe(page, arrayProbeIndex);
-  await expect.poll(async () => readGraphHoverPreview(page), { timeout: 2_000 }).toBeNull();
-  await expect(page.locator('.leafer-x-tooltip [data-tooltip-panel]')).toHaveCount(0);
 });
 
-test('graph mode does not show graph hover panel for non-table array value hover', async ({ page }) => {
+test('graph mode keeps non-table array value hover side-effect free', async ({ page }) => {
   await page.goto('/editor');
   await waitForEditorReady(page);
   await setEditorContent(page, {
@@ -480,10 +401,5 @@ test('graph mode does not show graph hover panel for non-table array value hover
   expect(clickProbes[targetIndex]?.isTableCell).toBe(false);
 
   await hoverGraphProbe(page, targetIndex);
-  await expect.poll(async () => readGraphHoverPreview(page), { timeout: 2_000 }).toBeNull();
-  await expect(page.locator('.leafer-x-tooltip [data-tooltip-panel]')).toHaveCount(0);
-
   await movePointerOffGraph(page);
-  await expect.poll(async () => readGraphHoverPreview(page), { timeout: 2_000 }).toBeNull();
-  await expect(page.locator('.leafer-x-tooltip [data-tooltip-panel]')).toHaveCount(0);
 });

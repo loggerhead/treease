@@ -94,7 +94,7 @@
 - 入口优先 `role`、`aria-label`、`title`、`data-testid`；画布统一从稳定容器进入，例如 `data-testid="graph-viewer-canvas"`。
 - 等待对准业务完成信号：先 `waitForEditorReady`，更新内容后再 `waitForGraphRendered`，其余异步状态优先 `expect.poll`；禁止固定 `waitForTimeout`。
 - 复杂画布交互优先通过测试 hook 或应用侧交互 API 驱动，断言 bounds、world 坐标、hit path、treePath、cursor、lastReveal、highlight、sourceText 等结构化结果。
-- graph tooltip / hover runtime 现在主要断言“不再打开 graph hover 预览”；优先检查 `visible`、`path`、runtime debug state 与 click 后 workspace 行为，不把 screenshot 作为主断言。
+- 子图 content pane 编辑回归要优先断言“连续输入后的最终 document/sourceText 语义”和“外部 refresh 不回灌正在编辑的 Monaco model”，不要靠延长 timeout 或 screenshot 猜测光标状态。
 - 优先复用 `apps/web/test/e2e/utils.ts` 中的 editor、graph render、click probe、highlight、workspace、runtime 查询 helper。
 - 反模式：固定 sleep、键盘逐字输入 Monaco、直接改 store 代替真实交互、固定坐标点击画布、用 screenshot snapshot 替代业务断言。
 - 参考用例：`apps/web/test/e2e/reveal-sync.spec.ts`、`apps/web/test/e2e/dom-component-migration.spec.ts`、`docs/user-stories.md`
@@ -114,8 +114,7 @@
 | 模型与边界                         | 协议真源、WASM façade 与 TS 生成物仍一致                                                                | `packages/core/src/document/runtime.rs`、`packages/core/src/wasm_document.rs`、`apps/web/src/lib/services/document-job-stream.test.ts`                                                          |
 | 语义所有权                         | runtime 持有 authoritative / transient / diagnostics-only / stale 语义；Worker 只做 transport / fan-out | `packages/core/src/document/runtime.rs`、`apps/web/src/lib/services/DocumentSessionService.test.ts`、`apps/web/src/workers/wasm-runtime.worker.test.ts`                                         |
 | JSON streaming + graph delta | 大文件导入、streamed build、graph delta 不回退                                                          | `packages/core/tests/core_graph_builder_preorder.rs`、`apps/web/test/e2e/drop-import-regression.spec.ts`                                                                                        |
-| graph hover 与 reveal/query       | graph hover 不再打开预览；tree path 与 graph reveal 仍绑定同一 snapshot 语义                           | `apps/web/src/lib/components/graph-viewer/graph-hover-panel.test.ts`、`apps/web/test/e2e/dom-component-migration.spec.ts`                                                                       |
-| 子图工作区                         | 主图 click 可展开持久 pane；pane 渲染沿用 graph canvas 语义；scalar content pane 复用双向编辑链路      | `apps/web/src/lib/components/graph-viewer/graph-subgraph-workspace.test.ts`、`apps/web/test/e2e/trajectory-edge-convergence.spec.ts`、`apps/web/test/e2e/subgraph-workspace.spec.ts`           |
+| 子图工作区                         | 主图 click 可展开持久 pane；pane 渲染沿用 graph canvas 语义；scalar content pane 复用双向编辑链路，连续提交不丢最新草稿 | `apps/web/src/lib/components/graph-viewer/graph-subgraph-workspace.test.ts`、`apps/web/src/lib/components/Editor/sidecar-external-sync.test.ts`、`apps/web/test/e2e/trajectory-edge-convergence.spec.ts`、`apps/web/test/e2e/subgraph-workspace.spec.ts` |
 | parse-failed / diagnostics-only    | parse failed 仍产出 diagnostics-only 结果并清理 graph 可见状态                                          | `apps/web/src/lib/services/DocumentSessionService.test.ts`、`apps/web/src/lib/components/Editor/editor-analysis-controller.test.ts`、`apps/web/test/e2e/invalid-json-graph-diagnostics.spec.ts` |
 | 双向编辑与增量链路                 | 编辑器改动、图上编辑回写、fallback 仍收敛到统一 snapshot 主链                                           | `apps/web/test/e2e/bidirectional-edit-sync.spec.ts`、`apps/web/test/e2e/graph-edit-blur-commit.spec.ts`                                                                                         |
 
@@ -128,6 +127,7 @@
 - 修 bug 时，优先补能稳定复现原问题的回归测试
 - 变更协议、格式路由、错误处理或缓存逻辑时，必须覆盖失败路径与边界输入
 - 改 `GraphViewer` 子图工作区时，至少同时覆盖一条单元测试和一条真实交互回归：单元层锁 row/path/cache/viewport 归一化，E2E 层锁“主图点击 → workspace 展开 → pane 仍可交互”的主链。
+- 改 `SidecarEditor` 或子图 content pane 的外部同步规则时，至少补一条状态机/单元测试锁住 dirty/focused 回灌语义，再补一条 E2E 锁住“连续两次编辑后最新值落回主文档”的行为。
 - 如果选择不测某条路径，应能说明该路径为何不是核心链路，或已被更高价值测试自然覆盖
 
 ## 禁止事项

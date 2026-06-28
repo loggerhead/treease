@@ -116,9 +116,6 @@ export function ensureWindowTreease(): WindowTreease | null {
       clearLastReveal: () => getGraphRuntime().clearLastReveal?.(),
       getRowScrollState: (path) => getGraphRuntime().getRowScrollState?.(path) ?? null,
       getPanelRect: () => getGraphRuntime().getPanelRect?.() ?? null,
-      getHoverPreview: () => getGraphRuntime().getHoverPreview?.() ?? null,
-      getHoverPanelDebugState: () => getGraphRuntime().getHoverPanelDebugState?.() ?? null,
-      getHoverPanelPrewarmDebugSnapshot: () => getGraphRuntime().getHoverPanelPrewarmDebugSnapshot?.() ?? null,
       getHitResult: (point) => getGraphRuntime().getHitResult?.(point) ?? null,
       getLastGraphData: () => getGraphRuntime().getLastGraphData?.() ?? null,
       revealPath: (path, options) => {
@@ -143,11 +140,6 @@ export function ensureWindowTreease(): WindowTreease | null {
       },
       getStreamState: () => graphStreamState,
       getStreamProgressState: () => getGraphRuntime().getStreamProgressState?.() ?? null,
-      buildTooltipContent: (target) => {
-        const fn = getGraphExtras().buildTooltipContent;
-        if (!fn) missing('graph.buildTooltipContent');
-        return fn(target);
-      },
       buildGraph: () => {
         const fn = getGraphExtras().buildGraph;
         if (!fn) missing('graph.buildGraph');
