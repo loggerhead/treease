@@ -61,7 +61,7 @@ export type GraphViewerClickTarget = {
 
 export type GraphViewerClickTargetStore = Record<string, GraphViewerClickTarget>;
 
-export type TooltipPanelRuntime = {
+export type SubgraphWorkspaceRuntime = {
   host: HTMLElement;
   mount: HTMLDivElement;
   view: HTMLDivElement;

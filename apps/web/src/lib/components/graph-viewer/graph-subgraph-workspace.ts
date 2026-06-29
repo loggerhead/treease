@@ -19,18 +19,18 @@ import type {
   LeaferEditor,
   LeaferEditorHost,
   LeaferText,
-  TooltipPanelRuntime,
+  SubgraphWorkspaceRuntime,
 } from './model';
 import { createCellEntryBindings } from './graph-anchor-index';
-import type { TooltipPanelGraphData } from './graph-hover-panel-types';
+import type { SubgraphWorkspaceGraphData } from './graph-subgraph-workspace-types';
 import { isRawGraphDelta } from '../../../shared/worker-protocol/graph-delta-normalize';
 import { normalizeGraphDelta } from '../../../shared/worker-protocol/graph-stream-event-codec';
 
 type GraphCacheEntry = {
   signature: string;
   accessOrder: number;
-  graph?: TooltipPanelGraphData | null;
-  promise?: Promise<TooltipPanelGraphData | null>;
+  graph?: SubgraphWorkspaceGraphData | null;
+  promise?: Promise<SubgraphWorkspaceGraphData | null>;
 };
 
 type GraphCacheDeps = {
@@ -181,7 +181,7 @@ function buildWorkspaceGraphData(
   path: PathSeg[],
   pathKey: string,
   result: { nodes?: GraphNode[]; edges?: GraphEdge[] },
-): TooltipPanelGraphData | null {
+): SubgraphWorkspaceGraphData | null {
   const nodes = result.nodes ?? [];
   const edges = normalizeWorkspaceGraphEdgeRows(nodes, result.edges ?? []);
   if (!nodes.length) return null;
@@ -231,7 +231,7 @@ export function createSubgraphWorkspaceGraphCache(deps: GraphCacheDeps) {
     }
   }
 
-  async function prepareGraph(path: PathSeg[]): Promise<TooltipPanelGraphData | null> {
+  async function prepareGraph(path: PathSeg[]): Promise<SubgraphWorkspaceGraphData | null> {
     ensureGraphCacheSignature();
     const pathKey = buildWorkspacePathKey(path);
     const signature = graphCacheSignature;
@@ -317,7 +317,7 @@ function getLeaferContentRoot(target: LeaferAppLike | null): LeaferBox | null {
   return target as unknown as LeaferBox;
 }
 
-export function destroySubgraphWorkspaceRuntime(runtime: TooltipPanelRuntime | null | undefined): void {
+export function destroySubgraphWorkspaceRuntime(runtime: SubgraphWorkspaceRuntime | null | undefined): void {
   if (!runtime) return;
   runtime.editor?.closeInnerEditor?.(true);
   runtime.tableRuntimes.forEach((tableRuntime) => tableRuntime.destroy?.());
@@ -327,7 +327,7 @@ export function destroySubgraphWorkspaceRuntime(runtime: TooltipPanelRuntime | n
   runtime.mount.replaceChildren();
 }
 
-function buildWorkspacePanConstraintBounds(graph: TooltipPanelGraphData): GraphWorldBounds {
+function buildWorkspacePanConstraintBounds(graph: SubgraphWorkspaceGraphData): GraphWorldBounds {
   return {
     left: graph.minX,
     top: graph.minY,
@@ -336,7 +336,7 @@ function buildWorkspacePanConstraintBounds(graph: TooltipPanelGraphData): GraphW
   };
 }
 
-function clampWorkspaceViewportPan(app: LeaferAppLike, mount: HTMLDivElement, graph: TooltipPanelGraphData): void {
+function clampWorkspaceViewportPan(app: LeaferAppLike, mount: HTMLDivElement, graph: SubgraphWorkspaceGraphData): void {
   const layer = app.zoomLayer as LeaferBox | undefined;
   if (!layer) return;
   const { scaleX, scaleY } = getZoomScale(layer as never);
@@ -358,9 +358,9 @@ function clampWorkspaceViewportPan(app: LeaferAppLike, mount: HTMLDivElement, gr
 
 export async function renderSubgraphWorkspaceGraph(
   mount: HTMLDivElement,
-  graph: TooltipPanelGraphData,
+  graph: SubgraphWorkspaceGraphData,
   deps: WorkspaceRuntimeDeps,
-): Promise<TooltipPanelRuntime | null> {
+): Promise<SubgraphWorkspaceRuntime | null> {
   const { BoxCtor, TextCtor, PenCtor } = deps.getConstructors();
   if (!BoxCtor || !TextCtor || !PenCtor) return null;
   const view = document.createElement('div');
@@ -378,7 +378,7 @@ export async function renderSubgraphWorkspaceGraph(
   const nodeLayer = new BoxCtor({ x: 0, y: 0, width: 0, height: 0, fill: 'transparent' });
   root.add?.(edgeLayer);
   root.add?.(nodeLayer);
-  const runtime: TooltipPanelRuntime = {
+  const runtime: SubgraphWorkspaceRuntime = {
     host: mount,
     mount,
     view,

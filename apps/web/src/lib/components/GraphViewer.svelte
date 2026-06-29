@@ -3,7 +3,7 @@
   import { onDestroy, tick, createEventDispatcher } from 'svelte';
   import { cubicOut } from 'svelte/easing';
   import { fly } from 'svelte/transition';
-  import { GripVertical, X } from 'lucide-svelte';
+  import { X } from 'lucide-svelte';
   import type { SnapshotId } from '@core-wasm/index';
   import {
     sourceText,
@@ -84,7 +84,7 @@
     LeaferAppLike,
     LeaferBox,
     ScrollableBox,
-    TooltipPanelRuntime,
+    SubgraphWorkspaceRuntime,
   } from './graph-viewer/model';
   import type {
     GraphRuntimeProbeTarget,
@@ -96,7 +96,7 @@
   import { formatScalarLiteral } from '../graph/literal-display';
   import { type GraphCell, type GraphCellKind, type GraphNode, type ValueType } from '../graph/graph-viewer-render';
   import { buildPathKey, getValueAtPath } from '../graph/graph-viewer-path';
-  import type { TooltipPanelGraphData } from './graph-viewer/graph-hover-panel-types';
+  import type { SubgraphWorkspaceGraphData } from './graph-viewer/graph-subgraph-workspace-types';
   import { isDocumentRevisionGuardCurrent } from '../guards/document-revision-guard';
   import {
     clearGraphBridge,
@@ -196,7 +196,7 @@
   let subgraphWorkspaceChain: SubgraphWorkspacePaneState[] = [];
   let subgraphWorkspaceVisiblePanes: Array<SubgraphWorkspacePaneState & { visibleIndex: number; absoluteIndex: number }> = [];
   let subgraphWorkspaceHostMap = new Map<string, HTMLDivElement>();
-  let subgraphWorkspaceRuntimeMap = new Map<string, TooltipPanelRuntime>();
+  let subgraphWorkspaceRuntimeMap = new Map<string, SubgraphWorkspaceRuntime>();
   let subgraphWorkspacePendingEditKeys = new Set<string>();
   let subgraphWorkspaceQueuedEditMap = new Map<string, string>();
   let subgraphWorkspaceRenderSignature = '';
@@ -276,7 +276,7 @@
     pathKey: string;
     title: string;
     kind: 'graph' | 'content';
-    graph: TooltipPanelGraphData | null;
+    graph: SubgraphWorkspaceGraphData | null;
     content: SubgraphWorkspaceContentState | null;
     status: 'loading' | 'ready' | 'empty' | 'error';
     error?: string;
@@ -1240,8 +1240,8 @@
         mount.replaceChildren();
         continue;
       }
-      const existingRuntime = subgraphWorkspaceRuntimeMap.get(pane.pathKey) as (TooltipPanelRuntime & {
-        __graphRef?: TooltipPanelGraphData | null;
+      const existingRuntime = subgraphWorkspaceRuntimeMap.get(pane.pathKey) as (SubgraphWorkspaceRuntime & {
+        __graphRef?: SubgraphWorkspaceGraphData | null;
       }) | undefined;
       if (existingRuntime && existingRuntime.host === mount && existingRuntime.__graphRef === pane.graph) {
         continue;
@@ -1264,7 +1264,8 @@
         onActivateCell: (payload) => handleSubgraphWorkspaceActivate(payload, pane.absoluteIndex),
       });
       if (runtime) {
-        (runtime as TooltipPanelRuntime & { __graphRef?: TooltipPanelGraphData | null }).__graphRef = pane.graph;
+        (runtime as SubgraphWorkspaceRuntime & { __graphRef?: SubgraphWorkspaceGraphData | null }).__graphRef =
+          pane.graph;
         subgraphWorkspaceRuntimeMap.set(pane.pathKey, runtime);
       }
     }
