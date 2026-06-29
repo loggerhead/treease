@@ -5,6 +5,8 @@ import type { SettingsStatus } from '../settings/settings-store';
 import type { EditorState, GraphHighlightTarget } from '../store/editor-store';
 import type { EditorWorkspaceState } from '../store/editor-workspace';
 import type { GraphEdge, GraphNode } from '../../shared/worker-protocol/protocol';
+import type { TreeaseRuntimeReadiness } from './runtime-readiness';
+export type { TreeaseRuntimeReadiness };
 
 export type TreeaseBridgePathSeg = {
   key?: string;
@@ -82,6 +84,7 @@ export type TreeaseGraphInteractionState = {
 
 export type TreeaseGraphRuntime = {
   getInteractionState?: () => TreeaseGraphInteractionState | null;
+  getRuntimeReadiness?: () => TreeaseRuntimeReadiness | null;
   getClickProbeTargets?: (scope?: 'root' | 'panel' | 'workspace') => TreeaseGraphProbe[];
   getHighlightTarget?: () => {
     path?: TreeaseRuntimePathSeg[];
@@ -240,6 +243,7 @@ export type WindowTreease = {
   };
   graph: {
     getInteractionState: () => ReturnType<NonNullable<TreeaseGraphRuntime['getInteractionState']>>;
+    getRuntimeReadiness: () => ReturnType<NonNullable<TreeaseGraphRuntime['getRuntimeReadiness']>>;
     getClickProbeTargets: (scope?: 'root' | 'workspace') => TreeaseGraphProbe[];
     getHighlightTarget: () => ReturnType<NonNullable<TreeaseGraphRuntime['getHighlightTarget']>>;
     getLastReveal: () => ReturnType<NonNullable<TreeaseGraphRuntime['getLastReveal']>>;

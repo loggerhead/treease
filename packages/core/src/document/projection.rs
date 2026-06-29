@@ -1,5 +1,5 @@
-use crate::core::{NodeId, TreeNodeKind, TreeStore, graph_projection_service};
 use crate::core::graph_builder::PathSeg as GraphPathSeg;
+use crate::core::{NodeId, TreeNodeKind, TreeStore, graph_projection_service};
 
 use super::protocol::{ProjectionDelta, ProjectionRequest, SnapshotReadResult};
 use super::runtime::{DocumentRuntime, with_global_document_runtime};

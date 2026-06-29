@@ -119,58 +119,6 @@ function matchesPath(detail: { kind?: string; path?: Array<{ key?: unknown; inde
   return detail.kind === 'value' && formatPath(detail.path ?? []) === expectedPath;
 }
 
-
-async function scrollTableCellIntoView(page: Page, wantedPath: string) {
-  type GraphProbe = Awaited<ReturnType<typeof readGraphClickProbes>>[number];
-
-  const canvas = page.getByTestId('graph-viewer-canvas');
-  const canvasBox = await canvas.boundingBox();
-  if (!canvasBox) throw new Error('graph-viewer-canvas bounding box missing');
-
-  const firstDot = wantedPath.indexOf('.');
-  const tablePrefix = firstDot >= 0 ? wantedPath.slice(0, firstDot) : wantedPath;
-
-  const isProbeVisibleInCanvas = (probe: GraphProbe): probe is GraphProbe & { coord: { x: number; y: number } } => {
-    if (!probe.coord) return false;
-    return (
-      probe.coord.x >= 0 &&
-      probe.coord.x <= canvasBox.width &&
-      probe.coord.y >= 0 &&
-      probe.coord.y <= canvasBox.height
-    );
-  };
-
-  for (let attempt = 0; attempt < 24; attempt += 1) {
-    const probes = await readGraphClickProbes(page);
-    const target = probes.find(
-      (probe) =>
-        probe.isTableCell &&
-        probe.target === 'value' &&
-        isProbeVisibleInCanvas(probe) &&
-        probe.path.join('.') === wantedPath,
-    );
-    if (target?.coord) return;
-
-    const visibleTableCells = probes
-      .filter(
-        (probe): probe is GraphProbe & { coord: { x: number; y: number } } =>
-          probe.isTableCell &&
-          probe.target === 'value' &&
-          probe.path.join('.').startsWith(tablePrefix) &&
-          isProbeVisibleInCanvas(probe),
-      )
-      .sort((a, b) => (a.rect?.top ?? 0) - (b.rect?.top ?? 0) || (a.rect?.left ?? 0) - (b.rect?.left ?? 0));
-
-    const anchor = visibleTableCells.at(-1);
-    if (!anchor?.coord) throw new Error(`no visible table cells while seeking ${wantedPath}`);
-
-    await page.mouse.move(canvasBox.x + anchor.coord.x, canvasBox.y + anchor.coord.y);
-    await page.mouse.wheel(0, 1_200);
-  }
-
-  throw new Error(`table cell ${wantedPath} did not become visible`);
-}
-
 function safeParseJson(sourceText: string): any | null {
   try {
     return JSON.parse(sourceText);

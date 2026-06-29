@@ -544,7 +544,6 @@ export function createEditorFullEditController(options: CreateEditorFullEditCont
 
   async function finishImportStream(intakeOverride?: ImportIntakeOverride): Promise<void> {
     const session = importSession;
-    const editor = options.getEditor();
     const model = options.getModel();
     if (!session?.active) return;
     const { sessionId, ownerKey, documentKey } = session;

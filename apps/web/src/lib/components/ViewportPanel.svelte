@@ -236,9 +236,9 @@
     await readySidecarEditor?.showText(value, nextLanguage)
   }
 
-  export function showTextPreview(value: string) {
+  export async function showTextPreview(value: string): Promise<void> {
     if (graphOnly) return
-    void showRightPanelText(value)
+    await showRightPanelText(value)
   }
 
   function handleGraphSearchSelect(event: CustomEvent<any>): void {

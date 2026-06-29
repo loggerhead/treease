@@ -23,6 +23,11 @@ type RenderEffectsDeps = {
   renderDocumentGraph: RenderDocumentGraph;
   attachFullEditDocumentJobSession: AttachFullEditDocumentJobSession;
   renderJsonBlockSelection: (selection: JsonBlockSelection) => Promise<unknown>;
+  markGraphRequested: (input: {
+    documentKey: string;
+    revision: number;
+    mode: 'committed' | 'streaming' | 'json-block';
+  }) => void;
   resetStreamProgress: () => void;
   onStreamingRenderError: (error: unknown) => void;
 };
@@ -83,6 +88,11 @@ export function createGraphViewerRenderEffects(deps: RenderEffectsDeps) {
       if (!fullEditUiState.sessionId) {
         return;
       }
+      deps.markGraphRequested({
+        documentKey,
+        revision: fullEditUiState.revision,
+        mode: 'streaming',
+      });
       const externalRender = externalFullEditRenderAuthority.claim({
         sessionId: fullEditUiState.sessionId,
         documentKey,
@@ -109,6 +119,11 @@ export function createGraphViewerRenderEffects(deps: RenderEffectsDeps) {
       return;
     }
     lastFullEditRenderSignature = renderSignature;
+    deps.markGraphRequested({
+      documentKey,
+      revision: fullEditUiState.revision,
+      mode: 'streaming',
+    });
     void deps.renderDocumentGraph({
       kind: 'full-edit',
       documentKey,
@@ -174,6 +189,11 @@ export function createGraphViewerRenderEffects(deps: RenderEffectsDeps) {
       return;
     }
     pendingRenderSignature = renderSignature;
+    deps.markGraphRequested({
+      documentKey,
+      revision,
+      mode: 'committed',
+    });
     if (graphRenderDelayHandle) cancelAnimationFrame(graphRenderDelayHandle);
     graphRenderDelayHandle = requestAnimationFrame(() => {
       graphRenderDelayHandle = null;
@@ -218,6 +238,11 @@ export function createGraphViewerRenderEffects(deps: RenderEffectsDeps) {
     const signature = `${selection.blockDocumentKey}|${selection.revision}|${selection.startByte}|${selection.endByte}|${selection.text}`;
     if (pendingJsonBlockSignature === signature) return;
     pendingJsonBlockSignature = signature;
+    deps.markGraphRequested({
+      documentKey: selection.blockDocumentKey,
+      revision: selection.revision,
+      mode: 'json-block',
+    });
     if (graphRenderDelayHandle) {
       cancelAnimationFrame(graphRenderDelayHandle);
       graphRenderDelayHandle = null;

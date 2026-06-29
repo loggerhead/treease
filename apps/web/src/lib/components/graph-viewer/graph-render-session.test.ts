@@ -25,6 +25,7 @@ vi.mock('../../wasm/wasm-worker-singleton', () => ({
 
 import { createGraphRenderSession } from './graph-render-session';
 import { bindActiveDocumentSnapshotIfPresent } from '../../services/DocumentSessionService';
+import { readRuntimeReadiness, resetRuntimeReadiness, syncRuntimeReadinessFromEditorState } from '../../test-bridge/runtime-readiness';
 
 function startJobResult(jobHandle = 1, requestSeq = 1) {
   return {
@@ -257,6 +258,27 @@ function createSceneBridge(overrides: Record<string, unknown> = {}) {
 describe('graph-render-session coordinator', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    resetRuntimeReadiness();
+    syncRuntimeReadinessFromEditorState({
+      documentKey: 'test-key',
+      editorRevision: 5,
+      fullEditUiState: {
+        active: false,
+        sessionId: null,
+        ownerKey: null,
+        documentKey: null,
+        revision: 0,
+        streamSeq: 0,
+        inputByteLength: 0,
+        modelVersionId: null,
+        byteLength: 0,
+        language: '',
+        phase: 'idle',
+        sessionKind: null,
+        transportKind: null,
+        reason: null,
+      },
+    });
   });
 
   it('renderDocumentGraph consumes SnapshotReady.mainGraph from the close batch', async () => {
@@ -330,6 +352,10 @@ describe('graph-render-session coordinator', () => {
       5,
       expect.objectContaining({ documentKey: 'test-key', revision: 5, snapshotId: 2, mode: 'committed' }),
     );
+    expect(readRuntimeReadiness().graph).toMatchObject({
+      appliedRevision: 5,
+      flushedRevision: 5,
+    });
     expect(bindActiveDocumentSnapshotIfPresent).toHaveBeenCalledWith(
       expect.objectContaining({ documentKey: 'test-key', revision: 5 }),
     );

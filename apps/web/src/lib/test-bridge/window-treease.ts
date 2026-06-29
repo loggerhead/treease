@@ -10,6 +10,7 @@ import type {
   TreeaseWorkerBridge,
   WindowTreease,
 } from './types';
+import { readRuntimeReadiness } from './runtime-readiness';
 
 const editorHooks = new Map<string, TreeaseMonacoHook>();
 let editorStoreBridge: TreeaseEditorStoreBridge | null = null;
@@ -110,6 +111,7 @@ export function ensureWindowTreease(): WindowTreease | null {
     },
     graph: {
       getInteractionState: () => getGraphRuntime().getInteractionState?.() ?? null,
+      getRuntimeReadiness: () => graphRuntime?.getRuntimeReadiness?.() ?? readRuntimeReadiness(),
       getClickProbeTargets: (scope) => getGraphRuntime().getClickProbeTargets?.(scope) ?? [],
       getHighlightTarget: () => getGraphRuntime().getHighlightTarget?.() ?? null,
       getLastReveal: () => getGraphRuntime().getLastReveal?.() ?? null,

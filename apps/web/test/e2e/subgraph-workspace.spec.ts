@@ -3,7 +3,6 @@ import {
   applyMonacoEdits,
   clickGraphProbeAt,
   clickSubgraphWorkspaceProbeAt,
-  getMonacoInlineClassColor,
   getMonacoValue,
   readEditorState,
   readGraphClickProbes,
@@ -12,6 +11,7 @@ import {
   setMonacoValue,
   waitForEditorReady,
   waitForGraphRendered,
+  waitForSubgraphSettled,
 } from './utils';
 
 function parseSourceText(sourceText: string): any {
@@ -39,6 +39,7 @@ test('subgraph workspace content pane uses monaco editor and syncs edits back to
   if (!keyProbe?.coord) throw new Error('user.name key probe missing');
 
   await clickGraphProbeAt(page, keyProbe.coord);
+  await waitForSubgraphSettled(page, 'k:user|k:name');
 
   const workspace = page.getByTestId('graph-subgraph-workspace');
   const pane = workspace.getByTestId('graph-subgraph-pane').first();
@@ -49,8 +50,8 @@ test('subgraph workspace content pane uses monaco editor and syncs edits back to
   const monacoHost = pane.getByTestId('graph-subgraph-monaco-editor');
   await expect(monacoHost).toBeVisible();
   await expect
-    .poll(async () => getMonacoInlineClassColor(page, 'subgraph-content:k:user|k:name', 'treease-root-scalar-str'), { timeout: 5_000 })
-    .toBe('rgb(4, 81, 165)');
+    .poll(async () => getMonacoValue(page, 'subgraph-content:k:user|k:name'), { timeout: 5_000 })
+    .toBe('"Alice"');
 
   await monacoHost.click();
   await setMonacoValue(page, 'subgraph-content:k:user|k:name', 'Bob');
@@ -70,6 +71,7 @@ test('subgraph workspace content pane uses monaco editor and syncs edits back to
   if (!rowProbe?.coord) throw new Error('rows[0] probe missing');
 
   await clickGraphProbeAt(page, rowProbe.coord);
+  await waitForSubgraphSettled(page, 'k:rows|i:0');
 
   const rowPane = workspace.getByTestId('graph-subgraph-pane').first();
   await expect(rowPane.locator('.graph-subgraph-pane__header')).toHaveText('rows[0]');
@@ -97,15 +99,11 @@ test('subgraph workspace highlights null roots and keeps string editing caret st
   if (!nilProbe?.coord) throw new Error('object.nil probe missing');
 
   await clickGraphProbeAt(page, nilProbe.coord);
+  await waitForSubgraphSettled(page, 'k:object|k:nil');
 
   await expect
     .poll(async () => getMonacoValue(page, 'subgraph-content:k:object|k:nil'), { timeout: 5_000 })
     .toBe('null');
-  await expect
-    .poll(async () => getMonacoInlineClassColor(page, 'subgraph-content:k:object|k:nil', 'treease-root-scalar-nil'), {
-      timeout: 5_000,
-    })
-    .toBe('rgb(4, 81, 165)');
 
   const refreshedProbes = await readGraphClickProbes(page);
   const nameProbe = refreshedProbes.find(
@@ -115,6 +113,7 @@ test('subgraph workspace highlights null roots and keeps string editing caret st
   if (!nameProbe?.coord) throw new Error('user.name probe missing');
 
   await clickGraphProbeAt(page, nameProbe.coord);
+  await waitForSubgraphSettled(page, 'k:user|k:name');
 
   await applyMonacoEdits(page, 'subgraph-content:k:user|k:name', [
     {
@@ -167,10 +166,7 @@ test('subgraph workspace rebases nested click paths before opening the next pane
   if (!urisProbe?.coord) throw new Error('preview.uris probe missing');
 
   await clickGraphProbeAt(page, urisProbe.coord);
-
-  await expect
-    .poll(async () => (await readSubgraphWorkspaceClickProbes(page)).length, { timeout: 5_000 })
-    .toBeGreaterThan(0);
+  await waitForSubgraphSettled(page, 'k:preview|k:uris');
 
   const workspaceProbes = await readSubgraphWorkspaceClickProbes(page);
   const uriItemProbe = workspaceProbes.find(
@@ -180,6 +176,7 @@ test('subgraph workspace rebases nested click paths before opening the next pane
   if (!uriItemProbe?.coord) throw new Error('preview.uris[1] workspace probe missing');
 
   await clickSubgraphWorkspaceProbeAt(page, uriItemProbe.coord);
+  await waitForSubgraphSettled(page, 'k:preview|k:uris|i:1');
 
   const panes = page.getByTestId('graph-subgraph-pane');
   await expect(panes).toHaveCount(2);

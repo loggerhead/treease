@@ -3,6 +3,7 @@ import { expect, type Page } from '@playwright/test';
 import type {
   TreeaseGraphBuildResult,
   TreeaseRuntimePathSeg,
+  TreeaseRuntimeReadiness,
   TreeaseTestGraphEditEvent,
   TreeaseTestGraphEditEventDetail,
   WindowTreease,
@@ -86,22 +87,6 @@ function normalizeBridgePath(path: Array<{ key?: unknown; index?: number; tag?: 
   }));
 }
 
-function bridgePathFromSegments(path: string[]): Array<{ key?: string; index?: number; tag?: number }> {
-  return path.map((segment) =>
-    /^\[\d+\]$/.test(segment)
-      ? {
-          tag: 1,
-          key: '',
-          index: Number.parseInt(segment.slice(1, -1), 10),
-        }
-      : {
-          tag: 0,
-          key: segment,
-          index: 0,
-        },
-  );
-}
-
 export async function waitForMonacoHook(page: Page, hookId: string, timeout = DEFAULT_UI_TIMEOUT) {
   const locator = monacoHook(page, hookId);
   await expect
@@ -157,25 +142,21 @@ export async function readEditorWorkspace(page: Page) {
   return evaluateTreease(page, (treease) => treease.editor.getWorkspace());
 }
 
-export async function readImportStreamState(page: Page): Promise<{ phase: string; active: boolean }> {
-  const state = await evaluateTreease(page, (treease) => treease.editor.getState().fullEditUiState);
-  return {
-    phase: state.phase,
-    active: state.active,
-  };
+export async function readRuntimeReadiness(page: Page): Promise<TreeaseRuntimeReadiness> {
+  return evaluateTreease(page, (treease) => treease.graph.getRuntimeReadiness());
+}
+
+async function waitForRuntimeReadiness(
+  page: Page,
+  predicate: (readiness: TreeaseRuntimeReadiness) => boolean,
+  timeout = DEFAULT_UI_TIMEOUT,
+) {
+  await expect.poll(async () => predicate(await readRuntimeReadiness(page)), { timeout }).toBe(true);
 }
 
 export async function setEditorContent(page: Page, payload: { sourceText: string; language?: string }) {
   await waitForMonacoHook(page, 'source-editor');
-  await expect
-    .poll(
-      async () => {
-        const state = await evaluateTreease(page, (treease) => treease.editor.getState());
-        return state.fullEditUiState.phase === 'idle' && state.editorRevision > 0;
-      },
-      { timeout: DEFAULT_UI_TIMEOUT },
-    )
-    .toBe(true);
+  await waitForRuntimeReadiness(page, (readiness) => readiness.import.settled && readiness.editorRevision > 0);
 
   if (payload.language) {
     await evaluateTreease(page, (treease, language) => {
@@ -192,10 +173,10 @@ export async function setEditorContent(page: Page, payload: { sourceText: string
   await expect
     .poll(
       async () => {
-        const [modelText, state, fullEditState] = await Promise.all([
+        const [modelText, state, readiness] = await Promise.all([
           getMonacoValue(page, 'source-editor'),
           readEditorState(page),
-          readImportStreamState(page),
+          readRuntimeReadiness(page),
         ]);
         // Monaco may normalize some control-leading inputs (for example a
         // standalone UTF-8 BOM). The helper should wait for the editor/store
@@ -204,12 +185,12 @@ export async function setEditorContent(page: Page, payload: { sourceText: string
           modelSynced: state.sourceText === modelText,
           storeSynced: state.sourceText === modelText,
           languageSynced: payload.language ? state.languageId === payload.language : true,
-          fullEditIdle: fullEditState.phase === 'idle',
+          fullEditSettled: readiness.import.settled,
         };
       },
       { timeout: DEFAULT_UI_TIMEOUT },
     )
-    .toEqual({ modelSynced: true, storeSynced: true, languageSynced: true, fullEditIdle: true });
+    .toEqual({ modelSynced: true, storeSynced: true, languageSynced: true, fullEditSettled: true });
 }
 
 export async function setMonacoValue(page: Page, hookId: string, value: string) {
@@ -400,47 +381,41 @@ export async function waitForSettingsReady(page: Page, timeout = DEFAULT_UI_TIME
 }
 
 export async function waitForGraphRendered(page: Page, timeout = DEFAULT_UI_TIMEOUT) {
-  await expect
-    .poll(
-      async () =>
-        evaluateTreease(page, (treease) => {
-          const state = treease.editor.getState();
-          const graph = treease.graph.getInteractionState();
-          return {
-            editorRevision: state.editorRevision,
-            graphAppliedRevision: state.graphAppliedRevision,
-            graphCurrent: graph?.current ?? false,
-            hasGraphData: graph?.hasGraphData ?? false,
-            pendingRenderWork: graph?.pendingRenderWork ?? true,
-          };
-        }),
-      { timeout },
-    )
-    .toEqual(
-      expect.objectContaining({
-        editorRevision: expect.any(Number),
-        graphAppliedRevision: expect.any(Number),
-        graphCurrent: true,
-        hasGraphData: true,
-        pendingRenderWork: false,
+  await expect.poll(async () => readRuntimeReadiness(page), { timeout }).toEqual(expect.objectContaining({
+      editorRevision: expect.any(Number),
+      graph: expect.objectContaining({
+        settled: true,
       }),
-    );
-  await expect
-    .poll(
-      async () =>
-        evaluateTreease(page, (treease) => {
-          const state = treease.editor.getState();
-          const graph = treease.graph.getInteractionState();
-          return (
-            state.graphAppliedRevision >= state.editorRevision &&
-            state.editorRevision > 0 &&
-            graph?.current === true &&
-            graph?.pendingRenderWork === false
-          );
-        }),
-      { timeout },
-    )
-    .toBe(true);
+    }));
+  await waitForRuntimeReadiness(
+    page,
+    (readiness) => readiness.graph.settled && readiness.graph.settledRevision >= readiness.graph.requestedRevision,
+    timeout,
+  );
+}
+
+export async function waitForImportSettled(page: Page, timeout = DEFAULT_UI_TIMEOUT) {
+  await waitForRuntimeReadiness(page, (readiness) => readiness.import.settled, timeout);
+}
+
+export async function waitForPreviewSettled(page: Page, timeout = DEFAULT_UI_TIMEOUT) {
+  await waitForRuntimeReadiness(page, (readiness) => readiness.preview.settled, timeout);
+}
+
+export async function waitForSidecarSettled(page: Page, hookId = 'right-editor', timeout = DEFAULT_UI_TIMEOUT) {
+  await waitForRuntimeReadiness(
+    page,
+    (readiness) => readiness.sidecar.settled && readiness.sidecar.hookId === hookId,
+    timeout,
+  );
+}
+
+export async function waitForSubgraphSettled(page: Page, pathKey?: string, timeout = DEFAULT_UI_TIMEOUT) {
+  await waitForRuntimeReadiness(
+    page,
+    (readiness) => readiness.subgraph.settled && (pathKey ? readiness.subgraph.pathKey === pathKey : true),
+    timeout,
+  );
 }
 
 export async function waitForDiagnostics(page: Page, timeout = DEFAULT_UI_TIMEOUT) {
@@ -476,6 +451,17 @@ export async function openMonacoHover(
     return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
   }, options.hoverText);
   await page.mouse.move(point.x, point.y);
+  await expect
+    .poll(
+      async () => {
+        const hoverCount = await page.evaluate(() => document.querySelectorAll('.monaco-hover').length);
+        if (hoverCount > 0) return true;
+        await page.mouse.move(point.x + 1, point.y + 1);
+        return (await page.evaluate(() => document.querySelectorAll('.monaco-hover').length)) > 0;
+      },
+      { timeout },
+    )
+    .toBe(true);
 }
 
 export async function readMonacoHoverRows(page: Page) {
@@ -540,16 +526,8 @@ async function waitForGraphViewerPaint(page: Page) {
   );
 }
 
-type GraphRuntimeScope = 'root' | 'panel' | 'workspace';
-
 type GraphRuntimeHandle = WindowTreease['graph'];
-
-function formatRuntimePath(path: TreeaseRuntimePathSeg[] | undefined): string[] {
-  return [
-    '$',
-    ...(path ?? []).map((segment) => formatPathSegment(segment)).filter((segment) => segment.length > 0),
-  ];
-}
+type GraphRuntimeScope = 'root' | 'panel' | 'workspace';
 
 async function evaluateGraphRuntime<T, P = undefined>(
   page: Page,
@@ -1011,7 +989,7 @@ export async function generatePreview(page: Page, payload: Parameters<WindowTree
   return evaluateTreease(page, (treease, request) => treease.preview.generate(request), payload);
 }
 
-export async function readHoverPanelDebugPhase(page: Page): Promise<string> {
+export async function readHoverPanelDebugPhase(_page: Page): Promise<string> {
   return '';
 }
 

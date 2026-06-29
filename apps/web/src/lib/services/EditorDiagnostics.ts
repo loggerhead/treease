@@ -226,7 +226,6 @@ export async function readStoredDiagnosticsResult(
   nest: boolean,
   preloadedErrors: WasmError[] | null = null,
 ): Promise<DiagnosticsResult> {
-  const text = model.getValue();
   const emptyResult = createEmptyDiagnosticsResult();
 
   if (!documentKey) {

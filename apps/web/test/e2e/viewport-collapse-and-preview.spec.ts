@@ -7,6 +7,7 @@ import {
   setEditorContent,
   waitForEditorReady,
   waitForGraphRendered,
+  waitForPreviewSettled,
   waitForSettingsReady,
 } from './utils';
 
@@ -30,7 +31,7 @@ test('export preview renders converted text in right panel', async ({ page }) =>
 
   await selectExportFormat(page, 'YAML');
   await page.getByRole('button', { name: 'Preview export result', exact: true }).click();
-
+  await waitForPreviewSettled(page);
   await expect.poll(async () => getMonacoValue(page, 'right-editor'), { timeout: 5_000 }).toContain('title: Example');
   await expect(page.getByText('Previewed JSON to YAML')).toBeVisible();
 });
@@ -46,11 +47,13 @@ test('export preview updates right panel when format changes', async ({ page }) 
 
   await selectExportFormat(page, 'YAML');
   await page.getByRole('button', { name: 'Preview export result', exact: true }).click();
+  await waitForPreviewSettled(page);
   await expect.poll(async () => getMonacoValue(page, 'right-editor'), { timeout: 5_000 }).toContain('title: Example');
 
   await page.getByRole('button', { name: 'Export', exact: true }).click();
   await selectExportFormat(page, 'TOML');
   await page.getByRole('button', { name: 'Preview export result', exact: true }).click();
+  await waitForPreviewSettled(page);
   await expect.poll(async () => getMonacoValue(page, 'right-editor'), { timeout: 5_000 }).toContain('title = "Example"');
   await expect(page.getByText('Previewed JSON to TOML')).toBeVisible();
 });

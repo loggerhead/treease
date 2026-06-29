@@ -141,10 +141,13 @@ fn hover_subgraph_projection_builds_ready_subgraph_for_nested_path() {
         .as_ref()
         .expect("hover projection should include graph data");
     assert_eq!(
-        graph_delta_row_value_sem_type(delta, &[], "name"),
+        graph_delta_row_value_sem_type(delta, &["users", "[0]"], "name"),
         Some(SemType::Str as u32)
     );
-    assert_eq!(graph_delta_row_value_sem_type(delta, &[], "count"), None);
+    assert_eq!(
+        graph_delta_row_value_sem_type(delta, &["users", "[0]"], "count"),
+        None
+    );
 }
 
 #[test]
@@ -174,7 +177,7 @@ fn hover_subgraph_projection_builds_ready_subgraph_for_header_table_structured_c
         .as_ref()
         .expect("hover projection should include graph data");
     assert_eq!(
-        graph_delta_row_value_sem_type(delta, &[], "x"),
+        graph_delta_row_value_sem_type(delta, &["rows", "[0]", "child"], "x"),
         Some(SemType::Int as u32)
     );
 }
@@ -247,7 +250,7 @@ fn hover_subgraph_projection_marks_missing_header_table_fields_as_miss_without_c
     assert_eq!(missing.text, "miss");
     assert_eq!(missing.value, "miss");
     assert_eq!(missing.path, Vec::<GraphPathSeg>::new());
-    assert_eq!(missing.sem_type, SemType::Map as u32);
+    assert_eq!(missing.sem_type, SemType::Str as u32);
 
     let present = &table.rows[2].cells[model_info_col];
     assert!(!present.is_missing);
@@ -291,7 +294,7 @@ fn hover_subgraph_projection_supports_quoted_key_segments() {
         .as_ref()
         .expect("hover projection should include graph data");
     assert_eq!(
-        graph_delta_row_value_sem_type(delta, &[], "display name"),
+        graph_delta_row_value_sem_type(delta, &["user profile"], "display name"),
         Some(SemType::Str as u32),
     );
     let json = serde_json::to_value(data).expect("hover projection should serialize");

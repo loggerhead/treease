@@ -38,6 +38,7 @@
   import { importFormatOptions, supportedEditorLanguageSet, editorLanguageFallback, type SupportedEditorLanguageId } from '../../lib/monaco/language-support';
   import { computeSynchronizedRuntimeLoading, type RuntimeStateEventDetail } from '../../lib/runtime-loading';
   import { breadcrumbTargetForPath, type PathSeg } from '../../lib/store/tree-path';
+  import { markPreviewCompleted, markPreviewRequested } from '../../lib/test-bridge/runtime-readiness';
   import type { DiffPlan } from '../../lib/graph/diff-plan';
   import { serializePath } from '../../shared/document-anchor-utils';
   import {
@@ -81,6 +82,7 @@
   let yqExpression = '';
   let yqBusy = false;
   let yqError = '';
+  let previewRequestId = 0;
   const maxTabs = 9;
   const wasmUrl = getDefaultWasmURL();
   type ScrollPosition = { scrollTop: number; scrollLeft: number };
@@ -121,8 +123,22 @@
     });
   }
 
-  function showViewerTextPreview(text: string) {
-    viewerRef?.showTextPreview(text);
+  async function showViewerTextPreview(text: string) {
+    await viewerRef?.showTextPreview(text);
+  }
+
+  async function showViewerTextPreviewForRevision(text: string, sourceRevision: number) {
+    const requestId = ++previewRequestId;
+    markPreviewRequested({
+      requestId,
+      sourceRevision,
+    });
+    await showViewerTextPreview(text);
+    markPreviewCompleted({
+      requestId,
+      sourceRevision,
+      completedRevision: sourceRevision,
+    });
   }
 
   function handleEditorRuntimeEvent(event: CustomEvent<RuntimeStateEventDetail>) {
@@ -180,7 +196,7 @@
       targetFormat: format,
       formatOptions,
     });
-    showViewerTextPreview(text);
+    await showViewerTextPreviewForRevision(text, $editorRevision);
     toast.success(preview.toastMessage);
   }
 
@@ -238,7 +254,7 @@
     if ('error' in result) {
       yqError = result.error;
     } else {
-      showViewerTextPreview(result.result);
+      await showViewerTextPreviewForRevision(result.result, $editorRevision);
     }
     yqBusy = false;
   }
@@ -288,7 +304,7 @@
   async function handleSwapEditors(payload: { rightText: string; rightLanguage: SupportedEditorLanguageId }) {
     const leftText = editorRef?.getActiveText() ?? '';
     await editorRef?.importAs(payload.rightLanguage, payload.rightText, payload.rightLanguage);
-    showViewerTextPreview(leftText);
+    await showViewerTextPreviewForRevision(leftText, $editorRevision);
   }
 
   async function toggleSyncScroll() {

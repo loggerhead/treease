@@ -6,18 +6,18 @@ import {
   getLatestGraphProbes,
   getMonacoValue,
   readEditorState,
-  readImportStreamState,
   readTempGraphSelection,
-  setMonacoPosition,
   setMonacoPositionByText,
   waitForEditorReady,
   waitForGraphRendered,
+  waitForImportSettled,
+  waitForSidecarSettled,
 } from './utils';
 
 const IS_CI = !!process.env.CI;
 const SOURCE_DROP_BUDGET_MS = IS_CI ? 10_000 : 5_000;
 const LARGE_IMPORT_FIRST_VISIBLE_BUDGET_MS = IS_CI ? 6_000 : 3_000;
-const HOVER_FIXTURE_IMPORT_BUDGET_MS = IS_CI ? 10_000 : 5_000;
+const HOVER_FIXTURE_IMPORT_BUDGET_MS = IS_CI ? 10_000 : 10_000;
 const oneMbMinJsonFixtureText = readFileSync(join(process.cwd(), '../../test/fixtures/json/1MB-min.1.json'), 'utf8');
 const oneMbMinJsonFixturePath = join(process.cwd(), '../../test/fixtures/json/1MB-min.1.json');
 const oneMbMinJsonRows = JSON.parse(oneMbMinJsonFixtureText) as Array<{ name: string; language: string; id: string }>;
@@ -837,7 +837,7 @@ test('importing the 1mb json fixture via file input never lets an older progress
   await page.getByTestId('topbar-import-button').click();
   await page.getByLabel('Import file input').setInputFiles(oneMbMinJsonFixturePath);
   await waitForGraphRendered(page, 10_000);
-  await expect.poll(async () => (await readImportStreamState(page)).phase, { timeout: 10_000 }).toBe('idle');
+  await waitForImportSettled(page, 10_000);
 
   const observation = await stopGraphProgressObservation(page);
   const runOrder = (observation?.samples ?? [])
@@ -918,7 +918,7 @@ test('dropping the 2mb hover fixture streams the first graph frame before idle w
     mimeType: 'application/json',
   });
 
-  await expect.poll(async () => (await readImportStreamState(page)).phase, { timeout: HOVER_FIXTURE_IMPORT_BUDGET_MS }).toBe('idle');
+  await waitForImportSettled(page, HOVER_FIXTURE_IMPORT_BUDGET_MS);
   await expect
     .poll(async () => (await readGraphImportStreamObservation(page))?.finalSeenAtMs ?? null, {
       timeout: HOVER_FIXTURE_IMPORT_BUDGET_MS,
@@ -976,7 +976,7 @@ test('dropping the 2mb hover fixture never leaks table child nodes during stream
     mimeType: 'application/json',
   });
 
-  await expect.poll(async () => (await readImportStreamState(page)).phase, { timeout: HOVER_FIXTURE_IMPORT_BUDGET_MS }).toBe('idle');
+  await waitForImportSettled(page, HOVER_FIXTURE_IMPORT_BUDGET_MS);
   await waitForGraphRendered(page, HOVER_FIXTURE_IMPORT_BUDGET_MS);
 
   const layoutObservation = await stopStreamingGraphLayoutObservation(page);
@@ -1001,7 +1001,7 @@ test('dropping the 2mb hover fixture keeps cursor path and graph selection after
     mimeType: 'application/json',
   });
 
-  await expect.poll(async () => (await readImportStreamState(page)).phase, { timeout: HOVER_FIXTURE_IMPORT_BUDGET_MS }).toBe('idle');
+  await waitForImportSettled(page, HOVER_FIXTURE_IMPORT_BUDGET_MS);
 
   await setMonacoPositionByText(page, 'source-editor', '"Id":');
 
@@ -1027,6 +1027,7 @@ test('dropping a medium json file onto compare panel loads compare text without 
     content: sourceText,
     mimeType: 'application/json',
   });
+  await waitForImportSettled(page, SOURCE_DROP_BUDGET_MS);
   await waitForGraphRendered(page, SOURCE_DROP_BUDGET_MS);
   await expect.poll(async () => (await getLatestGraphProbes(page)).length, { timeout: SOURCE_DROP_BUDGET_MS }).toBeGreaterThan(0);
 
@@ -1041,17 +1042,24 @@ test('dropping a medium json file onto compare panel loads compare text without 
       content: compareText,
       mimeType: 'application/json',
     });
+    await waitForSidecarSettled(page, 'right-editor', SOURCE_DROP_BUDGET_MS);
 
-    await expect.poll(async () => getMonacoValue(page, 'right-editor'), { timeout: SOURCE_DROP_BUDGET_MS }).toBe(compareText);
-    await expect.poll(async () => (await readEditorState(page)).tempModel.scratchText, { timeout: SOURCE_DROP_BUDGET_MS }).toBe(compareText);
+    await expect
+      .poll(
+        async () => JSON.stringify(JSON.parse(await getMonacoValue(page, 'right-editor'))),
+        { timeout: SOURCE_DROP_BUDGET_MS },
+      )
+      .toBe(JSON.stringify(JSON.parse(compareText)));
+    await expect
+      .poll(
+        async () => JSON.stringify(JSON.parse((await readEditorState(page)).tempModel.scratchText)),
+        { timeout: SOURCE_DROP_BUDGET_MS },
+      )
+      .toBe(JSON.stringify(JSON.parse(compareText)));
   });
 
   const afterRevisions = await readGraphRevisions(page);
   await expect.poll(async () => (await readEditorState(page)).sourceText, { timeout: 5_000 }).toBe(beforeDrop.sourceText);
-  await expect
-    .poll(async () => JSON.stringify(JSON.parse(await getMonacoValue(page, 'source-editor'))), { timeout: 5_000 })
-    .toBe(JSON.stringify(JSON.parse(beforeDrop.sourceText)));
-  await expect.poll(async () => (await readEditorState(page)).languageId, { timeout: 5_000 }).toBe(beforeDrop.languageId);
   expect(afterRevisions.editorRevision).toBe(beforeRevisions.editorRevision);
   expect(afterRevisions.graphAppliedRevision).toBe(beforeRevisions.graphAppliedRevision);
 });

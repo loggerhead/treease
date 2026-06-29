@@ -2,12 +2,12 @@ import { expect, test } from './fixtures';
 import {
   getMonacoRenderedTokenColor,
   getMonacoValue,
-  readImportStreamState,
   readEditorState,
   setEditorContent,
   setMonacoPosition,
   setMonacoValue,
   waitForEditorReady,
+  waitForImportSettled,
   waitForMonacoHook,
   waitForSettingsReady,
 } from './utils';
@@ -89,9 +89,7 @@ test('auto formats whole-document replacements when smart formatting is enabled'
   await page.goto('/editor');
   await resetSettingsStore(page);
   await waitForMonacoHook(page, 'source-editor');
-  await expect
-    .poll(async () => (await readImportStreamState(page)).phase, { timeout: 5_000 })
-    .toBe('idle');
+  await waitForImportSettled(page, 5_000);
 
   await setMonacoValue(
     page,
@@ -233,6 +231,8 @@ test('whole-document replacement writes back nest-expanded source text', async (
       return {
         modelText: text,
         storeText: (await readEditorState(page)).sourceText,
+        normalizedModelText: text.trimEnd(),
+        normalizedStoreText: (await readEditorState(page)).sourceText.trimEnd(),
         parsedType: typeof parsed,
         parsedValue: parsed,
         keyColor: await getMonacoRenderedTokenColor(page, 'source-editor', 'a', 1),
@@ -240,8 +240,10 @@ test('whole-document replacement writes back nest-expanded source text', async (
       };
     }, { timeout: 5_000 })
     .toEqual({
-      modelText: '{"a":1}',
-      storeText: '{"a":1}',
+      modelText: '{"a": 1}\n',
+      storeText: '{"a": 1}\n',
+      normalizedModelText: '{"a": 1}',
+      normalizedStoreText: '{"a": 1}',
       parsedType: 'object',
       parsedValue: { a: 1 },
       keyColor: 'rgb(163, 21, 21)',

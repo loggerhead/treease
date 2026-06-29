@@ -1,3 +1,4 @@
+use crate::core::SemType;
 use crate::operators::{NodeKind, TreeNode};
 
 use super::{BoxArgs, CellBounds, GraphBuilder, GraphCell, GraphNode, GraphRow, PathSeg};
@@ -80,16 +81,50 @@ pub(super) fn infer_header_table_column_sem_type(node: &TreeNode, key: &str) -> 
         let mut index = 0;
         while index + 1 < item.content.len() {
             let key_node = &item.content[index];
-            let value_node = &item.content[index + 1];
             if key_node.value == key {
-                return value_node
-                    .resolved_sem_type()
-                    .map(|sem| sem.tag().to_owned());
+                return Some(SemType::Str.tag().to_owned());
             }
             index += 2;
         }
     }
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::infer_header_table_column_sem_type;
+    use crate::core::SemType as CoreSemType;
+    use crate::operators::{NodeKind, SemType, TreeNode};
+
+    fn mapping_pair(key: &str, value: TreeNode) -> TreeNode {
+        let mut map = TreeNode {
+            kind: NodeKind::Mapping,
+            sem_type: Some(SemType::Map),
+            tag: CoreSemType::Map.to_string(),
+            ..TreeNode::default()
+        };
+        map.content.push(TreeNode::scalar(SemType::Str, key));
+        map.content.push(value);
+        map
+    }
+
+    #[test]
+    fn header_table_columns_keep_string_semantics() {
+        let mut table = TreeNode {
+            kind: NodeKind::Sequence,
+            sem_type: Some(SemType::Seq),
+            tag: CoreSemType::Seq.to_string(),
+            ..TreeNode::default()
+        };
+        table
+            .content
+            .push(mapping_pair("h1", TreeNode::scalar(SemType::Int, "11")));
+
+        assert_eq!(
+            infer_header_table_column_sem_type(&table, "h1"),
+            Some(CoreSemType::Str.tag().to_owned())
+        );
+    }
 }
 
 pub(super) fn set_row_bounds(row: &mut GraphRow, x: i32, y: i32, width: i32, height: i32) {

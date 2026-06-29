@@ -29,6 +29,7 @@ function createDeps() {
     renderDocumentGraph: vi.fn(async () => ({})),
     attachFullEditDocumentJobSession: vi.fn(async () => ({})),
     renderJsonBlockSelection: vi.fn(async () => ({ nodes: [], edges: [] })),
+    markGraphRequested: vi.fn(),
     resetStreamProgress: vi.fn(),
     onStreamingRenderError: vi.fn(),
   };
@@ -65,6 +66,11 @@ describe('graph-viewer render effects JSON block scheduling', () => {
     });
 
     expect(deps.renderJsonBlockSelection).toHaveBeenCalledWith(selection);
+    expect(deps.markGraphRequested).toHaveBeenCalledWith({
+      documentKey: selection.blockDocumentKey,
+      revision: selection.revision,
+      mode: 'json-block',
+    });
     expect(deps.renderDocumentGraph).not.toHaveBeenCalled();
 
   });
@@ -92,6 +98,11 @@ describe('graph-viewer render effects JSON block scheduling', () => {
       language: 'json',
       text: 'not-json',
       revision: 4,
+    });
+    expect(deps.markGraphRequested).toHaveBeenCalledWith({
+      documentKey: 'doc-json',
+      revision: 4,
+      mode: 'committed',
     });
   });
 

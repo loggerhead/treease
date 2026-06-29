@@ -448,7 +448,7 @@ describe('editor-store', () => {
       } catch {}
 
       get(editorWorkspace);
-      editorStore.get().workspace;
+      void editorStore.get().workspace;
 
       expect(get(activeTempModel)).toBe(before);
       expect(get(activeTempModel).treePath).toEqual([{ key: 'root' }]);

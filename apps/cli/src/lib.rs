@@ -818,7 +818,7 @@ mod tests {
     #[test]
     fn web_asset_manifest_requires_matching_index_asset_version() {
         let manifest = serde_json::json!({
-            "version": "26062410",
+            "version": web_assets::WEB_ASSET_VERSION,
             "assetVersion": "1761465123456",
             "files": [
                 { "path": "index.html" },

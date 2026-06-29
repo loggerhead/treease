@@ -18,6 +18,7 @@ import { streamDocumentJobText, type AdvanceDocumentJobRequest } from '../../../
 import type { FullEditDocumentJobSession } from '../../graph-stream/full-edit-document-job-session';
 import { buildDocumentJobSettings, collectGraphDocumentJobResult, startSharedGraphDocumentJob } from '../../graph-stream/document-job-runner';
 import { normalizeDocumentJobAnalysisPayload } from '../../../shared/document-job-result';
+import { markGraphApplied, markGraphFlushed } from '../../test-bridge/runtime-readiness';
 
 const defaultGraphDocumentFormatting = {
   indent: 2,
@@ -44,6 +45,12 @@ type GraphRenderSourceRef = {
   language: string;
   text: string;
   revision: number;
+};
+
+type GraphReadinessRef = {
+  documentKey: string;
+  revision: number;
+  mode: 'committed' | 'streaming' | 'json-block';
 };
 
 type GraphRenderSceneBridge = {
@@ -174,9 +181,11 @@ export function createGraphRenderSession(deps: GraphRenderSessionDeps) {
     mode: 'committed' | 'streaming' | 'json-block',
     revision: number,
     guard: GraphRenderGuard,
+    readiness: GraphReadinessRef,
     freshness?: { isCurrent: () => boolean },
   ): Promise<void> {
     await getSceneBridge().flushPendingRenderWork();
+    markGraphFlushed(readiness);
     if (freshness && !freshness.isCurrent()) return;
     deps.onStreamFinalRedraw(mode, revision, guard);
   }
@@ -254,11 +263,13 @@ export function createGraphRenderSession(deps: GraphRenderSessionDeps) {
 
   async function applyTrackedProjectionDelta(
     delta: RawGraphDelta,
+    readiness: GraphReadinessRef,
     version?: { baseGraphVersion: number; graphVersion: number },
   ): Promise<void> {
     const startedAtMs = performance.now();
     performance.mark('pipeline:apply-graph-delta:start');
     await getSceneBridge().applyGraphDelta(delta, version);
+    markGraphApplied(readiness);
     performance.mark('pipeline:apply-graph-delta:end');
     performance.measure('pipeline:apply-graph-delta', 'pipeline:apply-graph-delta:start', 'pipeline:apply-graph-delta:end');
     const finishedAtMs = performance.now();
@@ -312,6 +323,7 @@ export function createGraphRenderSession(deps: GraphRenderSessionDeps) {
   function createProjectionEventApplier(
     totalBytes: number,
     streamRunId: string,
+    readiness: GraphReadinessRef,
   ) {
     return async (batch: EventBatch): Promise<void> => {
       await processGraphBatchEvents(batch, totalBytes, {
@@ -319,7 +331,7 @@ export function createGraphRenderSession(deps: GraphRenderSessionDeps) {
           deps.updateStreamProgress(buildGraphProgressEvent(streamRunId, processedBytes, total));
         },
         onProjection: async (delta, version) => {
-          await applyTrackedProjectionDelta(delta, version);
+          await applyTrackedProjectionDelta(delta, readiness, version);
         },
       });
     };
@@ -369,7 +381,11 @@ export function createGraphRenderSession(deps: GraphRenderSessionDeps) {
       // SnapshotReady.mainGraph is the authoritative final graph. Always apply
       // it so streaming-time approximation or stale edge geometry cannot leak
       // into the settled scene state.
-      await applyTrackedProjectionDelta(finalDelta);
+      await applyTrackedProjectionDelta(finalDelta, {
+        documentKey: params.documentKey,
+        revision: params.revision,
+        mode: params.redrawMode,
+      });
       if (!params.freshness.isCurrent()) return null;
       deps.clearErrorMessage();
       clearGraphStreamFailure();
@@ -408,6 +424,11 @@ export function createGraphRenderSession(deps: GraphRenderSessionDeps) {
         revision: params.revision,
         snapshotId,
         renderToken: params.renderToken,
+        mode: params.redrawMode,
+      },
+      {
+        documentKey: params.documentKey,
+        revision: params.revision,
         mode: params.redrawMode,
       },
       params.freshness,
@@ -508,7 +529,11 @@ export function createGraphRenderSession(deps: GraphRenderSessionDeps) {
         totalBytes,
         chunkSize,
       );
-      const applyProjectionEvents = createProjectionEventApplier(totalBytes, streamRunId);
+      const applyProjectionEvents = createProjectionEventApplier(totalBytes, streamRunId, {
+        documentKey: request.documentKey,
+        revision: request.revision,
+        mode: request.kind === 'incremental' ? 'committed' : 'streaming',
+      });
 
       const builderConfig = getBuilderConfig();
       performance.mark('pipeline:wasm-start-job:start');
@@ -634,7 +659,11 @@ export function createGraphRenderSession(deps: GraphRenderSessionDeps) {
       totalBytes,
       session.chunkSize ?? 0,
     );
-    const applyProjectionEvents = createProjectionEventApplier(totalBytes, streamRunId);
+    const applyProjectionEvents = createProjectionEventApplier(totalBytes, streamRunId, {
+      documentKey: session.documentKey,
+      revision: session.revision,
+      mode: 'streaming',
+    });
 
     try {
       await consumeGraphBatchStream({
@@ -720,7 +749,11 @@ export function createGraphRenderSession(deps: GraphRenderSessionDeps) {
       totalBytes,
       chunkSize,
     );
-    const applyProjectionEvents = createProjectionEventApplier(totalBytes, streamRunId);
+    const applyProjectionEvents = createProjectionEventApplier(totalBytes, streamRunId, {
+      documentKey: selection.blockDocumentKey,
+      revision: selection.revision,
+      mode: 'json-block',
+    });
 
     try {
       const { started, advance } = await startSharedGraphDocumentJob({
@@ -779,7 +812,11 @@ export function createGraphRenderSession(deps: GraphRenderSessionDeps) {
           if (!isRawGraphDelta(delta)) {
             throw new Error('json block graph projection decode failed');
           }
-          await applyTrackedProjectionDelta(delta);
+          await applyTrackedProjectionDelta(delta, {
+            documentKey: selection.blockDocumentKey,
+            revision: selection.revision,
+            mode: 'json-block',
+          });
         }
         markGraphStreamFinal('snapshot-ready');
       } else if (finalEvent?.type === 'parseFailed') {
@@ -811,6 +848,11 @@ export function createGraphRenderSession(deps: GraphRenderSessionDeps) {
           revision: selection.revision,
           snapshotId: snapshotId ?? null,
           renderToken,
+          mode: 'json-block',
+        },
+        {
+          documentKey: selection.blockDocumentKey,
+          revision: selection.revision,
           mode: 'json-block',
         },
         freshness,

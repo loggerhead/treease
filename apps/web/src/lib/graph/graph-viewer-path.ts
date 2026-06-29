@@ -1,5 +1,4 @@
-import { buildReadablePath as formatReadablePath, isPathSegIndex, isPathSegKey, pathSegKeyValue, type PathSeg } from '../store/tree-path';
-import type { GraphCell } from './graph-viewer-render';
+import { isPathSegIndex, isPathSegKey, pathSegKeyValue, type PathSeg } from '../store/tree-path';
 
 export function setValueAtPath(data: any, path: PathSeg[], value: unknown): unknown {
   if (path.length == 0) return value;

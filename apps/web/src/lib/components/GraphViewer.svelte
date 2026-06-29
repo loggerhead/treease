@@ -104,6 +104,14 @@
     replaceGraphStreamState,
     resetGraphStreamState,
   } from '../test-bridge/register-graph-bridge';
+  import {
+    markGraphRequested,
+    markSubgraphMaterialized,
+    markSubgraphRequested,
+    readRuntimeReadiness,
+    syncGraphInteractionReadiness,
+    syncSubgraphInteractionReadiness,
+  } from '../test-bridge/runtime-readiness';
   import { PathSegTag, type TreeNode } from '@core-wasm/index';
   import type {
     App as LeaferApp,
@@ -203,6 +211,7 @@
   let subgraphWorkspaceRefreshSignature = '';
   let subgraphWorkspaceRefreshRevision = -1;
   let subgraphWorkspaceRefreshToken = 0;
+  let subgraphWorkspaceRequestId = 0;
   let subgraphWorkspaceHeightPx = SUBGRAPH_WORKSPACE_DEFAULT_HEIGHT;
   let isDraggingSubgraphWorkspaceDivider = false;
   let subgraphWorkspaceResizeState: { startClientY: number; startHeightPx: number } | null = null;
@@ -272,6 +281,7 @@
   };
 
   type SubgraphWorkspacePaneState = {
+    requestId?: number;
     path: PathSeg[];
     pathKey: string;
     title: string;
@@ -499,10 +509,57 @@
       !sceneState.pendingRenderWork &&
       sceneState.rootProbeCount > 0;
     return {
-      ...(graphRenderGuard ?? {}),
+      ...graphRenderGuard,
       current,
       ...sceneState,
       interactiveReady,
+    };
+  }
+
+  function syncGraphReadinessFromInteraction() {
+    const interaction = getGraphInteractionState();
+    if (!interaction?.documentKey || typeof interaction.revision !== 'number') return interaction;
+    syncGraphInteractionReadiness({
+      documentKey: interaction.documentKey,
+      revision: interaction.revision,
+      mode: interaction.mode ?? 'committed',
+      hasGraphData: interaction.hasGraphData === true,
+      nodeCount: interaction.nodeCount ?? 0,
+      pendingRenderWork: interaction.pendingRenderWork ?? true,
+      interactiveReady: interaction.interactiveReady === true,
+    });
+    return interaction;
+  }
+
+  function syncSubgraphReadinessForPane(pane: SubgraphWorkspacePaneState | null | undefined): void {
+    if (!pane?.pathKey || !pane.requestId) return;
+    const interactiveReady =
+      pane.kind === 'content'
+        ? pane.status === 'ready'
+        : pane.status === 'ready' && subgraphWorkspaceRuntimeMap.has(pane.pathKey);
+    syncSubgraphInteractionReadiness({
+      requestId: pane.requestId,
+      pathKey: pane.pathKey,
+      sourceRevision: editorRevisionValue,
+      interactiveRevision: editorRevisionValue,
+      interactiveReady,
+    });
+  }
+
+  function getRuntimeReadiness() {
+    const interaction = syncGraphReadinessFromInteraction();
+    const base = readRuntimeReadiness();
+    if (base.subgraph.pathKey) {
+      syncSubgraphReadinessForPane(subgraphWorkspaceChain.find((pane) => pane.pathKey === base.subgraph.pathKey));
+    }
+    const next = readRuntimeReadiness();
+    return {
+      ...next,
+      graph: {
+        ...next.graph,
+        mode: interaction?.mode ?? next.graph.mode,
+        pendingRenderWork: interaction?.pendingRenderWork ?? next.graph.pendingRenderWork,
+      },
     };
   }
 
@@ -606,6 +663,7 @@
       return graphRenderCoordinator.attachExternalDocumentJobSession(session);
     },
     renderJsonBlockSelection: (selection) => graphRenderCoordinator.renderJsonBlockSelection(selection),
+    markGraphRequested,
     resetStreamProgress: () => graphStreamProgressController.reset(),
     onStreamingRenderError: (error) => {
       console.error('[GraphViewer] streaming render failed', error);
@@ -997,10 +1055,10 @@
 
   function syncSubgraphWorkspaceTransientState(nextChain: SubgraphWorkspacePaneState[]): void {
     const nextKeys = new Set(nextChain.map((pane) => pane.pathKey));
-    for (const pathKey of [...subgraphWorkspacePendingEditKeys]) {
+    for (const pathKey of subgraphWorkspacePendingEditKeys) {
       if (!nextKeys.has(pathKey)) subgraphWorkspacePendingEditKeys.delete(pathKey);
     }
-    for (const pathKey of [...subgraphWorkspaceQueuedEditMap.keys()]) {
+    for (const pathKey of subgraphWorkspaceQueuedEditMap.keys()) {
       if (!nextKeys.has(pathKey)) subgraphWorkspaceQueuedEditMap.delete(pathKey);
     }
   }
@@ -1024,10 +1082,19 @@
   }
 
   function setSubgraphWorkspaceChain(nextChain: SubgraphWorkspacePaneState[]): void {
-    syncSubgraphWorkspaceTransientState(nextChain);
-    subgraphWorkspaceChain = nextChain;
+    const previousRequestIds = new Map(
+      subgraphWorkspaceChain
+        .filter((pane) => typeof pane.requestId === 'number')
+        .map((pane) => [pane.pathKey, pane.requestId as number]),
+    );
+    const normalizedChain = nextChain.map((pane) => ({
+      ...pane,
+      requestId: pane.requestId ?? previousRequestIds.get(pane.pathKey),
+    }));
+    syncSubgraphWorkspaceTransientState(normalizedChain);
+    subgraphWorkspaceChain = normalizedChain;
     updateVisibleSubgraphWorkspacePanes();
-    disposeSubgraphWorkspaceRuntimes(nextChain.map((pane) => pane.pathKey));
+    disposeSubgraphWorkspaceRuntimes(normalizedChain.map((pane) => pane.pathKey));
   }
 
   async function prepareSubgraphWorkspacePane(path: PathSeg[]): Promise<SubgraphWorkspacePaneState | null> {
@@ -1081,8 +1148,15 @@
     if (!pathKey) return;
     const currentChild = subgraphWorkspaceChain[parentAbsoluteIndex + 1] ?? null;
     if (currentChild?.pathKey === pathKey) return;
+    const requestId = ++subgraphWorkspaceRequestId;
+    markSubgraphRequested({
+      requestId,
+      pathKey,
+      sourceRevision: editorRevisionValue,
+    });
     const base = parentAbsoluteIndex >= 0 ? subgraphWorkspaceChain.slice(0, parentAbsoluteIndex + 1) : [];
     const loadingPane: SubgraphWorkspacePaneState = {
+      requestId,
       path,
       pathKey,
       title: formatSubgraphWorkspacePath(path, renderConfig),
@@ -1096,9 +1170,17 @@
     if (!pane) return;
     const latestBase = parentAbsoluteIndex >= 0 ? subgraphWorkspaceChain.slice(0, parentAbsoluteIndex + 1) : [];
     if (latestBase.some((entry, index) => base[index]?.pathKey !== entry.pathKey)) return;
-    setSubgraphWorkspaceChain([...latestBase, pane]);
+    const nextPane = { ...pane, requestId };
+    markSubgraphMaterialized({
+      requestId,
+      pathKey,
+      sourceRevision: editorRevisionValue,
+      materializedRevision: editorRevisionValue,
+    });
+    setSubgraphWorkspaceChain([...latestBase, nextPane]);
     await tick();
     await renderSubgraphWorkspacePanes();
+    syncSubgraphReadinessForPane(nextPane);
   }
 
   function closeSubgraphWorkspacePane(absoluteIndex: number): void {
@@ -1233,6 +1315,7 @@
       .map((pane) => pane.pathKey);
     disposeSubgraphWorkspaceRuntimes(activeKeys);
     for (const pane of subgraphWorkspaceVisiblePanes) {
+      syncSubgraphReadinessForPane(pane);
       if (pane.kind === 'content') continue;
       const mount = subgraphWorkspaceHostMap.get(pane.pathKey);
       if (!mount) continue;
@@ -1267,6 +1350,7 @@
         (runtime as SubgraphWorkspaceRuntime & { __graphRef?: SubgraphWorkspaceGraphData | null }).__graphRef =
           pane.graph;
         subgraphWorkspaceRuntimeMap.set(pane.pathKey, runtime);
+        syncSubgraphReadinessForPane(pane);
       }
     }
   }
@@ -1308,6 +1392,7 @@
     getHitResult: (point: { x: number; y: number }) => getRuntimeHitResult(point),
     getLastGraphData: () => graphSceneController.getLastGraphData(),
     getInteractionState: () => getGraphInteractionState(),
+    getRuntimeReadiness: () => getRuntimeReadiness(),
     getStreamProgressState: () => streamProgressState,
     revealPath: (path: PathSeg[], options?: { target?: 'key' | 'value' | 'node'; navigate?: boolean }) =>
       revealPath(path, options),

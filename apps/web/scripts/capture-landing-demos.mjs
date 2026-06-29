@@ -148,18 +148,6 @@ async function waitForGraphRendered(page) {
     .toBe(true);
 }
 
-async function waitForGraphProbes(page) {
-  await expect
-    .poll(
-      async () =>
-        evaluateTreease(page, (treease) => {
-          return (treease.graph.getClickProbeTargets?.("root") ?? []).length;
-        }),
-      { timeout: 10_000 },
-    )
-    .toBeGreaterThan(0);
-}
-
 async function waitForImportIdle(page, timeout = 10_000) {
   await expect
     .poll(
@@ -434,20 +422,6 @@ async function readRootGraphProbes(page) {
           : null,
     })),
   );
-}
-
-async function clickGraphProbeByMatcher(page, matcher) {
-  const canvas = page.getByTestId("graph-viewer-canvas");
-  const box = await canvas.boundingBox();
-  if (!box) throw new Error("graph-viewer-canvas bounding box missing");
-
-  const probe = (await readRootGraphProbes(page)).find(matcher);
-  if (!probe?.coord) {
-    throw new Error("matching graph probe not found");
-  }
-
-  await page.mouse.click(box.x + probe.coord.x, box.y + probe.coord.y);
-  return probe;
 }
 
 async function commitGraphProbeValue(page, matcher, nextValue) {
@@ -959,7 +933,7 @@ const workflowCaptures = [
       await waitForStreamProgressVisible(page, 10_000);
       const progressBar = page.getByRole("progressbar");
       await expect(progressBar).toBeVisible({ timeout: 5_000 });
-      const progressBox = expandBox(await progressBar.boundingBox(), {
+      expandBox(await progressBar.boundingBox(), {
         left: 16,
         top: 52,
         right: 16,

@@ -398,13 +398,13 @@ fn graph_builder_derives_table_columns_and_binds_cells_to_compute_nodes() {
     assert!(table.rows[0][3].source.is_none());
     assert!(table.rows[0][3].path.is_empty());
     assert_eq!(table.rows[0][3].value, "miss");
-    assert_eq!(table.rows[0][3].sem_type, Some("!!int".to_string()));
+    assert_eq!(table.rows[0][3].sem_type, Some("!!str".to_string()));
     // Row 1: missing header-table field is rendered as miss and is not clickable
     assert_eq!(table.rows[1][1].text, "miss");
     assert!(table.rows[1][1].source.is_none());
     assert!(table.rows[1][1].path.is_empty());
     assert_eq!(table.rows[1][1].value, "miss");
-    assert_eq!(table.rows[1][1].sem_type, Some("!!int".to_string()));
+    assert_eq!(table.rows[1][1].sem_type, Some("!!str".to_string()));
     // Row 1: cell at column "c" has text "4", source points to v4
     assert_eq!(table.rows[1][3].text, "4");
     assert!(table.rows[1][3].source.is_some());

@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { InnerEditorEvent } from '@leafer-in/editor';
 import { SemType, TreeKind, type TreeNode } from '@core-wasm/index'
-import { toWasmTreeNode } from '../../../shared/brand-bridge';
+import { toWasmPathSeg, toWasmTreeNode } from '../../../shared/brand-bridge';
 import { createGraphValueEditController } from './graph-value-edit';
 
 const mocked = vi.hoisted(() => ({
@@ -617,7 +617,10 @@ describe('graph-value-edit', () => {
       }) as any,
       getEditorRevision: () => 3,
       getActiveSnapshotId: () => 42,
-      resolveTreePathByPosition: vi.fn(async () => [{ key: 'user' }, { key: 'missing' }]),
+      resolveTreePathByPosition: vi.fn(async () => [
+        toWasmPathSeg({ tag: 0, key: 'user', index: 0 }),
+        toWasmPathSeg({ tag: 0, key: 'missing', index: 0 }),
+      ]),
       nextTreeStateToken: () => 5,
       publishTreeState,
       emitEditorMutation,

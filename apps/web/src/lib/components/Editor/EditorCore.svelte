@@ -160,8 +160,9 @@
   ): void {
     if (!editor) return;
     rootScalarDecorations ??= editor.createDecorationsCollection();
+    const highlightKind = jsonBlockSelectionValue ? null : resolveRootScalarHighlightKind(analysis);
     rootScalarDecorations.set(
-      buildRootScalarHighlightDecorations(monaco, model, resolveRootScalarHighlightKind(analysis)),
+      buildRootScalarHighlightDecorations(monaco, model, highlightKind),
     );
   }
 
@@ -746,6 +747,9 @@
     jsonBlockSelectionUnsub = jsonBlockSelection.subscribe((value) => {
       jsonBlockSelectionValue = value;
       applyJsonBlockDecoration(value);
+      if (value) {
+        applyRootScalarHighlight(null);
+      }
     });
   }
 

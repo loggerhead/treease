@@ -15,6 +15,7 @@
   import { editorStore, editorWorkspace } from '../../store/editor-store';
   import { clearActiveDocumentSnapshot, getActiveDocumentSnapshotId } from '../../services/DocumentSessionService';
   import { monacoChangesToDocumentTextEdits, type MonacoTextChange } from '../../../shared/document-text-edits';
+  import { markSidecarRequested, markSidecarSettled } from '../../test-bridge/runtime-readiness';
   import { applyDocumentAnalysisToEditor } from './editor-analysis-apply';
   import { createEditorFullEditController } from './editor-full-edit-controller';
   import { createWorkspaceTabFullEditSink } from './editor-full-edit-sink';
@@ -48,6 +49,7 @@
   let diffBlankZoneIds: string[] = [];
   let runtimeToken = 0;
   let sidecarAnalysisSyncToken = 0;
+  let sidecarReadinessRequestId = 0;
   let suppressChange = false;
   let lastModelLength = 0;
   let lastModelText = '';
@@ -241,6 +243,60 @@
     }
     clearSemanticTokensForDocument(documentKey);
     refreshSemanticTokensForLanguage(activeLanguage);
+  }
+
+  function beginSidecarReadinessRequest(): { requestId: number; documentKey: string } {
+    const requestId = ++sidecarReadinessRequestId;
+    const documentKey = sidecarDocumentKey();
+    markSidecarRequested({
+      requestId,
+      hookId: runtimeHookId,
+      documentKey,
+    });
+    return { requestId, documentKey };
+  }
+
+  function settleSidecarReadinessRequest(request: { requestId: number; documentKey: string }, expectedText: string): void {
+    const currentTab = editorStore.get().workspace.tabsById[tabId];
+    const sourceTextValue = currentTab?.sourceText ?? '';
+    const scratchTextValue = currentTab?.tempModel?.scratchText ?? '';
+    const modelTextValue = model?.getValue() ?? sourceTextValue;
+    if (sourceTextValue !== expectedText) return;
+    if (scratchTextValue !== expectedText) return;
+    if (modelTextValue !== expectedText) return;
+    markSidecarSettled({
+      requestId: request.requestId,
+      hookId: runtimeHookId,
+      documentKey: request.documentKey,
+      revision: currentTab?.revision ?? 0,
+    });
+  }
+
+  async function prepareSidecarSync(nextLanguage: SupportedEditorLanguageId): Promise<void> {
+    await tick();
+    await ensureEditor();
+    setModelLanguage(nextLanguage);
+  }
+
+  function syncModelTextIfNeeded(value: string): void {
+    if (model && model.getValue() !== value) {
+      setModelValueSilently(model, value, () => {
+        syncLastModelSnapshot();
+      });
+    }
+  }
+
+  async function finishSidecarSync(
+    request: { requestId: number; documentKey: string },
+    value: string,
+    nextLanguage: SupportedEditorLanguageId,
+  ): Promise<void> {
+    syncModelTextIfNeeded(value);
+    externalSync.acceptExternalText(value);
+    applyRootScalarHighlightFromText(value, nextLanguage);
+    settleSidecarReadinessRequest(request, value);
+    await runFullEditForCurrentText('whole-document-replacement', value, nextLanguage);
+    settleSidecarReadinessRequest(request, value);
   }
 
   function setModelLanguage(nextLanguage: SupportedEditorLanguageId): void {
@@ -486,31 +542,22 @@
     ensureWorkspaceSidecarTab(value);
     setWorkspaceSidecarLanguage(nextLanguage);
     updateSidecarSourceText(value);
-    externalSync.acceptExternalText(value);
-    await tick();
-    await ensureEditor();
-    setModelLanguage(nextLanguage);
-    await runFullEditForCurrentText('whole-document-replacement', value, nextLanguage);
+    const readinessRequest = beginSidecarReadinessRequest();
+    await prepareSidecarSync(nextLanguage);
+    await finishSidecarSync(readinessRequest, value, nextLanguage);
   }
 
   async function syncExternalSourceText(value: string, nextLanguage: SupportedEditorLanguageId = activeLanguage): Promise<void> {
     ensureWorkspaceSidecarTab(value);
     setWorkspaceSidecarLanguage(nextLanguage);
-    await tick();
-    await ensureEditor();
-    setModelLanguage(nextLanguage);
+    const readinessRequest = beginSidecarReadinessRequest();
+    await prepareSidecarSync(nextLanguage);
     if (model && !externalSync.shouldApplyExternalText(value, model.getValue())) {
+      settleSidecarReadinessRequest(readinessRequest, value);
       return;
     }
     updateSidecarSourceText(value);
-    if (model && model.getValue() !== value) {
-      setModelValueSilently(model, value, () => {
-        syncLastModelSnapshot();
-      });
-    }
-    externalSync.acceptExternalText(value);
-    applyRootScalarHighlightFromText(value, nextLanguage);
-    await runFullEditForCurrentText('whole-document-replacement', value, nextLanguage);
+    await finishSidecarSync(readinessRequest, value, nextLanguage);
   }
 
   async function runFullEditForCurrentText(

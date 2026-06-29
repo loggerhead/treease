@@ -3,6 +3,7 @@ import { activeTempModel, editorStore, type GraphHighlightTarget } from '../stor
 import type { PathSeg } from '../store/tree-path';
 import { toWasmPathSeg } from '../../shared/brand-bridge';
 import type { TreeaseBridgePathSeg, TreeaseMonacoHook } from './types';
+import { syncRuntimeReadinessFromEditorState } from './runtime-readiness';
 import {
   registerTreeaseEditorHook,
   registerTreeaseEditorStoreBridge,
@@ -39,6 +40,13 @@ export function unregisterEditorHook(hookId: string): void {
 }
 
 export function installEditorStoreBridge(): void {
+  editorStore.subscribe((state) => {
+    syncRuntimeReadinessFromEditorState({
+      documentKey: state.documentKey,
+      editorRevision: state.editorRevision,
+      fullEditUiState: state.fullEditUiState,
+    });
+  });
   registerTreeaseEditorStoreBridge({
     getState: () => editorStore.get(),
     getWorkspace: () => editorStore.get().workspace,
