@@ -101,7 +101,7 @@ export function computePaneWidths(state: SplitLayoutState, containerWidth: numbe
   }
 
   const leftPaneWidthPx = Math.round(containerWidth * state.splitRatio);
-  const rightPaneWidthPx = Math.max(containerWidth - leftPaneWidthPx - config.dividerWidthPx, 0);
+  const rightPaneWidthPx = Math.max(containerWidth - leftPaneWidthPx, 0);
   const splitterLeftPx = leftPaneWidthPx;
   const splitterControlLeftPx = config.collapsedControlInsetPx;
   return { leftPaneWidthPx, rightPaneWidthPx, splitterLeftPx, splitterControlLeftPx };

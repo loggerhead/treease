@@ -42,7 +42,7 @@ describe('split-layout-controller', () => {
   it('computes widths for split and collapsed modes', () => {
     const split = computePaneWidths({ layoutMode: 'split', splitRatio: 0.25, lastSplitRatio: 0.25 }, 1000, config);
     expect(split.leftPaneWidthPx).toBe(250);
-    expect(split.rightPaneWidthPx).toBe(740);
+    expect(split.rightPaneWidthPx).toBe(750);
 
     const rightOnly = computePaneWidths(collapseEditor(createSplitLayoutState(0.3)), 1000, config);
     expect(rightOnly.leftPaneWidthPx).toBe(0);

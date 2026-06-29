@@ -1592,9 +1592,6 @@
         onDragEnd: () => handleSubgraphWorkspaceDividerDragEnd(),
       }}
     >
-      <div class="graph-subgraph-workspace__divider-handle" aria-hidden="true">
-        <GripVertical size={12} strokeWidth={2} />
-      </div>
     </div>
     <div
       class="graph-subgraph-workspace"
@@ -1709,44 +1706,11 @@
     background: transparent;
   }
 
-  .graph-subgraph-workspace__divider-handle {
-    position: absolute;
-    left: 50%;
-    top: 0;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 18px;
-    height: 18px;
-    border-radius: 999px;
-    border: 1px solid rgba(226, 232, 240, 0.96);
-    background: rgba(248, 250, 252, 0.98);
-    color: #94a3b8;
-    box-shadow:
-      0 1px 2px rgba(15, 23, 42, 0.06),
-      inset 0 1px 0 rgba(255, 255, 255, 0.82);
-    transform: translate(-50%, -50%) rotate(90deg);
-    transition:
-      color 120ms ease,
-      border-color 120ms ease,
-      box-shadow 120ms ease;
-  }
-
-  :global(.graph-subgraph-workspace__divider:hover) .graph-subgraph-workspace__divider-handle,
-  :global(.graph-subgraph-workspace__divider.app-split-divider--dragging) .graph-subgraph-workspace__divider-handle {
-    color: #2563eb;
-    border-color: rgba(191, 219, 254, 0.98);
-    box-shadow:
-      0 2px 6px rgba(37, 99, 235, 0.14),
-      inset 0 1px 0 rgba(255, 255, 255, 0.82);
-  }
-
   .graph-subgraph-workspace__track {
     display: grid;
     grid-auto-flow: column;
     grid-auto-columns: minmax(360px, 1fr);
     gap: 0;
-    width: 100%;
     height: 100%;
     overflow-x: auto;
     overflow-y: hidden;
@@ -1831,7 +1795,7 @@
 
   .graph-subgraph-pane__content-editor {
     min-height: 0;
-    padding: 10px 0 12px 12px;
+    padding: 10px 12px 12px;
   }
 
   .graph-subgraph-pane__content-editor :global([data-testid='graph-subgraph-monaco-editor']) {

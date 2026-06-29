@@ -18,7 +18,7 @@
 </script>
 
 <div
-  class={`flex min-w-[200px] items-center gap-2 rounded-[10px] bg-[var(--panel-bg)] px-2 py-1 text-[12px] text-[var(--text-muted)] ${className}`}
+  class={`flex min-w-[200px] items-center gap-1 rounded-[7px] bg-[var(--panel-bg)] px-2 py-0 text-[13px] text-[#6b7280] ${className}`}
   role="button"
   tabindex="0"
   on:click={(event) => {
@@ -34,10 +34,10 @@
     }
   }}
 >
-  <Search size={14} />
+  <Search size={12} strokeWidth={2} class="text-[#64748b]" />
   <input
     bind:this={inputEl}
-    class="min-w-0 flex-1 border-none bg-transparent text-[12px] text-[var(--text-primary)] outline-none"
+    class="min-w-0 flex-1 border-none bg-transparent text-[13px] leading-[1] font-normal tracking-[-0.01em] text-[#111827] outline-none placeholder:text-[#9ca3af]"
     bind:value
     {placeholder}
     aria-label={inputAriaLabel}
@@ -52,5 +52,5 @@
       dispatch('keydown', event)
     }}
   />
-  <span class="rounded-[6px] px-[6px] py-[1px] text-[10px] text-[var(--text-muted)]">{shortcut}</span>
+  <span class="ml-1 rounded-[4px] border-l border-[rgba(15,23,42,0.06)] pl-1.5 pr-[2px] text-[10px] font-medium leading-[16px] tracking-[-0.01em] text-[#94a3b8]">{shortcut}</span>
 </div>

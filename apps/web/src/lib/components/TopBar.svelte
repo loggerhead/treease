@@ -1,5 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte'
+  import { cubicOut } from 'svelte/easing'
+  import { fly } from 'svelte/transition'
   import { Plus, X, FileInput, FileOutput, BookOpen, MessageCircle, Share2, User, ArrowRight } from 'lucide-svelte'
   import { languageId as languageIdStore } from '../store/editor-store'
   import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from './ui/dropdown-menu'
@@ -29,6 +31,7 @@
   let exportOpen = false
   let importFormat = 'json'
   let exportFormat = 'json'
+  let importDropActive = false
   let importAnchor: HTMLDivElement | null = null
   let exportAnchor: HTMLDivElement | null = null
   let importInput: HTMLInputElement | null = null
@@ -45,6 +48,7 @@
 
   const handleImportFile = async (file?: File | null) => {
     if (!file) return
+    importDropActive = false
     onImportFileStream({ file, sourceFormat: importFormat, targetFormat: $languageIdStore, fileName: file.name })
     importOpen = false
   }
@@ -106,6 +110,8 @@
         <div
           class="absolute left-0 top-[var(--topbar-height)] z-30 w-[360px] rounded-b-[16px] border border-[var(--border-muted)] border-t-0 bg-white p-4 shadow-[0_12px_40px_rgba(15,23,42,0.12)]"
           data-testid="import-panel"
+          style:transform-origin="top left"
+          transition:fly={{ y: -6, duration: 150, opacity: 0.08, easing: cubicOut }}
         >
           <div class="text-[18px] font-semibold text-[var(--text-primary)]">Import</div>
           <div class="mt-3 flex items-center justify-between text-[13px] text-[var(--text-muted)]">
@@ -140,13 +146,32 @@
             {/if}
           </div>
           <button
-            class="mt-4 flex h-[160px] w-full flex-col items-center justify-center gap-2 rounded-[12px] border border-dashed border-[var(--border-muted)] bg-[var(--panel-bg)] text-[13px] text-[var(--text-muted)] hover:border-[var(--accent)]"
+            class={`mt-4 flex h-[160px] w-full flex-col items-center justify-center gap-2 rounded-[12px] border border-dashed text-[13px] text-[var(--text-muted)] transition-[border-color,background-color,box-shadow,color] duration-150 ease-out ${
+              importDropActive
+                ? 'border-[var(--accent)] bg-[#eff6ff] text-[var(--text-primary)] shadow-[0_0_0_1px_rgba(37,99,235,0.08)]'
+                : 'border-[var(--border-muted)] bg-[var(--panel-bg)] hover:border-[var(--accent)]'
+            }`}
             aria-label="Choose import file"
             data-testid="import-drop-trigger"
             on:click={() => importInput?.click()}
-            on:dragover={(event) => event.preventDefault()}
+            on:dragenter={(event) => {
+              event.preventDefault()
+              importDropActive = true
+            }}
+            on:dragover={(event) => {
+              event.preventDefault()
+              importDropActive = true
+            }}
+            on:dragleave={(event) => {
+              event.preventDefault()
+              const nextTarget = event.relatedTarget as Node | null
+              if (!(event.currentTarget as HTMLElement).contains(nextTarget)) {
+                importDropActive = false
+              }
+            }}
             on:drop={(event) => {
               event.preventDefault()
+              importDropActive = false
               const file = event.dataTransfer?.files?.[0]
               void handleImportFile(file)
             }}
@@ -177,6 +202,8 @@
         <div
           class="absolute left-0 top-[var(--topbar-height)] z-30 w-[360px] rounded-b-[16px] border border-[var(--border-muted)] border-t-0 bg-white p-4 shadow-[0_12px_40px_rgba(15,23,42,0.12)]"
           data-testid="export-panel"
+          style:transform-origin="top left"
+          transition:fly={{ y: -6, duration: 150, opacity: 0.08, easing: cubicOut }}
         >
           <div class="text-[18px] font-semibold text-[var(--text-primary)]">Export</div>
           <div class="mt-3 flex items-center justify-between text-[13px] text-[var(--text-muted)]">
@@ -246,8 +273,8 @@
       <ButtonGroup.Root class="items-center gap-1.5 overflow-x-auto" data-testid="editor-tab-strip">
         {#each tabs as tab (tab.id)}
           <ButtonGroup.Root
-            class={`inline-flex items-center gap-1 rounded-[6px] border border-transparent bg-transparent px-1.5 py-0.5 text-[var(--text-muted)] ${
-              tab.id === activeTabId ? 'border-[var(--border-strong)] bg-[var(--panel-bg)] text-[var(--text-primary)]' : ''
+            class={`inline-flex items-center gap-1 rounded-[6px] border border-transparent bg-transparent px-1.5 py-0.5 text-[var(--text-muted)] transition-[background-color,border-color,color,box-shadow] duration-150 ease-out ${
+              tab.id === activeTabId ? 'border-[var(--border-strong)] bg-[var(--panel-bg)] text-[var(--text-primary)] shadow-[0_1px_2px_rgba(15,23,42,0.04)]' : 'hover:bg-[var(--panel-bg-alt)] hover:text-[var(--text-primary)]'
             }`}
             data-testid="editor-tab"
             data-tab-id={tab.id}

@@ -1,5 +1,7 @@
 <script lang="ts">
   import { tick } from 'svelte'
+  import { cubicOut } from 'svelte/easing'
+  import { fly } from 'svelte/transition'
   import { createVirtualizer } from '@tanstack/svelte-virtual'
   import SearchInput from './SearchInput.svelte'
   import SearchResultsList from './SearchResultsList.svelte'
@@ -85,7 +87,11 @@
     />
   {/if}
   {#if open}
-    <div class={panelClass}>
+    <div
+      class={panelClass}
+      style:transform-origin="bottom left"
+      transition:fly={{ y: 6, duration: 150, opacity: 0.08, easing: cubicOut }}
+    >
       {#if panelFrameClass}
         <div class={panelFrameClass}>
           {#if inputInline}

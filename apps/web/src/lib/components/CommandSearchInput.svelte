@@ -35,6 +35,12 @@
 
   const dispatch = createEventDispatcher()
 
+  function isToggleEnabled(id: CommandId) {
+    if (id === 'toggle-nest') return $settings.parser.enableNest
+    if (id === 'toggle-auto-format') return $settings.formatting.smart
+    return false
+  }
+
   function setQuery(next: string) {
     query = next
     dispatch('input', next)
@@ -99,8 +105,8 @@
   inputTestId="command-search-input"
   shortcut="⌘ K"
   panelClass="absolute left-0 bottom-[calc(100%+8px)] z-40 w-[280px]"
-  commandClassName="rounded-[10px] border-[var(--border-muted)] shadow-[0_8px_24px_rgba(15,23,42,0.08)] bg-[var(--panel-bg)]"
-  inputClassName="h-7 rounded-[10px] border border-[var(--border-muted)] bg-[var(--panel-bg)] px-3"
+  commandClassName="rounded-[10px] border-[rgba(15,23,42,0.10)] shadow-[0_12px_28px_rgba(15,23,42,0.10)] bg-[var(--panel-bg)]"
+  inputClassName="h-[23px] rounded-[7px] border border-[rgba(15,23,42,0.10)] bg-[var(--panel-bg)] px-2 text-[#6b7280] transition-colors hover:border-[rgba(15,23,42,0.16)] focus-within:border-[rgba(15,23,42,0.16)]"
   listClassName="command-search-list"
   emptyText="No results."
   showWhenClosed={true}
@@ -149,15 +155,19 @@
   <svelte:fragment slot="item" let:item let:index>
     <div class="flex items-center gap-2">
       {#if item.type === 'toggle'}
-        {#if item.id === 'toggle-nest' && $settings.parser.enableNest || item.id === 'toggle-auto-format' && $settings.formatting.smart}
-          <Check size={14} class="text-accent shrink-0" />
-        {:else}
-          <div class="w-[14px] shrink-0"></div>
-        {/if}
+        <span
+          class={`flex h-[14px] w-[14px] shrink-0 items-center justify-center rounded-[4px] border ${
+            isToggleEnabled(item.id)
+              ? 'border-[#2563eb] bg-[#eff6ff] text-[#2563eb]'
+              : 'border-[rgba(15,23,42,0.16)] bg-white text-transparent'
+          }`}
+        >
+          <Check size={10} strokeWidth={2.4} />
+        </span>
       {:else if iconMap[item.id]}
-        <svelte:component this={iconMap[item.id]} size={14} class="shrink-0" />
+        <svelte:component this={iconMap[item.id]} size={13} strokeWidth={2} class="shrink-0 text-[#334155]" />
       {/if}
-      <span>{item.label}</span>
+      <span class={item.type === 'toggle' ? 'font-medium text-[#1f2937]' : 'text-[#111827]'}>{item.label}</span>
     </div>
   </svelte:fragment>
 </SearchPanel>

@@ -1,6 +1,8 @@
 <script lang="ts">
   import { onDestroy, tick } from 'svelte';
+  import { cubicOut } from 'svelte/easing';
   import { get } from 'svelte/store';
+  import { fade, fly } from 'svelte/transition';
   import type * as Monaco from 'monaco-editor';
   import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog';
   import { settingsDocument, settingsStore } from '../settings/settings-store';
@@ -200,6 +202,7 @@
           <div
             class="rounded-full border border-[var(--danger)] bg-[var(--panel-bg)] px-2 py-1 text-[12px] text-[var(--danger)]"
             data-testid="settings-problems-indicator"
+            transition:fly={{ y: -4, duration: 140, opacity: 0.08, easing: cubicOut }}
           >
             {problemsCount} problem{problemsCount === 1 ? '' : 's'}
           </div>
@@ -215,6 +218,7 @@
         <div
           class="rounded-[8px] border border-[var(--danger)]/20 bg-[var(--panel-bg)] px-3 py-2 text-[12px] text-[var(--text-muted)]"
           data-testid="settings-validation-summary"
+          transition:fly={{ y: -6, duration: 150, opacity: 0.08, easing: cubicOut }}
         >
           <span class="text-[var(--danger)]">{problemsCount} problem{problemsCount === 1 ? '' : 's'}</span>
           <span> · invalid entries stay saved but fall back to defaults when applied</span>
@@ -224,7 +228,7 @@
         </div>
         {/if}
         {#if error}
-        <div class="text-[12px] text-[var(--danger)]">{error}</div>
+        <div class="text-[12px] text-[var(--danger)]" transition:fade={{ duration: 120 }}>{error}</div>
         {/if}
       </div>
       <DialogFooter>
