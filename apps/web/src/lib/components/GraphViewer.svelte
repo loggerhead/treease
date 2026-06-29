@@ -1476,7 +1476,7 @@
       <div
         bind:this={minimapHost}
         class="pointer-events-auto absolute bottom-4 right-4 z-[2] h-[150px] w-[220px] overflow-hidden rounded-[14px]
-          border border-[#cbd5e1] bg-white/95 shadow-[0_12px_28px_rgba(15,23,42,0.14)] backdrop-blur"
+          shadow-[0_12px_28px_rgba(15,23,42,0.14)] backdrop-blur"
         class:hidden={streamProgressState.visible ||
           ($fullEditUiState?.active === true && $fullEditUiState.phase !== 'idle' && $fullEditUiState.phase !== 'settled')}
         data-testid="graph-viewer-minimap"

@@ -119,7 +119,7 @@ export class LeaferMinimapPlugin implements LeaferMinimapPluginHandle {
       stroke: this.colors.border,
       strokeWidth: 1,
       strokeAlign: 'inside',
-      cornerRadius: 10,
+      cornerRadius: 14,
       opacity: 1,
       hittable: true,
       hitChildren: false,
