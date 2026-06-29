@@ -43,7 +43,6 @@
   import {
     FileCode,
     GitGraph,
-    GripVertical,
     Link2,
     Link2Off,
     PanelLeftClose,
@@ -489,9 +488,6 @@
         >
           {#if !synchronizedRuntimeLoading}
             <div class="splitter-control splitter-control--split" role="presentation">
-              <div class="splitter-control__drag-hint" aria-hidden="true">
-                <GripVertical size={14} />
-              </div>
               <div class="splitter-control__buttons" role="presentation" on:pointerdown|stopPropagation>
                 <ButtonGroup.Root orientation="vertical" variant="segmented-outline" class="shadow-none">
                   <IconButton
