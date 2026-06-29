@@ -49,10 +49,27 @@ body {
 }
 
 .app-split-divider {
-  @apply absolute top-0 z-10 h-full cursor-col-resize;
-  width: 10px;
   touch-action: none;
   user-select: none;
+}
+
+.app-split-divider--vertical {
+  @apply absolute top-0 z-10 h-full cursor-col-resize;
+  width: 10px;
+}
+
+.app-split-divider--horizontal {
+  @apply relative z-10 w-full cursor-row-resize;
+  height: 1px;
+}
+
+.app-split-divider--horizontal::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -6px;
+  bottom: -6px;
 }
 
 .splitter-control {

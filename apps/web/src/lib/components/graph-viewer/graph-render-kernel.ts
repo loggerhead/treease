@@ -53,10 +53,11 @@ type RenderGraphNodeInput = {
   node: GraphNode;
   drawContext: DrawContext;
   registerMetaClickTarget?: (target: any, cell: GraphNode['meta'], kind: 'meta') => void;
+  showMeta?: boolean;
 };
 
 export type RenderGraphNodeResult = {
-  metaText: any;
+  metaText: any | null;
   nodeBox: any | null;
   tableRuntime?: any;
 };
@@ -140,8 +141,13 @@ export function renderGraphEdges(input: RenderGraphEdgesInput): GraphEdge[] {
 }
 
 export function renderGraphNode(input: RenderGraphNodeInput): RenderGraphNodeResult {
-  const metaText = createCellText(input.drawContext, input.drawContext.nodeLayer, input.node.meta, 'meta', input.node.kind);
-  input.registerMetaClickTarget?.(metaText, input.node.meta, 'meta');
+  const metaText =
+    input.showMeta === false
+      ? null
+      : createCellText(input.drawContext, input.drawContext.nodeLayer, input.node.meta, 'meta', input.node.kind);
+  if (metaText) {
+    input.registerMetaClickTarget?.(metaText, input.node.meta, 'meta');
+  }
   if (input.node.kind === 'table' && input.node.table) {
     const result = drawTableNode(input.drawContext, input.node);
     return {

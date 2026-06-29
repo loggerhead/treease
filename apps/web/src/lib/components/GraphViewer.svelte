@@ -1,6 +1,9 @@
 <!-- 职责：GraphViewer 稳定入口组件：Leafer 生命周期、controller 装配、跨域编排、DOM 模板 -->
 <script lang="ts">
   import { onDestroy, tick, createEventDispatcher } from 'svelte';
+  import { cubicOut } from 'svelte/easing';
+  import { fly } from 'svelte/transition';
+  import { GripVertical, X } from 'lucide-svelte';
   import type { SnapshotId } from '@core-wasm/index';
   import {
     sourceText,
@@ -28,6 +31,7 @@
   import GraphRuntimeLoading from './graph-viewer/GraphRuntimeLoading.svelte';
   import GraphStreamProgressOverlay from './graph-viewer/GraphStreamProgressOverlay.svelte';
   import SidecarEditor from './Editor/SidecarEditor.svelte';
+  import { getClampedPaneSize, splitLayoutDrag } from './ui/split-layout';
   import { createGraphPointerController, type LeaferEventTarget } from './graph-viewer/graph-pointer-controller';
   import { createGraphRuntimeProbeController } from './graph-viewer/graph-runtime-probe-controller';
   import {
@@ -121,7 +125,12 @@
 
   const MINIMAP_WIDTH = 220;
   const MINIMAP_HEIGHT = 150;
+  const SUBGRAPH_WORKSPACE_MIN_HEIGHT = 100;
+  const SUBGRAPH_WORKSPACE_MAX_HEIGHT_FRACTION = 0.75;
+  const SUBGRAPH_WORKSPACE_DEFAULT_HEIGHT = 220;
 
+  let graphViewerShell: HTMLDivElement;
+  let graphViewerShellHeight = 0;
   let container: HTMLDivElement;
   let minimapHost: HTMLDivElement;
   let leafer: LeaferAppOrLeafer | null = null;
@@ -194,6 +203,9 @@
   let subgraphWorkspaceRefreshSignature = '';
   let subgraphWorkspaceRefreshRevision = -1;
   let subgraphWorkspaceRefreshToken = 0;
+  let subgraphWorkspaceHeightPx = SUBGRAPH_WORKSPACE_DEFAULT_HEIGHT;
+  let isDraggingSubgraphWorkspaceDivider = false;
+  let subgraphWorkspaceResizeState: { startClientY: number; startHeightPx: number } | null = null;
 
   let graphSceneController: ReturnType<typeof createGraphSceneController>;
   let graphRuntimeProbeController: ReturnType<typeof createGraphRuntimeProbeController>;
@@ -222,6 +234,12 @@
 
   let renderConfig: GraphViewerConfig = $settings.viewer.graphViewer;
   $: renderConfig = $settings.viewer.graphViewer;
+  $: if (subgraphWorkspaceVisiblePanes.length) {
+    const nextSubgraphWorkspaceHeightPx = clampSubgraphWorkspaceHeight(subgraphWorkspaceHeightPx);
+    if (nextSubgraphWorkspaceHeightPx !== subgraphWorkspaceHeightPx) {
+      subgraphWorkspaceHeightPx = nextSubgraphWorkspaceHeightPx;
+    }
+  }
   const fullBuildReasonSet = new Set([
     'import-file',
     'drop-file',
@@ -1083,6 +1101,20 @@
     await renderSubgraphWorkspacePanes();
   }
 
+  function closeSubgraphWorkspacePane(absoluteIndex: number): void {
+    if (absoluteIndex < 0 || absoluteIndex >= subgraphWorkspaceChain.length) return;
+    setSubgraphWorkspaceChain(subgraphWorkspaceChain.slice(0, absoluteIndex));
+  }
+
+  function clampSubgraphWorkspaceHeight(nextHeightPx: number): number {
+    return getClampedPaneSize(
+      nextHeightPx,
+      graphViewerShellHeight,
+      SUBGRAPH_WORKSPACE_MIN_HEIGHT,
+      SUBGRAPH_WORKSPACE_MAX_HEIGHT_FRACTION,
+    );
+  }
+
   async function handleSubgraphWorkspaceActivate(
     payload: { path: PathSeg[]; target: 'key' | 'value' | 'node'; cell: GraphCell },
     parentAbsoluteIndex: number,
@@ -1168,6 +1200,25 @@
         bindSubgraphWorkspaceHost(currentPathKey, null);
       },
     };
+  }
+
+  function handleSubgraphWorkspaceDividerDragStart(clientY: number) {
+    isDraggingSubgraphWorkspaceDivider = true;
+    subgraphWorkspaceResizeState = {
+      startClientY: clientY,
+      startHeightPx: subgraphWorkspaceHeightPx,
+    };
+  }
+
+  function handleSubgraphWorkspaceDividerDragMove(clientY: number) {
+    if (!subgraphWorkspaceResizeState) return;
+    const deltaY = subgraphWorkspaceResizeState.startClientY - clientY;
+    subgraphWorkspaceHeightPx = clampSubgraphWorkspaceHeight(subgraphWorkspaceResizeState.startHeightPx + deltaY);
+  }
+
+  function handleSubgraphWorkspaceDividerDragEnd() {
+    isDraggingSubgraphWorkspaceDivider = false;
+    subgraphWorkspaceResizeState = null;
   }
 
   async function renderSubgraphWorkspacePanes(): Promise<void> {
@@ -1465,7 +1516,13 @@
   }
 </script>
 
-<div class="graph-viewer-shell" data-testid="graph-viewer-root">
+<div
+  bind:this={graphViewerShell}
+  bind:clientHeight={graphViewerShellHeight}
+  class="graph-viewer-shell"
+  class:graph-viewer-shell--with-workspace={subgraphWorkspaceVisiblePanes.length > 0}
+  data-testid="graph-viewer-root"
+>
   <div class="graph-viewer-main">
     <div
       class="absolute inset-0 z-0"
@@ -1522,12 +1579,42 @@
   </div>
 
   {#if subgraphWorkspaceVisiblePanes.length}
-    <div class="graph-subgraph-workspace" data-testid="graph-subgraph-workspace">
+    <div
+      class={`app-split-divider app-split-divider--horizontal graph-subgraph-workspace__divider ${
+        isDraggingSubgraphWorkspaceDivider ? 'app-split-divider--dragging' : ''
+      }`}
+      role="separator"
+      aria-label="Resize subgraph workspace"
+      aria-orientation="horizontal"
+      use:splitLayoutDrag={{
+        onDragStart: ({ clientY }) => handleSubgraphWorkspaceDividerDragStart(clientY),
+        onDragMove: ({ clientY }) => handleSubgraphWorkspaceDividerDragMove(clientY),
+        onDragEnd: () => handleSubgraphWorkspaceDividerDragEnd(),
+      }}
+    >
+      <div class="graph-subgraph-workspace__divider-handle" aria-hidden="true">
+        <GripVertical size={12} strokeWidth={2} />
+      </div>
+    </div>
+    <div
+      class="graph-subgraph-workspace"
+      data-testid="graph-subgraph-workspace"
+      style:height={`${subgraphWorkspaceHeightPx}px`}
+      transition:fly={{ y: 18, duration: 180, opacity: 0.14, easing: cubicOut }}
+    >
       <div class="graph-subgraph-workspace__track">
         {#each subgraphWorkspaceVisiblePanes as pane (pane.pathKey)}
           <section class="graph-subgraph-pane" data-testid="graph-subgraph-pane">
             <header class="graph-subgraph-pane__header" title={buildReadablePath(pane.path)}>
-              {pane.title}
+              <span class="graph-subgraph-pane__label">{pane.title}</span>
+              <button
+                type="button"
+                class="graph-subgraph-pane__close"
+                aria-label="Close subgraph pane"
+                on:click|stopPropagation={() => closeSubgraphWorkspacePane(pane.absoluteIndex)}
+              >
+                <X size={14} strokeWidth={2} />
+              </button>
             </header>
             <div class="graph-subgraph-pane__body">
               {#if pane.kind === 'content' && pane.status === 'ready' && pane.content}
@@ -1595,6 +1682,10 @@
     grid-template-rows: minmax(0, 1fr) auto;
   }
 
+  .graph-viewer-shell--with-workspace {
+    grid-template-rows: minmax(0, 1fr) auto auto;
+  }
+
   .graph-viewer-main {
     position: relative;
     min-height: 0;
@@ -1602,11 +1693,52 @@
   }
 
   .graph-subgraph-workspace {
-    border-top: 1px solid #dbe3ef;
+    min-height: 0;
+    overflow: hidden;
+    border-top: 1px solid rgba(148, 163, 184, 0.28);
     background:
-      linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 250, 252, 0.98)),
-      linear-gradient(90deg, rgba(226, 232, 240, 0.5), rgba(255, 255, 255, 0));
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
+      linear-gradient(180deg, rgba(241, 245, 249, 0.96), rgba(236, 242, 247, 0.92) 12px, rgba(244, 247, 251, 0.98) 56px),
+      linear-gradient(90deg, rgba(148, 163, 184, 0.1), rgba(255, 255, 255, 0));
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.76),
+      inset 0 10px 20px rgba(148, 163, 184, 0.08),
+      0 -12px 24px rgba(15, 23, 42, 0.08);
+  }
+
+  :global(.graph-subgraph-workspace__divider) {
+    background: transparent;
+  }
+
+  .graph-subgraph-workspace__divider-handle {
+    position: absolute;
+    left: 50%;
+    top: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    border-radius: 999px;
+    border: 1px solid rgba(226, 232, 240, 0.96);
+    background: rgba(248, 250, 252, 0.98);
+    color: #94a3b8;
+    box-shadow:
+      0 1px 2px rgba(15, 23, 42, 0.06),
+      inset 0 1px 0 rgba(255, 255, 255, 0.82);
+    transform: translate(-50%, -50%) rotate(90deg);
+    transition:
+      color 120ms ease,
+      border-color 120ms ease,
+      box-shadow 120ms ease;
+  }
+
+  :global(.graph-subgraph-workspace__divider:hover) .graph-subgraph-workspace__divider-handle,
+  :global(.graph-subgraph-workspace__divider.app-split-divider--dragging) .graph-subgraph-workspace__divider-handle {
+    color: #2563eb;
+    border-color: rgba(191, 219, 254, 0.98);
+    box-shadow:
+      0 2px 6px rgba(37, 99, 235, 0.14),
+      inset 0 1px 0 rgba(255, 255, 255, 0.82);
   }
 
   .graph-subgraph-workspace__track {
@@ -1614,7 +1746,8 @@
     grid-auto-flow: column;
     grid-auto-columns: minmax(360px, 1fr);
     gap: 0;
-    height: 260px;
+    width: 100%;
+    height: 100%;
     overflow-x: auto;
     overflow-y: hidden;
   }
@@ -1624,19 +1757,61 @@
     min-width: 360px;
     min-height: 0;
     grid-template-rows: auto minmax(0, 1fr);
-    border-right: 1px solid #e2e8f0;
-    background: rgba(255, 255, 255, 0.74);
+    border-right: 1px solid rgba(203, 213, 225, 0.72);
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.86), rgba(247, 250, 252, 0.82));
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.68);
   }
 
   .graph-subgraph-pane__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
     overflow: hidden;
-    padding: 10px 14px 9px;
-    border-bottom: 1px solid #eef2f7;
-    color: #64748b;
-    font-size: 12px;
+    padding: 4px 8px 4px 12px;
+    border-bottom: 1px solid rgba(226, 232, 240, 0.9);
+    color: #5f7087;
+    font-size: 11px;
     line-height: 1.4;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(241, 245, 249, 0.82));
+  }
+
+  .graph-subgraph-pane__label {
+    min-width: 0;
+    overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  .graph-subgraph-pane__close {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    flex: 0 0 auto;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: #94a3b8;
+    cursor: pointer;
+    transition:
+      background-color 120ms ease,
+      color 120ms ease;
+  }
+
+  .graph-subgraph-pane__close:hover {
+    background: rgba(226, 232, 240, 0.9);
+    color: #334155;
+  }
+
+  .graph-subgraph-pane__close:focus-visible {
+    outline: 2px solid rgba(59, 130, 246, 0.4);
+    outline-offset: 1px;
+  }
+
+  .graph-subgraph-pane__close :global(svg) {
+    pointer-events: none;
   }
 
   .graph-subgraph-pane__body {
@@ -1650,13 +1825,13 @@
     height: 100%;
     min-height: 0;
     background:
-      radial-gradient(circle at top left, rgba(191, 219, 254, 0.18), transparent 42%),
-      linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(248, 250, 252, 0.98));
+      radial-gradient(circle at top left, rgba(148, 163, 184, 0.14), transparent 44%),
+      linear-gradient(180deg, rgba(255, 255, 255, 0.95), rgba(243, 247, 250, 0.98));
   }
 
   .graph-subgraph-pane__content-editor {
     min-height: 0;
-    padding: 10px 12px 12px;
+    padding: 10px 0 12px 12px;
   }
 
   .graph-subgraph-pane__content-editor :global([data-testid='graph-subgraph-monaco-editor']) {
@@ -1670,7 +1845,7 @@
 
   .graph-subgraph-pane__canvas {
     height: 100%;
-    overflow: auto;
+    overflow: hidden;
   }
 
   .graph-subgraph-pane__placeholder {
@@ -1681,8 +1856,8 @@
     color: #64748b;
     font-size: 12px;
     background:
-      radial-gradient(circle at top left, rgba(191, 219, 254, 0.18), transparent 42%),
-      linear-gradient(180deg, rgba(248, 250, 252, 0.9), rgba(255, 255, 255, 0.92));
+      radial-gradient(circle at top left, rgba(148, 163, 184, 0.14), transparent 42%),
+      linear-gradient(180deg, rgba(238, 243, 249, 0.9), rgba(250, 252, 255, 0.92));
   }
 
   .graph-subgraph-pane__placeholder--error {

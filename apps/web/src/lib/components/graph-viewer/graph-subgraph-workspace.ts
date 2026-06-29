@@ -463,6 +463,7 @@ export async function renderSubgraphWorkspaceGraph(
     const result = renderGraphNode({
       node,
       drawContext,
+      showMeta: false,
       registerMetaClickTarget: (target, targetCell, kind) => {
         bindWorkspaceTarget(target as LeaferBox, targetCell, kind);
       },

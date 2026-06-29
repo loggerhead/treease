@@ -34,6 +34,7 @@
     syncSplitRatio,
     type SplitLayoutConfig,
   } from './split-layout-controller';
+  import { splitLayoutDrag } from '../../lib/components/ui/split-layout';
   import { importFormatOptions, supportedEditorLanguageSet, editorLanguageFallback, type SupportedEditorLanguageId } from '../../lib/monaco/language-support';
   import { computeSynchronizedRuntimeLoading, type RuntimeStateEventDetail } from '../../lib/runtime-loading';
   import { breadcrumbTargetForPath, type PathSeg } from '../../lib/store/tree-path';
@@ -70,6 +71,7 @@
   let splitterLeftPx = 0;
   let splitterControlLeftPx = 0;
   let isDraggingSplitter = false;
+  let splitterDragRect: DOMRect | null = null;
   let settingsOpen = false;
   let viewerViewMode: 'graph' | 'text' = 'graph';
   let editorRuntimeLoading = true;
@@ -255,35 +257,29 @@
     resetViewerTextScroll();
   }
 
-  function handleSplitterPointerDown(event: PointerEvent) {
+  function updateSplitFromClientX(clientX: number) {
+    if (!splitterDragRect) return;
+    const offsetX = clamp(clientX - splitterDragRect.left, 0, splitterDragRect.width);
+    syncSplitLayoutState({ ...splitLayoutState, splitRatio: getClampedSplitRatio(offsetX / splitterDragRect.width, splitterDragRect.width) });
+  }
+
+  function handleSplitterDragStart(clientX: number) {
     if (layoutMode !== 'split' || !splitLayoutContainer) return;
-    event.preventDefault();
-    const rect = splitLayoutContainer.getBoundingClientRect();
-    const handleTarget = event.currentTarget as HTMLElement | null;
-    handleTarget?.setPointerCapture?.(event.pointerId);
+    splitterDragRect = splitLayoutContainer.getBoundingClientRect();
     isDraggingSplitter = true;
+    updateSplitFromClientX(clientX);
+  }
 
-    const updateFromClientX = (clientX: number) => {
-      const offsetX = clamp(clientX - rect.left, 0, rect.width);
-      syncSplitLayoutState({ ...splitLayoutState, splitRatio: getClampedSplitRatio(offsetX / rect.width, rect.width) });
-    };
+  function handleSplitterDragMove(clientX: number) {
+    if (layoutMode !== 'split') return;
+    updateSplitFromClientX(clientX);
+  }
 
-    const handlePointerMove = (moveEvent: PointerEvent) => {
-      updateFromClientX(moveEvent.clientX);
-    };
-
-    const stopDragging = () => {
-      window.removeEventListener('pointermove', handlePointerMove);
-      window.removeEventListener('pointerup', stopDragging);
-      window.removeEventListener('pointercancel', stopDragging);
-      isDraggingSplitter = false;
-      syncSplitLayoutState({ ...splitLayoutState, lastSplitRatio: splitRatio });
-    };
-
-    window.addEventListener('pointermove', handlePointerMove);
-    window.addEventListener('pointerup', stopDragging);
-    window.addEventListener('pointercancel', stopDragging);
-    updateFromClientX(event.clientX);
+  function handleSplitterDragEnd() {
+    if (layoutMode !== 'split') return;
+    splitterDragRect = null;
+    isDraggingSplitter = false;
+    syncSplitLayoutState({ ...splitLayoutState, lastSplitRatio: splitRatio });
   }
 
   function handleApplyDiff(plan: DiffPlan) {
@@ -479,13 +475,17 @@
 
       {#if layoutMode === 'split'}
         <div
-          class={`app-split-divider ${isDraggingSplitter ? 'app-split-divider--dragging' : ''}`}
+          class={`app-split-divider app-split-divider--vertical ${isDraggingSplitter ? 'app-split-divider--dragging' : ''}`}
           data-testid="splitter-divider"
           role="separator"
           aria-label="Resize panels"
           aria-orientation="vertical"
           style:left={`${splitterLeftPx}px`}
-          on:pointerdown={handleSplitterPointerDown}
+          use:splitLayoutDrag={{
+            onDragStart: ({ clientX }) => handleSplitterDragStart(clientX),
+            onDragMove: ({ clientX }) => handleSplitterDragMove(clientX),
+            onDragEnd: () => handleSplitterDragEnd(),
+          }}
         >
           {#if !synchronizedRuntimeLoading}
             <div class="splitter-control splitter-control--split" role="presentation">

@@ -6,6 +6,7 @@ import {
   computePaneWidths,
   createSplitLayoutState,
   expandSplit,
+  getClampedPaneSize,
   getClampedSplitRatio,
   syncSplitRatio,
 } from './split-layout-controller';
@@ -52,5 +53,11 @@ describe('split-layout-controller', () => {
     const state = syncSplitRatio({ layoutMode: 'right-only', splitRatio: 0.1, lastSplitRatio: 0.4 }, 1000, config);
     expect(state.splitRatio).toBe(0.2);
     expect(state.lastSplitRatio).toBe(0.4);
+  });
+
+  it('clamps vertical pane size between fixed minimum and container fraction cap', () => {
+    expect(getClampedPaneSize(220, 700, 260, 0.5)).toBe(260);
+    expect(getClampedPaneSize(420, 700, 260, 0.5)).toBe(350);
+    expect(getClampedPaneSize(320, 480, 260, 0.5)).toBe(260);
   });
 });
