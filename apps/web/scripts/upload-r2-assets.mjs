@@ -4,6 +4,9 @@ import { assetSourceDir, bucketName, getContentType, listAssetFiles, webDir } fr
 
 async function main() {
   const files = await listAssetFiles();
+  if (files === null) {
+    throw new Error(`missing asset source directory: ${assetSourceDir}`);
+  }
   if (files.length === 0) {
     throw new Error(`no asset files found in ${assetSourceDir}`);
   }

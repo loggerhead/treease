@@ -31,7 +31,7 @@ export function getContentType(relativePath) {
 
 export async function listAssetFiles() {
   if (!existsSync(assetSourceDir)) {
-    throw new Error(`missing asset source directory: ${assetSourceDir}`);
+    return null;
   }
 
   const files = [];

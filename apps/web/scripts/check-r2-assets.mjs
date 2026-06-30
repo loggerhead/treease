@@ -2,6 +2,10 @@ import { listAssetFiles, toAssetUrl } from './r2-assets.mjs';
 
 async function main() {
   const files = await listAssetFiles();
+  if (files === null) {
+    process.stdout.write('[assets:r2:check] skipped: local asset source directory is absent\n');
+    return;
+  }
   if (files.length === 0) {
     throw new Error('no asset files found to verify');
   }

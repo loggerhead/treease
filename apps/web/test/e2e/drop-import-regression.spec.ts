@@ -1002,13 +1002,14 @@ test('dropping the 2mb hover fixture keeps cursor path and graph selection after
   });
 
   await waitForImportSettled(page, HOVER_FIXTURE_IMPORT_BUDGET_MS);
+  await waitForGraphRendered(page, HOVER_FIXTURE_IMPORT_BUDGET_MS);
 
   await setMonacoPositionByText(page, 'source-editor', '"Id":');
 
   const expectedPath = ['$', 'Result', 'Blocks', '[0]', 'Id'];
-  await expect(page.getByRole('link', { name: 'Tree path Result.Blocks.0.Id', exact: true })).toBeVisible({
-    timeout: HOVER_FIXTURE_IMPORT_BUDGET_MS,
-  });
+  await expect
+    .poll(async () => (await readEditorState(page)).tempModel.treePath, { timeout: HOVER_FIXTURE_IMPORT_BUDGET_MS })
+    .toEqual(expectedPath);
   await expect
     .poll(async () => await readTempGraphSelection(page), { timeout: HOVER_FIXTURE_IMPORT_BUDGET_MS })
     .toEqual(expect.objectContaining({ path: expectedPath, target: 'key', source: 'editor' }));
