@@ -16,8 +16,8 @@ runs:
         version="${{ inputs.zig-version }}"
         arch="$(uname -m)"
         case "$arch" in
-          x86_64) zig_arch="x86_64" ;;
-          aarch64|arm64) zig_arch="aarch64" ;;
+          x86_64) zig_arch="x86_64-linux" ;;
+          aarch64|arm64) zig_arch="aarch64-linux" ;;
           *)
             echo "Unsupported architecture: $arch" >&2
             exit 1
@@ -25,7 +25,7 @@ runs:
         esac
         install_dir="$RUNNER_TEMP/zig-$version"
         archive="$RUNNER_TEMP/zig-$version.tar.xz"
-        curl -fsSL "https://ziglang.org/download/$version/zig-linux-$zig_arch-$version.tar.xz" -o "$archive"
+        curl -fsSL "https://ziglang.org/download/$version/zig-$zig_arch-$version.tar.xz" -o "$archive"
         rm -rf "$install_dir"
         mkdir -p "$install_dir"
         tar -xJf "$archive" --strip-components=1 -C "$install_dir"
