@@ -8,7 +8,8 @@ import { generatedOutputs, runBindgen, webDir } from './wasm-bindgen.mjs';
 const tempDir = mkdtempSync(path.join(os.tmpdir(), 'treease-wasm-bindgen-check-'));
 
 try {
-  const snapshots = generatedOutputs.map((filePath, index) => {
+  const trackedOutputs = generatedOutputs.filter((filePath) => isTracked(filePath));
+  const snapshots = trackedOutputs.map((filePath, index) => {
     const snapshotPath = path.join(tempDir, `${index}-${path.basename(filePath)}`);
     writeFileSync(snapshotPath, existsSync(filePath) ? readFileSync(filePath, 'utf8') : '');
     return { filePath, snapshotPath };
@@ -38,4 +39,19 @@ try {
   }
 } finally {
   rmSync(tempDir, { recursive: true, force: true });
+}
+
+function isTracked(filePath) {
+  try {
+    execFileSync('git', ['ls-files', '--error-unmatch', '--', filePath], {
+      cwd: webDir,
+      stdio: 'ignore'
+    });
+    return true;
+  } catch (error) {
+    if (error?.status === 1) {
+      return false;
+    }
+    throw error;
+  }
 }
