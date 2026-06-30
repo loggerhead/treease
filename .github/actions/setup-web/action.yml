@@ -9,14 +9,33 @@ inputs:
 runs:
   using: composite
   steps:
-    - uses: mlugg/setup-zig@v2
-      with:
-        version: ${{ inputs.zig-version }}
-    - uses: pnpm/action-setup@v3
+    - name: Install Zig
+      shell: bash
+      run: |
+        set -euo pipefail
+        version="${{ inputs.zig-version }}"
+        arch="$(uname -m)"
+        case "$arch" in
+          x86_64) zig_arch="x86_64" ;;
+          aarch64|arm64) zig_arch="aarch64" ;;
+          *)
+            echo "Unsupported architecture: $arch" >&2
+            exit 1
+            ;;
+        esac
+        install_dir="$RUNNER_TEMP/zig-$version"
+        archive="$RUNNER_TEMP/zig-$version.tar.xz"
+        curl -fsSL "https://ziglang.org/download/$version/zig-linux-$zig_arch-$version.tar.xz" -o "$archive"
+        rm -rf "$install_dir"
+        mkdir -p "$install_dir"
+        tar -xJf "$archive" --strip-components=1 -C "$install_dir"
+        echo "$install_dir" >> "$GITHUB_PATH"
+        "$install_dir/zig" version
+    - uses: pnpm/action-setup@v5
       with:
         version: 9
         run_install: false
-    - uses: actions/setup-node@v4
+    - uses: actions/setup-node@v5
       with:
         node-version: 20
         cache: pnpm
