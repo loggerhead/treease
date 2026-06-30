@@ -4,6 +4,7 @@ on:
   push:
     branches: ['**']
   pull_request:
+  workflow_call:
 
 env:
   ZIG_VERSION: 0.16.0

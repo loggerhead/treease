@@ -1,0 +1,34 @@
+name: CLI Tests
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_call:
+
+jobs:
+  cli-unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: ./.github/actions/setup-rust
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: nextest
+      - name: Run CLI unit tests
+        run: cargo nextest run --locked --lib
+        working-directory: ${{ github.workspace }}/apps/cli
+
+  cli-acceptance:
+    runs-on: ubuntu-latest
+    needs: [cli-unit]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: ./.github/actions/setup-rust
+      - name: Run CLI acceptance tests
+        run: bash tests/acceptance/run.sh
+        working-directory: ${{ github.workspace }}/apps/cli
