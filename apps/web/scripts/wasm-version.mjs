@@ -2,12 +2,12 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { loadCoreReleaseMetadata } from '../../../scripts/release-metadata.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const webDir = path.resolve(here, '..');
 const rootDir = path.resolve(webDir, '..', '..');
 const coreDir = path.resolve(rootDir, 'packages', 'core');
-const coreManifest = path.resolve(coreDir, 'Cargo.toml');
 const versionFile = path.resolve(coreDir, 'output', 'core-web.version');
 
 function readVersionFile() {
@@ -17,10 +17,11 @@ function readVersionFile() {
 }
 
 function readManifestReleaseDate() {
-  if (!existsSync(coreManifest)) return null;
-  const manifest = readFileSync(coreManifest, 'utf8');
-  const match = manifest.match(/^\s*wasm_release_date\s*=\s*"([0-9]{8})"\s*$/m);
-  return match?.[1] ?? null;
+  try {
+    return loadCoreReleaseMetadata(rootDir).coreWasmReleaseDate;
+  } catch {
+    return null;
+  }
 }
 
 function runGit(args) {

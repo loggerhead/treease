@@ -1,12 +1,13 @@
 import { spawn } from 'node:child_process';
 import { mkdir, readFile, readdir, stat, unlink, writeFile } from 'node:fs/promises';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { watch } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
 import { runBindgen } from './wasm-bindgen.mjs';
 import { optimizeWasmSync } from './wasm-optimize.mjs';
+import { loadCoreReleaseMetadata } from '../../../scripts/release-metadata.mjs';
 
 const copyOnly = process.argv.includes('--copy-only');
 
@@ -14,7 +15,6 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const webDir = path.resolve(here, '..');
 const rootDir = path.resolve(webDir, '..', '..');
 const coreDir = path.resolve(rootDir, 'packages', 'core');
-const coreManifest = path.resolve(coreDir, 'Cargo.toml');
 const versionFile = path.resolve(coreDir, 'output', 'core-web.version');
 const rustWasmOut = path.resolve(coreDir, 'target', 'wasm32-unknown-unknown', 'release', 'treease_core.wasm');
 const rustWasmOptimizedOut = path.resolve(
@@ -42,10 +42,11 @@ const minIntervalMs = 1000;
 const ignored = [/\.sw.$/, /~$/, /\.tmp$/, /\/target\//];
 
 function readManifestReleaseDate() {
-  if (!existsSync(coreManifest)) return null;
-  const manifest = readFileSync(coreManifest, 'utf8');
-  const match = manifest.match(/^\s*wasm_release_date\s*=\s*"([0-9]{8})"\s*$/m);
-  return match?.[1] ?? null;
+  try {
+    return loadCoreReleaseMetadata(rootDir).coreWasmReleaseDate;
+  } catch {
+    return null;
+  }
 }
 
 async function readVersion(wasmPath) {

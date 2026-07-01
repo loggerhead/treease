@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { optimizeWasmSync } from './wasm-optimize.mjs';
+import { loadCoreReleaseMetadata, synchronizeGeneratedWasmPackageJson } from '../../../scripts/release-metadata.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 export const webDir = path.resolve(here, '..');
@@ -23,6 +24,8 @@ export const generatedOutputs = [
 export const watchedFiles = generatedOutputs;
 
 export function runBindgen() {
+  const { coreName, coreVersion } = loadCoreReleaseMetadata(rootDir);
+
   // 1. Generate TS types from Rust document protocol
   execFileSync('cargo', ['run', '--locked', '--bin', 'export_document_protocol'], {
     cwd: coreDir,
@@ -64,13 +67,13 @@ export function runBindgen() {
     .replace(/core_bg\.wasm\.d\.ts/g, 'core.wasm.d.ts');
   fs.writeFileSync(generatedJs, code, 'utf-8');
 
-  // 6. Update package.json: core_bg.wasm → core.wasm
+  // 6. Rewrite generated package metadata from the Cargo manifest single source.
   const pkgPath = path.resolve(wasmPkgDir, 'package.json');
-  let pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
-  if (pkg.files) {
-    pkg.files = pkg.files.map((f) => f.replace(/^core_bg\.wasm$/, 'core.wasm'));
-  }
-  fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n', 'utf-8');
+  const nextPkg = synchronizeGeneratedWasmPackageJson(fs.readFileSync(pkgPath, 'utf-8'), {
+    coreName,
+    coreVersion,
+  });
+  fs.writeFileSync(pkgPath, nextPkg, 'utf-8');
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

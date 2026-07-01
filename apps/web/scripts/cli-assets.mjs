@@ -1,13 +1,13 @@
 import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { loadCoreReleaseMetadata } from '../../../scripts/release-metadata.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const webDir = path.resolve(here, '..');
 const rootDir = path.resolve(webDir, '..', '..');
-const coreManifest = path.resolve(rootDir, 'packages', 'core', 'Cargo.toml');
 const buildDir = path.resolve(webDir, 'build');
 const cliAssetsRoot = path.resolve(buildDir, 'cli-assets');
 const indexAssetAttribute = 'data-treease-cli-asset-version';
@@ -44,15 +44,7 @@ async function main() {
 }
 
 function readManifestReleaseDate() {
-  if (!existsSync(coreManifest)) {
-    throw new Error(`missing core manifest: ${coreManifest}`);
-  }
-  const manifest = readFileSync(coreManifest, 'utf8');
-  const match = manifest.match(/^\s*wasm_release_date\s*=\s*"([0-9]{8})"\s*$/m);
-  if (!match) {
-    throw new Error(`missing package.metadata.treease.wasm_release_date in ${coreManifest}`);
-  }
-  return match[1];
+  return loadCoreReleaseMetadata(rootDir).coreWasmReleaseDate;
 }
 
 function readAssetVersion() {

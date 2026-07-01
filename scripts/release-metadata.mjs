@@ -1,17 +1,13 @@
-import { readFile } from 'node:fs/promises';
+import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const defaultRootDir = path.resolve(here, '..');
 
-export async function loadReleaseMetadata(rootDir = defaultRootDir) {
+export function loadCoreReleaseMetadata(rootDir = defaultRootDir) {
   const coreManifestPath = path.resolve(rootDir, 'packages', 'core', 'Cargo.toml');
-  const cliManifestPath = path.resolve(rootDir, 'apps', 'cli', 'Cargo.toml');
-  const [coreManifest, cliManifest] = await Promise.all([
-    readFile(coreManifestPath, 'utf8'),
-    readFile(cliManifestPath, 'utf8'),
-  ]);
+  const coreManifest = readFileSync(coreManifestPath, 'utf8');
 
   const coreName = readTomlString(coreManifest, 'package', 'name', coreManifestPath);
   const coreVersion = readTomlString(coreManifest, 'package', 'version', coreManifestPath);
@@ -21,6 +17,24 @@ export async function loadReleaseMetadata(rootDir = defaultRootDir) {
     'wasm_release_date',
     coreManifestPath
   );
+
+  if (!/^\d{8}$/.test(coreWasmReleaseDate)) {
+    throw new Error(
+      `packages/core/Cargo.toml wasm_release_date must be an 8 digit string, got ${coreWasmReleaseDate}`
+    );
+  }
+
+  return {
+    coreName,
+    coreVersion,
+    coreWasmReleaseDate,
+  };
+}
+
+export function loadReleaseMetadata(rootDir = defaultRootDir) {
+  const cliManifestPath = path.resolve(rootDir, 'apps', 'cli', 'Cargo.toml');
+  const cliManifest = readFileSync(cliManifestPath, 'utf8');
+  const { coreName, coreVersion, coreWasmReleaseDate } = loadCoreReleaseMetadata(rootDir);
 
   const cliName = readTomlString(cliManifest, 'package', 'name', cliManifestPath);
   const cliVersion = readTomlString(cliManifest, 'package', 'version', cliManifestPath);
@@ -42,11 +56,6 @@ export async function loadReleaseMetadata(rootDir = defaultRootDir) {
       `apps/cli/Cargo.toml wasm_release_date ${cliWasmReleaseDate} does not match packages/core/Cargo.toml wasm_release_date ${coreWasmReleaseDate}`
     );
   }
-  if (!/^\d{8}$/.test(coreWasmReleaseDate)) {
-    throw new Error(
-      `packages/core/Cargo.toml wasm_release_date must be an 8 digit string, got ${coreWasmReleaseDate}`
-    );
-  }
 
   return {
     cliName,
@@ -58,6 +67,16 @@ export async function loadReleaseMetadata(rootDir = defaultRootDir) {
     coreWasmReleaseDate,
     releaseTag: `treease-v${cliVersion}`,
   };
+}
+
+export function synchronizeGeneratedWasmPackageJson(packageJsonSource, { coreName, coreVersion }) {
+  const pkg = JSON.parse(packageJsonSource);
+  pkg.name = coreName;
+  pkg.version = coreVersion;
+  if (pkg.files) {
+    pkg.files = pkg.files.map((file) => file.replace(/^core_bg\.wasm$/, 'core.wasm'));
+  }
+  return JSON.stringify(pkg, null, 2) + '\n';
 }
 
 function readTomlString(contents, sectionName, key, manifestPath) {
@@ -114,7 +133,7 @@ function escapeRegex(value) {
 async function main() {
   const rootDir = resolveArg('--root-dir') ?? defaultRootDir;
   const writeGithubOutput = hasArg('--github-output');
-  const metadata = await loadReleaseMetadata(rootDir);
+  const metadata = loadReleaseMetadata(rootDir);
   if (!writeGithubOutput) {
     process.stdout.write(`${JSON.stringify(metadata, null, 2)}\n`);
     return;

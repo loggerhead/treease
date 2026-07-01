@@ -74,7 +74,7 @@ test('loadReleaseMetadata rejects cli/core version drift', async () => {
   const fixtureRoot = await makeFixture({ cliCoreDependencyVersion: '9.9.9' });
   const { loadReleaseMetadata } = await import(moduleUrl);
 
-  await assert.rejects(
+  assert.throws(
     () => loadReleaseMetadata(fixtureRoot),
     /apps\/cli\/Cargo\.toml treease-core dependency version 9\.9\.9 does not match packages\/core\/Cargo\.toml version 1\.2\.3/
   );
@@ -98,8 +98,44 @@ treease-core = { version = "1.2.3", path = "../../packages/core" }
   );
   const { loadReleaseMetadata } = await import(moduleUrl);
 
-  await assert.rejects(
+  assert.throws(
     () => loadReleaseMetadata(fixtureRoot),
     /apps\/cli\/Cargo\.toml wasm_release_date 26070101 does not match packages\/core\/Cargo\.toml wasm_release_date 26063009/
   );
+});
+
+test('loadCoreReleaseMetadata returns core version metadata from the manifest single source', async () => {
+  const fixtureRoot = await makeFixture({ coreVersion: '7.8.9', wasmReleaseDate: '26070206' });
+  const { loadCoreReleaseMetadata } = await import(moduleUrl);
+
+  const metadata = loadCoreReleaseMetadata(fixtureRoot);
+
+  assert.deepEqual(metadata, {
+    coreName: 'treease-core',
+    coreVersion: '7.8.9',
+    coreWasmReleaseDate: '26070206',
+  });
+});
+
+test('synchronizeGeneratedWasmPackageJson rewrites generated package version from core manifest metadata', async () => {
+  const { synchronizeGeneratedWasmPackageJson } = await import(moduleUrl);
+
+  const synchronized = synchronizeGeneratedWasmPackageJson(
+    JSON.stringify(
+      {
+        name: 'treease-core',
+        version: '0.0.1',
+        files: ['core_bg.wasm', 'core.js'],
+      },
+      null,
+      2
+    ) + '\n',
+    { coreName: 'treease-core', coreVersion: '7.8.9' }
+  );
+
+  assert.deepEqual(JSON.parse(synchronized), {
+    name: 'treease-core',
+    version: '7.8.9',
+    files: ['core.wasm', 'core.js'],
+  });
 });
