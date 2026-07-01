@@ -2,6 +2,8 @@
 <script lang="ts">
   import { get } from 'svelte/store';
   import { onMount, tick } from 'svelte';
+  import { cubicOut } from 'svelte/easing';
+  import { fly } from 'svelte/transition';
   import Editor from '../../lib/components/Editor.svelte';
   import TopBar from '../../lib/components/TopBar.svelte';
   import BottomBar from '../../lib/components/BottomBar.svelte';
@@ -34,6 +36,7 @@
     syncSplitRatio,
     type SplitLayoutConfig,
   } from './split-layout-controller';
+  import { resolveSplitLayoutMotion } from './split-layout-motion';
   import { splitLayoutDrag } from '../../lib/components/ui/split-layout';
   import { importFormatOptions, supportedEditorLanguageSet, editorLanguageFallback, type SupportedEditorLanguageId } from '../../lib/monaco/language-support';
   import { computeSynchronizedRuntimeLoading, type RuntimeStateEventDetail } from '../../lib/runtime-loading';
@@ -70,6 +73,9 @@
   let rightPaneWidthPx = 0;
   let splitterLeftPx = 0;
   let splitterControlLeftPx = 0;
+  let leftPaneCollapsed = false;
+  let rightPaneCollapsed = false;
+  let collapsedControlFlyX = 0;
   let isDraggingSplitter = false;
   let splitterDragRect: DOMRect | null = null;
   let settingsOpen = false;
@@ -418,6 +424,7 @@
     containerWidth,
     splitLayoutConfig,
   ));
+  $: ({ leftPaneCollapsed, rightPaneCollapsed, collapsedControlFlyX } = resolveSplitLayoutMotion(layoutMode));
 
   onMount(() => {
     settingsStore.load();
@@ -453,40 +460,42 @@
       onOpenSettings={() => (settingsOpen = true)}
     />
     <div bind:this={splitLayoutContainer} bind:clientWidth={containerWidth} class="app-split-layout">
-      {#if layoutMode !== 'right-only'}
-        <section
-          class="app-split-pane app-split-pane--left flex flex-col border-r border-[var(--border-strong)] bg-[var(--panel-bg)]"
-          data-testid="left-pane"
-          style:width={`${leftPaneWidthPx}px`}
-        >
-          <div class="min-h-0 flex-1">
-            <Editor
-              bind:this={editorRef}
-              bind:tabSummaries
-              bind:activeTabId
-              enableRevealSync={syncScrollEnabled}
-              {synchronizedRuntimeLoading}
-              on:reveal={handleEditorReveal}
-              on:runtime-state={handleEditorRuntimeEvent}
-              onScroll={handleEditorScroll}
-            />
-          </div>
-          {#if yqInputOpen}
-            <YqExpressionInput
-              bind:this={yqInputRef}
-              value={yqExpression}
-              busy={yqBusy}
-              error={yqError}
-              onChange={(value) => {
-                yqExpression = value;
-                yqError = '';
-              }}
-              onSubmit={handleSubmitYq}
-              onClose={handleCloseYqInput}
-            />
-          {/if}
-        </section>
-      {/if}
+      <section
+        class="app-split-pane app-split-pane--left flex flex-col border-r border-[var(--border-strong)] bg-[var(--panel-bg)]"
+        class:app-split-pane--collapsed={leftPaneCollapsed}
+        class:app-split-pane--instant={isDraggingSplitter}
+        data-testid="left-pane"
+        aria-hidden={leftPaneCollapsed}
+        style:width={`${leftPaneWidthPx}px`}
+        style:opacity={leftPaneCollapsed ? 0 : 1}
+      >
+        <div class="min-h-0 flex-1">
+          <Editor
+            bind:this={editorRef}
+            bind:tabSummaries
+            bind:activeTabId
+            enableRevealSync={syncScrollEnabled}
+            {synchronizedRuntimeLoading}
+            on:reveal={handleEditorReveal}
+            on:runtime-state={handleEditorRuntimeEvent}
+            onScroll={handleEditorScroll}
+          />
+        </div>
+        {#if yqInputOpen}
+          <YqExpressionInput
+            bind:this={yqInputRef}
+            value={yqExpression}
+            busy={yqBusy}
+            error={yqError}
+            onChange={(value) => {
+              yqExpression = value;
+              yqError = '';
+            }}
+            onSubmit={handleSubmitYq}
+            onClose={handleCloseYqInput}
+          />
+        {/if}
+      </section>
 
       {#if layoutMode === 'split'}
         <div
@@ -555,29 +564,35 @@
         </div>
       {/if}
 
-      {#if layoutMode !== 'left-only'}
-        <section
-          class="app-split-pane app-split-pane--right bg-[var(--panel-bg-alt)]"
-          data-testid="right-pane"
-          style:width={`${rightPaneWidthPx}px`}
-        >
-          <ViewportPanel
-            bind:this={viewerRef}
-            bind:viewMode={viewerViewMode}
-            enableRevealSync={syncScrollEnabled}
-            {synchronizedRuntimeLoading}
-            onRevealError={(line, column) => editorRef?.revealError(line, column)}
-            onGraphReveal={handleGraphReveal}
-            onGraphRuntimeState={handleViewerRuntimeState}
-            onTextScroll={handleViewerScroll}
-            onApplyDiff={handleApplyDiff}
-            onSwap={handleSwapEditors}
-          />
-        </section>
-      {/if}
+      <section
+        class="app-split-pane app-split-pane--right bg-[var(--panel-bg-alt)]"
+        class:app-split-pane--collapsed={rightPaneCollapsed}
+        class:app-split-pane--instant={isDraggingSplitter}
+        data-testid="right-pane"
+        aria-hidden={rightPaneCollapsed}
+        style:width={`${rightPaneWidthPx}px`}
+        style:opacity={rightPaneCollapsed ? 0 : 1}
+      >
+        <ViewportPanel
+          bind:this={viewerRef}
+          bind:viewMode={viewerViewMode}
+          enableRevealSync={syncScrollEnabled}
+          {synchronizedRuntimeLoading}
+          onRevealError={(line, column) => editorRef?.revealError(line, column)}
+          onGraphReveal={handleGraphReveal}
+          onGraphRuntimeState={handleViewerRuntimeState}
+          onTextScroll={handleViewerScroll}
+          onApplyDiff={handleApplyDiff}
+          onSwap={handleSwapEditors}
+        />
+      </section>
 
       {#if layoutMode !== 'split'}
-        <div class="splitter-control" style:left={`${splitterControlLeftPx}px`}>
+        <div
+          class="splitter-control"
+          style:left={`${splitterControlLeftPx}px`}
+          transition:fly={{ x: collapsedControlFlyX, duration: 150, opacity: 0.08, easing: cubicOut }}
+        >
           {#if layoutMode === 'left-only'}
             <ButtonGroup.Root orientation="vertical" variant="segmented-outline" class="shadow-none">
               <IconButton

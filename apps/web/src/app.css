@@ -41,11 +41,28 @@ body {
 .app-split-pane {
   @apply relative h-full min-h-0 overflow-hidden;
   flex: 0 0 auto;
+  transition:
+    width 180ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 160ms ease,
+    border-color 160ms ease;
+  will-change: width, opacity;
 }
 
 .app-split-pane--left,
 .app-split-pane--right {
   min-width: 0;
+}
+
+.app-split-pane--collapsed {
+  pointer-events: none;
+}
+
+.app-split-pane--left.app-split-pane--collapsed {
+  border-right-color: transparent;
+}
+
+.app-split-pane--instant {
+  transition: none;
 }
 
 .app-split-divider {
