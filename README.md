@@ -52,6 +52,16 @@ treease examples search "filter array"
 treease doctor --format json
 ```
 
+## Asset Configuration
+
+The Web app and `treease web` can fetch static assets from a remote asset origin. The default values in this repository point at Treease-managed infrastructure and are intended for the official deployment path, not as a guarantee that those endpoints or buckets are suitable for third-party use.
+
+- `PUBLIC_ASSET_BASE_URL` controls the Web app asset origin.
+- `TREEASE_R2_ASSET_BUCKET` is used by the asset upload/check scripts under `apps/web/scripts/`.
+- The CLI build also has a default remote asset base URL for `treease web`.
+
+For self-hosted or community deployments, set these values explicitly for your own environment instead of relying on the repository defaults.
+
 ## Development
 
 ### Repository Layout

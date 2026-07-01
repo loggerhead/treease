@@ -8,7 +8,7 @@
 .trae/
 .claude/
 .codegraph
-#.scratch
+.scratch/
 docs/dev-loop/loops
 docs/dev-loop/registry.yaml
 .agents/ralph-loop.local.md
@@ -119,6 +119,3 @@ yq3
 .gomodcache/
 .gocache/
 .rsworktree/
-
-
-

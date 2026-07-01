@@ -52,6 +52,16 @@ treease examples search "filter array"
 treease doctor --format json
 ```
 
+## 资产配置说明
+
+Web 应用和 `treease web` 可以从远端静态资源源站拉取资源。当前仓库里的默认值指向 Treease 自己管理的基础设施，主要用于官方部署路径，不应默认视为适合第三方直接复用的公共地址或 bucket。
+
+- `PUBLIC_ASSET_BASE_URL` 用于控制 Web 应用的资源源站。
+- `TREEASE_R2_ASSET_BUCKET` 用于 `apps/web/scripts/` 下的资源上传与检查脚本。
+- CLI 构建也为 `treease web` 提供了一个默认的远端静态资源基地址。
+
+如果你要做自托管或社区部署，应当为自己的环境显式配置这些值，而不是依赖仓库里的默认值。
+
 ## 开发
 
 ### 仓库结构

@@ -3,15 +3,16 @@ import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { chromium, expect } from "@playwright/test";
+import { fromScriptsDir } from "./project-paths.mjs";
 
 const BASE_URL = process.env.TREEASE_LANDING_CAPTURE_BASE_URL ?? "http://127.0.0.1:4173";
-const OUTPUT_DIR = resolve("./apps/web/static/landing");
+const OUTPUT_DIR = fromScriptsDir(import.meta.url, "../static/landing");
 const VIEWPORT = { width: 1200, height: 860 };
-const EXAMPLE_JSON_PATH = resolve("./example/simple.json");
+const EXAMPLE_JSON_PATH = fromScriptsDir(import.meta.url, "../../../example/simple.json");
 const EXAMPLE_JSON_TEXT = readFileSync(EXAMPLE_JSON_PATH, "utf8").trim();
 const EXAMPLE_JSON = JSON.parse(EXAMPLE_JSON_TEXT);
 const YAML_IMPORT_TEXT = "user:\n  name: Alice\ncount: 42\n";
-const TWO_MB_JSON_PATH = resolve("./test/fixtures/json/2mb.1.json");
+const TWO_MB_JSON_PATH = fromScriptsDir(import.meta.url, "../../../test/fixtures/json/2mb.1.json");
 const TWO_MB_JSON_TEXT = readFileSync(TWO_MB_JSON_PATH, "utf8");
 const CAPTURE_FILTER = (process.env.TREEASE_LANDING_CAPTURE_FILTER ?? "").trim();
 const EXPORT_PREVIEW_JSON_TEXT = JSON.stringify(

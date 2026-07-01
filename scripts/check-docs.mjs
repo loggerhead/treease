@@ -47,8 +47,7 @@ function collectGovernanceDocs() {
     ]),
   ]
     .filter(
-      (path) =>
-        !path.startsWith('docs/dev-loop/') && !path.startsWith('docs/superpowers/plans/'),
+      (path) => !path.startsWith('docs/dev-loop/'),
     );
 }
 

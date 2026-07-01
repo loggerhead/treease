@@ -32,6 +32,12 @@
 - 不从上层“绕修” `deps/` vendor；只在明确任务下修改依赖目录。
 - 修改 `.rs` 文件后运行 `cargo fmt`。
 
+## Commit Rules
+- Git commit message 使用英文 Conventional Commits 规范，优先采用 `type(scope): summary`；版本升级使用 `chore(scope): bump ... to vX.Y.Z`。
+- 需要触发 crate publish 的改动，提交时必须同时 bump 对应包的 version。
+- 修改 `packages/core` 并需要发布 `treease-core` 时，更新 `packages/core/Cargo.toml` 的 version，并使用版本升级 commit（例如 `chore(core): bump treease-core to vX.Y.Z`）。
+- 修改 `apps/cli` 并需要发布 `treease-cli` 时，更新 `apps/cli/Cargo.toml` 的 version，并使用版本升级 commit（例如 `chore(cli): bump treease-cli to vX.Y.Z`）。
+
 ## Verification
 - 默认从 `docs/TESTING.md` 选择最小相关验证，不无差别全跑。
 - Core 常用：`cd packages/core && cargo nextest run --locked`
