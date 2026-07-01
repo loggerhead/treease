@@ -11,6 +11,7 @@ import type {
 import type { PathSpan } from '@core-wasm/index';
 
 const DEFAULT_UI_TIMEOUT = 10_000;
+const CURSOR_PATH_SYNC_TIMEOUT = 5_000;
 
 type EditorSnapshot = {
   sourceText: string;
@@ -215,9 +216,8 @@ export async function setMonacoPosition(page: Page, hookId: string, lineNumber: 
   );
 }
 
-export async function setMonacoPositionByText(page: Page, hookId: string, searchText: string) {
-  await waitForMonacoHook(page, hookId);
-  await evaluateTreease(
+async function setMonacoPositionByTextRaw(page: Page, hookId: string, searchText: string) {
+  return evaluateTreease(
     page,
     (treease, payload: { hookId: string; searchText: string }) => {
       const text = treease.editor.getValue(payload.hookId);
@@ -228,9 +228,56 @@ export async function setMonacoPositionByText(page: Page, hookId: string, search
       const lastNewline = before.lastIndexOf('\n');
       const column = idx - (lastNewline + 1) + 1;
       treease.editor.setPosition(payload.hookId, lineNumber, column);
+      return { lineNumber, column };
     },
     { hookId, searchText },
   );
+}
+
+export async function setMonacoPositionByText(page: Page, hookId: string, searchText: string) {
+  await waitForMonacoHook(page, hookId);
+  await setMonacoPositionByTextRaw(page, hookId, searchText);
+}
+
+export async function setMonacoPositionByTextAndWaitForTreePath(
+  page: Page,
+  hookId: string,
+  searchText: string,
+  expectedPath: string[],
+  timeout = CURSOR_PATH_SYNC_TIMEOUT,
+) {
+  await waitForMonacoHook(page, hookId);
+  const previousReadiness = await readRuntimeReadiness(page);
+  const expectedPathKey = expectedPath.join('\u0000');
+  const position = await setMonacoPositionByTextRaw(page, hookId, searchText);
+  await expect
+    .poll(
+      async () => {
+        const [readiness, state] = await Promise.all([
+          readRuntimeReadiness(page),
+          readEditorState(page),
+        ]);
+        const cursorPath = readiness.cursorPath;
+        const currentPathKey = state.tempModel.treePath.join('\u0000');
+        const sameCursorPosition =
+          cursorPath.lineNumber === position.lineNumber && cursorPath.column === position.column;
+        const requestObserved =
+          cursorPath.requestId > previousReadiness.cursorPath.requestId ||
+          (sameCursorPosition && currentPathKey === expectedPathKey);
+        return {
+          cursorSettled:
+            requestObserved &&
+            cursorPath.settled &&
+            cursorPath.documentKey === state.documentKey &&
+            cursorPath.revision > 0 &&
+            cursorPath.revision <= state.editorRevision &&
+            sameCursorPosition,
+          treePathSynced: currentPathKey === expectedPathKey,
+        };
+      },
+      { timeout },
+    )
+    .toEqual({ cursorSettled: true, treePathSynced: true });
 }
 
 export async function getMonacoValue(page: Page, hookId: string) {

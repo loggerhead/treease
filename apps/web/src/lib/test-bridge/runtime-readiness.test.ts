@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { FullEditUiState } from '../store/editor-store';
 import {
+  markCursorPathRequested,
+  markCursorPathSettled,
   markGraphApplied,
   markGraphFlushed,
   markGraphRequested,
@@ -160,6 +162,56 @@ describe('runtime-readiness', () => {
       documentKey: 'sidecar:new',
       revision: 0,
       settled: false,
+    });
+  });
+
+  it('tracks the latest cursor path request through settlement', () => {
+    markCursorPathRequested({
+      requestId: 1,
+      documentKey: 'doc-1',
+      revision: 1,
+      lineNumber: 3,
+      column: 5,
+      syncGraphHighlight: true,
+    });
+    markCursorPathRequested({
+      requestId: 2,
+      documentKey: 'doc-1',
+      revision: 1,
+      lineNumber: 4,
+      column: 9,
+      syncGraphHighlight: true,
+    });
+
+    markCursorPathSettled({
+      requestId: 1,
+      documentKey: 'doc-1',
+      revision: 1,
+      lineNumber: 3,
+      column: 5,
+    });
+
+    expect(readRuntimeReadiness().cursorPath).toMatchObject({
+      requestId: 2,
+      documentKey: 'doc-1',
+      revision: 1,
+      lineNumber: 4,
+      column: 9,
+      syncGraphHighlight: true,
+      settled: false,
+    });
+
+    markCursorPathSettled({
+      requestId: 2,
+      documentKey: 'doc-1',
+      revision: 1,
+      lineNumber: 4,
+      column: 9,
+    });
+
+    expect(readRuntimeReadiness().cursorPath).toMatchObject({
+      requestId: 2,
+      settled: true,
     });
   });
 

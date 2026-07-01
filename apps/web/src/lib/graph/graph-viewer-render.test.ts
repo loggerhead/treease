@@ -546,6 +546,30 @@ describe('graph-viewer-render', () => {
     expect(readonlyText.editInner).toBeUndefined();
   });
 
+  it('renders missing placeholder cells with muted text even when the column semantic type is scalar', () => {
+    const ctx = createTestDrawContext();
+    const parent = new MockBox();
+    const missingCell = {
+      ...createCell('miss', 'string', [], 0),
+      isMissing: true,
+      editable: false,
+      textArgs: {
+        x: 0,
+        y: 0,
+        width: 40,
+        height: 20,
+        text: 'miss',
+        textAlign: 'left' as const,
+        verticalAlign: 'middle' as const,
+        editable: false,
+      },
+    };
+
+    const text = createCellText(ctx, parent, missingCell, 'value', 'object') as MockText;
+
+    expect(text.fill).toBe('#999');
+  });
+
   it('respects cell-level non-editable state even when draw context is editable', () => {
     const ctx: DrawContext = {
       nodeLayer: { add: vi.fn() },

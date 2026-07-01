@@ -1,6 +1,6 @@
 [package]
 name = "treease-cli"
-version = "1.0.8"
+version = "1.0.9"
 edition = "2024"
 build = "build.rs"
 description = "Command-line interface for querying, transforming, and previewing structured documents with Treease"
@@ -13,7 +13,7 @@ keywords = ["treease", "cli", "yaml", "json", "jq"]
 categories = ["command-line-utilities", "text-processing"]
 
 [package.metadata.treease]
-wasm_release_date = "26062907"
+wasm_release_date = "26070111"
 
 [lib]
 path = "src/lib.rs"

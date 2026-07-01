@@ -1030,13 +1030,48 @@ fn view_layout_trajectory_fixture_edges_follow_bezier_contract() {
 }
 
 #[test]
+fn trajectory_fixture_is_obfuscated() {
+    let fixture_json = include_str!("../../../test/fixtures/json/trajectory.1.json");
+
+    assert!(
+        !fixture_json.contains("130862393"),
+        "trajectory fixture should not retain raw task ids"
+    );
+    assert!(
+        !fixture_json.contains("智能马桶"),
+        "trajectory fixture should not retain raw business copy"
+    );
+    assert!(
+        fixture_json.contains("\\\"media_id\\\""),
+        "trajectory fixture should preserve nested json keys inside escaped payloads"
+    );
+    assert!(
+        fixture_json.contains("mime_type"),
+        "trajectory fixture should preserve nested json fragment keys inside escaped payloads"
+    );
+}
+
+#[test]
 fn graph_delta_service_emits_changed_trajectory_edges_after_subtree_growth() {
     let old_source = include_str!("../../../test/fixtures/json/trajectory.1.json");
-    let needle = "\"duration\":\"88865\"";
-    let insert_at = old_source
-        .find(needle)
-        .expect("trajectory fixture should contain basic_info.duration")
-        + needle.len();
+    let root_step_anchor = old_source
+        .find("\"root_step\":{")
+        .expect("trajectory fixture should contain root_step");
+    let basic_info_anchor = old_source[root_step_anchor..]
+        .find("\"basic_info\":{")
+        .expect("trajectory fixture should contain root_step.basic_info")
+        + root_step_anchor;
+    let duration_key = "\"duration\":\"";
+    let duration_start = old_source[basic_info_anchor..]
+        .find(duration_key)
+        .expect("trajectory fixture should contain root_step.basic_info.duration")
+        + basic_info_anchor
+        + duration_key.len();
+    let insert_at = old_source[duration_start..]
+        .find('"')
+        .expect("root_step.basic_info.duration should be a string value")
+        + duration_start
+        + 1;
     let insertion = ",\n      \"ended_at\": \"2025-02-24T00:00:00Z\"";
     let new_source = format!(
         "{}{}{}",

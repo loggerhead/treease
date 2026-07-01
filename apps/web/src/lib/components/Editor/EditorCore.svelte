@@ -40,6 +40,10 @@
   import { resolvePathSelectionRangeSafe } from '../../services/TreePathService';
   import { bindActiveDocumentSnapshotIfPresent, getActiveDocumentSnapshotId } from '../../services/DocumentSessionService';
   import { resolveEditorRuntimeOverlay, type RuntimeStateEventDetail } from '../../runtime-loading';
+  import {
+    markCursorPathRequested,
+    markCursorPathSettled,
+  } from '../../test-bridge/runtime-readiness';
   import { awaitEditorRuntimeStartupDelay } from '../../test-bridge/runtime-startup-delay';
 
   import TabManager from './TabManager.svelte';
@@ -270,6 +274,8 @@
       primeSemanticTokensForDocument(documentKey, semanticTokens),
     clearSemanticTokensForDocument: clearDocumentSemanticTokens,
     refreshSemanticTokensForLanguage: refreshDocumentSemanticTokens,
+    markCursorPathRequested,
+    markCursorPathSettled,
   });
 
   const editorFullEditController = createEditorFullEditController({

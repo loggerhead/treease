@@ -2,6 +2,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createEditorAnalysisController } from './editor-analysis-controller';
 import type { JsonBlockSelection } from '../../store/editor-store';
 
+type ControllerOptions = Parameters<typeof createEditorAnalysisController>[0];
+type CursorPathRequestMarker = NonNullable<ControllerOptions['markCursorPathRequested']>;
+type CursorPathSettledMarker = NonNullable<ControllerOptions['markCursorPathSettled']>;
+
 const mocked = vi.hoisted(() => ({
   resolveDocumentAnalysis: vi.fn(),
   resolveTreePathSafe: vi.fn(async () => []),
@@ -43,6 +47,8 @@ type TestControllerOptions = {
   documentKey?: string;
   revision?: number;
   selection?: JsonBlockSelection | null;
+  markCursorPathRequested?: CursorPathRequestMarker;
+  markCursorPathSettled?: CursorPathSettledMarker;
 };
 
 function createModel(text: string) {
@@ -83,6 +89,8 @@ function createController(options: TestControllerOptions = {}) {
     getJsonBlockSelection: () => selection,
     setJsonBlockSelection,
     updateActiveTempModel,
+    markCursorPathRequested: options.markCursorPathRequested,
+    markCursorPathSettled: options.markCursorPathSettled,
     setTreeState,
     applyRootScalarHighlight,
     primeSemanticTokensForDocument,
@@ -184,6 +192,34 @@ describe('editor analysis controller json block selection', () => {
 
     expect(mocked.callSharedWasmWorker).not.toHaveBeenCalled();
     expect(getSelection()).toBeNull();
+  });
+
+  it('marks cursor path readiness around successful tree path resolution', async () => {
+    const markCursorPathRequested = vi.fn<CursorPathRequestMarker>();
+    const markCursorPathSettled = vi.fn<CursorPathSettledMarker>();
+    const { controller } = createController({
+      markCursorPathRequested,
+      markCursorPathSettled,
+    });
+    mocked.resolveTreePathSafe.mockResolvedValue([{ tag: 1, key: 'a', index: 0 }]);
+
+    await controller.updateTreePath({ lineNumber: 2, column: 3 }, { syncGraphHighlight: true });
+
+    expect(markCursorPathRequested).toHaveBeenCalledWith({
+      requestId: 1,
+      documentKey: 'doc-json',
+      revision: 3,
+      lineNumber: 2,
+      column: 3,
+      syncGraphHighlight: true,
+    });
+    expect(markCursorPathSettled).toHaveBeenCalledWith({
+      requestId: 1,
+      documentKey: 'doc-json',
+      revision: 3,
+      lineNumber: 2,
+      column: 3,
+    });
   });
 
   it('routes empty authoritative sources through analysis instead of short-circuiting them', async () => {

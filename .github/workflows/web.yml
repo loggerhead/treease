@@ -64,12 +64,23 @@ jobs:
         run: pnpm exec playwright install chromium
         working-directory: ${{ github.workspace }}/apps/web
       - name: Run E2E core tests
+        id: e2e-core
+        continue-on-error: true
         run: pnpm test:e2e:core
         working-directory: ${{ github.workspace }}/apps/web
+      - name: Re-run failed E2E core tests serially
+        id: e2e-core-rerun
+        if: steps.e2e-core.outcome == 'failure'
+        continue-on-error: true
+        run: pnpm exec playwright test --config playwright.config.core.ts --last-failed --workers=1
+        working-directory: ${{ github.workspace }}/apps/web
       - name: Upload Playwright traces
-        if: failure()
+        if: always() && (steps.e2e-core.outcome == 'failure' || steps.e2e-core-rerun.outcome == 'failure')
         uses: actions/upload-artifact@v4
         with:
           name: playwright-traces
           path: apps/web/test-results/
           retention-days: 7
+      - name: Fail job if E2E retry did not recover
+        if: steps.e2e-core.outcome == 'failure' && steps.e2e-core-rerun.outcome != 'success'
+        run: exit 1

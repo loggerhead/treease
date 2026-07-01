@@ -7,7 +7,7 @@ import {
   getMonacoValue,
   readEditorState,
   readTempGraphSelection,
-  setMonacoPositionByText,
+  setMonacoPositionByTextAndWaitForTreePath,
   waitForEditorReady,
   waitForGraphRendered,
   waitForImportSettled,
@@ -1004,14 +1004,10 @@ test('dropping the 2mb hover fixture keeps cursor path and graph selection after
   await waitForImportSettled(page, HOVER_FIXTURE_IMPORT_BUDGET_MS);
   await waitForGraphRendered(page, HOVER_FIXTURE_IMPORT_BUDGET_MS);
 
-  await setMonacoPositionByText(page, 'source-editor', '"Id":');
-
   const expectedPath = ['$', 'Result', 'Blocks', '[0]', 'Id'];
+  await setMonacoPositionByTextAndWaitForTreePath(page, 'source-editor', '"Id":', expectedPath);
   await expect
-    .poll(async () => (await readEditorState(page)).tempModel.treePath, { timeout: HOVER_FIXTURE_IMPORT_BUDGET_MS })
-    .toEqual(expectedPath);
-  await expect
-    .poll(async () => await readTempGraphSelection(page), { timeout: HOVER_FIXTURE_IMPORT_BUDGET_MS })
+    .poll(async () => await readTempGraphSelection(page), { timeout: 5_000 })
     .toEqual(expect.objectContaining({ path: expectedPath, target: 'key', source: 'editor' }));
 });
 

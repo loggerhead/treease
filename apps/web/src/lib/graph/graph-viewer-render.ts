@@ -124,7 +124,8 @@ function buildCellTextProps(
   const semanticColors = ctx.styleConfig.colors.semanticType;
   const mutedText = ctx.styleConfig.colors.textMuted;
   const useMutedText =
-    kind === 'value' && (cell.valueType === 'object' || cell.valueType === 'array' || Boolean(cell.isIndex));
+    kind === 'value' &&
+    (cell.isMissing === true || cell.valueType === 'object' || cell.valueType === 'array' || Boolean(cell.isIndex));
   const baseColor =
     kind === 'header' || kind === 'key'
       ? semanticColors.key

@@ -10,9 +10,20 @@ type RuntimeReadinessSidecar = {
   settled: boolean;
 };
 
+type RuntimeReadinessCursorPath = {
+  requestId: number;
+  documentKey: string | null;
+  revision: number;
+  lineNumber: number;
+  column: number;
+  syncGraphHighlight: boolean;
+  settled: boolean;
+};
+
 export type TreeaseRuntimeReadiness = {
   documentKey: string;
   editorRevision: number;
+  cursorPath: RuntimeReadinessCursorPath;
   sidecar: RuntimeReadinessSidecar;
   import: {
     sessionId: string | null;
@@ -81,6 +92,17 @@ type SidecarSettledPayload = SidecarRequestPayload & {
   revision: number;
 };
 
+type CursorPathRequestPayload = {
+  requestId: number;
+  documentKey: string;
+  revision: number;
+  lineNumber: number;
+  column: number;
+  syncGraphHighlight: boolean;
+};
+
+type CursorPathSettledPayload = Omit<CursorPathRequestPayload, 'syncGraphHighlight'>;
+
 type SubgraphRequestPayload = {
   requestId: number;
   pathKey: string;
@@ -100,6 +122,7 @@ function createInitialSnapshot(): RuntimeReadinessSnapshot {
   return {
     documentKey: '',
     editorRevision: 0,
+    cursorPath: createCursorPathSnapshot(),
     sidecar: createSidecarSnapshot(),
     import: {
       sessionId: null,
@@ -177,6 +200,21 @@ function createSidecarSnapshot(
     hookId: null,
     documentKey: null,
     revision: 0,
+    settled: true,
+    ...overrides,
+  };
+}
+
+function createCursorPathSnapshot(
+  overrides: Partial<RuntimeReadinessCursorPath> = {},
+): RuntimeReadinessCursorPath {
+  return {
+    requestId: 0,
+    documentKey: null,
+    revision: 0,
+    lineNumber: 0,
+    column: 0,
+    syncGraphHighlight: false,
     settled: true,
     ...overrides,
   };
@@ -371,6 +409,38 @@ export function markSidecarRequested(payload: SidecarRequestPayload): void {
   };
 }
 
+export function markCursorPathRequested(payload: CursorPathRequestPayload): void {
+  if (!isCurrentDocument(payload)) return;
+  snapshot = {
+    ...snapshot,
+    cursorPath: createCursorPathSnapshot({
+      requestId: payload.requestId,
+      documentKey: payload.documentKey,
+      revision: payload.revision,
+      lineNumber: payload.lineNumber,
+      column: payload.column,
+      syncGraphHighlight: payload.syncGraphHighlight,
+      settled: false,
+    }),
+  };
+}
+
+export function markCursorPathSettled(payload: CursorPathSettledPayload): void {
+  if (!isCurrentDocument(payload)) return;
+  if (payload.requestId !== snapshot.cursorPath.requestId) return;
+  if (payload.documentKey !== snapshot.cursorPath.documentKey) return;
+  if (payload.revision !== snapshot.cursorPath.revision) return;
+  if (payload.lineNumber !== snapshot.cursorPath.lineNumber) return;
+  if (payload.column !== snapshot.cursorPath.column) return;
+  snapshot = {
+    ...snapshot,
+    cursorPath: {
+      ...snapshot.cursorPath,
+      settled: true,
+    },
+  };
+}
+
 export function markSidecarSettled(payload: SidecarSettledPayload): void {
   if (payload.requestId !== snapshot.sidecar.requestId) return;
   if (payload.hookId !== snapshot.sidecar.hookId) return;
@@ -430,6 +500,7 @@ export function syncSubgraphInteractionReadiness(payload: SubgraphInteractivePay
 export function readRuntimeReadiness(): RuntimeReadinessSnapshot {
   return {
     ...snapshot,
+    cursorPath: { ...snapshot.cursorPath },
     sidecar: { ...snapshot.sidecar },
     import: { ...snapshot.import },
     graph: { ...snapshot.graph },

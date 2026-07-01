@@ -23,6 +23,17 @@ type CachedAuthoritativeAnalysis = {
   analysis: EditorAnalysisLike;
 };
 
+type CursorPathRequestPayload = {
+  requestId: number;
+  documentKey: string;
+  revision: number;
+  lineNumber: number;
+  column: number;
+  syncGraphHighlight: boolean;
+};
+
+type CursorPathSettledPayload = Omit<CursorPathRequestPayload, 'syncGraphHighlight'>;
+
 type CreateEditorAnalysisControllerOptions = {
   getMonaco: () => typeof import('monaco-editor') | undefined;
   getEditor: () => Monaco.editor.IStandaloneCodeEditor | null;
@@ -41,6 +52,8 @@ type CreateEditorAnalysisControllerOptions = {
   primeSemanticTokensForDocument: (documentKey: string, semanticTokens: ArrayBuffer) => void;
   clearSemanticTokensForDocument: (documentKey?: string) => void;
   refreshSemanticTokensForLanguage: (languageId?: string) => void;
+  markCursorPathRequested?: (payload: CursorPathRequestPayload) => void;
+  markCursorPathSettled?: (payload: CursorPathSettledPayload) => void;
 };
 
 export function createEditorAnalysisController(options: CreateEditorAnalysisControllerOptions) {
@@ -245,6 +258,18 @@ export function createEditorAnalysisController(options: CreateEditorAnalysisCont
     const requestDocumentKey = options.getDocumentKey();
     if (!requestDocumentKey) return;
     const requestToken = (treePathToken += 1);
+    const requestRevision = options.getEditorRevision();
+    const cursorPathPayload = {
+      requestId: requestToken,
+      documentKey: requestDocumentKey,
+      revision: requestRevision,
+      lineNumber: position.lineNumber,
+      column: position.column,
+    };
+    options.markCursorPathRequested?.({
+      ...cursorPathPayload,
+      syncGraphHighlight,
+    });
     const freshness = createFreshnessScope(
       {
         documentKey: requestDocumentKey,
@@ -292,6 +317,7 @@ export function createEditorAnalysisController(options: CreateEditorAnalysisCont
         syncGraphHighlight,
       }),
     }));
+    options.markCursorPathSettled?.(cursorPathPayload);
     if (syncGraphHighlight) {
       await updateJsonBlockSelection(
         requestModel,
