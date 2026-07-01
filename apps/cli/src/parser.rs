@@ -85,8 +85,7 @@ fn root_subcommand_index(argv: &[String]) -> Option<usize> {
                 index += 2;
             }
             "-n" | "--null-input" | "-e" | "--exit-status" | "-P" | "--prettyPrint" | "-r"
-            | "--unwrapScalar" | "-N" | "--no-doc" | "-i" | "--inplace" | "-h" | "--help"
-            | "-V" | "--version" => {
+            | "--unwrapScalar" | "-N" | "--no-doc" | "-i" | "--inplace" | "-h" | "--help" => {
                 index += 1;
             }
             _ if argv[index].starts_with('-') => return None,
@@ -154,11 +153,6 @@ fn parse_args_with_clap_impl(argv: &[String]) -> Result<ParsedArgs, CliError> {
         parsed.command = CommandKind::Help;
         parsed.help = true;
     }
-    if matches.get_flag("version") {
-        parsed.command = CommandKind::Version;
-        parsed.version = true;
-    }
-
     if let Some((subcommand_name, submatches)) = matches.subcommand() {
         let subcommand_spec = root_spec
             .subcommands
@@ -447,10 +441,6 @@ fn parse_args_fallback(argv: &[String]) -> Result<ParsedArgs, CliError> {
             "-h" | "--help" => {
                 parsed.help = true;
                 parsed.command = CommandKind::Help;
-            }
-            "-V" | "--version" => {
-                parsed.version = true;
-                parsed.command = CommandKind::Version;
             }
             "-n" | "--null-input" => parsed.null_input = true,
             "-e" | "--exit-status" => parsed.exit_status = true,

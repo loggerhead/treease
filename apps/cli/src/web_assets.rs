@@ -1,6 +1,6 @@
 use std::env;
 use std::fs;
-use std::io;
+use std::io::{self, Write};
 use std::path::{Component, Path, PathBuf};
 use std::time::Duration;
 
@@ -45,7 +45,8 @@ pub(super) fn ensure_available() -> Result<PathBuf, CliError> {
         fs::remove_dir_all(&version_dir).map_err(CliError::Io)?;
     }
 
-    download_version_into_cache(&version_dir)?;
+    let mut stderr = io::stderr().lock();
+    download_version_into_cache(&version_dir, &mut stderr)?;
     Ok(version_dir)
 }
 
@@ -71,7 +72,10 @@ pub(super) fn find_asset(root_dir: &Path, request_path: &str) -> Option<DiskAsse
     })
 }
 
-fn download_version_into_cache(version_dir: &Path) -> Result<(), CliError> {
+fn download_version_into_cache(
+    version_dir: &Path,
+    progress: &mut dyn Write,
+) -> Result<(), CliError> {
     let manifest_url = format!(
         "{}/{}/manifest.json",
         runtime_asset_base_url(),
@@ -113,7 +117,7 @@ fn download_version_into_cache(version_dir: &Path) -> Result<(), CliError> {
     }
     fs::create_dir_all(&temp_dir).map_err(CliError::Io)?;
 
-    let download_result = download_manifest_files(&client, &manifest, &temp_dir)
+    let download_result = download_manifest_files(&client, &manifest, &temp_dir, progress)
         .and_then(|_| write_manifest_copy(&temp_dir, &manifest_bytes));
 
     if let Err(error) = download_result {
@@ -132,10 +136,13 @@ fn download_manifest_files(
     client: &Client,
     manifest: &WebAssetManifest,
     temp_dir: &Path,
+    progress: &mut dyn Write,
 ) -> Result<(), CliError> {
     let mut downloaded_index_asset_version: Option<String> = None;
-    for file in &manifest.files {
+    let total_files = manifest.files.len();
+    for (index, file) in manifest.files.iter().enumerate() {
         let relative_path = safe_relative_path(&file.path)?;
+        write_download_progress(progress, index + 1, total_files, &file.path)?;
         let asset_url = format!(
             "{}/{}/{}",
             runtime_asset_base_url(),
@@ -173,6 +180,20 @@ fn download_manifest_files(
             INDEX_ASSET_VERSION_ATTRIBUTE, INDEX_ASSET_PATH
         ))),
     }
+}
+
+fn write_download_progress(
+    progress: &mut dyn Write,
+    current: usize,
+    total: usize,
+    path: &str,
+) -> Result<(), CliError> {
+    writeln!(
+        progress,
+        "Downloading web assets ({current}/{total}): {path}"
+    )
+    .map_err(CliError::Io)?;
+    progress.flush().map_err(CliError::Io)
 }
 
 fn write_manifest_copy(temp_dir: &Path, manifest_bytes: &[u8]) -> Result<(), CliError> {

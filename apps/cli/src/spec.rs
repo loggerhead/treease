@@ -96,7 +96,6 @@ pub(super) fn root_command_spec() -> CliCommandSpec {
         {
             let mut options = execution_options();
             options.push(help_option());
-            options.push(version_option());
             options
         },
         vec![
@@ -236,7 +235,11 @@ pub(super) fn root_help_json_value() -> serde_json::Value {
 }
 
 pub(super) fn render_root_text_help() -> String {
-    render_command_text_help(&root_command_spec())
+    format!(
+        "Treease CLI v{}\n\n{}",
+        env!("CARGO_PKG_VERSION"),
+        render_command_text_help(&root_command_spec())
+    )
 }
 
 pub(super) fn render_command_text_help(command: &CliCommandSpec) -> String {
@@ -471,19 +474,6 @@ fn format_option() -> CliOptionSpec {
         false,
         CliOptionScope::HelpOnly,
         "Select help output format.",
-    )
-}
-
-fn version_option() -> CliOptionSpec {
-    option_spec(
-        "version",
-        Some("-V"),
-        "--version",
-        false,
-        None,
-        false,
-        CliOptionScope::Global,
-        "Show the CLI version.",
     )
 }
 

@@ -1,6 +1,6 @@
 use std::env;
 use std::fs;
-use std::io::{self, Read, Write};
+use std::io::{self, IsTerminal, Read, Write};
 
 mod catalog;
 mod errors;
@@ -25,7 +25,6 @@ struct ParsedArgs {
     expression: String,
     files: Vec<String>,
     help: bool,
-    version: bool,
     null_input: bool,
     exit_status: bool,
     input_format: Option<String>,
@@ -45,7 +44,6 @@ enum CommandKind {
     Run,
     Web,
     Help,
-    Version,
     OperatorsList,
     OperatorsGet,
     OperatorsSearch,
@@ -60,7 +58,6 @@ impl Default for ParsedArgs {
             expression: ".".to_string(),
             files: Vec::new(),
             help: false,
-            version: false,
             null_input: false,
             exit_status: false,
             input_format: None,
@@ -158,15 +155,17 @@ pub fn main() {
 }
 
 fn run(raw_args: &[String]) -> Result<i32, CliError> {
+    if should_render_root_help_on_empty_interactive_invocation(raw_args, io::stdin().is_terminal())
+    {
+        print!("{}", render_help(&ParsedArgs::default()));
+        return Ok(0);
+    }
+
     let parsed = parse_args(raw_args)?;
 
     match parsed.command {
         CommandKind::Help => {
             print!("{}", render_help(&parsed));
-            return Ok(0);
-        }
-        CommandKind::Version => {
-            print!("{}", render_version());
             return Ok(0);
         }
         CommandKind::Web => return run_web_command(&parsed),
@@ -193,6 +192,13 @@ fn run(raw_args: &[String]) -> Result<i32, CliError> {
 
     io::Write::write_all(&mut io::stdout(), &output)?;
     Ok(compute_exit_status(parsed.exit_status, &output) as i32)
+}
+
+fn should_render_root_help_on_empty_interactive_invocation(
+    raw_args: &[String],
+    stdin_is_terminal: bool,
+) -> bool {
+    stdin_is_terminal && raw_args.len() == 1
 }
 
 fn run_web_command(parsed: &ParsedArgs) -> Result<i32, CliError> {
@@ -524,10 +530,6 @@ fn render_help(parsed: &ParsedArgs) -> String {
     }
 }
 
-fn render_version() -> String {
-    format!("treease {}\n", env!("CARGO_PKG_VERSION"))
-}
-
 fn resolve_help_target(target: Option<&str>) -> Option<spec::CliCommandSpec> {
     let target = target?;
     let segments = target.split_whitespace().collect::<Vec<_>>();
@@ -582,7 +584,6 @@ fn execute_metadata_command(parsed: &ParsedArgs) -> Result<Vec<u8>, CliError> {
                 .ok_or_else(|| CliError::UnsupportedFormat(name.to_string()))?;
             render_metadata_value(&format, json)?
         }
-        CommandKind::Version => return Err(CliError::InvalidFlagCombination),
         CommandKind::Web => return Err(CliError::InvalidFlagCombination),
         CommandKind::Run => return Err(CliError::InvalidFlagCombination),
     };
@@ -903,13 +904,19 @@ mod tests {
     }
 
     #[test]
-    fn version_flag_parses_without_reading_stdin() {
-        let parsed = parse_args(&["treease".to_string(), "--version".to_string()])
-            .expect("version should parse");
-
-        assert_eq!(parsed.command, CommandKind::Version);
-        assert!(parsed.version);
-        assert!(parsed.files.is_empty());
+    fn empty_interactive_invocation_prefers_help_over_stdin() {
+        assert!(should_render_root_help_on_empty_interactive_invocation(
+            &["treease".to_string()],
+            true
+        ));
+        assert!(!should_render_root_help_on_empty_interactive_invocation(
+            &["treease".to_string()],
+            false
+        ));
+        assert!(!should_render_root_help_on_empty_interactive_invocation(
+            &["treease".to_string(), ".foo".to_string()],
+            true
+        ));
     }
 
     #[test]
@@ -918,6 +925,7 @@ mod tests {
             &parse_args(&["treease".to_string(), "--help".to_string()]).expect("help should parse"),
         );
 
+        assert!(help.starts_with(&format!("Treease CLI v{}\n\n", env!("CARGO_PKG_VERSION"))));
         assert!(help.contains("treease [OPTIONS] [EXPRESSION] [FILE]"));
         assert!(help.contains("treease help --format json"));
         assert!(help.contains("treease operators list"));
@@ -984,6 +992,7 @@ mod tests {
         let root = spec::root_command_spec();
 
         assert!(root.options.iter().all(|option| option.name != "format"));
+        assert!(root.options.iter().all(|option| option.name != "version"));
         assert!(root.options.iter().any(|option| option.name == "help"));
     }
 

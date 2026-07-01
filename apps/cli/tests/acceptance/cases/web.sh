@@ -224,6 +224,8 @@ test_web_file_result() {
   fetch_url "$result_url" "$body_file" "$status_file"
   assert_eq 200 "$(cat "$status_file")" 'web result should return 200 with matching token'
   assert_result_payload "$body_file" "$input" '.foo' 'json' $'1\n' 'web result payload should match file input'
+  assert_contains "$(cat "$stderr_file")" 'Downloading web assets (1/' 'web should report download progress for first asset'
+  assert_contains "$(cat "$stderr_file")" '_app/app.js' 'web should report downloaded asset path'
 
   wrong_url="$(wrong_token_url_for "$result_url")"
   fetch_url "$wrong_url" "$body_file" "$status_file"
