@@ -1615,6 +1615,12 @@
       class:invisible={showRuntimeLoading}
       class:pointer-events-none={showRuntimeLoading}
     >
+      <div
+        class="pointer-events-none absolute left-1/2 top-4 z-[3] -translate-x-1/2 select-none text-center text-[12px] font-medium
+          text-[#94a3b8]"
+      >
+        Hold Space and drag to move the canvas
+      </div>
       <div bind:this={container} class="absolute inset-0 touch-none" data-testid="graph-viewer-canvas"></div>
       <div
         bind:this={minimapHost}
