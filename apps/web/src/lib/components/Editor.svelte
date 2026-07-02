@@ -21,6 +21,10 @@
     editorCore?.addTab();
   }
 
+  export async function ensureReady() {
+    await editorCore?.ensureReady?.();
+  }
+
   export function closeTab(id: string) {
     editorCore?.closeTab(id);
   }

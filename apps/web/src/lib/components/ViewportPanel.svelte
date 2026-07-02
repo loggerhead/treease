@@ -236,9 +236,17 @@
     await readySidecarEditor?.showText(value, nextLanguage)
   }
 
-  export async function showTextPreview(value: string): Promise<void> {
+  export async function showTextPreview(
+    value: string,
+    nextLanguage: SupportedEditorLanguageId = languageIdValue,
+  ): Promise<void> {
     if (graphOnly) return
-    await showRightPanelText(value)
+    await showRightPanelText(value, nextLanguage)
+  }
+
+  export async function runCompare(): Promise<void> {
+    if (graphOnly) return
+    await runDiffCompare()
   }
 
   function handleGraphSearchSelect(event: CustomEvent<any>): void {

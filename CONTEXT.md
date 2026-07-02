@@ -31,6 +31,10 @@ UI
 
 ## 领域模型
 
+### Editor URL Preset
+
+`Editor URL Preset` 是 `/editor` 路由在首次进入时由 URL 注入的一次性初始状态与动作集合。它只决定首屏展示、初始输入与可选的首轮动作执行，不代表后续由 URL 持续驱动运行时状态。
+
 ### Treease Expression
 
 Treease Expression 是用户对结构化文档执行查询或变换的意图表达；它可以包含一个或多个 operator，但不等同于 operator 列表。需要描述整条求值逻辑时使用 `expression` / `表达式`，不要用 `operators` / `算子` 代称。

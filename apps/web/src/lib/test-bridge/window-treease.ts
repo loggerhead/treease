@@ -7,6 +7,7 @@ import type {
   TreeasePreviewBridge,
   TreeaseSettingsBridge,
   TreeaseTestGraphEditEvent,
+  TreeaseUrlPresetState,
   TreeaseWorkerBridge,
   WindowTreease,
 } from './types';
@@ -20,6 +21,7 @@ let graphExtras: TreeaseGraphBridgeExtras | null = null;
 let graphStreamState: TreeaseGraphStreamState | null = null;
 let workerBridge: TreeaseWorkerBridge | null = null;
 let previewBridge: TreeasePreviewBridge | null = null;
+let urlPresetState: TreeaseUrlPresetState | null = null;
 let clipboardWrites: string[] = [];
 let graphEditEvents: TreeaseTestGraphEditEvent[] = [];
 
@@ -156,6 +158,7 @@ export function ensureWindowTreease(): WindowTreease | null {
       generate: (options) => getPreviewBridge().generate(options),
     },
     test: {
+      getUrlPresetState: () => urlPresetState,
       resetClipboardWrites: () => {
         clipboardWrites = [];
       },
@@ -230,6 +233,11 @@ export function registerTreeaseWorkerBridge(bridge: TreeaseWorkerBridge): void {
 export function registerTreeasePreviewBridge(bridge: TreeasePreviewBridge): void {
   if (!ensureWindowTreease()) return;
   previewBridge = bridge;
+}
+
+export function setTreeaseUrlPresetState(state: TreeaseUrlPresetState | null): void {
+  if (!ensureWindowTreease()) return;
+  urlPresetState = state;
 }
 
 declare global {

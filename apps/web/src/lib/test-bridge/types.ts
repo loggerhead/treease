@@ -200,6 +200,32 @@ export type TreeasePreviewBridge = {
   }) => Promise<string | string[] | null>;
 };
 
+export type TreeaseUrlPresetState = {
+  rawSearch: string;
+  recognized: {
+    ui: string[];
+    lang: SupportedEditorLanguageId | null;
+    textPresent: boolean;
+    rightTextPresent: boolean;
+    rightTextEffective: boolean;
+    command: string | null;
+    yqPresent: boolean;
+    yqEffective: boolean;
+    nest: boolean | null;
+    autoFormat: boolean | null;
+  };
+  ignored: string[];
+  warnings: string[];
+  finalUi: {
+    editor: boolean;
+    viewer: boolean;
+    topbar: boolean;
+    bottombar: boolean;
+  };
+  finalAction: string;
+  viewerMode: 'graph' | 'text';
+};
+
 export type TreeaseTestGraphEditEventDetail = {
   kind?: string;
   valueType?: string;
@@ -271,6 +297,7 @@ export type WindowTreease = {
     generate: TreeasePreviewBridge['generate'];
   };
   test: {
+    getUrlPresetState: () => TreeaseUrlPresetState | null;
     resetClipboardWrites: () => void;
     pushClipboardWrite: (text: string) => void;
     getClipboardWrites: () => string[];

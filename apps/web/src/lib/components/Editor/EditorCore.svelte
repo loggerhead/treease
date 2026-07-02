@@ -1424,6 +1424,12 @@
     tabSummaries = editorStore.actions.getWorkspaceTabSummaries();
     activeTabId = editorStore.get().workspace.activeTabId;
   }
+
+  export async function ensureReady(): Promise<void> {
+    while (!editor || !model || !editorRuntimeReady) {
+      await new Promise<void>((resolve) => setTimeout(resolve, 16));
+    }
+  }
 </script>
 
 <div class="contents" style={rootScalarStyle}>

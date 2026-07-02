@@ -24,6 +24,13 @@
   import { callSharedWasmWorker, getSharedWasmWorkerClient } from '../../lib/wasm/wasm-worker-singleton';
   import { getDefaultWasmURL } from '../../lib/wasm/wasm-worker-singleton';
   import { runYqPreview } from './yq-preview-controller';
+  import {
+    canExecuteUrlCommandForLanguage,
+    resolveEditorUrlPreset,
+    summarizeEditorUrlPresetWarnings,
+    type EditorUrlActionCommandId,
+    type ResolvedEditorUrlPreset,
+  } from './url-preset';
   import { resolveExportDownloadDetails, resolveExportPreviewDetails } from './export-controller';
   import {
     clamp,
@@ -42,6 +49,7 @@
   import { computeSynchronizedRuntimeLoading, type RuntimeStateEventDetail } from '../../lib/runtime-loading';
   import { breadcrumbTargetForPath, type PathSeg } from '../../lib/store/tree-path';
   import { markPreviewCompleted, markPreviewRequested } from '../../lib/test-bridge/runtime-readiness';
+  import { setTreeaseUrlPresetState } from '../../lib/test-bridge/window-treease';
   import type { DiffPlan } from '../../lib/graph/diff-plan';
   import { serializePath } from '../../shared/document-anchor-utils';
   import {
@@ -89,6 +97,11 @@
   let yqBusy = false;
   let yqError = '';
   let previewRequestId = 0;
+  let showEditorPane = true;
+  let showViewerPane = true;
+  let showTopBar = true;
+  let showBottomBar = true;
+  let urlPreset: ResolvedEditorUrlPreset | null = null;
   const maxTabs = 9;
   const wasmUrl = getDefaultWasmURL();
   type ScrollPosition = { scrollTop: number; scrollLeft: number };
@@ -103,6 +116,97 @@
     dividerWidthPx: 10,
     collapsedControlInsetPx: 16,
   };
+  const urlCommandHandlers: Record<Exclude<EditorUrlActionCommandId, 'compare'>, () => Promise<void>> = {
+    format: async () => {
+      await editorRef?.formatActive();
+    },
+    minify: async () => {
+      await editorRef?.minifyActive();
+    },
+    sort: async () => {
+      await editorRef?.sortActive();
+    },
+    escape: async () => {
+      await editorRef?.escapeActive();
+    },
+    unescape: async () => {
+      await editorRef?.unescapeActive();
+    },
+  };
+
+  function applyUrlPresetUi(nextPreset: ResolvedEditorUrlPreset): void {
+    showEditorPane = nextPreset.ui.editor;
+    showViewerPane = nextPreset.ui.viewer;
+    showTopBar = nextPreset.ui.topbar;
+    showBottomBar = nextPreset.ui.bottombar;
+    viewerViewMode = nextPreset.initialViewerMode;
+  }
+
+  function setUrlPresetBridgeState(nextPreset: ResolvedEditorUrlPreset): void {
+    setTreeaseUrlPresetState({
+      ...nextPreset.telemetry,
+      warnings: [...nextPreset.telemetry.ignored, ...nextPreset.notes],
+      viewerMode: nextPreset.initialViewerMode,
+    });
+  }
+
+  async function applyEditorUrlPreset(nextPreset: ResolvedEditorUrlPreset): Promise<void> {
+    applyUrlPresetUi(nextPreset);
+    setUrlPresetBridgeState(nextPreset);
+    await tick();
+    await settingsStore.load();
+    if (nextPreset.nest !== null) {
+      await settingsStore.save({ parser: { enableNest: nextPreset.nest } });
+    }
+    if (nextPreset.autoFormat !== null) {
+      await settingsStore.save({ formatting: { ...settingsStore.get().settings.formatting, smart: nextPreset.autoFormat } });
+    }
+    void getSharedWasmWorkerClient().catch(() => {});
+    await tick();
+    await editorRef?.ensureReady?.();
+
+    if (nextPreset.text.present) {
+      const nextLanguage = nextPreset.language ?? (editorRef?.getActiveLanguage() ?? $languageIdStore);
+      await editorRef?.importAs(nextLanguage, nextPreset.text.value, nextLanguage);
+    } else if (nextPreset.language) {
+      languageIdStore.set(nextPreset.language);
+      await tick();
+    }
+
+    if (nextPreset.rightText.effective) {
+      const nextLanguage = nextPreset.language ?? (editorRef?.getActiveLanguage() ?? $languageIdStore);
+      await viewerRef?.showTextPreview(nextPreset.rightText.value, nextLanguage);
+    }
+
+    if (nextPreset.yq.effective) {
+      yqExpression = nextPreset.yq.value;
+      await handleSubmitYq(nextPreset.yq.value);
+    } else if (nextPreset.command) {
+      const effectiveLanguage = editorRef?.getActiveLanguage() ?? $languageIdStore;
+      if (!canExecuteUrlCommandForLanguage(nextPreset.command, effectiveLanguage)) {
+        nextPreset.notes.push(`Ignored command=${nextPreset.command} for language=${effectiveLanguage}.`);
+      } else if (nextPreset.command === 'compare') {
+        if (!nextPreset.rightText.effective) {
+          await viewerRef?.showTextPreview(viewerRef?.getActiveText() ?? '', viewerRef?.getActiveLanguage() ?? effectiveLanguage);
+        }
+        await viewerRef?.runCompare?.();
+      } else {
+        await urlCommandHandlers[nextPreset.command]();
+      }
+    }
+
+    setUrlPresetBridgeState(nextPreset);
+    const warningMessage = summarizeEditorUrlPresetWarnings(nextPreset);
+    if (warningMessage) {
+      toast.warning(warningMessage);
+    }
+  }
+
+  if (typeof window !== 'undefined') {
+    urlPreset = resolveEditorUrlPreset(window.location.search);
+    applyUrlPresetUi(urlPreset);
+    setUrlPresetBridgeState(urlPreset);
+  }
 
   function getContainerWidth() {
     return splitLayoutContainer?.clientWidth ?? 0;
@@ -285,19 +389,19 @@
   }
 
   function handleSplitterDragStart(clientX: number) {
-    if (layoutMode !== 'split' || !splitLayoutContainer) return;
+    if (visibleLayoutMode !== 'split' || !splitLayoutContainer) return;
     splitterDragRect = splitLayoutContainer.getBoundingClientRect();
     isDraggingSplitter = true;
     updateSplitFromClientX(clientX);
   }
 
   function handleSplitterDragMove(clientX: number) {
-    if (layoutMode !== 'split') return;
+    if (visibleLayoutMode !== 'split') return;
     updateSplitFromClientX(clientX);
   }
 
   function handleSplitterDragEnd() {
-    if (layoutMode !== 'split') return;
+    if (visibleLayoutMode !== 'split') return;
     splitterDragRect = null;
     isDraggingSplitter = false;
     syncSplitLayoutState({ ...splitLayoutState, lastSplitRatio: splitRatio });
@@ -409,6 +513,16 @@
     editorRef?.activateTab(id);
   }
 
+  function resolveVisibleLayoutMode(): SplitLayoutState['layoutMode'] {
+    if (!showEditorPane) return 'right-only';
+    if (!showViewerPane) return 'left-only';
+    return layoutMode;
+  }
+
+  function shouldRenderLayoutControls(visibleLayoutMode: SplitLayoutState['layoutMode']): boolean {
+    return showEditorPane && showViewerPane && visibleLayoutMode !== 'split';
+  }
+
   $: {
     const nextSplitLayoutState = syncSplitRatio(splitLayoutState, containerWidth, splitLayoutConfig);
     if (
@@ -419,16 +533,20 @@
       syncSplitLayoutState(nextSplitLayoutState);
     }
   }
+  $: visibleLayoutMode = resolveVisibleLayoutMode();
+  $: renderLayoutControls = shouldRenderLayoutControls(visibleLayoutMode);
+  $: visibleSplitLayoutState = { ...splitLayoutState, layoutMode: visibleLayoutMode };
   $: ({ leftPaneWidthPx, rightPaneWidthPx, splitterLeftPx, splitterControlLeftPx } = computePaneWidths(
-    splitLayoutState,
+    visibleSplitLayoutState,
     containerWidth,
     splitLayoutConfig,
   ));
-  $: ({ leftPaneCollapsed, rightPaneCollapsed, collapsedControlFlyX } = resolveSplitLayoutMotion(layoutMode));
+  $: ({ leftPaneCollapsed, rightPaneCollapsed, collapsedControlFlyX } = resolveSplitLayoutMotion(visibleLayoutMode));
+  $: shellRowsClass = `${showTopBar ? 'var(--topbar-height)' : '0px'} 1fr ${showBottomBar ? 'var(--bottombar-height)' : '0px'}`;
 
   onMount(() => {
-    settingsStore.load();
-    void getSharedWasmWorkerClient().catch(() => {});
+    urlPreset ??= resolveEditorUrlPreset(window.location.search);
+    void applyEditorUrlPreset(urlPreset);
     const handleResize = () => {
       syncSplitLayoutState(syncSplitRatio(splitLayoutState, getContainerWidth(), splitLayoutConfig));
     };
@@ -443,61 +561,65 @@
 </svelte:head>
 
 <main class="grid h-screen w-screen bg-[var(--app-bg)] text-[var(--text-primary)]">
-  <div class="grid min-h-0 min-w-0 grid-rows-[var(--topbar-height)_1fr_var(--bottombar-height)] overflow-hidden">
-    <TopBar
-      tabs={tabSummaries}
-      {activeTabId}
-      canAddTab={tabSummaries.length < maxTabs}
-      showTabs={true}
-      showRightActions={false}
-      {formatOptions}
-      onAddTab={handleAddTab}
-      onCloseTab={handleCloseTab}
-      onActivateTab={handleActivateTab}
-      onImportFileStream={handleImportFileStream}
-      onExportPreview={handleExportPreview}
-      onExportDownload={handleExportDownload}
-      onOpenSettings={() => (settingsOpen = true)}
-    />
+  <div class="grid min-h-0 min-w-0 overflow-hidden" style:grid-template-rows={shellRowsClass}>
+    {#if showTopBar}
+      <TopBar
+        tabs={tabSummaries}
+        {activeTabId}
+        canAddTab={tabSummaries.length < maxTabs}
+        showTabs={true}
+        showRightActions={false}
+        {formatOptions}
+        onAddTab={handleAddTab}
+        onCloseTab={handleCloseTab}
+        onActivateTab={handleActivateTab}
+        onImportFileStream={handleImportFileStream}
+        onExportPreview={handleExportPreview}
+        onExportDownload={handleExportDownload}
+        onOpenSettings={() => (settingsOpen = true)}
+      />
+    {/if}
     <div bind:this={splitLayoutContainer} bind:clientWidth={containerWidth} class="app-split-layout">
-      <section
-        class="app-split-pane app-split-pane--left flex flex-col border-r border-[var(--border-strong)] bg-[var(--panel-bg)]"
-        class:app-split-pane--collapsed={leftPaneCollapsed}
-        class:app-split-pane--instant={isDraggingSplitter}
-        data-testid="left-pane"
-        aria-hidden={leftPaneCollapsed}
-        style:width={`${leftPaneWidthPx}px`}
-        style:opacity={leftPaneCollapsed ? 0 : 1}
-      >
-        <div class="min-h-0 flex-1">
-          <Editor
-            bind:this={editorRef}
-            bind:tabSummaries
-            bind:activeTabId
-            enableRevealSync={syncScrollEnabled}
-            {synchronizedRuntimeLoading}
-            on:reveal={handleEditorReveal}
-            on:runtime-state={handleEditorRuntimeEvent}
-            onScroll={handleEditorScroll}
-          />
-        </div>
-        {#if yqInputOpen}
-          <YqExpressionInput
-            bind:this={yqInputRef}
-            value={yqExpression}
-            busy={yqBusy}
-            error={yqError}
-            onChange={(value) => {
-              yqExpression = value;
-              yqError = '';
-            }}
-            onSubmit={handleSubmitYq}
-            onClose={handleCloseYqInput}
-          />
-        {/if}
-      </section>
+      {#if showEditorPane}
+        <section
+          class="app-split-pane app-split-pane--left flex flex-col border-r border-[var(--border-strong)] bg-[var(--panel-bg)]"
+          class:app-split-pane--collapsed={leftPaneCollapsed}
+          class:app-split-pane--instant={isDraggingSplitter}
+          data-testid="left-pane"
+          aria-hidden={leftPaneCollapsed}
+          style:width={`${leftPaneWidthPx}px`}
+          style:opacity={leftPaneCollapsed ? 0 : 1}
+        >
+          <div class="min-h-0 flex-1">
+            <Editor
+              bind:this={editorRef}
+              bind:tabSummaries
+              bind:activeTabId
+              enableRevealSync={syncScrollEnabled}
+              {synchronizedRuntimeLoading}
+              on:reveal={handleEditorReveal}
+              on:runtime-state={handleEditorRuntimeEvent}
+              onScroll={handleEditorScroll}
+            />
+          </div>
+          {#if yqInputOpen}
+            <YqExpressionInput
+              bind:this={yqInputRef}
+              value={yqExpression}
+              busy={yqBusy}
+              error={yqError}
+              onChange={(value) => {
+                yqExpression = value;
+                yqError = '';
+              }}
+              onSubmit={handleSubmitYq}
+              onClose={handleCloseYqInput}
+            />
+          {/if}
+        </section>
+      {/if}
 
-      {#if layoutMode === 'split'}
+      {#if visibleLayoutMode === 'split'}
         <div
           class={`app-split-divider app-split-divider--vertical ${isDraggingSplitter ? 'app-split-divider--dragging' : ''}`}
           data-testid="splitter-divider"
@@ -564,36 +686,38 @@
         </div>
       {/if}
 
-      <section
-        class="app-split-pane app-split-pane--right bg-[var(--panel-bg-alt)]"
-        class:app-split-pane--collapsed={rightPaneCollapsed}
-        class:app-split-pane--instant={isDraggingSplitter}
-        data-testid="right-pane"
-        aria-hidden={rightPaneCollapsed}
-        style:width={`${rightPaneWidthPx}px`}
-        style:opacity={rightPaneCollapsed ? 0 : 1}
-      >
-        <ViewportPanel
-          bind:this={viewerRef}
-          bind:viewMode={viewerViewMode}
-          enableRevealSync={syncScrollEnabled}
-          {synchronizedRuntimeLoading}
-          onRevealError={(line, column) => editorRef?.revealError(line, column)}
-          onGraphReveal={handleGraphReveal}
-          onGraphRuntimeState={handleViewerRuntimeState}
-          onTextScroll={handleViewerScroll}
-          onApplyDiff={handleApplyDiff}
-          onSwap={handleSwapEditors}
-        />
-      </section>
+      {#if showViewerPane}
+        <section
+          class="app-split-pane app-split-pane--right bg-[var(--panel-bg-alt)]"
+          class:app-split-pane--collapsed={rightPaneCollapsed}
+          class:app-split-pane--instant={isDraggingSplitter}
+          data-testid="right-pane"
+          aria-hidden={rightPaneCollapsed}
+          style:width={`${rightPaneWidthPx}px`}
+          style:opacity={rightPaneCollapsed ? 0 : 1}
+        >
+          <ViewportPanel
+            bind:this={viewerRef}
+            bind:viewMode={viewerViewMode}
+            enableRevealSync={syncScrollEnabled}
+            {synchronizedRuntimeLoading}
+            onRevealError={(line, column) => editorRef?.revealError(line, column)}
+            onGraphReveal={handleGraphReveal}
+            onGraphRuntimeState={handleViewerRuntimeState}
+            onTextScroll={handleViewerScroll}
+            onApplyDiff={handleApplyDiff}
+            onSwap={handleSwapEditors}
+          />
+        </section>
+      {/if}
 
-      {#if layoutMode !== 'split'}
+      {#if renderLayoutControls}
         <div
           class="splitter-control"
           style:left={`${splitterControlLeftPx}px`}
           transition:fly={{ x: collapsedControlFlyX, duration: 150, opacity: 0.08, easing: cubicOut }}
         >
-          {#if layoutMode === 'left-only'}
+          {#if visibleLayoutMode === 'left-only'}
             <ButtonGroup.Root orientation="vertical" variant="segmented-outline" class="shadow-none">
               <IconButton
                 class="text-[var(--text-primary)]"
@@ -604,7 +728,7 @@
                 <PanelRightOpen size={12} />
               </IconButton>
             </ButtonGroup.Root>
-          {:else if layoutMode === 'right-only'}
+          {:else if visibleLayoutMode === 'right-only'}
             <ButtonGroup.Root orientation="vertical" variant="segmented-outline" class="shadow-none">
               <IconButton
                 class="text-[var(--text-primary)]"
@@ -619,15 +743,31 @@
         </div>
       {/if}
     </div>
-    <BottomBar
-      onFormat={() => editorRef?.formatActive()}
-      onMinify={() => editorRef?.minifyActive()}
-      onSort={() => editorRef?.sortActive()}
-      onShowYqInput={handleShowYqInput}
-      onEscape={() => editorRef?.escapeActive()}
-      onUnescape={() => editorRef?.unescapeActive()}
-      onTreePathSelect={handleTreePathSelect}
-    />
+    {#if showBottomBar}
+      <BottomBar
+        onFormat={() => editorRef?.formatActive()}
+        onMinify={() => editorRef?.minifyActive()}
+        onSort={() => editorRef?.sortActive()}
+        onShowYqInput={handleShowYqInput}
+        onEscape={() => editorRef?.escapeActive()}
+        onUnescape={() => editorRef?.unescapeActive()}
+        onTreePathSelect={handleTreePathSelect}
+      />
+    {/if}
   </div>
 </main>
+{#if !showEditorPane}
+  <div class="pointer-events-none absolute -left-[10000px] top-0 h-px w-px overflow-hidden opacity-0" aria-hidden="true">
+    <Editor
+      bind:this={editorRef}
+      bind:tabSummaries
+      bind:activeTabId
+      enableRevealSync={syncScrollEnabled}
+      {synchronizedRuntimeLoading}
+      on:reveal={handleEditorReveal}
+      on:runtime-state={handleEditorRuntimeEvent}
+      onScroll={handleEditorScroll}
+    />
+  </div>
+{/if}
 <SettingsDialog bind:open={settingsOpen} />
