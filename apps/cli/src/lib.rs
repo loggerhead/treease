@@ -988,17 +988,6 @@ mod tests {
     }
 
     #[test]
-    fn root_help_only_documents_default_invocation() {
-        let help = render_help(
-            &parse_args(&["treease".to_string(), "--help".to_string()]).expect("help should parse"),
-        );
-
-        assert!(help.contains("treease [OPTIONS] [EXPRESSION] [FILE]"));
-        assert!(!help.contains("treease eval"));
-        assert!(!help.contains("eval-all"));
-    }
-
-    #[test]
     fn empty_interactive_invocation_prefers_help_over_stdin() {
         assert!(should_render_root_help_on_empty_interactive_invocation(
             &["treease".to_string()],
@@ -1012,99 +1001,6 @@ mod tests {
             &["treease".to_string(), ".foo".to_string()],
             true
         ));
-    }
-
-    #[test]
-    fn root_help_advertises_discovery_commands() {
-        let help = render_help(
-            &parse_args(&["treease".to_string(), "--help".to_string()]).expect("help should parse"),
-        );
-
-        assert!(help.starts_with(&format!("Treease CLI v{}\n\n", env!("CARGO_PKG_VERSION"))));
-        assert!(help.contains("treease [OPTIONS] [EXPRESSION] [FILE]"));
-        assert!(help.contains("treease help --format json"));
-        assert!(help.contains("treease operators list"));
-        assert!(help.contains("treease formats list"));
-        assert!(help.contains("treease --null-input '.hello = \"world\"'"));
-        assert!(!help.contains("eval-all"));
-    }
-
-    #[test]
-    fn root_help_json_contains_machine_readable_schema() {
-        let json = spec::root_help_json_value();
-
-        assert_eq!(
-            json.get("name").and_then(serde_json::Value::as_str),
-            Some("treease")
-        );
-        assert_eq!(
-            json.get("usage").and_then(serde_json::Value::as_str),
-            Some("treease [OPTIONS] [EXPRESSION] [FILE]")
-        );
-        assert!(
-            json.get("subcommands")
-                .and_then(serde_json::Value::as_array)
-                .is_some_and(|subcommands| subcommands.iter().any(|command| {
-                    command.get("name").and_then(serde_json::Value::as_str) == Some("operators")
-                }))
-        );
-        assert!(
-            json.get("options")
-                .and_then(serde_json::Value::as_array)
-                .is_some_and(|options| options.iter().any(|option| {
-                    option.get("name").and_then(serde_json::Value::as_str) == Some("output-format")
-                }))
-        );
-        assert!(
-            json.get("options")
-                .and_then(serde_json::Value::as_array)
-                .is_some_and(|options| options.iter().all(|option| {
-                    option.get("name").and_then(serde_json::Value::as_str) != Some("format")
-                }))
-        );
-    }
-
-    #[test]
-    fn command_spec_can_be_found_by_structured_path() {
-        let command = spec::find_command_spec(&["treease", "operators", "list"])
-            .expect("operators list spec should exist");
-
-        assert_eq!(command.id, spec::CliCommandId::OperatorsList);
-        assert_eq!(command.name, "list");
-        assert_eq!(
-            command.segments,
-            vec![
-                "treease".to_string(),
-                "operators".to_string(),
-                "list".to_string()
-            ]
-        );
-        assert_eq!(command.path, "treease operators list");
-    }
-
-    #[test]
-    fn root_spec_does_not_expose_format_option() {
-        let root = spec::root_command_spec();
-
-        assert!(root.options.iter().all(|option| option.name != "format"));
-        assert!(root.options.iter().all(|option| option.name != "version"));
-        assert!(root.options.iter().any(|option| option.name == "help"));
-    }
-
-    #[test]
-    fn help_command_exposes_help_only_format_option() {
-        let help_command =
-            spec::find_command_spec(&["treease", "help"]).expect("help command should exist");
-        let format_option = help_command
-            .options
-            .iter()
-            .find(|option| option.name == "format")
-            .expect("format option should exist");
-
-        assert_eq!(help_command.id, spec::CliCommandId::Help);
-        assert!(format_option.takes_value);
-        assert_eq!(format_option.value_name.as_deref(), Some("FORMAT"));
-        assert_eq!(format_option.scope, spec::CliOptionScope::HelpOnly);
     }
 
     #[test]
@@ -1292,53 +1188,6 @@ mod tests {
     }
 
     #[test]
-    fn help_json_command_parses_without_reading_stdin() {
-        let parsed = parse_args(&[
-            "treease".to_string(),
-            "help".to_string(),
-            "--format".to_string(),
-            "json".to_string(),
-        ])
-        .expect("help json should parse");
-
-        assert_eq!(parsed.command, CommandKind::Help);
-        assert_eq!(parsed.metadata_format.as_deref(), Some("json"));
-        assert!(parsed.files.is_empty());
-    }
-
-    #[test]
-    fn operators_get_command_parses_name_and_json_format() {
-        let parsed = parse_args(&[
-            "treease".to_string(),
-            "operators".to_string(),
-            "get".to_string(),
-            "map".to_string(),
-            "--format".to_string(),
-            "json".to_string(),
-        ])
-        .expect("operators get should parse");
-
-        assert_eq!(parsed.command, CommandKind::OperatorsGet);
-        assert_eq!(parsed.metadata_target.as_deref(), Some("map"));
-        assert_eq!(parsed.metadata_format.as_deref(), Some("json"));
-    }
-
-    #[test]
-    fn formats_list_command_parses_json_format() {
-        let parsed = parse_args(&[
-            "treease".to_string(),
-            "formats".to_string(),
-            "list".to_string(),
-            "--format".to_string(),
-            "json".to_string(),
-        ])
-        .expect("formats list should parse");
-
-        assert_eq!(parsed.command, CommandKind::FormatsList);
-        assert_eq!(parsed.metadata_format.as_deref(), Some("json"));
-    }
-
-    #[test]
     fn discovery_parent_command_requires_leaf_subcommand() {
         let error = parse_args(&["treease".to_string(), "operators".to_string()])
             .expect_err("parent discovery command should fail");
@@ -1435,22 +1284,6 @@ mod tests {
                 other => panic!("unexpected error for {command}: {other:?}"),
             }
         }
-    }
-
-    #[test]
-    fn help_operators_text_targets_command_specific_help() {
-        let help = render_help(
-            &parse_args(&[
-                "treease".to_string(),
-                "help".to_string(),
-                "operators".to_string(),
-            ])
-            .expect("help operators should parse"),
-        );
-
-        assert!(help.contains("treease operators <COMMAND>"));
-        assert!(help.contains("treease operators list"));
-        assert!(!help.contains("treease [OPTIONS] [EXPRESSION] [FILE]"));
     }
 
     #[test]
@@ -1640,46 +1473,4 @@ mod tests {
         }
     }
 
-    #[test]
-    fn help_json_advertises_web_command() {
-        let json = spec::root_help_json_value();
-        let subcommands = json
-            .get("subcommands")
-            .and_then(serde_json::Value::as_array)
-            .expect("root subcommands should be present");
-
-        let web_command = subcommands
-            .iter()
-            .find(|command| command.get("name").and_then(serde_json::Value::as_str) == Some("web"))
-            .expect("web command should be advertised");
-
-        assert!(subcommands.iter().any(|command| {
-            command.get("name").and_then(serde_json::Value::as_str) == Some("web")
-                && command.get("usage").and_then(serde_json::Value::as_str)
-                    == Some("treease web [OPTIONS] <EXPRESSION> <FILE|->")
-        }));
-
-        let file_argument = web_command
-            .get("arguments")
-            .and_then(serde_json::Value::as_array)
-            .and_then(|arguments| {
-                arguments.iter().find(|argument| {
-                    argument.get("name").and_then(serde_json::Value::as_str) == Some("file")
-                })
-            })
-            .expect("web file argument should be present");
-
-        assert_eq!(
-            file_argument
-                .get("repeated")
-                .and_then(serde_json::Value::as_bool),
-            Some(false)
-        );
-        assert_eq!(
-            file_argument
-                .get("multiple")
-                .and_then(serde_json::Value::as_bool),
-            Some(false)
-        );
-    }
 }

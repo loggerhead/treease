@@ -64,16 +64,18 @@ test('viewport collapse toggles viewer and editor panes', async ({ page }) => {
 
   await page.getByRole('button', { name: 'Collapse viewer', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Expand viewer', exact: true })).toBeVisible();
-  await expect(page.getByTestId('right-panel-dropzone')).toHaveCount(0);
+  await expect(page.getByTestId('right-pane')).toHaveAttribute('aria-hidden', 'true');
 
   await page.getByRole('button', { name: 'Expand viewer', exact: true }).click();
+  await expect(page.getByTestId('right-pane')).toHaveAttribute('aria-hidden', 'false');
   await expect(page.getByTestId('right-panel-dropzone')).toBeVisible();
 
   await page.getByRole('button', { name: 'Collapse editor', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Expand editor', exact: true })).toBeVisible();
-  await expect(page.getByTestId('monaco-source-editor')).toHaveCount(0);
+  await expect(page.getByTestId('left-pane')).toHaveAttribute('aria-hidden', 'true');
 
   await page.getByRole('button', { name: 'Expand editor', exact: true }).click();
+  await expect(page.getByTestId('left-pane')).toHaveAttribute('aria-hidden', 'false');
   await expect(page.getByTestId('monaco-source-editor')).toBeVisible();
 });
 

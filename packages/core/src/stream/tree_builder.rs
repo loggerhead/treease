@@ -131,6 +131,7 @@ impl Builder {
                         .add(self.container_node(TreeNodeKind::Mapping, SemType::Map, meta));
                 self.register_anchor(id, meta);
                 self.attach_value(id)?;
+                let (parent, key, sequence_index) = self.node_patch_attachment(id);
                 self.stack.push(Frame {
                     id,
                     kind: TreeNodeKind::Mapping,
@@ -138,9 +139,9 @@ impl Builder {
                 });
                 self.emit_patch(TreePatch::NodeInserted {
                     node_id: id,
-                    parent: None,
-                    key: None,
-                    sequence_index: None,
+                    parent,
+                    key,
+                    sequence_index,
                     kind: TreeNodeKind::Mapping as i32,
                     sem_type: SemType::Map as i32,
                     tag: tag_or_default(meta, SemType::Map),
@@ -154,6 +155,7 @@ impl Builder {
                         .add(self.container_node(TreeNodeKind::Sequence, SemType::Seq, meta));
                 self.register_anchor(id, meta);
                 self.attach_value(id)?;
+                let (parent, key, sequence_index) = self.node_patch_attachment(id);
                 self.stack.push(Frame {
                     id,
                     kind: TreeNodeKind::Sequence,
@@ -161,9 +163,9 @@ impl Builder {
                 });
                 self.emit_patch(TreePatch::NodeInserted {
                     node_id: id,
-                    parent: None,
-                    key: None,
-                    sequence_index: None,
+                    parent,
+                    key,
+                    sequence_index,
                     kind: TreeNodeKind::Sequence as i32,
                     sem_type: SemType::Seq as i32,
                     tag: tag_or_default(meta, SemType::Seq),
@@ -232,11 +234,12 @@ impl Builder {
                 self.record_scalar_path(id);
                 self.span_index
                     .insert_scalar(id, meta.start_byte, meta.end_byte);
+                let (parent, key, sequence_index) = self.node_patch_attachment(id);
                 self.emit_patch(TreePatch::NodeInserted {
                     node_id: id,
-                    parent: None,
-                    key: None,
-                    sequence_index: None,
+                    parent,
+                    key,
+                    sequence_index,
                     kind: TreeNodeKind::Scalar as i32,
                     sem_type: sem_type as i32,
                     tag: tag_or_default(meta, sem_type),
@@ -369,6 +372,18 @@ impl Builder {
         }
     }
 
+    fn node_patch_attachment(&self, node: NodeId) -> (Option<NodeId>, Option<NodeId>, Option<u32>) {
+        let Some(node) = self.store.get(node) else {
+            return (None, None, None);
+        };
+        (
+            node.parent,
+            node.key,
+            node.sequence_index
+                .and_then(|index| u32::try_from(index).ok()),
+        )
+    }
+
     fn container_node(&self, kind: TreeNodeKind, sem_type: SemType, meta: &Meta) -> TreeNode {
         TreeNode {
             kind,
@@ -484,8 +499,9 @@ fn tag_or_default(meta: &Meta, sem_type: SemType) -> String {
 mod tests {
     use crate::core::{SemType, TreeNodeKind, get_map_entry};
     use crate::stream::decode;
+    use crate::stream::tree_patch::TreePatch;
 
-    use super::decode_events;
+    use super::{Builder, decode_events};
 
     #[test]
     fn tree_builder_converts_streaming_json_events_into_tree_store() {
@@ -518,5 +534,56 @@ mod tests {
                 .value;
             assert_eq!(document.store.get(value).unwrap().sem_type, expected);
         }
+    }
+
+    #[test]
+    fn node_inserted_patches_include_attachment_metadata() {
+        let events = decode("json", r#"{"items":[1]}"#).unwrap();
+        let mut builder = Builder::new();
+        builder.enable_patches();
+        for event in &events {
+            builder.push(event).unwrap();
+        }
+        let patches = builder.take_patches();
+
+        let sequence_insert = patches
+            .iter()
+            .find_map(|patch| match patch {
+                TreePatch::NodeInserted {
+                    node_id,
+                    parent: Some(parent),
+                    key: Some(key),
+                    sequence_index: None,
+                    kind,
+                    ..
+                } if *kind == TreeNodeKind::Sequence as i32 => Some((*node_id, *parent, *key)),
+                _ => None,
+            })
+            .expect("sequence value should carry mapping attachment metadata");
+        let (sequence_id, sequence_parent, sequence_key) = sequence_insert;
+        assert_eq!(sequence_id.0, 2);
+        assert_eq!(sequence_parent.0, 0);
+        assert_eq!(sequence_key.0, 1);
+
+        let scalar_insert = patches
+            .iter()
+            .find_map(|patch| match patch {
+                TreePatch::NodeInserted {
+                    node_id,
+                    parent: Some(parent),
+                    key: None,
+                    sequence_index: Some(sequence_index),
+                    kind,
+                    ..
+                } if *kind == TreeNodeKind::Scalar as i32 => {
+                    Some((*node_id, *parent, *sequence_index))
+                }
+                _ => None,
+            })
+            .expect("sequence scalar should carry sequence attachment metadata");
+        let (scalar_id, scalar_parent, scalar_sequence_index) = scalar_insert;
+        assert_eq!(scalar_id.0, 3);
+        assert_eq!(scalar_parent.0, 2);
+        assert_eq!(scalar_sequence_index, 0);
     }
 }

@@ -5,6 +5,7 @@
     "dev": "pnpm --dir apps/web dev",
     "cli:web:local": "node ./scripts/treease-web-local.mjs",
     "core:test": "cd packages/core && cargo nextest run --locked",
+    "test:full": "pnpm run core:test && cd apps/cli && cargo nextest run --locked --lib && bash tests/acceptance/run.sh && cd ../web && pnpm test",
     "web:test": "pnpm --dir apps/web test",
     "web:cli-assets:serve": "node ./scripts/treease-web-local.mjs serve",
     "web:assets:deploy": "pnpm --dir apps/web assets:r2:upload",

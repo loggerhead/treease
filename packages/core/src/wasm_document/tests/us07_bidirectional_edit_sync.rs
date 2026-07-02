@@ -809,6 +809,34 @@ fn wasm_document_apply_edits_row_hundred_name_matches_web_editor_large_table_cas
 }
 
 #[test]
+#[ignore = "manual patch_post perf breakdown for same-width large-table cell edit"]
+fn perf_patch_post_same_width_large_table_cell_edit() {
+    let _guard = lock_test_mutex();
+
+    let document_key = "perf-patch-post-same-width-cell";
+    let language = "json";
+    let source = build_json_table_document(1_000);
+    let old = "\"row-800\"";
+    let replacement = "\"row-900\"";
+
+    reset_test_state();
+    let expected_source = source.replacen(old, replacement, 1);
+    let (base_snapshot_id, _) = analyze_document_via_job(document_key, language, &[&source]);
+    let started = start_apply_job(
+        document_key,
+        language,
+        base_snapshot_id,
+        vec![replace_edit(&source, old, replacement)],
+    );
+    let close_batch = close(started.job_handle);
+    assert!(
+        matches!(close_batch.terminal, Some(JobTerminal::Completed)),
+        "{language} same-width large-table cell edit should complete",
+    );
+    assert_snapshot_source(document_key, &expected_source);
+}
+
+#[test]
 fn wasm_document_apply_edits_key_rename_matches_web_editor_text_mutations() {
     let _guard = lock_test_mutex();
 

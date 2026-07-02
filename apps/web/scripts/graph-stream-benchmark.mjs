@@ -14,7 +14,7 @@ const latestJsonPath = path.resolve(outputDir, 'latest.json');
 const latestMarkdownPath = path.resolve(outputDir, 'latest.md');
 const baselinePath = path.resolve(webDir, 'benchmarks', 'graph-stream-baseline.json');
 
-const candidateChunkSizes = [16 * 1024, 32 * 1024, 64 * 1024, 128 * 1024, 256 * 1024];
+const defaultCandidateChunkSizes = [16 * 1024, 32 * 1024, 64 * 1024, 128 * 1024, 256 * 1024];
 const longFrameMs = 50;
 const veryLongFrameMs = 100;
 const caseTimeoutMs = 45_000;
@@ -39,8 +39,12 @@ const thresholds = {
   longFrameCountRegression: 4,
 };
 
-const args = new Set(process.argv.slice(2));
-const updateBaseline = args.has('--update-baseline');
+const cliArgs = parseCliArgs(process.argv.slice(2));
+const candidateChunkSizes = cliArgs.chunkSizes ?? defaultCandidateChunkSizes;
+const updateBaseline = cliArgs.updateBaseline;
+const skipBaselineComparison = cliArgs.skipBaselineComparison;
+const fixtureMinBytes = cliArgs.fixtureMinBytes;
+const fixtureMaxBytes = cliArgs.fixtureMaxBytes;
 
 async function main() {
   await mkdir(outputDir, { recursive: true });
@@ -66,7 +70,13 @@ async function main() {
   const bucketSummaries = buildBucketSummaries(candidateResults, fixtureInventory);
   const recommendations = buildRecommendations(bucketSummaries);
   const baseline = existsSync(baselinePath) ? JSON.parse(await readFile(baselinePath, 'utf8')) : null;
-  const comparison = compareAgainstBaseline({ bucketSummaries, recommendations }, baseline);
+  const comparison = skipBaselineComparison
+    ? {
+        status: 'skipped',
+        baselinePath: path.relative(webDir, baselinePath),
+        failures: [],
+      }
+    : compareAgainstBaseline({ bucketSummaries, recommendations }, baseline);
 
   const latest = {
     schemaVersion: 1,
@@ -78,6 +88,10 @@ async function main() {
       caseTimeoutMs,
       baselinePath: path.relative(webDir, baselinePath),
       selectedFixturePolicy: 'per-bucket 1 largest valid raw fixture per language from test/fixtures/{json,toml,yaml}',
+      fixtureSizeFilter: {
+        minBytes: fixtureMinBytes,
+        maxBytes: fixtureMaxBytes,
+      },
     },
     thresholds,
     fixtureInventory,
@@ -122,6 +136,8 @@ async function selectBenchmarkCases() {
       if (!entry.isFile() || !entry.name.includes('.1.')) continue;
       const absolutePath = path.resolve(dirPath, entry.name);
       const size = (await stat(absolutePath)).size;
+      if (fixtureMinBytes != null && size < fixtureMinBytes) continue;
+      if (fixtureMaxBytes != null && size > fixtureMaxBytes) continue;
       const bucket = bucketForBytes(size);
       const groupKey = `${bucket}:${spec.language}`;
       const list = grouped.get(groupKey) ?? [];
@@ -156,6 +172,64 @@ async function selectBenchmarkCases() {
     return a.fileName.localeCompare(b.fileName);
   });
   return selected;
+}
+
+function parseCliArgs(argv) {
+  const parsed = {
+    updateBaseline: false,
+    skipBaselineComparison: false,
+    chunkSizes: null,
+    fixtureMinBytes: null,
+    fixtureMaxBytes: null,
+  };
+
+  for (const arg of argv) {
+    if (arg === '--') {
+      continue;
+    }
+    if (arg === '--update-baseline') {
+      parsed.updateBaseline = true;
+      continue;
+    }
+    if (arg === '--skip-baseline-comparison') {
+      parsed.skipBaselineComparison = true;
+      continue;
+    }
+    if (arg.startsWith('--chunk-sizes=')) {
+      const raw = arg.slice('--chunk-sizes='.length);
+      parsed.chunkSizes = raw
+        .split(',')
+        .map((value) => parseByteSize(value.trim()))
+        .filter((value) => Number.isFinite(value) && value > 0);
+      if ((parsed.chunkSizes?.length ?? 0) === 0) {
+        throw new Error(`Invalid --chunk-sizes value: ${raw}`);
+      }
+      continue;
+    }
+    if (arg.startsWith('--fixture-min-bytes=')) {
+      parsed.fixtureMinBytes = parseByteSize(arg.slice('--fixture-min-bytes='.length));
+      continue;
+    }
+    if (arg.startsWith('--fixture-max-bytes=')) {
+      parsed.fixtureMaxBytes = parseByteSize(arg.slice('--fixture-max-bytes='.length));
+      continue;
+    }
+    throw new Error(`Unknown argument: ${arg}`);
+  }
+
+  return parsed;
+}
+
+function parseByteSize(rawValue) {
+  const value = rawValue.trim().toLowerCase();
+  const match = value.match(/^(\d+(?:\.\d+)?)(kb|mb|gb)?$/);
+  if (!match) {
+    throw new Error(`Invalid byte size: ${rawValue}`);
+  }
+  const amount = Number(match[1]);
+  const unit = match[2] ?? 'b';
+  const multiplier = unit === 'kb' ? 1024 : unit === 'mb' ? 1024 * 1024 : unit === 'gb' ? 1024 * 1024 * 1024 : 1;
+  return Math.round(amount * multiplier);
 }
 
 function buildFixtureInventory(selectedCases) {

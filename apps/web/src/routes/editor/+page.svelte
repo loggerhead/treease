@@ -513,16 +513,6 @@
     editorRef?.activateTab(id);
   }
 
-  function resolveVisibleLayoutMode(): SplitLayoutState['layoutMode'] {
-    if (!showEditorPane) return 'right-only';
-    if (!showViewerPane) return 'left-only';
-    return layoutMode;
-  }
-
-  function shouldRenderLayoutControls(visibleLayoutMode: SplitLayoutState['layoutMode']): boolean {
-    return showEditorPane && showViewerPane && visibleLayoutMode !== 'split';
-  }
-
   $: {
     const nextSplitLayoutState = syncSplitRatio(splitLayoutState, containerWidth, splitLayoutConfig);
     if (
@@ -533,8 +523,8 @@
       syncSplitLayoutState(nextSplitLayoutState);
     }
   }
-  $: visibleLayoutMode = resolveVisibleLayoutMode();
-  $: renderLayoutControls = shouldRenderLayoutControls(visibleLayoutMode);
+  $: visibleLayoutMode = !showEditorPane ? 'right-only' : !showViewerPane ? 'left-only' : layoutMode;
+  $: renderLayoutControls = showEditorPane && showViewerPane && visibleLayoutMode !== 'split';
   $: visibleSplitLayoutState = { ...splitLayoutState, layoutMode: visibleLayoutMode };
   $: ({ leftPaneWidthPx, rightPaneWidthPx, splitterLeftPx, splitterControlLeftPx } = computePaneWidths(
     visibleSplitLayoutState,

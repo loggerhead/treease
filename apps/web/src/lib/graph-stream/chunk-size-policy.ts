@@ -15,5 +15,6 @@ export function selectGraphStreamChunkSize(
   if (size < 256 * KB) return 128 * KB;
   if (size < MB) return 64 * KB;
   if (size < 4 * MB) return 128 * KB;
+  if (size > 10 * MB) return MB;
   return 256 * KB;
 }

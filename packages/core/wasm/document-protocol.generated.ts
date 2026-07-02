@@ -173,7 +173,7 @@ export interface GraphDelta {
     layoutPatches?: LayoutPatch[];
 }
 
-export type TablePatch = { kind: "tableCreated"; table_handle: number; columns: GraphCellData[] } | { kind: "rowsAppended"; table_handle: number; start_index: number; rows: GraphRowData[]; total_height: number; view_height: number; header_height: number; row_height: number } | { kind: "cellsUpdated"; table_handle: number; cells: TableCellPatchData[] } | { kind: "columnsAdded"; table_handle: number; columns: GraphCellData[] };
+export type TablePatch = { kind: "tableCreated"; table_handle: number; columns: GraphCellData[] } | { kind: "rowsAppended"; table_handle: number; start_index: number; rows: GraphRowData[]; total_height: number; view_height: number; header_height: number; row_height: number } | { kind: "cellsUpdated"; table_handle: number; cells: TableCellPatchData[] } | { kind: "columnsAdded"; table_handle: number; columns: GraphCellData[] } | { kind: "tableReplaced"; table_handle: number; table: GraphTableData };
 
 export type LayoutPatch = { kind: "nodeBoundsUpdated"; render_handle: number; box_args: GraphBoxArgs } | { kind: "groupLayoutUpdated"; group_handle: number; width: number; height: number } | { kind: "viewportLayoutHint"; total_height: number; appended_height: number };
 

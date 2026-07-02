@@ -7,6 +7,7 @@ TREEASE_WEB_ASSET_BASE_URL=''
 TREEASE_WEB_CACHE_DIR=''
 TREEASE_WEB_ASSET_VERSION=''
 TREEASE_WEB_ASSET_RUNTIME_VERSION='1762550945000'
+TREEASE_WEB_ASSET_PORT_FILE=''
 
 cleanup_web_servers() {
   local pid
@@ -68,7 +69,10 @@ PY
 
   local asset_root="$TMP_DIR/web-assets"
   local version_dir="$asset_root/$TREEASE_WEB_ASSET_VERSION"
+  local server_log="$TMP_DIR/web-assets-server.log"
+  local server_port_file="$TMP_DIR/web-assets-server.port"
   TREEASE_WEB_CACHE_DIR="$TMP_DIR/web-cache"
+  TREEASE_WEB_ASSET_PORT_FILE="$server_port_file"
   mkdir -p "$version_dir/_app"
 
   cat >"$version_dir/index.html" <<EOF
@@ -94,10 +98,47 @@ EOF
 }
 EOF
 
-  (cd "$asset_root" && python3 -m http.server 18766 >"$TMP_DIR/web-assets-server.log" 2>&1) &
+  python3 - "$asset_root" "$server_log" "$server_port_file" <<'PY' &
+import contextlib
+import http.server
+import pathlib
+import socketserver
+import sys
+
+asset_root = pathlib.Path(sys.argv[1])
+log_path = pathlib.Path(sys.argv[2])
+port_path = pathlib.Path(sys.argv[3])
+
+class Handler(http.server.SimpleHTTPRequestHandler):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, directory=str(asset_root), **kwargs)
+
+with log_path.open("w", encoding="utf-8") as log_file:
+    with contextlib.redirect_stderr(log_file), contextlib.redirect_stdout(log_file):
+        class Server(socketserver.TCPServer):
+            allow_reuse_address = True
+
+        with Server(("127.0.0.1", 0), Handler) as httpd:
+            port_path.write_text(f"{httpd.server_address[1]}\n", encoding="utf-8")
+            httpd.serve_forever()
+PY
   TREEASE_WEB_ASSET_SERVER_PID=$!
-  TREEASE_WEB_ASSET_BASE_URL="http://127.0.0.1:18766"
-  sleep 1
+  for _ in {1..100}; do
+    if [[ -s "$server_port_file" ]]; then
+      local server_port
+      server_port="$(cat "$server_port_file")"
+      TREEASE_WEB_ASSET_BASE_URL="http://127.0.0.1:${server_port}"
+      return 0
+    fi
+    if ! kill -0 "$TREEASE_WEB_ASSET_SERVER_PID" 2>/dev/null; then
+      printf 'web asset server log:\n%s\n' "$(cat "$server_log" 2>/dev/null)" >&2
+      fail "web asset server exited before reporting its port"
+    fi
+    sleep 0.1
+  done
+
+  printf 'web asset server log:\n%s\n' "$(cat "$server_log" 2>/dev/null)" >&2
+  fail "timed out waiting for web asset server port"
 }
 
 wait_for_graph_url() {

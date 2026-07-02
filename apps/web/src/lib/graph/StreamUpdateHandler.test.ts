@@ -811,6 +811,90 @@ describe('StreamUpdateHandler', () => {
     });
   });
 
+  describe('table patch: tableReplaced', () => {
+    it('replaces the complete table state from protocol data', () => {
+      const state = createEmptyStreamState();
+      state.nodes.set(6, makeTableNode(6, ['a'], ['old']));
+      const delta = {
+        normalized: true, clear: 0,
+        nodesAdded: [], nodesUpdated: [], nodesRemoved: [],
+        edgesAdded: [], edgesRemoved: [],
+        tablePatches: [{
+          kind: 'tableReplaced',
+          tableHandle: 6,
+          table: {
+            columns: [{
+              text: 'b',
+              value: 'b',
+              semType: 5,
+              boxArgs: { x: 50, y: 0, width: 120, height: 20, cornerRadius: 0 },
+              textArgs: { x: 50, y: 0, width: 120, height: 20, text: 'b', textAlign: 0, textVerticalAlign: 1, editable: 0 },
+            }],
+            rows: [{
+              index: 0,
+              boxArgs: { x: 0, y: 20, width: 140, height: 20, cornerRadius: 0 },
+              cellBoxArgs: { x: 0, y: 0, width: 140, height: 20, cornerRadius: 0 },
+              cells: [{
+                text: 'new',
+                value: 'new',
+                semType: 5,
+                boxArgs: { x: 0, y: 0, width: 140, height: 20, cornerRadius: 0 },
+                textArgs: { x: 0, y: 0, width: 140, height: 20, text: 'new', textAlign: 0, textVerticalAlign: 1, editable: 1 },
+              }],
+            }],
+            header_height: 26,
+            total_height: 46,
+            view_height: 46,
+            row_height: 20,
+          },
+        }],
+      };
+
+      applyGraphDeltaToState(delta, state);
+
+      const table = state.nodes.get(6)?.table;
+      expect(table?.columns).toHaveLength(1);
+      expect(table?.columns?.[0]?.text).toBe('b');
+      expect(table?.rows).toHaveLength(1);
+      expect(table?.rows?.[0]?.cells?.[0]?.text).toBe('new');
+      expect(table?.headerHeight).toBe(26);
+      expect(table?.totalHeight).toBe(46);
+    });
+
+    it('accepts snake_case table handles from protocol patches', () => {
+      const state = createEmptyStreamState();
+      state.nodes.set(7, makeTableNode(7, ['a'], ['old']));
+
+      applyGraphDeltaToState(
+        {
+          normalized: true,
+          clear: 0,
+          nodesAdded: [],
+          nodesUpdated: [],
+          nodesRemoved: [],
+          edgesAdded: [],
+          edgesRemoved: [],
+          tablePatches: [{
+            kind: 'tableReplaced',
+            table_handle: 7,
+            table: {
+              columns: [],
+              rows: [],
+              header_height: 12,
+              total_height: 12,
+              view_height: 12,
+              row_height: 0,
+            },
+          }],
+        },
+        state,
+      );
+
+      expect(state.nodes.get(7)?.table?.headerHeight).toBe(12);
+      expect(state.nodes.get(7)?.table?.rows).toHaveLength(0);
+    });
+  });
+
   describe('layout patch: nodeBoundsUpdated', () => {
     it('updates node boxArgs from NodeBoundsUpdated patch', () => {
       const state = createEmptyStreamState();

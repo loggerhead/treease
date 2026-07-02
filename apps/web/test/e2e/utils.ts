@@ -174,24 +174,25 @@ export async function setEditorContent(page: Page, payload: { sourceText: string
   await expect
     .poll(
       async () => {
-        const [modelText, state, readiness] = await Promise.all([
+        const [modelText, state] = await Promise.all([
           getMonacoValue(page, 'source-editor'),
           readEditorState(page),
-          readRuntimeReadiness(page),
         ]);
         // Monaco may normalize some control-leading inputs (for example a
         // standalone UTF-8 BOM). The helper should wait for the editor/store
         // to converge on the editor-accepted text, not on the original payload.
+        // Import/graph settlement is a separate concern and should be awaited
+        // explicitly by the caller through waitForImportSettled /
+        // waitForGraphRendered when needed.
         return {
           modelSynced: state.sourceText === modelText,
           storeSynced: state.sourceText === modelText,
           languageSynced: payload.language ? state.languageId === payload.language : true,
-          fullEditSettled: readiness.import.settled,
         };
       },
       { timeout: DEFAULT_UI_TIMEOUT },
     )
-    .toEqual({ modelSynced: true, storeSynced: true, languageSynced: true, fullEditSettled: true });
+    .toEqual({ modelSynced: true, storeSynced: true, languageSynced: true });
 }
 
 export async function setMonacoValue(page: Page, hookId: string, value: string) {

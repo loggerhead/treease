@@ -2,7 +2,7 @@ use std::collections::HashSet;
 
 use crate::document::protocol::{GraphDelta as ProtocolGraphDelta, GraphNodeData};
 
-use super::graph_builder::GraphModel;
+use super::graph_builder::{GraphKind, GraphModel};
 use super::graph_materialize::MaterializedGraphPatch;
 use super::graph_projection_service::{convert_edge, convert_node};
 use super::layout_engine::LayoutChangeSet;
@@ -19,25 +19,38 @@ impl StreamingDeltaDiffer {
         model: &GraphModel,
         materialized: &MaterializedGraphPatch,
         layout: &LayoutChangeSet,
+        skip_updated_table_handles: &HashSet<u32>,
     ) -> ProtocolGraphDelta {
         let added_handles: HashSet<u32> = materialized.added_handles.iter().copied().collect();
         let mut updated_handles: HashSet<u32> =
             materialized.updated_handles.iter().copied().collect();
         updated_handles.extend(layout.node_handles().iter().copied());
 
-        let mut added: Vec<GraphNodeData> = materialized
-            .added_handles
-            .iter()
-            .filter_map(|handle| model.nodes.get(*handle as usize).map(convert_node))
-            .collect();
+        let mut added: Vec<GraphNodeData> = Vec::with_capacity(materialized.added_handles.len());
+        for &handle in &materialized.added_handles {
+            let Some(node) = model.nodes.get(handle as usize) else {
+                continue;
+            };
+            let converted = convert_node(node);
+            added.push(converted);
+        }
         added.sort_by_key(|node| node.render_handle);
 
-        let mut updated: Vec<GraphNodeData> = updated_handles
+        let mut updated: Vec<GraphNodeData> = Vec::with_capacity(updated_handles.len());
+        for handle in updated_handles
             .iter()
             .filter(|handle| !added_handles.contains(handle))
-            .filter_map(|handle| model.nodes.get(*handle as usize))
-            .map(convert_node)
-            .collect();
+        {
+            let Some(node) = model.nodes.get(*handle as usize) else {
+                continue;
+            };
+            let table_shape = node.kind == GraphKind::Table || node.table.is_some();
+            if table_shape && skip_updated_table_handles.contains(handle) {
+                continue;
+            }
+            let converted = convert_node(node);
+            updated.push(converted);
+        }
         updated.sort_by_key(|node| node.render_handle);
 
         let mut emitted_edges = HashSet::new();

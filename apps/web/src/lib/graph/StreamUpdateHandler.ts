@@ -6,15 +6,39 @@ import {
   normalizeRawCell,
   normalizeRawNode,
   normalizeRawRow,
+  normalizeRawTable,
   normalizeRawTableCellPatch,
   edgeKey,
 } from '../../shared/worker-protocol/graph-delta-normalize';
 
- export type StreamState = {
-   nodes: Map<number, GraphNode>;
-   edges: Map<string, GraphEdge>;
+export type StreamState = {
+  nodes: Map<number, GraphNode>;
+  edges: Map<string, GraphEdge>;
   version: number;
- };
+};
+
+function patchValue<T>(patch: Record<string, unknown>, snakeCaseKey: string, camelCaseKey: string): T | undefined {
+  return (patch[camelCaseKey] as T | undefined) ?? (patch[snakeCaseKey] as T | undefined);
+}
+
+function tableHandleFromPatch(patch: Record<string, unknown>): number | undefined {
+  return patchValue<number>(patch, 'table_handle', 'tableHandle');
+}
+
+function updateNodeTable(
+  state: StreamState,
+  renderHandle: number,
+  update: (node: GraphNode) => GraphNode | null,
+): void {
+  const node = state.nodes.get(renderHandle);
+  if (!node) {
+    return;
+  }
+  const nextNode = update(node);
+  if (nextNode) {
+    state.nodes.set(renderHandle, nextNode);
+  }
+}
 
 /**
  * 应用图增量到状态。
@@ -75,7 +99,13 @@ function applyTableCellPatch(
 }
 
 function normalizeTablePatchColumn(column: any, fallback: { path?: any[] } = {}): any {
-  const boxArgs = column.boxArgs ?? { x: 0, y: 0, width: column.width ?? 80, height: column.height ?? 20, cornerRadius: 4 };
+  const boxArgs = column.boxArgs ?? {
+    x: 0,
+    y: 0,
+    width: column.width ?? 80,
+    height: column.height ?? 20,
+    cornerRadius: 4,
+  };
   return normalizeRawCell({
     ...column,
     boxArgs,
@@ -96,13 +126,11 @@ function normalizeTablePatchColumn(column: any, fallback: { path?: any[] } = {})
 function applyTablePatch(state: StreamState, patch: any): void {
   switch (patch.kind) {
     case 'tableCreated': {
-      // Create a new table node from columns.
       const columns = patch.columns ?? [];
       const rows: any[] = [];
-      const tableHandle = patch.table_handle ?? patch.tableHandle;
+      const tableHandle = tableHandleFromPatch(patch);
+      if (tableHandle == null) return;
       const existingNode = state.nodes.get(tableHandle);
-      // Build initial rows from columns (one header row).
-      // Columns themselves become the header definitions.
       const existingTable = existingNode?.table;
       const normalizedColumns = columns.map((column: any) =>
         normalizeTablePatchColumn(column, { path: existingNode?.path ?? patch.path ?? [] }),
@@ -136,71 +164,90 @@ function applyTablePatch(state: StreamState, patch: any): void {
       break;
     }
     case 'rowsAppended': {
-      const node = state.nodes.get(patch.table_handle ?? patch.tableHandle);
-      if (!node || !node.table) return;
+      const tableHandle = tableHandleFromPatch(patch);
+      if (tableHandle == null) return;
+      const node = state.nodes.get(tableHandle);
+      if (!node?.table) return;
       const rows = node.table.rows;
-      const startIndex = patch.start_index ?? patch.startIndex ?? rows.length;
+      const startIndex = patchValue<number>(patch, 'start_index', 'startIndex') ?? rows.length;
       const normalizedRows = (patch.rows ?? []).map(normalizeRawRow);
       if (startIndex < rows.length) {
         rows.splice(startIndex, rows.length - startIndex, ...normalizedRows);
       } else {
         rows.push(...normalizedRows);
       }
-      // Use sizing carried in the patch (the Rust side recalculates
-      // view_height after row appends).  Fall back to local computation
-      // only for backward compatibility with older protocol.
-      const totalHeight = patch.totalHeight ?? patch.total_height ??
+      const viewHeight = patchValue<number>(patch, 'view_height', 'viewHeight');
+      const headerHeight = patchValue<number>(patch, 'header_height', 'headerHeight');
+      const rowHeight = patchValue<number>(patch, 'row_height', 'rowHeight');
+      const totalHeight = patchValue<number>(patch, 'total_height', 'totalHeight') ??
         ((node.table.rowHeight ?? 0) > 0
           ? (node.table.headerHeight ?? 0) + (node.table.rowHeight ?? 0) * rows.length
           : node.table.totalHeight);
-      state.nodes.set(patch.table_handle ?? patch.tableHandle, {
+      state.nodes.set(tableHandle, {
         ...node,
         table: {
           ...node.table,
           rows,
           totalHeight,
-          ...(patch.viewHeight != null || patch.view_height != null
-            ? { viewHeight: patch.viewHeight ?? patch.view_height }
+          ...(viewHeight != null
+            ? { viewHeight }
             : {}),
-          ...(patch.headerHeight != null || patch.header_height != null
-            ? { headerHeight: patch.headerHeight ?? patch.header_height }
+          ...(headerHeight != null
+            ? { headerHeight }
             : {}),
-          ...(patch.rowHeight != null || patch.row_height != null
-            ? { rowHeight: patch.rowHeight ?? patch.row_height }
+          ...(rowHeight != null
+            ? { rowHeight }
             : {}),
         },
       });
       break;
     }
     case 'cellsUpdated': {
-      const node = state.nodes.get(patch.table_handle ?? patch.tableHandle);
-      if (!node || node.kind !== 'table' || !node.table) return;
-      const table = node.table;
-      const rows = [...table.rows];
-      for (const cellPatch of patch.cells ?? []) {
-        const row = rows[cellPatch.rowIndex];
-        if (!row) continue;
-        const cells = [...row.cells];
-        cells[cellPatch.columnIndex] = normalizeRawCell(cellPatch.cell);
-        rows[cellPatch.rowIndex] = { ...row, cells };
-      }
-      state.nodes.set(patch.table_handle ?? patch.tableHandle, {
-        ...node,
-        table: { ...table, rows },
+      const tableHandle = tableHandleFromPatch(patch);
+      if (tableHandle == null) return;
+      updateNodeTable(state, tableHandle, (node) => {
+        if (node.kind !== 'table' || !node.table) return null;
+        const rows = [...node.table.rows];
+        for (const cellPatch of patch.cells ?? []) {
+          const row = rows[cellPatch.rowIndex];
+          if (!row) continue;
+          const cells = [...row.cells];
+          cells[cellPatch.columnIndex] = normalizeRawCell(cellPatch.cell);
+          rows[cellPatch.rowIndex] = { ...row, cells };
+        }
+        return {
+          ...node,
+          table: { ...node.table, rows },
+        };
       });
       break;
     }
     case 'columnsAdded': {
-      const node = state.nodes.get(patch.table_handle ?? patch.tableHandle);
-      if (!node || !node.table) return;
-      const columns = [...node.table.columns];
-      for (const col of patch.columns ?? []) {
-        columns.push(normalizeTablePatchColumn(col, { path: node.path ?? [] }));
-      }
-      state.nodes.set(patch.table_handle ?? patch.tableHandle, {
-        ...node,
-        table: { ...node.table, columns },
+      const tableHandle = tableHandleFromPatch(patch);
+      if (tableHandle == null) return;
+      updateNodeTable(state, tableHandle, (node) => {
+        if (!node.table) return null;
+        const columns = [
+          ...node.table.columns,
+          ...(patch.columns ?? []).map((column: any) =>
+            normalizeTablePatchColumn(column, { path: node.path ?? [] }),
+          ),
+        ];
+        return {
+          ...node,
+          table: { ...node.table, columns },
+        };
       });
+      break;
+    }
+    case 'tableReplaced': {
+      const tableHandle = tableHandleFromPatch(patch);
+      const table = patch.table;
+      if (tableHandle == null || !table) return;
+      updateNodeTable(state, tableHandle, (node) => ({
+        ...node,
+        table: normalizeRawTable(table),
+      }));
       break;
     }
   }
@@ -240,18 +287,19 @@ function applyLayoutPatch(state: StreamState, patch: any): void {
  * 创建空的流状态。
  * @returns 空的流状态
  */
- export function createEmptyStreamState(): StreamState {
-   return {
-     nodes: new Map<number, GraphNode>(),
-     edges: new Map<string, GraphEdge>(),
+export function createEmptyStreamState(): StreamState {
+  return {
+    nodes: new Map<number, GraphNode>(),
+    edges: new Map<string, GraphEdge>(),
     version: 0,
-   };
- }
- export function clearStreamState(state: StreamState): void {
-   state.nodes.clear();
-   state.edges.clear();
+  };
+}
+
+export function clearStreamState(state: StreamState): void {
+  state.nodes.clear();
+  state.edges.clear();
   state.version = 0;
- }
+}
 
 export function replaceStreamState(state: StreamState, next: { nodes: GraphNode[]; edges: GraphEdge[] }): void {
   clearStreamState(state);
@@ -264,12 +312,12 @@ export function replaceStreamState(state: StreamState, next: { nodes: GraphNode[
  * @param state 流状态
  * @returns 节点和边数组
  */
- export function streamStateToArrays(state: StreamState): { nodes: GraphNode[]; edges: GraphEdge[] } {
-   return {
+export function streamStateToArrays(state: StreamState): { nodes: GraphNode[]; edges: GraphEdge[] } {
+  return {
     nodes: Array.from(state.nodes.values()),
     edges: Array.from(state.edges.values()),
-    };
-  }
+  };
+}
 
 /**
  * Apply a versioned projection delta to the state.

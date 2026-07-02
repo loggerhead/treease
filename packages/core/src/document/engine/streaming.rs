@@ -183,10 +183,11 @@ fn update_from_projector(
     projector: &mut StreamingGraphProjector,
     first_chunk: &mut bool,
     projection_update: &mut Option<ProjectionUpdate>,
-) {
+) -> usize {
     let patches = builder.take_patches();
+    let patch_count = patches.len();
     let Some((store, root)) = builder.tree_ref() else {
-        return;
+        return patch_count;
     };
 
     if *first_chunk {
@@ -196,4 +197,5 @@ fn update_from_projector(
     if let Some(update) = projector.update(store, root, &patches) {
         *projection_update = Some(update);
     }
+    patch_count
 }

@@ -22,6 +22,8 @@ struct ChunkSizeConfig {
     default_chunk_size: usize,
     large_file_threshold: usize,
     large_file_chunk_size: usize,
+    huge_file_threshold: usize,
+    huge_file_chunk_size: usize,
 }
 
 fn to_json_compatible_js_value<T: Serialize>(value: &T) -> Result<JsValue, JsValue> {
@@ -37,6 +39,8 @@ pub fn get_chunk_size_config() -> JsValue {
         default_chunk_size: crate::stream::chunk_size::DEFAULT_CHUNK_SIZE,
         large_file_threshold: crate::stream::chunk_size::LARGE_FILE_THRESHOLD,
         large_file_chunk_size: crate::stream::chunk_size::LARGE_FILE_CHUNK_SIZE,
+        huge_file_threshold: crate::stream::chunk_size::HUGE_FILE_THRESHOLD,
+        huge_file_chunk_size: crate::stream::chunk_size::HUGE_FILE_CHUNK_SIZE,
     };
     serde_wasm_bindgen::to_value(&config).unwrap_or(JsValue::UNDEFINED)
 }

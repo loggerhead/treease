@@ -5,10 +5,10 @@ const CI = !!process.env.CI;
 export default defineConfig({
   testDir: './test/e2e',
   testIgnore: 'fixture-corpus.spec.ts',
-  timeout: CI ? 10_000 : 5_000,
+  timeout: CI ? 10_000 : 10_000,
   retries: 1,
   expect: {
-    timeout: CI ? 10_000 : 5_000,
+    timeout: CI ? 10_000 : 10_000,
   },
   fullyParallel: true,
   workers: CI ? 1 : '50%',

@@ -1,7 +1,3 @@
-use std::sync::{Mutex, OnceLock};
-#[cfg(not(target_arch = "wasm32"))]
-use std::time::Instant;
-
 use crate::{
     core::{CoreError, ParseError, SemType},
     formats::DecodedDocument,
@@ -15,7 +11,7 @@ use super::{
     diagnostics::{ErrorSpan, TokenSpan},
     parse_tree::{self, DecodeWithTokenSpansResult},
     parser::JsonStreamError,
-    scanner::{ProfileHooks, Scanner, Span, Token, TokenCache, TokenTag},
+    scanner::{Scanner, Span, Token, TokenCache, TokenTag},
 };
 
 // ---------------------------------------------------------------------------
@@ -28,10 +24,6 @@ const TOKEN_TYPE_BOOLEAN: u32 = 6;
 const TOKEN_TYPE_NULL: u32 = 7;
 const TOKEN_TYPE_PUNCTUATION: u32 = 8;
 const TOKEN_TYPE_COMMENT: u32 = 9;
-
-// ---------------------------------------------------------------------------
-// DecodeProfile
-// ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SourceRewrite {
@@ -54,151 +46,6 @@ struct NestedMaterialization {
     source: String,
     events: Vec<StreamingEvent>,
 }
-
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct DecodeProfile {
-    pub input_bytes: usize,
-    pub document_count: u32,
-    pub token_count: u32,
-    pub event_count: u32,
-    pub error_count: u32,
-    /// Total wall-clock time in microseconds.
-    pub total_us: u32,
-    /// Time spent inside `Scanner::next_token` in microseconds.
-    pub scanner_next_token_us: u32,
-    /// Time spent emitting events (sink overhead) in microseconds.
-    pub sink_emit_us: u32,
-    /// Time spent finishing string tokens in microseconds.
-    pub finish_string_token_us: u32,
-    /// Time spent finishing number tokens in microseconds.
-    pub finish_number_token_us: u32,
-    /// Time spent normalising number values in microseconds.
-    pub normalized_number_us: u32,
-}
-
-static LAST_DECODE_PROFILE: OnceLock<Mutex<DecodeProfile>> = OnceLock::new();
-
-pub(crate) fn profile_cell() -> &'static Mutex<DecodeProfile> {
-    LAST_DECODE_PROFILE.get_or_init(|| Mutex::new(DecodeProfile::default()))
-}
-
-pub fn reset_last_decode_profile() {
-    if let Ok(mut profile) = profile_cell().lock() {
-        *profile = DecodeProfile::default();
-    }
-}
-
-pub fn get_last_decode_profile() -> DecodeProfile {
-    profile_cell()
-        .lock()
-        .map(|profile| *profile)
-        .unwrap_or_default()
-}
-
-pub(super) fn record_decode_profile(
-    source: &str,
-    events: usize,
-    token_spans: usize,
-    error_spans: usize,
-) {
-    if let Ok(mut profile) = profile_cell().lock() {
-        profile.input_bytes = source.len();
-        profile.document_count = if source.trim().is_empty() { 0 } else { 1 };
-        profile.token_count = token_spans as u32;
-        profile.event_count = events as u32;
-        profile.error_count = error_spans as u32;
-    }
-}
-
-// ---------------------------------------------------------------------------
-// ---------------------------------------------------------------------------
-
-/// Base instant for the monotonic nanosecond clock.
-#[cfg(not(target_arch = "wasm32"))]
-static BASE_INSTANT: OnceLock<Instant> = OnceLock::new();
-
-/// Return a monotonic timestamp in nanoseconds.
-///
-/// All calls share a single base [`Instant`] so that deltas between any
-/// two calls are meaningful.  The absolute value is arbitrary; only
-/// differences matter.
-pub fn monotonic_now_ns() -> u64 {
-    #[cfg(target_arch = "wasm32")]
-    {
-        0
-    }
-
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        let base = BASE_INSTANT.get_or_init(Instant::now);
-        base.elapsed().as_nanos() as u64
-    }
-}
-
-/// Convert nanoseconds to microseconds, saturating at `u32::MAX`.
-pub fn duration_us(ns: u64) -> u32 {
-    (ns / 1_000).min(u32::MAX as u64) as u32
-}
-
-/// Add a nanosecond delta to a `u32` microsecond accumulator, saturating.
-fn add_duration_us(target: &mut u32, ns: u64) {
-    let delta = duration_us(ns);
-    let sum = *target as u64 + delta as u64;
-    *target = sum.min(u32::MAX as u64) as u32;
-}
-
-/// Increment a `u32` counter, saturating at `u32::MAX`.
-fn increment_counter(target: &mut u32) {
-    if *target != u32::MAX {
-        *target += 1;
-    }
-}
-
-pub fn add_scanner_next_token_ns(ns: u64) {
-    if let Ok(mut profile) = profile_cell().lock() {
-        add_duration_us(&mut profile.scanner_next_token_us, ns);
-    }
-}
-
-pub fn add_finish_string_token_ns(ns: u64) {
-    if let Ok(mut profile) = profile_cell().lock() {
-        add_duration_us(&mut profile.finish_string_token_us, ns);
-    }
-}
-
-pub fn add_finish_number_token_ns(ns: u64) {
-    if let Ok(mut profile) = profile_cell().lock() {
-        add_duration_us(&mut profile.finish_number_token_us, ns);
-    }
-}
-
-pub fn add_sink_emit_ns(ns: u64) {
-    if let Ok(mut profile) = profile_cell().lock() {
-        add_duration_us(&mut profile.sink_emit_us, ns);
-    }
-}
-
-pub fn add_normalized_number_ns(ns: u64) {
-    if let Ok(mut profile) = profile_cell().lock() {
-        add_duration_us(&mut profile.normalized_number_us, ns);
-    }
-}
-
-pub fn increment_token_count() {
-    if let Ok(mut profile) = profile_cell().lock() {
-        increment_counter(&mut profile.token_count);
-    }
-}
-
-pub fn increment_event_count() {
-    if let Ok(mut profile) = profile_cell().lock() {
-        increment_counter(&mut profile.event_count);
-    }
-}
-
-// ---------------------------------------------------------------------------
-// TokenSpanCollector / ErrorSpanCollector
-// ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct TokenSpanCollector {
@@ -537,30 +384,17 @@ impl StreamingParser {
     }
 
     // ------------------------------------------------------------------
-    // Scanner configuration (profile hooks, token cache)
+    // Scanner configuration (token cache)
     // ------------------------------------------------------------------
-
-    /// Install [`ProfileHooks`] on the underlying scanner so that
-    /// fine-grained timing callbacks are invoked during tokenisation.
-    pub fn set_profile_hooks(&mut self, hooks: ProfileHooks) {
-        // Re-create the scanner with the hooks, preserving existing state
-        // that matters: token cache and compact threshold.
-        let cache = self.scanner.token_cache().cloned();
-        let cache_enabled = self.scanner.token_cache_enabled();
-        let compact_threshold = self.scanner.compact_threshold();
-        self.scanner = Scanner::new(cache, cache_enabled, Some(hooks))
-            .with_compact_threshold(compact_threshold);
-    }
 
     /// Enable the token cache on the underlying scanner.
     ///
     /// When enabled, the scanner will intern decoded string and number
     /// values so that repeated occurrences share a single allocation.
     pub fn set_token_cache(&mut self, cache: TokenCache) {
-        let hooks = self.scanner.take_profile_hooks();
         let compact_threshold = self.scanner.compact_threshold();
         self.scanner =
-            Scanner::new(Some(cache), true, hooks).with_compact_threshold(compact_threshold);
+            Scanner::new(Some(cache), true, None).with_compact_threshold(compact_threshold);
     }
 
     /// Return a reference to the scanner's token cache, if any.
@@ -650,13 +484,6 @@ impl StreamingParser {
             }));
             self.doc_ended = true;
         }
-
-        record_decode_profile(
-            "",
-            self.event_count,
-            self.token_span_collector.spans().len(),
-            self.error_span_collector.spans().len(),
-        );
 
         self.finished = true;
         Ok(())
@@ -1380,7 +1207,6 @@ impl StreamingParser {
     }
 
     fn emit_event(&mut self, event: StreamingEvent) {
-        let start_ns = monotonic_now_ns();
         match &mut self.sink {
             ParserSink::Buffered(events) => events.push(event),
             ParserSink::Event(sink) => {
@@ -1392,8 +1218,6 @@ impl StreamingParser {
             }
         }
         self.event_count = self.event_count.saturating_add(1);
-        add_sink_emit_ns(monotonic_now_ns() - start_ns);
-        increment_event_count();
     }
 }
 
@@ -1503,11 +1327,6 @@ impl StreamDecoder {
 
     pub fn take_error_spans(&mut self) -> Vec<ErrorSpan> {
         self.parser.take_error_spans()
-    }
-
-    /// Set profile hooks on the underlying scanner.
-    pub fn set_profile_hooks(&mut self, hooks: ProfileHooks) {
-        self.parser.set_profile_hooks(hooks);
     }
 
     pub fn set_nest_depth(&mut self, depth: u8) {

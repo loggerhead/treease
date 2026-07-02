@@ -17,6 +17,14 @@ pub(crate) struct MaterializedGraphPatch {
     pub added_edges: Vec<DirtyEdge>,
     pub added_edge_indexes: Vec<usize>,
     pub rebuilt_table_handles: Vec<u32>,
+    pub deferred_table_handles: Vec<u32>,
+    pub table_row_touches: Vec<TableRowTouch>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct TableRowTouch {
+    pub table_handle: u32,
+    pub row_indexes: Vec<usize>,
 }
 
 pub(crate) fn materialize_into_current_model(
@@ -70,6 +78,13 @@ pub(crate) fn materialize_into_current_model(
             row_start = row_end;
             continue;
         }
+        result.table_row_touches.push(TableRowTouch {
+            table_handle,
+            row_indexes: table_rows[row_start..row_end]
+                .iter()
+                .map(|row| row.row_index)
+                .collect(),
+        });
         row_touched_tables.insert(table_handle);
         if rebuilt_tables.contains(&table_handle) {
             mark_updated(&mut result.updated_handles, table_handle);
@@ -77,7 +92,7 @@ pub(crate) fn materialize_into_current_model(
             continue;
         }
 
-        let rebuilt = apply_table_row_updates(
+        let update_result = apply_table_row_updates(
             topology,
             model,
             store,
@@ -85,9 +100,12 @@ pub(crate) fn materialize_into_current_model(
             shape_builder,
             config,
         );
-        if rebuilt {
+        if update_result.rebuilt {
             rebuilt_tables.insert(table_handle);
             mark_updated(&mut result.rebuilt_table_handles, table_handle);
+        }
+        if update_result.deferred_replacement {
+            mark_updated(&mut result.deferred_table_handles, table_handle);
         }
         mark_updated(&mut result.updated_handles, table_handle);
         row_start = row_end;
@@ -147,6 +165,8 @@ pub(crate) fn materialize_into_current_model(
         .sort_by_key(|edge| (edge.from, edge.from_row, edge.to, edge.to_row));
     result.rebuilt_table_handles.sort_unstable();
     result.rebuilt_table_handles.dedup();
+    result.deferred_table_handles.sort_unstable();
+    result.deferred_table_handles.dedup();
     result
 }
 
@@ -155,7 +175,14 @@ struct TableRowUpdateContext {
     parent_columns: Vec<GraphCell>,
     column_widths: Vec<i32>,
     is_header_table: bool,
+    table_is_open: bool,
     table_node_kind: TreeNodeKind,
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+struct TableRowUpdateResult {
+    rebuilt: bool,
+    deferred_replacement: bool,
 }
 
 fn apply_table_row_updates(
@@ -165,15 +192,16 @@ fn apply_table_row_updates(
     rows: &[TableRowRef],
     shape_builder: &NodeShapeBuilder<'_>,
     config: &BuilderConfig,
-) -> bool {
+) -> TableRowUpdateResult {
     let Some(&first_row) = rows.first() else {
-        return false;
+        return TableRowUpdateResult::default();
     };
     let Some(context) = table_row_update_context(model, store, first_row) else {
-        return false;
+        return TableRowUpdateResult::default();
     };
 
     let mut applied = false;
+    let mut deferred_replacement = false;
     for &row in rows {
         debug_assert_eq!(row.table_handle, first_row.table_handle);
         debug_assert_eq!(row.table_node_id, first_row.table_node_id);
@@ -181,14 +209,26 @@ fn apply_table_row_updates(
         if context.is_header_table
             && header_table_row_has_new_column(&context.parent_columns, store, row.row_node_id)
         {
-            return rebuild_table_node(topology, model, store, row, shape_builder);
+            if !context.table_is_open {
+                return TableRowUpdateResult {
+                    rebuilt: rebuild_table_node(topology, model, store, row, shape_builder),
+                    deferred_replacement,
+                };
+            }
+            deferred_replacement = true;
         }
 
         let Some(next_row) = build_table_row_update(store, row, &context) else {
             continue;
         };
         if table_row_requires_rebuild(config, &context.column_widths, &next_row) {
-            return rebuild_table_node(topology, model, store, row, shape_builder);
+            if !context.table_is_open {
+                return TableRowUpdateResult {
+                    rebuilt: rebuild_table_node(topology, model, store, row, shape_builder),
+                    deferred_replacement,
+                };
+            }
+            deferred_replacement = true;
         }
         applied |= apply_built_table_row(model, row, next_row, config);
     }
@@ -196,7 +236,10 @@ fn apply_table_row_updates(
     if applied && let Some(graph_node) = model.nodes.get_mut(first_row.table_handle as usize) {
         sync_table_size(config, graph_node);
     }
-    false
+    TableRowUpdateResult {
+        rebuilt: false,
+        deferred_replacement,
+    }
 }
 
 fn table_row_update_context(
@@ -213,6 +256,7 @@ fn table_row_update_context(
         parent_columns: table.columns.clone(),
         column_widths: table.column_widths.clone(),
         is_header_table: super::graph_topology::is_header_table_sequence(store, row.table_node_id),
+        table_is_open: !table_node.sequence_closed,
         table_node_kind: table_node.kind,
     })
 }

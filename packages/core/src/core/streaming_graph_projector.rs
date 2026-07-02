@@ -7,18 +7,25 @@ use crate::core::graph_topology::{self, GraphTopology, SequencePresentationState
 use crate::core::layout_engine::{LayoutEngine, LayoutState};
 use crate::core::{GraphModelIndex, NodeId, TreeStore};
 use crate::document::protocol::{
-    GraphCellData, GraphDelta, GraphNodeData, LayoutPatch, TableCellPatchData, TablePatch,
+    GraphBoxArgs, GraphCellData, GraphDelta, GraphNodeData, GraphPathSeg, GraphRowData,
+    LayoutPatch, TableCellPatchData, TablePatch,
 };
 use crate::document::snapshot::IncrementalState;
 use crate::stream::tree_patch::TreePatch;
 
-use super::graph_builder::{GraphLanguage, GraphModel, PathSeg};
-use super::graph_projection_service::{convert_cell, convert_row, graph_language_from_name};
+#[cfg(test)]
+use super::graph_builder::PathSeg;
+use super::graph_builder::{GraphCell, GraphLanguage, GraphModel, GraphRow};
+use super::graph_projection_service::{
+    convert_box_args, convert_cell, convert_cell_value, convert_path, convert_table,
+    graph_language_from_name, str_sem_type_to_u32,
+};
 use super::streaming_delta_differ::StreamingDeltaDiffer;
 
 /// Build a single column-aligned row from a Mapping NodeId in the streaming
 
 /// Stable key for identifying nodes across chunk boundaries: joined path segments.
+#[cfg(test)]
 fn path_key(node: &GraphNodeData) -> String {
     node.path
         .iter()
@@ -56,6 +63,95 @@ fn contains_pending_header_table_schema(store: &TreeStore, id: NodeId) -> bool {
         .any(|child| contains_pending_header_table_schema(store, *child))
 }
 
+fn push_layout_patch_unique(patches: &mut Vec<LayoutPatch>, patch: LayoutPatch) {
+    if !patches.contains(&patch) {
+        patches.push(patch);
+    }
+}
+
+fn table_state_key_from_graph_node(node: &super::graph_builder::GraphNode) -> TableStateKey {
+    if node.stable_id != 0 {
+        TableStateKey::Stable(node.stable_id)
+    } else {
+        TableStateKey::Render(node.render_handle)
+    }
+}
+
+fn table_state_key_for_render_handle(model: &GraphModel, handle: u32) -> TableStateKey {
+    model
+        .nodes
+        .get(handle as usize)
+        .map(table_state_key_from_graph_node)
+        .unwrap_or(TableStateKey::Render(handle))
+}
+
+fn table_state_key_from_node_data(model: &GraphModel, node: &GraphNodeData) -> TableStateKey {
+    table_state_key_for_render_handle(model, node.render_handle)
+}
+
+fn cell_fingerprint_from_graph_cell(cell: &GraphCell) -> CellFingerprint {
+    CellFingerprint {
+        sem_type: str_sem_type_to_u32(cell.sem_type.as_deref()),
+        is_missing: cell.is_missing,
+        path: convert_path(&cell.path),
+        text: cell.text.clone(),
+        value: convert_cell_value(cell),
+        format_text: cell.format_text.clone(),
+        box_args: convert_box_args(&cell.box_args),
+        text_args: TextArgsFingerprint {
+            x: cell.text_bounds.x,
+            y: cell.text_bounds.y,
+            width: cell.text_bounds.width,
+            height: cell.text_bounds.height,
+            text_align: cell.text_args.text_align as u8,
+            text_vertical_align: cell.text_args.text_vertical_align as u8,
+            editable: cell.editable,
+        },
+    }
+}
+
+fn cell_fingerprint_from_node_data(cell: &GraphCellData) -> CellFingerprint {
+    CellFingerprint {
+        sem_type: cell.sem_type,
+        is_missing: cell.is_missing,
+        path: cell.path.clone(),
+        text: cell.text.clone(),
+        value: cell.value.clone(),
+        format_text: cell.format_text.clone(),
+        box_args: cell.box_args,
+        text_args: TextArgsFingerprint {
+            x: cell.text_args.x,
+            y: cell.text_args.y,
+            width: cell.text_args.width,
+            height: cell.text_args.height,
+            text_align: cell.text_args.text_align,
+            text_vertical_align: cell.text_args.text_vertical_align,
+            editable: cell.text_args.editable,
+        },
+    }
+}
+
+fn convert_row_and_store_fingerprints(
+    row: &GraphRow,
+    row_index: usize,
+    cells: &mut HashMap<(usize, usize), CellFingerprint>,
+) -> GraphRowData {
+    let mut converted_cells = Vec::with_capacity(row.cells.len());
+    for (column_index, cell) in row.cells.iter().enumerate() {
+        cells.insert(
+            (row_index, column_index),
+            cell_fingerprint_from_graph_cell(cell),
+        );
+        converted_cells.push(convert_cell(cell));
+    }
+    GraphRowData {
+        index: row.index,
+        box_args: convert_box_args(&row.box_args),
+        cell_box_args: convert_box_args(&row.cell_box_args),
+        cells: converted_cells,
+    }
+}
+
 #[derive(Debug)]
 pub struct ProjectionUpdate {
     pub delta: GraphDelta,
@@ -72,13 +168,76 @@ pub struct ProjectionUpdate {
     pub layout_summaries: usize,
 }
 
-/// Persistent table/layout patch state keyed by stable graph path.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum TableStateKey {
+    Stable(u64),
+    Render(u32),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct TextArgsFingerprint {
+    x: i32,
+    y: i32,
+    width: i32,
+    height: i32,
+    text_align: u8,
+    text_vertical_align: u8,
+    editable: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct CellFingerprint {
+    sem_type: u32,
+    is_missing: bool,
+    path: Vec<GraphPathSeg>,
+    text: String,
+    value: String,
+    format_text: String,
+    box_args: GraphBoxArgs,
+    text_args: TextArgsFingerprint,
+}
+
+/// Persistent table/layout patch state keyed by stable graph identity.
 #[derive(Debug, Clone)]
 struct TableState {
     row_count: usize,
     columns: Vec<GraphCellData>,
-    cells: HashMap<(usize, usize), GraphCellData>,
+    cells: HashMap<(usize, usize), CellFingerprint>,
     box_args: crate::document::protocol::GraphBoxArgs,
+    deferred_replacement: bool,
+}
+
+impl TableState {
+    fn new(
+        row_count: usize,
+        columns: Vec<GraphCellData>,
+        cells: HashMap<(usize, usize), CellFingerprint>,
+        box_args: crate::document::protocol::GraphBoxArgs,
+    ) -> Self {
+        Self {
+            row_count,
+            columns,
+            cells,
+            box_args,
+            deferred_replacement: false,
+        }
+    }
+
+    fn with_deferred_replacement(mut self, deferred_replacement: bool) -> Self {
+        self.deferred_replacement = deferred_replacement;
+        self
+    }
+}
+
+#[derive(Debug, Default)]
+struct ProjectionPatchPlan {
+    skip_updated_table_handles: HashSet<u32>,
+    full_rebuild_table_handles: Vec<u32>,
+    deferred_rebuilt_table_handles: HashSet<u32>,
+    finalized_table_handles: HashSet<u32>,
+    layout_patches: Vec<LayoutPatch>,
+    skipped_table_rows: usize,
+    skipped_table_cells: usize,
 }
 
 #[derive(Debug)]
@@ -89,7 +248,7 @@ pub struct StreamingGraphProjector {
     layout_state: LayoutState,
     patch_seq: u64,
     graph_version: u64,
-    table_states: HashMap<String, TableState>,
+    table_states: HashMap<TableStateKey, TableState>,
 }
 
 impl StreamingGraphProjector {
@@ -173,21 +332,243 @@ impl StreamingGraphProjector {
             &materialized.added_edges,
             &materialized.added_edge_indexes,
         );
-        let raw_delta =
-            StreamingDeltaDiffer::new().emit_incremental_delta(&model, &materialized, &layout);
-        let mut delta = self.split_patches(raw_delta, &materialized.rebuilt_table_handles);
-        let table_patches = self.collect_table_patches(&model, &materialized, &dirty);
+        let patch_plan = self.build_projection_patch_plan(
+            store,
+            patches,
+            &model,
+            &materialized,
+            &layout,
+            &dirty,
+        );
+        let raw_delta = StreamingDeltaDiffer::new().emit_incremental_delta(
+            &model,
+            &materialized,
+            &layout,
+            &patch_plan.skip_updated_table_handles,
+        );
+        let mut delta = self.split_patches(
+            &model,
+            raw_delta,
+            &patch_plan.full_rebuild_table_handles,
+            &patch_plan.layout_patches,
+        );
+        let table_patches = self.collect_table_patches(&model, &materialized, &patch_plan);
         self.previous_model = Some(model);
         delta.table_patches.extend(table_patches);
         Some(self.ver(delta))
     }
 
+    fn build_projection_patch_plan(
+        &self,
+        store: &TreeStore,
+        patches: &[TreePatch],
+        model: &GraphModel,
+        materialized: &crate::core::graph_materialize::MaterializedGraphPatch,
+        layout: &crate::core::layout_engine::LayoutChangeSet,
+        dirty: &graph_topology::DirtySet,
+    ) -> ProjectionPatchPlan {
+        let sealed_nodes: HashSet<NodeId> = patches
+            .iter()
+            .filter_map(|patch| match patch {
+                TreePatch::NodeSealed { node_id } => Some(*node_id),
+                _ => None,
+            })
+            .collect();
+        let dirty_table_handles: HashSet<u32> = dirty
+            .table_rows()
+            .iter()
+            .map(|row| row.table_handle)
+            .collect();
+
+        let added_handles: HashSet<u32> = materialized.added_handles.iter().copied().collect();
+        let rebuilt_handles: HashSet<u32> =
+            materialized.rebuilt_table_handles.iter().copied().collect();
+        let mut candidate_handles: Vec<u32> = materialized.updated_handles.clone();
+        candidate_handles.extend(layout.node_handles().iter().copied());
+        candidate_handles.sort_unstable();
+        candidate_handles.dedup();
+
+        let mut plan = ProjectionPatchPlan::default();
+        for &handle in &materialized.rebuilt_table_handles {
+            if added_handles.contains(&handle) {
+                continue;
+            }
+            let Some(node) = model.nodes.get(handle as usize) else {
+                plan.full_rebuild_table_handles.push(handle);
+                continue;
+            };
+            if node.table.is_none() {
+                plan.full_rebuild_table_handles.push(handle);
+                continue;
+            }
+            let key = table_state_key_from_graph_node(node);
+            let Some(prev) = self.table_states.get(&key) else {
+                plan.full_rebuild_table_handles.push(handle);
+                continue;
+            };
+            let current_box = graph_box_args_from_node(node);
+            if current_box != prev.box_args {
+                push_layout_patch_unique(
+                    &mut plan.layout_patches,
+                    LayoutPatch::NodeBoundsUpdated {
+                        render_handle: handle,
+                        box_args: current_box,
+                    },
+                );
+            }
+            plan.skip_updated_table_handles.insert(handle);
+            if self.table_is_finalized(store, &sealed_nodes, handle) {
+                plan.finalized_table_handles.insert(handle);
+            } else {
+                plan.deferred_rebuilt_table_handles.insert(handle);
+            }
+        }
+
+        for &handle in &materialized.deferred_table_handles {
+            if added_handles.contains(&handle) {
+                continue;
+            }
+            let Some(node) = model.nodes.get(handle as usize) else {
+                continue;
+            };
+            if node.table.is_none() {
+                continue;
+            }
+            let key = table_state_key_from_graph_node(node);
+            let Some(prev) = self.table_states.get(&key) else {
+                continue;
+            };
+            let current_box = graph_box_args_from_node(node);
+            if current_box != prev.box_args {
+                push_layout_patch_unique(
+                    &mut plan.layout_patches,
+                    LayoutPatch::NodeBoundsUpdated {
+                        render_handle: handle,
+                        box_args: current_box,
+                    },
+                );
+            }
+            plan.skip_updated_table_handles.insert(handle);
+            if self.table_is_finalized(store, &sealed_nodes, handle) {
+                plan.finalized_table_handles.insert(handle);
+            } else {
+                plan.deferred_rebuilt_table_handles.insert(handle);
+            }
+        }
+
+        if !sealed_nodes.is_empty() {
+            for node in &model.nodes {
+                if node.table.is_none() || added_handles.contains(&node.render_handle) {
+                    continue;
+                }
+                let key = table_state_key_from_graph_node(node);
+                if !self
+                    .table_states
+                    .get(&key)
+                    .is_some_and(|state| state.deferred_replacement)
+                {
+                    continue;
+                }
+                if !self.table_is_finalized(store, &sealed_nodes, node.render_handle) {
+                    continue;
+                }
+                let current_box = graph_box_args_from_node(node);
+                if let Some(prev) = self.table_states.get(&key)
+                    && current_box != prev.box_args
+                {
+                    push_layout_patch_unique(
+                        &mut plan.layout_patches,
+                        LayoutPatch::NodeBoundsUpdated {
+                            render_handle: node.render_handle,
+                            box_args: current_box,
+                        },
+                    );
+                }
+                plan.skip_updated_table_handles.insert(node.render_handle);
+                plan.finalized_table_handles.insert(node.render_handle);
+            }
+        }
+
+        plan.full_rebuild_table_handles = materialized
+            .rebuilt_table_handles
+            .iter()
+            .copied()
+            .filter(|handle| !plan.skip_updated_table_handles.contains(handle))
+            .collect();
+
+        if dirty_table_handles.is_empty() {
+            return plan;
+        }
+
+        for handle in candidate_handles {
+            if added_handles.contains(&handle)
+                || rebuilt_handles.contains(&handle)
+                || !dirty_table_handles.contains(&handle)
+            {
+                continue;
+            }
+            let Some(node) = model.nodes.get(handle as usize) else {
+                continue;
+            };
+            if node.table.is_none() {
+                continue;
+            }
+            let key = table_state_key_from_graph_node(node);
+            let Some(prev) = self.table_states.get(&key) else {
+                continue;
+            };
+            let current_box = graph_box_args_from_node(node);
+            if current_box.x != prev.box_args.x
+                || current_box.y != prev.box_args.y
+                || current_box.width != prev.box_args.width
+            {
+                continue;
+            }
+            if current_box != prev.box_args {
+                push_layout_patch_unique(
+                    &mut plan.layout_patches,
+                    LayoutPatch::NodeBoundsUpdated {
+                        render_handle: handle,
+                        box_args: current_box,
+                    },
+                );
+            }
+            if let Some(table) = node.table.as_ref() {
+                plan.skipped_table_rows += table.rows.len();
+                plan.skipped_table_cells +=
+                    table.rows.iter().map(|row| row.cells.len()).sum::<usize>();
+            }
+            plan.skip_updated_table_handles.insert(handle);
+        }
+        plan
+    }
+
+    fn table_is_finalized(
+        &self,
+        store: &TreeStore,
+        sealed_nodes: &HashSet<NodeId>,
+        handle: u32,
+    ) -> bool {
+        let Some(slot) = self.topology.slot(handle) else {
+            return false;
+        };
+        sealed_nodes.contains(&slot.node_id)
+            && store
+                .get(slot.node_id)
+                .is_some_and(|node| node.sequence_closed)
+    }
+
     fn split_patches(
         &mut self,
+        model: &GraphModel,
         mut delta: GraphDelta,
         structural_table_handles: &[u32],
+        planned_layout_patches: &[LayoutPatch],
     ) -> GraphDelta {
         let mut layout_patches: Vec<LayoutPatch> = Vec::new();
+        for patch in planned_layout_patches {
+            push_layout_patch_unique(&mut layout_patches, patch.clone());
+        }
         let structural_table_handles: HashSet<u32> =
             structural_table_handles.iter().copied().collect();
 
@@ -197,53 +578,59 @@ impl StreamingGraphProjector {
                 kept_added.push(node);
                 continue;
             }
-            let pk = path_key(&node);
-            if let Some(prev) = self.table_states.get(&pk) {
+            let key = table_state_key_from_node_data(model, &node);
+            if let Some(prev) = self.table_states.get(&key) {
                 if node.box_args != prev.box_args {
-                    layout_patches.push(LayoutPatch::GroupLayoutUpdated {
-                        group_handle: node.render_handle,
-                        width: node.box_args.width,
-                        height: node.box_args.height,
-                    });
+                    push_layout_patch_unique(
+                        &mut layout_patches,
+                        LayoutPatch::GroupLayoutUpdated {
+                            group_handle: node.render_handle,
+                            width: node.box_args.width,
+                            height: node.box_args.height,
+                        },
+                    );
                 }
             }
             self.table_states
-                .insert(pk, non_table_state_from_node(&node));
+                .insert(key, non_table_state_from_node(&node));
             kept_added.push(node);
         }
         delta.nodes_added = kept_added;
 
         let mut kept_updated = Vec::with_capacity(delta.nodes_updated.len());
         for node in delta.nodes_updated.drain(..) {
-            let pk = path_key(&node);
+            let key = table_state_key_from_node_data(model, &node);
             let is_structural_table =
                 node.table.is_some() && structural_table_handles.contains(&node.render_handle);
             let should_replace_table_for_geometry = node.table.is_some()
-                && self.table_states.get(&pk).is_some_and(|prev| {
+                && self.table_states.get(&key).is_some_and(|prev| {
                     node.box_args.x != prev.box_args.x
                         || node.box_args.y != prev.box_args.y
                         || node.box_args.width != prev.box_args.width
                 });
             if is_structural_table || should_replace_table_for_geometry {
                 if let Some(state) = table_state_from_node_data(&node) {
-                    self.table_states.insert(pk, state);
+                    self.table_states.insert(key, state);
                 }
                 kept_updated.push(node);
                 continue;
             }
-            if let Some(prev) = self.table_states.get(&pk) {
+            if let Some(prev) = self.table_states.get(&key) {
                 if node.box_args != prev.box_args {
-                    layout_patches.push(LayoutPatch::NodeBoundsUpdated {
-                        render_handle: node.render_handle,
-                        box_args: node.box_args,
-                    });
+                    push_layout_patch_unique(
+                        &mut layout_patches,
+                        LayoutPatch::NodeBoundsUpdated {
+                            render_handle: node.render_handle,
+                            box_args: node.box_args,
+                        },
+                    );
                 }
             }
             if node.table.is_some() {
                 continue;
             }
             self.table_states
-                .insert(pk, non_table_state_from_node(&node));
+                .insert(key, non_table_state_from_node(&node));
             kept_updated.push(node);
         }
         delta.nodes_updated = kept_updated;
@@ -255,11 +642,9 @@ impl StreamingGraphProjector {
         &mut self,
         model: &GraphModel,
         materialized: &crate::core::graph_materialize::MaterializedGraphPatch,
-        dirty: &graph_topology::DirtySet,
+        plan: &ProjectionPatchPlan,
     ) -> Vec<TablePatch> {
         let mut patches = Vec::new();
-        let added_handles: std::collections::HashSet<u32> =
-            materialized.added_handles.iter().copied().collect();
         let rebuilt_handles: HashSet<u32> =
             materialized.rebuilt_table_handles.iter().copied().collect();
 
@@ -270,58 +655,96 @@ impl StreamingGraphProjector {
             let Some(table) = node.table.as_ref() else {
                 continue;
             };
-            let pk = path_key_from_segments(&node.path);
-            let state = table_state_from_graph_node(node);
+            let key = table_state_key_from_graph_node(node);
+            let mut state = TableState::new(
+                table.rows.len(),
+                table.columns.iter().map(convert_cell).collect(),
+                HashMap::new(),
+                graph_box_args_from_node(node),
+            );
             patches.push(TablePatch::TableCreated {
                 table_handle: handle,
                 columns: state.columns.clone(),
             });
             if !table.rows.is_empty() {
+                let rows: Vec<_> = table
+                    .rows
+                    .iter()
+                    .enumerate()
+                    .map(|(row_index, row)| {
+                        convert_row_and_store_fingerprints(row, row_index, &mut state.cells)
+                    })
+                    .collect();
                 patches.push(TablePatch::RowsAppended {
                     table_handle: handle,
                     start_index: 0,
-                    rows: table.rows.iter().map(convert_row).collect(),
+                    rows,
                     total_height: table.total_height,
                     view_height: table.view_height,
                     header_height: table.header_height,
                     row_height: table.row_height,
                 });
             }
-            self.table_states.insert(pk, state);
+            self.table_states.insert(key, state);
         }
 
-        let mut rows_by_table: HashMap<u32, Vec<usize>> = HashMap::new();
-        for row in dirty.table_rows() {
-            rows_by_table
-                .entry(row.table_handle)
-                .or_default()
-                .push(row.row_index);
-        }
-        for (table_handle, mut row_indexes) in rows_by_table {
-            if added_handles.contains(&table_handle) {
-                continue;
-            }
+        let mut finalized_handles: Vec<u32> =
+            plan.finalized_table_handles.iter().copied().collect();
+        finalized_handles.sort_unstable();
+        for table_handle in finalized_handles {
             let Some(node) = model.nodes.get(table_handle as usize) else {
                 continue;
             };
             let Some(table) = node.table.as_ref() else {
                 continue;
             };
-            let pk = path_key_from_segments(&node.path);
-            if rebuilt_handles.contains(&table_handle) {
-                self.table_states
-                    .insert(pk, table_state_from_graph_node(node));
+            let key = table_state_key_from_graph_node(node);
+            patches.push(TablePatch::TableReplaced {
+                table_handle,
+                table: convert_table(table),
+            });
+            self.table_states
+                .insert(key, table_state_from_graph_node(node));
+        }
+
+        for touch in &materialized.table_row_touches {
+            let table_handle = touch.table_handle;
+            let Some(node) = model.nodes.get(table_handle as usize) else {
+                continue;
+            };
+            let Some(table) = node.table.as_ref() else {
+                continue;
+            };
+            let key = table_state_key_from_graph_node(node);
+            if plan.finalized_table_handles.contains(&table_handle) {
                 continue;
             }
-            let mut state = self
-                .table_states
-                .get(&pk)
-                .cloned()
-                .unwrap_or_else(|| table_state_from_graph_node(node));
+            if rebuilt_handles.contains(&table_handle) {
+                if !plan.deferred_rebuilt_table_handles.contains(&table_handle) {
+                    if !self.table_states.contains_key(&key) {
+                        self.table_states
+                            .insert(key, table_state_from_graph_node(node));
+                    }
+                    continue;
+                }
+                if !self.table_states.contains_key(&key) {
+                    self.table_states.insert(
+                        key,
+                        table_state_from_graph_node(node).with_deferred_replacement(true),
+                    );
+                    continue;
+                }
+            }
+            let mut state = if let Some(state) = self.table_states.remove(&key) {
+                state
+            } else {
+                table_state_from_graph_node(node)
+            };
 
             let current_columns: Vec<GraphCellData> =
                 table.columns.iter().map(convert_cell).collect();
-            if current_columns.len() > state.columns.len() {
+            let defer_structure = plan.deferred_rebuilt_table_handles.contains(&table_handle);
+            if !defer_structure && current_columns.len() > state.columns.len() {
                 patches.push(TablePatch::ColumnsAdded {
                     table_handle,
                     columns: current_columns[state.columns.len()..].to_vec(),
@@ -334,10 +757,9 @@ impl StreamingGraphProjector {
                     };
                     for column_index in state.columns.len()..row.cells.len() {
                         if let Some(cell) = row.cells.get(column_index) {
+                            let fingerprint = cell_fingerprint_from_graph_cell(cell);
                             let converted = convert_cell(cell);
-                            state
-                                .cells
-                                .insert((row_index, column_index), converted.clone());
+                            state.cells.insert((row_index, column_index), fingerprint);
                             new_cells.push(TableCellPatchData {
                                 row_index: row_index as u32,
                                 column_index: column_index as u32,
@@ -355,61 +777,66 @@ impl StreamingGraphProjector {
                 state.columns = current_columns;
             }
 
+            let dirty_scan_row_limit = state.row_count;
             if table.rows.len() > state.row_count {
+                let start_index = state.row_count;
+                let rows: Vec<_> = table.rows[start_index..]
+                    .iter()
+                    .enumerate()
+                    .map(|(offset, row)| {
+                        let row_index = start_index + offset;
+                        convert_row_and_store_fingerprints(row, row_index, &mut state.cells)
+                    })
+                    .collect();
                 patches.push(TablePatch::RowsAppended {
                     table_handle,
-                    start_index: state.row_count as u32,
-                    rows: table.rows[state.row_count..]
-                        .iter()
-                        .map(convert_row)
-                        .collect(),
+                    start_index: start_index as u32,
+                    rows,
                     total_height: table.total_height,
                     view_height: table.view_height,
                     header_height: table.header_height,
                     row_height: table.row_height,
                 });
-                for (row_index, row) in table.rows.iter().enumerate().skip(state.row_count) {
-                    for (column_index, cell) in row.cells.iter().enumerate() {
-                        state
-                            .cells
-                            .insert((row_index, column_index), convert_cell(cell));
-                    }
-                }
                 state.row_count = table.rows.len();
             }
 
-            row_indexes.sort_unstable();
-            row_indexes.dedup();
-            for row_index in row_indexes {
-                if row_index >= table.rows.len() {
-                    continue;
-                }
-                let Some(row) = table.rows.get(row_index) else {
-                    continue;
-                };
-                let mut cells = Vec::new();
-                for (column_index, cell) in row.cells.iter().enumerate() {
-                    let converted = convert_cell(cell);
-                    let key = (row_index, column_index);
-                    if state.cells.get(&key) != Some(&converted) {
-                        state.cells.insert(key, converted.clone());
-                        cells.push(TableCellPatchData {
-                            row_index: row_index as u32,
-                            column_index: column_index as u32,
-                            cell: converted,
+            if !defer_structure {
+                let mut row_indexes = touch.row_indexes.clone();
+                row_indexes.sort_unstable();
+                row_indexes.dedup();
+                for row_index in row_indexes {
+                    if row_index >= dirty_scan_row_limit || row_index >= table.rows.len() {
+                        continue;
+                    }
+                    let Some(row) = table.rows.get(row_index) else {
+                        continue;
+                    };
+                    let mut cells = Vec::new();
+                    for (column_index, cell) in row.cells.iter().enumerate() {
+                        let fingerprint = cell_fingerprint_from_graph_cell(cell);
+                        let key = (row_index, column_index);
+                        if state.cells.get(&key) != Some(&fingerprint) {
+                            let converted = convert_cell(cell);
+                            state.cells.insert(key, fingerprint);
+                            cells.push(TableCellPatchData {
+                                row_index: row_index as u32,
+                                column_index: column_index as u32,
+                                cell: converted,
+                            });
+                        }
+                    }
+                    if !cells.is_empty() {
+                        patches.push(TablePatch::CellsUpdated {
+                            table_handle,
+                            cells,
                         });
                     }
-                }
-                if !cells.is_empty() {
-                    patches.push(TablePatch::CellsUpdated {
-                        table_handle,
-                        cells,
-                    });
                 }
             }
 
             state.box_args = graph_box_args_from_node(node);
-            self.table_states.insert(pk, state);
+            state.deferred_replacement |= defer_structure;
+            self.table_states.insert(key, state);
         }
 
         patches
@@ -458,7 +885,7 @@ impl StreamingGraphProjector {
     pub fn finalize_graph_projection(&mut self, document_key: &str) -> Option<GraphDelta> {
         let model = self.previous_model.take()?;
         let raw_delta = crate::core::graph_projection_service::model_to_graph_delta(&model);
-        let delta = self.split_patches(raw_delta, &[]);
+        let delta = self.split_patches(&model, raw_delta, &[], &[]);
         crate::core::graph_projection_service::store_projection_model_cache(document_key, model);
         Some(delta)
     }
@@ -487,20 +914,15 @@ impl StreamingGraphProjector {
 }
 
 fn non_table_state_from_node(node: &GraphNodeData) -> TableState {
-    TableState {
-        row_count: 0,
-        columns: Vec::new(),
-        cells: HashMap::new(),
-        box_args: node.box_args,
-    }
+    TableState::new(0, Vec::new(), HashMap::new(), node.box_args)
 }
 
-fn table_states_from_model(model: &GraphModel) -> HashMap<String, TableState> {
+fn table_states_from_model(model: &GraphModel) -> HashMap<TableStateKey, TableState> {
     model
         .nodes
         .iter()
         .map(|node| {
-            let key = path_key_from_segments(&node.path);
+            let key = table_state_key_from_graph_node(node);
             let state = if node.table.is_some() {
                 table_state_from_graph_node(node)
             } else {
@@ -512,12 +934,12 @@ fn table_states_from_model(model: &GraphModel) -> HashMap<String, TableState> {
 }
 
 fn non_table_state_from_graph_node(node: &super::graph_builder::GraphNode) -> TableState {
-    TableState {
-        row_count: 0,
-        columns: Vec::new(),
-        cells: HashMap::new(),
-        box_args: graph_box_args_from_node(node),
-    }
+    TableState::new(
+        0,
+        Vec::new(),
+        HashMap::new(),
+        graph_box_args_from_node(node),
+    )
 }
 
 fn table_state_from_graph_node(node: &super::graph_builder::GraphNode) -> TableState {
@@ -529,15 +951,18 @@ fn table_state_from_graph_node(node: &super::graph_builder::GraphNode) -> TableS
     let mut cells = HashMap::new();
     for (row_index, row) in table.rows.iter().enumerate() {
         for (column_index, cell) in row.cells.iter().enumerate() {
-            cells.insert((row_index, column_index), convert_cell(cell));
+            cells.insert(
+                (row_index, column_index),
+                cell_fingerprint_from_graph_cell(cell),
+            );
         }
     }
-    TableState {
-        row_count: table.rows.len(),
+    TableState::new(
+        table.rows.len(),
         columns,
         cells,
-        box_args: graph_box_args_from_node(node),
-    }
+        graph_box_args_from_node(node),
+    )
 }
 
 fn table_state_from_node_data(node: &GraphNodeData) -> Option<TableState> {
@@ -546,15 +971,18 @@ fn table_state_from_node_data(node: &GraphNodeData) -> Option<TableState> {
     let mut cells = HashMap::new();
     for (row_index, row) in table.rows.iter().enumerate() {
         for (column_index, cell) in row.cells.iter().enumerate() {
-            cells.insert((row_index, column_index), cell.clone());
+            cells.insert(
+                (row_index, column_index),
+                cell_fingerprint_from_node_data(cell),
+            );
         }
     }
-    Some(TableState {
-        row_count: table.rows.len(),
+    Some(TableState::new(
+        table.rows.len(),
         columns,
         cells,
-        box_args: node.box_args,
-    })
+        node.box_args,
+    ))
 }
 
 fn graph_box_args_from_node(
@@ -567,16 +995,6 @@ fn graph_box_args_from_node(
         height: node.box_args.height,
         corner_radius: node.box_args.corner_radius,
     }
-}
-
-fn path_key_from_segments(path: &[PathSeg]) -> String {
-    path.iter()
-        .map(|segment| match segment {
-            PathSeg::Key(key) => key.clone(),
-            PathSeg::Index(index) => format!("[{index}]"),
-        })
-        .collect::<Vec<_>>()
-        .join(".")
 }
 
 #[cfg(test)]
@@ -1558,6 +1976,77 @@ mod tests {
         assert!(row_height > 0, "row_height must be positive");
     }
 
+    #[test]
+    fn dirty_table_row_emits_only_changed_cells() {
+        let b = builder_from_source(r#"[{"a":1,"b":2},{"a":3,"b":4}]"#);
+        let (s, r) = b.tree_ref().unwrap();
+        let mut p = StreamingGraphProjector::new("json", "dirty-cell-only");
+        let first = p.update(s, r, &[]).expect("initial projection");
+        let table_handle = first
+            .delta
+            .nodes_added
+            .iter()
+            .find(|node| node.table.is_some())
+            .map(|node| node.render_handle)
+            .expect("initial projection should expose table node");
+
+        let mut model = p
+            .previous_model
+            .as_ref()
+            .expect("projection should retain model")
+            .clone();
+        let table_node = model
+            .nodes
+            .get_mut(table_handle as usize)
+            .expect("table handle should resolve");
+        let cell = table_node
+            .table
+            .as_mut()
+            .expect("table payload")
+            .rows
+            .get_mut(0)
+            .expect("first row")
+            .cells
+            .get_mut(0)
+            .expect("first cell");
+        cell.text = "9".to_string();
+        cell.value = "9".to_string();
+        cell.format_text = "9".to_string();
+
+        let materialized = crate::core::graph_materialize::MaterializedGraphPatch {
+            updated_handles: vec![table_handle],
+            table_row_touches: vec![crate::core::graph_materialize::TableRowTouch {
+                table_handle,
+                row_indexes: vec![0],
+            }],
+            ..Default::default()
+        };
+        let plan = ProjectionPatchPlan::default();
+        let patches = p.collect_table_patches(&model, &materialized, &plan);
+
+        assert!(
+            patches
+                .iter()
+                .all(|patch| matches!(patch, TablePatch::CellsUpdated { .. })),
+            "dirty row should not emit table creation, columns, or appended rows; patches={patches:?}"
+        );
+        let changed_cells: Vec<_> = patches
+            .iter()
+            .flat_map(|patch| match patch {
+                TablePatch::CellsUpdated { cells, .. } => cells.as_slice(),
+                _ => &[],
+            })
+            .collect();
+        assert_eq!(
+            changed_cells.len(),
+            1,
+            "only the edited cell should be emitted; patches={patches:?}"
+        );
+        assert_eq!(changed_cells[0].row_index, 0);
+        assert_eq!(changed_cells[0].column_index, 0);
+        assert_eq!(changed_cells[0].cell.text, "9");
+    }
+
     /// 复现：以 web e2e fixture（1MB-min.json，裸顶层数组，3168 个均匀对象）
     /// 喂给流式投影器，期望产出一个 Table（含 3168 行）而不是上千个独立节点。
     #[test]
@@ -1800,6 +2289,7 @@ mod tests {
             table_node_updated: bool,
             bounds_patched: bool,
             rows_appended: usize,
+            table_replaced: bool,
         }
 
         let source = include_str!("../../../../test/fixtures/json/5MB-min.1.json");
@@ -1880,6 +2370,15 @@ mod tests {
                         _ => None,
                     })
                     .sum();
+                let table_replaced = update.delta.table_patches.iter().any(|patch| {
+                    matches!(
+                        patch,
+                        TablePatch::TableReplaced {
+                            table_handle,
+                            ..
+                        } if *table_handle == handle
+                    )
+                });
 
                 snapshots.push(TableUpdateSnapshot {
                     chunk_index,
@@ -1893,6 +2392,7 @@ mod tests {
                     table_node_updated,
                     bounds_patched,
                     rows_appended,
+                    table_replaced,
                 });
             }
             offset = chunk_end;
@@ -1911,7 +2411,9 @@ mod tests {
                     return None;
                 }
                 steady_row_chunks += 1;
-                (current.table_node_updated || current.bounds_patched || current.rows_appended == 0)
+                (current.table_node_updated
+                    || current.bounds_patched
+                    || (current.rows_appended == 0 && !current.table_replaced))
                     .then_some((
                         current.chunk_index,
                         current.rows_len,
@@ -1919,6 +2421,7 @@ mod tests {
                         current.table_node_updated,
                         current.bounds_patched,
                         current.rows_appended,
+                        current.table_replaced,
                     ))
             })
             .collect();
@@ -2624,7 +3127,7 @@ mod tests {
     }
 
     #[test]
-    fn streaming_header_table_column_growth_replaces_table_node() {
+    fn streaming_header_table_column_growth_replaces_table_with_table_patch() {
         let chunks = [r#"{"rows":[{"a":1},"#, r#"{"a":2,"b":3}]}"#];
         let mut decoder = crate::stream::streaming_json::StreamDecoder::new(false);
         let mut builder = Builder::new();
@@ -2652,19 +3155,27 @@ mod tests {
                 patch,
                 TablePatch::ColumnsAdded { .. } | TablePatch::CellsUpdated { .. }
             )),
-            "column growth changes table geometry and must be emitted as a full table node, not table patches; delta={:?}",
+            "column growth is deferred until table replacement, not expressed as column/cell patches; delta={:?}",
             second.delta,
         );
-        let updated_table = second
+        assert!(
+            !second
+                .delta
+                .nodes_updated
+                .iter()
+                .any(|node| node.table.is_some()),
+            "column growth must not send a full table node through nodes_updated; delta={:?}",
+            second.delta,
+        );
+        let table = second
             .delta
-            .nodes_updated
+            .table_patches
             .iter()
-            .find(|node| node.table.is_some())
-            .expect("column growth must replace the table node");
-        let table = updated_table
-            .table
-            .as_ref()
-            .expect("updated node must carry full table data");
+            .find_map(|patch| match patch {
+                TablePatch::TableReplaced { table, .. } => Some(table),
+                _ => None,
+            })
+            .expect("table close must replace the table via table patch");
         assert!(
             table.columns.iter().any(|column| column.text == "b"),
             "replacement table must contain the new column; columns={:?}",
@@ -2714,6 +3225,87 @@ mod tests {
         assert_eq!(
             second.rows_appended, 3,
             "same-schema rows should append as rows; delta={:?}",
+            second.delta,
+        );
+        assert!(
+            !second
+                .delta
+                .nodes_updated
+                .iter()
+                .any(|node| node.table.is_some()),
+            "same-schema row append must not send a full table node; delta={:?}",
+            second.delta,
+        );
+    }
+
+    #[test]
+    fn streaming_height_only_table_growth_uses_table_and_layout_patches() {
+        let chunks = [
+            r#"{"rows":[{"a":1}"#,
+            r#",{"a":2},{"a":3},{"a":4},{"a":5}]}"#,
+        ];
+        let mut decoder = crate::stream::streaming_json::StreamDecoder::new(false);
+        let mut builder = Builder::new();
+        builder.enable_patches();
+        let mut projector = StreamingGraphProjector::new("json", "height-only-table-growth");
+
+        decoder.feed(chunks[0]).unwrap();
+        for event in &decoder.take_events() {
+            builder.push(event).unwrap();
+        }
+        let patches = builder.take_patches();
+        let (store, root) = builder.tree_ref().expect("streaming tree");
+        let first = projector
+            .update(store, root, &patches)
+            .expect("initial projection");
+        let table_handle = first
+            .delta
+            .nodes_added
+            .iter()
+            .find(|node| node.table.is_some())
+            .map(|node| node.render_handle)
+            .expect("initial projection should add a table");
+
+        decoder.feed(chunks[1]).unwrap();
+        for event in &decoder.take_events() {
+            builder.push(event).unwrap();
+        }
+        let patches = builder.take_patches();
+        let (store, root) = builder.tree_ref().expect("streaming tree");
+        let second = projector
+            .update(store, root, &patches)
+            .expect("incremental projection");
+
+        assert!(
+            !second
+                .delta
+                .nodes_updated
+                .iter()
+                .any(|node| node.render_handle == table_handle && node.table.is_some()),
+            "height-only table growth should not replace the full table node; delta={:?}",
+            second.delta,
+        );
+        assert!(
+            second.delta.table_patches.iter().any(|patch| matches!(
+                patch,
+                TablePatch::RowsAppended {
+                    table_handle: h,
+                    rows,
+                    ..
+                } if *h == table_handle && !rows.is_empty()
+            )),
+            "height-only table growth must append rows; delta={:?}",
+            second.delta,
+        );
+        assert!(
+            second.delta.layout_patches.iter().any(|patch| matches!(
+                patch,
+                LayoutPatch::NodeBoundsUpdated {
+                    render_handle,
+                    ..
+                } if *render_handle == table_handle
+            )),
+            "height-only table growth must carry a node bounds layout patch; delta={:?}",
             second.delta,
         );
     }

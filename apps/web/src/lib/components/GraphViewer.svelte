@@ -42,6 +42,7 @@
   import { createGraphMinimapRuntimeController } from './graph-viewer/graph-minimap-runtime-controller';
   import { createGraphValueEditController } from './graph-viewer/graph-value-edit';
   import { createGraphViewportController, type LeaferZoomLayer } from './graph-viewer/graph-viewport-controller';
+  import { getZoomScale } from './graph-viewer/graph-viewport-geometry';
   import {
     buildSubgraphWorkspaceRenderSignature,
     createSubgraphWorkspaceGraphCache,
@@ -161,6 +162,7 @@
   let edgeLayer: Box | null = null;
   let nodeLayer: Box | null = null;
   let overlayLayer: Box | null = null;
+  let canvasHintText: Text | null = null;
   let suppressGraphPointerUntil = 0;
   let MoveEventCtor: typeof MoveEvent | undefined;
   let ZoomEventCtor: typeof ZoomEvent | undefined;
@@ -225,9 +227,9 @@
   let lastFullEditHandledDocumentKey = '';
   let lastFullEditHandledRevision = -1;
   $: {
-    const fullEditProgressActive = $fullEditUiState?.active === true && $fullEditUiState.phase !== 'idle';
+    const fullEditProgressActive = isFullEditProgressActive();
     if (lastFullEditProgressActive && !fullEditProgressActive) {
-      graphStreamProgressController.completeIfActive();
+      completeStreamProgress();
     }
     lastFullEditProgressActive = fullEditProgressActive;
   }
@@ -415,6 +417,13 @@
   }
   const registerViewportEvents = (target: LeaferEventTarget) => graphViewportController.registerViewportEvents(target);
   const applyZoom = (changeScale: number) => graphViewportController.applyZoom(changeScale);
+
+  $: if (renderRuntimeReady) {
+    graphSceneController.ensureLayers();
+    ensureCanvasHint();
+  } else {
+    resetCanvasHint();
+  }
 
   const graphTextLinkageController = createGraphTextLinkageController({
     getDocumentKey: () => documentKeyValue,
@@ -634,7 +643,7 @@
       }
     },
     updateStreamProgress: (event) => {
-      if ($fullEditUiState?.active && $fullEditUiState.phase === 'idle') {
+      if ($fullEditUiState?.active && !isFullEditProgressActive()) {
         return;
       }
       graphStreamProgressController.handleEvent(event as any);
@@ -643,7 +652,7 @@
       graphStreamProgressController.reset();
     },
     completeStreamProgress: () => {
-      graphStreamProgressController.completeIfActive();
+      completeStreamProgress();
     },
     setErrorMessage: (message) => setError(message),
     clearErrorMessage: () => {
@@ -742,6 +751,7 @@
   graphRenderCoordinator.attachSceneBridge({
     applyGraphDelta: async (delta, version) => {
       const result = await graphSceneController.applyGraphDelta(delta, version);
+      ensureCanvasHint();
       if (!isFullEditInteractionBlocked()) graphMinimapRuntimeController.update();
       return result;
     },
@@ -749,6 +759,7 @@
     cancelActiveRenderWork: () => graphSceneController.cancelActiveRenderWork(),
     replaceRenderedGraph: (value) => {
       const result = graphSceneController.replaceAll(value);
+      ensureCanvasHint();
       if (!isFullEditInteractionBlocked()) graphMinimapRuntimeController.update();
       return result;
     },
@@ -924,6 +935,64 @@
 
   function getRenderRoot(): Box | null {
     return getLeaferContentRoot(leafer);
+  }
+
+  function isFullEditProgressActive(): boolean {
+    return $fullEditUiState?.active === true && $fullEditUiState.phase !== 'idle';
+  }
+
+  function completeStreamProgress(): void {
+    graphStreamProgressController.completeIfActive();
+  }
+
+  function scheduleFullEditCleanup(kind: 'settled' | 'idle', task: () => void): void {
+    if (kind === 'settled') {
+      if (fullEditSettledCleanupHandle != null) return;
+      fullEditSettledCleanupHandle = requestAnimationFrame(() => {
+        fullEditSettledCleanupHandle = null;
+        task();
+      });
+      return;
+    }
+    if (fullEditIdleCleanupHandle != null) return;
+    fullEditIdleCleanupHandle = requestAnimationFrame(() => {
+      fullEditIdleCleanupHandle = null;
+      task();
+    });
+  }
+
+  function ensureCanvasHint(): void {
+    if (!container || !leafer || !overlayLayer || !TextCtor) return;
+    if (canvasHintText && canvasHintText.parent === overlayLayer) return;
+    const zoomLayer = (leafer as LeaferAppLike & { zoomLayer?: LeaferZoomLayer }).zoomLayer;
+    if (!zoomLayer) return;
+    const { scaleX, scaleY } = getZoomScale(zoomLayer);
+    if (!Number.isFinite(scaleX) || !Number.isFinite(scaleY) || scaleX <= 0 || scaleY <= 0) return;
+    const hintWidth = 320;
+    const offsetX = zoomLayer.x ?? 0;
+    const offsetY = zoomLayer.y ?? 0;
+    const worldX = (container.clientWidth / 2 - offsetX) / scaleX - hintWidth / 2;
+    const worldY = (16 - offsetY) / scaleY;
+    const hint = new TextCtor({
+      text: 'Hold Space and drag to move the canvas',
+      width: hintWidth,
+      fontSize: 12,
+      fontWeight: '500',
+      textAlign: 'center',
+      fill: '#94a3b8',
+      hittable: false,
+      hitSelf: false,
+      hitChildren: false,
+    });
+    hint.x = worldX;
+    hint.y = worldY;
+    overlayLayer.add(hint);
+    canvasHintText = hint;
+  }
+
+  function resetCanvasHint(): void {
+    canvasHintText?.remove?.();
+    canvasHintText = null;
   }
 
 
@@ -1426,6 +1495,7 @@
   function setError(message: string) {
     errorMessage = message;
     graphSceneController.clear();
+    ensureCanvasHint();
     clearSearchHighlight();
   }
 
@@ -1440,6 +1510,7 @@
   onDestroy(() => {
     if (fullEditSettledCleanupHandle != null) cancelAnimationFrame(fullEditSettledCleanupHandle);
     if (fullEditIdleCleanupHandle != null) cancelAnimationFrame(fullEditIdleCleanupHandle);
+    resetCanvasHint();
     graphMeasurementController.dispose();
     graphRenderEffects.dispose();
     void graphRenderCoordinator.dispose();
@@ -1493,7 +1564,7 @@
     }
   }
   $: {
-    const fullEditProgressActive = $fullEditUiState?.active === true && $fullEditUiState.phase !== 'idle';
+    const fullEditProgressActive = isFullEditProgressActive();
 
     // Detect full-edit session end (active→inactive transition).
     // finishFullEditStream resets directly to idle, bypassing the 'settled'
@@ -1512,7 +1583,7 @@
     graphRenderEffects.maybeRenderIncremental({
       hasRenderRuntime: renderRuntimeReady,
       isBlocked:
-        ($fullEditUiState?.active === true && $fullEditUiState.phase !== 'idle') ||
+        isFullEditProgressActive() ||
         fullEditHandled ||
         Boolean($jsonBlockSelection),
       documentKey: documentKeyValue,
@@ -1525,20 +1596,16 @@
   $: if ($fullEditUiState?.active && $fullEditUiState.phase === 'settled') {
     lastFullEditHandledDocumentKey = $fullEditUiState.documentKey ?? documentKeyValue;
     lastFullEditHandledRevision = $fullEditUiState.revision;
-    if (fullEditSettledCleanupHandle == null)
-      fullEditSettledCleanupHandle = requestAnimationFrame(() => {
-        fullEditSettledCleanupHandle = null;
-        graphStreamProgressController.completeIfActive();
-        graphMinimapRuntimeController.update();
-      });
+    scheduleFullEditCleanup('settled', () => {
+      completeStreamProgress();
+      graphMinimapRuntimeController.update();
+    });
   }
 
   $: if ($fullEditUiState?.active && $fullEditUiState.phase === 'idle') {
-    if (fullEditIdleCleanupHandle == null)
-      fullEditIdleCleanupHandle = requestAnimationFrame(() => {
-        fullEditIdleCleanupHandle = null;
-        graphStreamProgressController.completeIfActive();
-      });
+    scheduleFullEditCleanup('idle', () => {
+      completeStreamProgress();
+    });
   }
 
   $: {
@@ -1615,19 +1682,13 @@
       class:invisible={showRuntimeLoading}
       class:pointer-events-none={showRuntimeLoading}
     >
-      <div
-        class="pointer-events-none absolute left-1/2 top-4 z-[3] -translate-x-1/2 select-none text-center text-[12px] font-medium
-          text-[#94a3b8]"
-      >
-        Hold Space and drag to move the canvas
-      </div>
       <div bind:this={container} class="absolute inset-0 touch-none" data-testid="graph-viewer-canvas"></div>
       <div
         bind:this={minimapHost}
         class="pointer-events-auto absolute bottom-4 right-4 z-[2] h-[150px] w-[220px] overflow-hidden rounded-[14px]
           shadow-[0_12px_28px_rgba(15,23,42,0.14)] backdrop-blur"
         class:hidden={streamProgressState.visible ||
-          ($fullEditUiState?.active === true && $fullEditUiState.phase !== 'idle' && $fullEditUiState.phase !== 'settled')}
+          (isFullEditProgressActive() && $fullEditUiState?.phase !== 'settled')}
         data-testid="graph-viewer-minimap"
       ></div>
       <GraphRuntimeHost

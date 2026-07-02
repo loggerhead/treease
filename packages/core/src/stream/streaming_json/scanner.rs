@@ -1,38 +1,6 @@
 use std::collections::HashMap;
-#[cfg(not(target_arch = "wasm32"))]
-use std::time::Instant;
 
 use super::config::DEFAULT_SCANNER_COMPACT_THRESHOLD;
-#[cfg(not(target_arch = "wasm32"))]
-type ProfileStart = Instant;
-#[cfg(target_arch = "wasm32")]
-type ProfileStart = ();
-
-fn start_profile_timer(enabled: bool) -> Option<ProfileStart> {
-    if !enabled {
-        return None;
-    }
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        Some(Instant::now())
-    }
-    #[cfg(target_arch = "wasm32")]
-    {
-        None
-    }
-}
-
-fn profile_elapsed_ns(start: &ProfileStart) -> u64 {
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        start.elapsed().as_nanos() as u64
-    }
-    #[cfg(target_arch = "wasm32")]
-    {
-        let _ = start;
-        0
-    }
-}
 
 // ---------------------------------------------------------------------------
 // Position / Span
@@ -147,52 +115,6 @@ impl TokenCache {
 }
 
 // ---------------------------------------------------------------------------
-// ProfileHooks – optional performance instrumentation callbacks
-// ---------------------------------------------------------------------------
-
-/// Callbacks invoked by the scanner at key points so that callers can
-/// accumulate fine-grained timing information.
-///
-/// Each field is an optional boxed closure receiving a duration in
-pub struct ProfileHooks {
-    /// Called at the end of every `next_token` call.
-    pub add_scanner_next_token_ns: Option<Box<dyn Fn(u64) + Send>>,
-    /// Called when a string token is finished (after unicode decoding).
-    pub add_finish_string_token_ns: Option<Box<dyn Fn(u64) + Send>>,
-    /// Called when a number token is finished.
-    pub add_finish_number_token_ns: Option<Box<dyn Fn(u64) + Send>>,
-}
-
-impl Default for ProfileHooks {
-    fn default() -> Self {
-        Self {
-            add_scanner_next_token_ns: None,
-            add_finish_string_token_ns: None,
-            add_finish_number_token_ns: None,
-        }
-    }
-}
-
-impl std::fmt::Debug for ProfileHooks {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("ProfileHooks")
-            .field(
-                "add_scanner_next_token_ns",
-                &self.add_scanner_next_token_ns.is_some(),
-            )
-            .field(
-                "add_finish_string_token_ns",
-                &self.add_finish_string_token_ns.is_some(),
-            )
-            .field(
-                "add_finish_number_token_ns",
-                &self.add_finish_number_token_ns.is_some(),
-            )
-            .finish()
-    }
-}
-
-// ---------------------------------------------------------------------------
 // Scanner – incremental JSON tokeniser
 // ---------------------------------------------------------------------------
 
@@ -235,9 +157,6 @@ pub struct Scanner {
 
     // ---- buffer management ----
     compact_threshold: usize,
-
-    // ---- profiling ----
-    profile_hooks: Option<ProfileHooks>,
 }
 
 impl Clone for Scanner {
@@ -256,8 +175,6 @@ impl Clone for Scanner {
             token_cache: self.token_cache.clone(),
             token_cache_enabled: self.token_cache_enabled,
             compact_threshold: self.compact_threshold,
-            // ProfileHooks contains Box<dyn Fn> which is not Clone.
-            profile_hooks: None,
         }
     }
 }
@@ -273,11 +190,10 @@ impl Scanner {
     ///   and number values so that repeated occurrences share allocations.
     /// * `token_cache_enabled` – master switch; when `false` the cache is
     ///   never consulted even if a cache instance is provided.
-    /// * `profile_hooks` – optional callbacks for performance instrumentation.
     pub fn new(
         token_cache: Option<TokenCache>,
         token_cache_enabled: bool,
-        profile_hooks: Option<ProfileHooks>,
+        _unused: Option<()>,
     ) -> Self {
         Self {
             buf: Vec::new(),
@@ -293,7 +209,6 @@ impl Scanner {
             token_cache,
             token_cache_enabled,
             compact_threshold: DEFAULT_SCANNER_COMPACT_THRESHOLD,
-            profile_hooks,
         }
     }
 
@@ -331,17 +246,7 @@ impl Scanner {
     ///   [`TokenTag::Invalid`] for incomplete tokens instead of stalling
     ///   with [`TokenTag::None`].
     pub fn next_token(&mut self, final_chunk: bool) -> Token {
-        let start_instant = start_profile_timer(self.profile_hooks.is_some());
-
-        let token = self.next_token_inner(final_chunk);
-
-        if let (Some(hooks), Some(start)) = (&self.profile_hooks, start_instant) {
-            if let Some(ref cb) = hooks.add_scanner_next_token_ns {
-                cb(profile_elapsed_ns(&start));
-            }
-        }
-
-        token
+        self.next_token_inner(final_chunk)
     }
 
     // ------------------------------------------------------------------
@@ -403,16 +308,6 @@ impl Scanner {
     pub fn compact_threshold(&self) -> usize {
         self.compact_threshold
     }
-
-    /// Take the profile hooks out of the scanner, leaving `None` in their
-    /// place.  Useful when re-creating the scanner with different settings.
-    pub fn take_profile_hooks(&mut self) -> Option<ProfileHooks> {
-        self.profile_hooks.take()
-    }
-
-    // ==================================================================
-    // Internal helpers
-    // ==================================================================
 
     fn next_token_inner(&mut self, final_chunk: bool) -> Token {
         // Skip whitespace.
@@ -606,8 +501,6 @@ impl Scanner {
     }
 
     fn finish_string_token(&mut self, raw_start: usize, had_escape: bool) -> String {
-        let start_instant = start_profile_timer(self.profile_hooks.is_some());
-
         let result = if self.token_cache_enabled {
             if let Some(ref cache) = self.token_cache {
                 if !had_escape && self.cursor > 0 && self.cursor > raw_start + 1 {
@@ -640,12 +533,6 @@ impl Scanner {
                         }
                     }
                 }
-            }
-        }
-
-        if let (Some(hooks), Some(start)) = (&self.profile_hooks, start_instant) {
-            if let Some(ref cb) = hooks.add_finish_string_token_ns {
-                cb(profile_elapsed_ns(&start));
             }
         }
 
@@ -695,8 +582,6 @@ impl Scanner {
     }
 
     fn finish_number_token(&mut self, raw_start: usize, raw_end: usize) -> String {
-        let start_instant = start_profile_timer(self.profile_hooks.is_some());
-
         let result = if self.token_cache_enabled {
             if let Some(ref cache) = self.token_cache {
                 if raw_end > raw_start && raw_end <= self.buf.len() {
@@ -722,12 +607,6 @@ impl Scanner {
                         cache.put(raw, result.clone());
                     }
                 }
-            }
-        }
-
-        if let (Some(hooks), Some(start)) = (&self.profile_hooks, start_instant) {
-            if let Some(ref cb) = hooks.add_finish_number_token_ns {
-                cb(profile_elapsed_ns(&start));
             }
         }
 
@@ -1302,43 +1181,5 @@ mod tests {
         let tok = s.next_token(true); // string "key"
         assert_eq!(tok.tag, TokenTag::String);
         assert_eq!(tok.span.start.line, 1);
-    }
-
-    // ------------------------------------------------------------------
-    // Profile hooks
-    // ------------------------------------------------------------------
-
-    #[test]
-    fn invokes_profile_hooks() {
-        use std::sync::{Arc, Mutex};
-
-        let scanner_calls = Arc::new(Mutex::new(0u64));
-        let string_calls = Arc::new(Mutex::new(0u64));
-        let number_calls = Arc::new(Mutex::new(0u64));
-
-        let sc = scanner_calls.clone();
-        let st = string_calls.clone();
-        let nu = number_calls.clone();
-
-        let hooks = ProfileHooks {
-            add_scanner_next_token_ns: Some(Box::new(move |_| {
-                *sc.lock().unwrap() += 1;
-            })),
-            add_finish_string_token_ns: Some(Box::new(move |_| {
-                *st.lock().unwrap() += 1;
-            })),
-            add_finish_number_token_ns: Some(Box::new(move |_| {
-                *nu.lock().unwrap() += 1;
-            })),
-        };
-
-        let mut s = Scanner::new(None, false, Some(hooks));
-        s.feed(r#""s" 42"#);
-        let _ = s.next_token(true); // string
-        let _ = s.next_token(true); // number
-
-        assert_eq!(*scanner_calls.lock().unwrap(), 2);
-        assert_eq!(*string_calls.lock().unwrap(), 1);
-        assert_eq!(*number_calls.lock().unwrap(), 1);
     }
 }

@@ -22,7 +22,7 @@ const cliGraphText = JSON.stringify({
 
 async function mockCliResult(page: Page, token: string) {
   let requestCount = 0;
-  await page.route('**/cli/result**', async (route) => {
+  await page.route('**/cli/meta**', async (route) => {
     const url = new URL(route.request().url());
     if (url.searchParams.get('token') !== token) {
       await route.fulfill({ status: 403, body: 'forbidden' });
@@ -36,8 +36,20 @@ async function mockCliResult(page: Page, token: string) {
         source_label: 'cli-input.json',
         expression: '.user',
         language: 'json',
-        text: cliGraphText,
+        source_url: `/cli/source?token=${encodeURIComponent(token)}`,
       }),
+    });
+  });
+  await page.route('**/cli/source**', async (route) => {
+    const url = new URL(route.request().url());
+    if (url.searchParams.get('token') !== token) {
+      await route.fulfill({ status: 403, body: 'forbidden' });
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: cliGraphText,
     });
   });
   return () => requestCount;

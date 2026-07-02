@@ -45,26 +45,29 @@ async function readEdgeAlignmentMismatches(page: import('@playwright/test').Page
       const resolvedY = localY < ownerY ? localY + ownerY : localY;
       return resolvedY + Number(box?.height ?? 0) / 2;
     };
+    const resolveEdgeAnchorY = (node: any, rowIndex: number) => {
+      if (node?.kind === 'table' && node?.table) {
+        const headerOffset = (node.table.headerHeight ?? 0) > 0 ? 1 : 0;
+        if (headerOffset === 1 && rowIndex === 0) {
+          return Number(node.boxArgs?.y ?? 0) + Number(node.table.headerHeight ?? 0) / 2;
+        }
+        const bodyIndex = rowIndex - headerOffset;
+        const row = bodyIndex >= 0 ? node.table.rows?.[bodyIndex] : undefined;
+        return row ? centerY(row.boxArgs, node) : null;
+      }
+      const row = node?.rows?.[rowIndex];
+      return row ? centerY(row.boxArgs, node) : null;
+    };
 
     for (const edge of edges) {
       const parent = nodeByHandle.get(Number(edge.fromRenderHandle));
       const child = nodeByHandle.get(Number(edge.toRenderHandle));
       if (!parent || !child) continue;
-      const parentRow = Array.isArray(parent.rows)
-        ? parent.rows[Number(edge.fromRow)]
-        : Array.isArray(parent.table?.rows)
-          ? parent.table.rows[Number(edge.fromRow) - ((parent.table?.headerHeight ?? 0) > 0 ? 1 : 0)]
-          : null;
-      const childRow = Array.isArray(child.rows)
-        ? child.rows[0]
-        : Array.isArray(child.table?.rows)
-          ? child.table.rows[0]
-          : null;
-      if (!parentRow || !childRow) continue;
       const expectedFromX = Number(parent.boxArgs?.x ?? 0) + Number(parent.boxArgs?.width ?? 0);
       const expectedToX = Number(child.boxArgs?.x ?? 0);
-      const expectedFromY = centerY(parentRow.boxArgs, parent);
-      const expectedToY = centerY(childRow.boxArgs, child);
+      const expectedFromY = resolveEdgeAnchorY(parent, Number(edge.fromRow));
+      const expectedToY = resolveEdgeAnchorY(child, Number(edge.toRow));
+      if (expectedFromY == null || expectedToY == null) continue;
       const actualFromX = Number(edge.bezierArgs?.fromX ?? NaN);
       const actualFromY = Number(edge.bezierArgs?.fromY ?? NaN);
       const actualToX = Number(edge.bezierArgs?.toX ?? NaN);

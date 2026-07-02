@@ -6,10 +6,7 @@ use crate::{
 
 use super::{
     diagnostics::{ErrorSpan, TokenSpan},
-    streaming_parse::{
-        self, StreamingParser, add_normalized_number_ns, add_sink_emit_ns, increment_event_count,
-        monotonic_now_ns, reset_last_decode_profile,
-    },
+    streaming_parse::StreamingParser,
 };
 
 // ---------------------------------------------------------------------------
@@ -32,13 +29,8 @@ pub struct NormalizedNumber {
 ///   `"100"` with `SemType::Int`).
 /// * All other float literals are returned as-is with `SemType::Float`.
 ///
-/// The computation is timed and the duration is accumulated into the
-/// global [`DecodeProfile`](streaming_parse::DecodeProfile).
 pub fn normalized_number_value(raw: &str) -> NormalizedNumber {
-    let start = monotonic_now_ns();
-    let result = normalized_number_value_inner(raw);
-    add_normalized_number_ns(monotonic_now_ns() - start);
-    result
+    normalized_number_value_inner(raw)
 }
 
 fn normalized_number_value_inner(raw: &str) -> NormalizedNumber {
@@ -81,66 +73,20 @@ pub struct DecodeWithTokenSpansResult {
     pub error_spans: Vec<ErrorSpan>,
 }
 
-// ---------------------------------------------------------------------------
-// ProfilingSink – wraps event emission with nanosecond-level timing
-// ---------------------------------------------------------------------------
-
-/// A lightweight profiling wrapper that records per-event timing into the
-/// global [`DecodeProfile`](streaming_parse::DecodeProfile).
-///
-/// times each `onEvent` call.  In Rust event emission is timed at the parser
-/// sink boundary, while [`ProfileHooks`](super::scanner::ProfileHooks) on the
-/// scanner provide token-level granularity.
-pub struct ProfilingSink;
-
-impl ProfilingSink {
-    /// Record the start of an event emission for profiling purposes.
-    /// Returns a timestamp (in nanoseconds) to be passed to
-    /// [`record_event_end`](ProfilingSink::record_event_end).
-    #[inline]
-    pub fn record_event_start() -> u64 {
-        monotonic_now_ns()
-    }
-
-    /// Record the end of an event emission, accumulating the elapsed
-    /// nanoseconds into the global profile.
-    #[inline]
-    pub fn record_event_end(start_ns: u64) {
-        add_sink_emit_ns(monotonic_now_ns() - start_ns);
-        increment_event_count();
-    }
-}
-
-// ---------------------------------------------------------------------------
-// decode_slice_to_tree_with_depth
-// ---------------------------------------------------------------------------
-
 /// Parse a JSON source string into a document tree using the incremental
 /// [`StreamingParser`], with a configurable nesting depth for nested-JSON
 /// expansion.
 ///
 /// This is the primary entry point that wires together the real streaming
-/// parser pipeline: scanner -> parser -> tree builder, with nanosecond-level
-/// profiling hooks.
+/// parser pipeline: scanner -> parser -> tree builder.
 pub fn decode_slice_to_tree_with_depth(
     source: &str,
     nest_json: bool,
     emit_path: bool,
     nest_depth: u8,
 ) -> Result<DecodedDocument, CoreError> {
-    reset_last_decode_profile();
-    let total_start = monotonic_now_ns();
-
-    // Build profile hooks that feed into the global DecodeProfile.
-    let hooks = super::scanner::ProfileHooks {
-        add_scanner_next_token_ns: Some(Box::new(streaming_parse::add_scanner_next_token_ns)),
-        add_finish_string_token_ns: Some(Box::new(streaming_parse::add_finish_string_token_ns)),
-        add_finish_number_token_ns: Some(Box::new(streaming_parse::add_finish_number_token_ns)),
-    };
-
     let mut builder = Builder::new();
     let mut parser = StreamingParser::with_builder(nest_json, emit_path, &mut builder);
-    parser.set_profile_hooks(hooks);
     parser.set_nest_depth(nest_depth);
 
     // Feed the source and finalise.
@@ -153,12 +99,6 @@ pub fn decode_slice_to_tree_with_depth(
         .map_err(|_| CoreError::Parse(ParseError::InvalidSyntax))?;
 
     let document = builder.into_document()?;
-
-    // Record total time.
-    let total_ns = monotonic_now_ns() - total_start;
-    if let Ok(mut profile) = streaming_parse::profile_cell().lock() {
-        profile.total_us = streaming_parse::duration_us(total_ns);
-    }
 
     Ok(document)
 }
@@ -343,20 +283,5 @@ mod tests {
             doc.store.get(entry.value).unwrap().kind,
             TreeNodeKind::Scalar
         );
-    }
-
-    // ------------------------------------------------------------------
-    // ProfilingSink / profile hooks
-    // ------------------------------------------------------------------
-
-    #[test]
-    fn profiling_populates_decode_profile() {
-        streaming_parse::reset_last_decode_profile();
-        let _doc = decode_slice_to_tree(r#"{"a":1,"b":2}"#).unwrap();
-        let profile = streaming_parse::get_last_decode_profile();
-        // After a successful decode we should have non-zero total time
-        // and event/token counts.
-        assert!(profile.total_us > 0, "total_us should be > 0");
-        assert!(profile.event_count > 0, "event_count should be > 0");
     }
 }

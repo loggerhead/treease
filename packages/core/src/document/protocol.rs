@@ -306,7 +306,7 @@ pub struct GraphDelta {
     /// patch is emitted alongside the full `GraphNodeData.table` on the
     /// corresponding node. On incremental updates (`clear: false`), table
     /// mutations are communicated **exclusively** through these patches
-    /// (RowsAppended, ColumnsAdded, CellsUpdated). Consumers that maintain
+    /// (RowsAppended, ColumnsAdded, CellsUpdated, TableReplaced). Consumers that maintain
     /// table state across deltas MUST subscribe to `table_patches` rather than
     /// reading `GraphNodeData.table` from incremental nodes.
     #[serde(default)]
@@ -348,6 +348,13 @@ pub enum TablePatch {
     ColumnsAdded {
         table_handle: u32,
         columns: Vec<GraphCellData>,
+    },
+    /// Replace a table's complete state after deferred streaming geometry
+    /// has finalized. This is emitted as a table patch rather than an
+    /// incremental `nodes_updated.table` payload.
+    TableReplaced {
+        table_handle: u32,
+        table: GraphTableData,
     },
 }
 

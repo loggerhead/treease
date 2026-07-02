@@ -203,10 +203,10 @@ export function normalizeRawTable(table: any) {
     key: table.key ? readWasmString(table.key) : '',
     columns: Array.isArray(table.columns) ? table.columns.map(normalizeRawCell) : [],
     rows: Array.isArray(table.rows) ? table.rows.map(normalizeRawRow) : [],
-    headerHeight: table.headerHeight ?? 0,
-    totalHeight: table.totalHeight ?? 0,
-    viewHeight: table.viewHeight ?? 0,
-    rowHeight: table.rowHeight ?? 0,
+    headerHeight: table.headerHeight ?? table.header_height ?? 0,
+    totalHeight: table.totalHeight ?? table.total_height ?? 0,
+    viewHeight: table.viewHeight ?? table.view_height ?? 0,
+    rowHeight: table.rowHeight ?? table.row_height ?? 0,
   };
 }
 

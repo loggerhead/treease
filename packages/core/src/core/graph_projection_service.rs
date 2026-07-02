@@ -177,7 +177,7 @@ pub(crate) fn get_projection_model_cache_entry(
         .and_then(|cache| cache.get(document_key).cloned())
 }
 
-fn str_sem_type_to_u32(sem: Option<&str>) -> u32 {
+pub(crate) fn str_sem_type_to_u32(sem: Option<&str>) -> u32 {
     match sem {
         Some("map") | Some("!!map") => SemType::Map as u32,
         Some("seq") | Some("!!seq") => SemType::Seq as u32,
@@ -205,11 +205,11 @@ fn convert_path_seg(seg: &core_graph_builder::PathSeg) -> GraphPathSeg {
     }
 }
 
-fn convert_path(path: &[core_graph_builder::PathSeg]) -> Vec<GraphPathSeg> {
+pub(crate) fn convert_path(path: &[core_graph_builder::PathSeg]) -> Vec<GraphPathSeg> {
     path.iter().map(convert_path_seg).collect()
 }
 
-fn convert_box_args(b: &core_graph_builder::BoxArgs) -> GraphBoxArgs {
+pub(crate) fn convert_box_args(b: &core_graph_builder::BoxArgs) -> GraphBoxArgs {
     GraphBoxArgs {
         x: b.x,
         y: b.y,
@@ -232,7 +232,7 @@ fn convert_bezier_args(
         to_y: b.to_y,
     }
 }
-fn convert_cell_value(cell: &core_graph_builder::GraphCell) -> String {
+pub(crate) fn convert_cell_value(cell: &core_graph_builder::GraphCell) -> String {
     match cell.sem_type.as_deref() {
         Some("!!map" | "!!seq") if cell.value.is_empty() => cell.text.clone(),
         _ => cell.value.clone(),
@@ -271,7 +271,7 @@ pub(crate) fn convert_row(row: &core_graph_builder::GraphRow) -> GraphRowData {
     }
 }
 
-fn convert_table(table: &core_graph_builder::GraphTable) -> GraphTableData {
+pub(crate) fn convert_table(table: &core_graph_builder::GraphTable) -> GraphTableData {
     GraphTableData {
         columns: table.columns.iter().map(convert_cell).collect(),
         rows: table.rows.iter().map(convert_row).collect(),
