@@ -202,12 +202,21 @@ fn should_render_root_help_on_empty_interactive_invocation(
 }
 
 fn run_web_command(parsed: &ParsedArgs) -> Result<i32, CliError> {
-    let inputs = read_inputs(&parsed.files)?;
-    let payload = web_payload::build_cli_graph_result_payload(parsed, &inputs)?;
-    let result_json =
-        serde_json::to_vec(&payload).map_err(|error| CliError::Eval(error.to_string()))?;
+    let result = match build_web_file_source_result(parsed)? {
+        Some(result) => result,
+        None => {
+            let inputs = read_inputs(&parsed.files)?;
+            let payload = web_payload::build_cli_graph_result_payload(parsed, &inputs)?;
+            web_server::WebServerResult::text(
+                payload.source_label,
+                payload.expression,
+                payload.language,
+                payload.text,
+            )
+        }
+    };
     let assets_dir = web_assets::ensure_available()?;
-    let server = web_server::WebServer::bind(result_json, assets_dir)?;
+    let server = web_server::WebServer::bind(result, assets_dir)?;
 
     let mut stdout = io::stdout();
     writeln!(stdout, "{}", server.graph_url())?;
@@ -215,6 +224,42 @@ fn run_web_command(parsed: &ParsedArgs) -> Result<i32, CliError> {
 
     server.serve_forever()?;
     Ok(0)
+}
+
+fn build_web_file_source_result(
+    parsed: &ParsedArgs,
+) -> Result<Option<web_server::WebServerResult>, CliError> {
+    if !web_payload::should_delegate_identity_to_web(parsed) {
+        return Ok(None);
+    }
+    let Some(source) = parsed.files.first() else {
+        return Ok(None);
+    };
+    if source == "-" {
+        return Ok(None);
+    }
+    let metadata = fs::metadata(source).map_err(CliError::Io)?;
+    if !metadata.is_file() {
+        return Err(CliError::Io(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("{source} is not a file"),
+        )));
+    }
+
+    let language = match parsed.input_format.as_deref() {
+        Some(value) => canonical_cli_format(value)?,
+        None => match guess_input_format_from_filename(source) {
+            Some(format) => format,
+            None => return Ok(None),
+        },
+    };
+
+    Ok(Some(web_server::WebServerResult::file(
+        source.clone(),
+        parsed.expression.clone(),
+        language,
+        source.into(),
+    )))
 }
 
 fn execute_command(parsed: &ParsedArgs, inputs: &[InputPayload]) -> Result<Vec<u8>, CliError> {
@@ -676,7 +721,12 @@ mod tests {
         ]);
         web_server::WebServerState {
             token: "test-token".to_string(),
-            result_json: br#"{"ok":true}"#.to_vec(),
+            result: web_server::WebServerResult::text(
+                "input.json".to_string(),
+                ".".to_string(),
+                "json".to_string(),
+                r#"{"ok":true}"#.to_string(),
+            ),
             assets_dir,
         }
     }
@@ -746,7 +796,52 @@ mod tests {
             request_web_server_once(test_web_server_state(), "/cli/result?token=test-token");
         assert_response_contains(&matching, "HTTP/1.1 200 OK");
         assert_response_contains(&matching, "Content-Type: application/json; charset=utf-8");
-        assert_eq!(response_body(&matching), br#"{"ok":true}"#);
+        assert_response_contains(&matching, r#""source_label":"input.json""#);
+        assert_response_contains(&matching, r#""text":"{\"ok\":true}""#);
+    }
+
+    #[test]
+    fn web_server_serves_cli_metadata_and_source_separately() {
+        let missing_meta = request_web_server_once(test_web_server_state(), "/cli/meta");
+        assert_response_contains(&missing_meta, "HTTP/1.1 403 Forbidden");
+
+        let wrong_source =
+            request_web_server_once(test_web_server_state(), "/cli/source?token=wrong");
+        assert_response_contains(&wrong_source, "HTTP/1.1 403 Forbidden");
+
+        let meta = request_web_server_once(test_web_server_state(), "/cli/meta?token=test-token");
+        assert_response_contains(&meta, "HTTP/1.1 200 OK");
+        assert_response_contains(&meta, "Content-Type: application/json; charset=utf-8");
+        assert_response_contains(&meta, r#""source_url":"/cli/source?token=test-token""#);
+
+        let source =
+            request_web_server_once(test_web_server_state(), "/cli/source?token=test-token");
+        assert_response_contains(&source, "HTTP/1.1 200 OK");
+        assert_response_contains(&source, "Content-Type: application/json; charset=utf-8");
+        assert_eq!(response_body(&source), br#"{"ok":true}"#);
+    }
+
+    #[test]
+    fn web_server_streams_file_source() {
+        let assets_dir = test_asset_dir(&[("index.html", b"<html></html>".as_slice())]);
+        let source_dir = test_asset_dir(&[("input.json", br#"{"streamed":true}"#.as_slice())]);
+        let source_path = source_dir.join("input.json");
+        let state = web_server::WebServerState {
+            token: "test-token".to_string(),
+            result: web_server::WebServerResult::file(
+                "input.json".to_string(),
+                ".".to_string(),
+                "json".to_string(),
+                source_path,
+            ),
+            assets_dir,
+        };
+
+        let source = request_web_server_once(state, "/cli/source?token=test-token");
+
+        assert_response_contains(&source, "HTTP/1.1 200 OK");
+        assert_response_contains(&source, "Content-Type: application/json; charset=utf-8");
+        assert_eq!(response_body(&source), br#"{"streamed":true}"#);
     }
 
     fn test_asset_dir(files: &[(&str, &[u8])]) -> PathBuf {

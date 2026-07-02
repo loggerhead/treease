@@ -139,8 +139,13 @@ fn download_manifest_files(
     progress: &mut dyn Write,
 ) -> Result<(), CliError> {
     let mut downloaded_index_asset_version: Option<String> = None;
-    let total_files = manifest.files.len();
-    for (index, file) in manifest.files.iter().enumerate() {
+    let downloadable_files: Vec<&WebAssetManifestFile> = manifest
+        .files
+        .iter()
+        .filter(|file| should_download_manifest_path(&file.path))
+        .collect();
+    let total_files = downloadable_files.len();
+    for (index, file) in downloadable_files.iter().enumerate() {
         let relative_path = safe_relative_path(&file.path)?;
         write_download_progress(progress, index + 1, total_files, &file.path)?;
         let asset_url = format!(
@@ -188,12 +193,19 @@ fn write_download_progress(
     total: usize,
     path: &str,
 ) -> Result<(), CliError> {
-    writeln!(
+    write!(
         progress,
-        "Downloading web assets ({current}/{total}): {path}"
+        "\rDownloading web assets ({current}/{total}): {path}"
     )
     .map_err(CliError::Io)?;
+    if current == total {
+        writeln!(progress).map_err(CliError::Io)?;
+    }
     progress.flush().map_err(CliError::Io)
+}
+
+fn should_download_manifest_path(path: &str) -> bool {
+    !path.starts_with("landing/")
 }
 
 fn write_manifest_copy(temp_dir: &Path, manifest_bytes: &[u8]) -> Result<(), CliError> {
@@ -212,6 +224,9 @@ fn cache_is_complete(version_dir: &Path) -> bool {
         return false;
     }
     let files_exist = manifest.files.iter().all(|file| {
+        if !should_download_manifest_path(&file.path) {
+            return true;
+        }
         safe_relative_path(&file.path)
             .ok()
             .map(|relative_path| version_dir.join(relative_path).is_file())

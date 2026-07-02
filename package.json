@@ -3,8 +3,10 @@
   "private": true,
   "scripts": {
     "dev": "pnpm --dir apps/web dev",
+    "cli:web:local": "node ./scripts/treease-web-local.mjs",
     "core:test": "cd packages/core && cargo nextest run --locked",
     "web:test": "pnpm --dir apps/web test",
+    "web:cli-assets:serve": "node ./scripts/treease-web-local.mjs serve",
     "web:assets:deploy": "pnpm --dir apps/web assets:r2:upload",
     "web:pages:deploy": "pnpm --dir apps/web deploy:pages",
     "cli:build:release": "cd apps/cli && cargo build --locked --release",

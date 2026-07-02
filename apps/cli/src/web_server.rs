@@ -1,10 +1,11 @@
+use std::fs::File;
 use std::io::{Read, Write};
 use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::path::PathBuf;
 use std::time::Duration;
 
-use super::web_assets;
 use super::{CliError, errors};
+use super::{web_assets, web_payload::CliGraphMetadataPayload};
 
 const LOCALHOST: &str = "127.0.0.1:0";
 const MAX_REQUEST_BYTES: usize = 16 * 1024;
@@ -14,8 +15,22 @@ const REQUEST_IO_TIMEOUT: Duration = Duration::from_secs(5);
 #[derive(Debug, Clone)]
 pub(super) struct WebServerState {
     pub token: String,
-    pub result_json: Vec<u8>,
+    pub result: WebServerResult,
     pub assets_dir: PathBuf,
+}
+
+#[derive(Debug, Clone)]
+pub(super) struct WebServerResult {
+    pub source_label: String,
+    pub expression: String,
+    pub language: String,
+    pub source: WebServerSource,
+}
+
+#[derive(Debug, Clone)]
+pub(super) enum WebServerSource {
+    Text(String),
+    File(PathBuf),
 }
 
 #[allow(dead_code)]
@@ -27,10 +42,10 @@ pub(super) struct WebServer {
 
 #[allow(dead_code)]
 impl WebServer {
-    pub(super) fn bind(result_json: Vec<u8>, assets_dir: PathBuf) -> Result<Self, CliError> {
+    pub(super) fn bind(result: WebServerResult, assets_dir: PathBuf) -> Result<Self, CliError> {
         Self::bind_with_state(WebServerState {
             token: generate_token()?,
-            result_json,
+            result,
             assets_dir,
         })
     }
@@ -147,7 +162,48 @@ fn handle_request(state: &WebServerState, request: &str) -> HttpResponse {
         if !token_matches(target, &state.token) {
             return HttpResponse::forbidden();
         }
-        return HttpResponse::ok("application/json; charset=utf-8", state.result_json.clone());
+        let result_json = match state.result.legacy_result_json() {
+            Ok(bytes) => bytes,
+            Err(error) => {
+                return HttpResponse::text(
+                    "500 Internal Server Error",
+                    &format!(
+                        "failed to serialize CLI graph result: {}\n",
+                        errors::render_text(&error)
+                    ),
+                );
+            }
+        };
+        return HttpResponse::ok("application/json; charset=utf-8", result_json);
+    }
+
+    if path == "/cli/meta" {
+        if !token_matches(target, &state.token) {
+            return HttpResponse::forbidden();
+        }
+        let metadata = state
+            .result
+            .metadata(format!("/cli/source?token={}", state.token));
+        let metadata_json = match serde_json::to_vec(&metadata) {
+            Ok(bytes) => bytes,
+            Err(error) => {
+                return HttpResponse::text(
+                    "500 Internal Server Error",
+                    &format!("failed to serialize CLI graph metadata: {error}\n"),
+                );
+            }
+        };
+        return HttpResponse::ok("application/json; charset=utf-8", metadata_json);
+    }
+
+    if path == "/cli/source" {
+        if !token_matches(target, &state.token) {
+            return HttpResponse::forbidden();
+        }
+        return HttpResponse::source(
+            source_content_type(&state.result.language),
+            state.result.source.clone(),
+        );
     }
 
     if path == "/cli/graph" {
@@ -158,6 +214,81 @@ fn handle_request(state: &WebServerState, request: &str) -> HttpResponse {
     }
 
     asset_response(state, target)
+}
+
+fn source_content_type(language: &str) -> &'static str {
+    match language {
+        "json" => "application/json; charset=utf-8",
+        _ => "text/plain; charset=utf-8",
+    }
+}
+
+impl WebServerResult {
+    pub(super) fn text(
+        source_label: String,
+        expression: String,
+        language: String,
+        text: String,
+    ) -> Self {
+        Self {
+            source_label,
+            expression,
+            language,
+            source: WebServerSource::Text(text),
+        }
+    }
+
+    pub(super) fn file(
+        source_label: String,
+        expression: String,
+        language: String,
+        path: PathBuf,
+    ) -> Self {
+        Self {
+            source_label,
+            expression,
+            language,
+            source: WebServerSource::File(path),
+        }
+    }
+
+    fn metadata(&self, source_url: String) -> CliGraphMetadataPayload {
+        CliGraphMetadataPayload {
+            source_label: self.source_label.clone(),
+            expression: self.expression.clone(),
+            language: self.language.clone(),
+            source_url,
+            byte_length: self.source.byte_length().unwrap_or(0),
+        }
+    }
+
+    fn legacy_result_json(&self) -> Result<Vec<u8>, CliError> {
+        let payload = serde_json::json!({
+            "source_label": self.source_label,
+            "expression": self.expression,
+            "language": self.language,
+            "text": self.source.read_to_string()?,
+        });
+        serde_json::to_vec(&payload).map_err(|error| CliError::Eval(error.to_string()))
+    }
+}
+
+impl WebServerSource {
+    fn byte_length(&self) -> Result<usize, CliError> {
+        match self {
+            WebServerSource::Text(text) => Ok(text.len()),
+            WebServerSource::File(path) => {
+                Ok(std::fs::metadata(path).map_err(CliError::Io)?.len() as usize)
+            }
+        }
+    }
+
+    fn read_to_string(&self) -> Result<String, CliError> {
+        match self {
+            WebServerSource::Text(text) => Ok(text.clone()),
+            WebServerSource::File(path) => std::fs::read_to_string(path).map_err(CliError::Io),
+        }
+    }
 }
 
 fn parse_request_line(request: &str) -> Option<(&str, &str)> {
@@ -221,7 +352,12 @@ fn hex_encode(bytes: &[u8]) -> String {
 struct HttpResponse {
     status: &'static str,
     content_type: &'static str,
-    body: Vec<u8>,
+    body: HttpResponseBody,
+}
+
+enum HttpResponseBody {
+    Bytes(Vec<u8>),
+    Source(WebServerSource),
 }
 
 impl HttpResponse {
@@ -229,7 +365,15 @@ impl HttpResponse {
         Self {
             status: "200 OK",
             content_type,
-            body,
+            body: HttpResponseBody::Bytes(body),
+        }
+    }
+
+    fn source(content_type: &'static str, source: WebServerSource) -> Self {
+        Self {
+            status: "200 OK",
+            content_type,
+            body: HttpResponseBody::Source(source),
         }
     }
 
@@ -253,21 +397,34 @@ impl HttpResponse {
         Self {
             status,
             content_type: "text/plain; charset=utf-8",
-            body: body.as_bytes().to_vec(),
+            body: HttpResponseBody::Bytes(body.as_bytes().to_vec()),
         }
     }
 
     fn write_to(&self, stream: &mut TcpStream) -> Result<(), CliError> {
+        let content_length = match &self.body {
+            HttpResponseBody::Bytes(bytes) => bytes.len(),
+            HttpResponseBody::Source(source) => source.byte_length()?,
+        };
         write!(
             stream,
             "HTTP/1.1 {}\r\nContent-Type: {}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
-            self.status,
-            self.content_type,
-            self.body.len()
+            self.status, self.content_type, content_length
         )
         .map_err(|error| CliError::WebServer(error.to_string()))?;
-        stream
-            .write_all(&self.body)
-            .map_err(|error| CliError::WebServer(error.to_string()))
+        match &self.body {
+            HttpResponseBody::Bytes(bytes) => stream
+                .write_all(bytes)
+                .map_err(|error| CliError::WebServer(error.to_string())),
+            HttpResponseBody::Source(WebServerSource::Text(text)) => stream
+                .write_all(text.as_bytes())
+                .map_err(|error| CliError::WebServer(error.to_string())),
+            HttpResponseBody::Source(WebServerSource::File(path)) => {
+                let mut file = File::open(path).map_err(CliError::Io)?;
+                std::io::copy(&mut file, stream)
+                    .map(|_| ())
+                    .map_err(|error| CliError::WebServer(error.to_string()))
+            }
+        }
     }
 }

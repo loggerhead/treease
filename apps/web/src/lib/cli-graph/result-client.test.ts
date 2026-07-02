@@ -8,18 +8,24 @@ describe('cli graph result client', () => {
     expect(readCliGraphTokenFromSearch('')).toBe('');
   });
 
-  it('fetches and normalizes the CLI graph result payload', async () => {
-    const fetcher = vi.fn().mockResolvedValue(
-      new Response(
-        JSON.stringify({
-          source_label: 'input.json',
-          expression: '.items',
-          language: 'json',
-          text: '[1,2]',
-        }),
-        { status: 200 },
-      ),
-    );
+  it('fetches metadata and source text for a CLI graph result', async () => {
+    const fetcher = vi.fn(async (input: string) => {
+      if (input === '/cli/meta?token=secret') {
+        return new Response(
+          JSON.stringify({
+            source_label: 'input.json',
+            expression: '.items',
+            language: 'json',
+            source_url: '/cli/source?token=secret',
+          }),
+          { status: 200 },
+        );
+      }
+      if (input === '/cli/source?token=secret') {
+        return new Response('[1,2]', { status: 200 });
+      }
+      return new Response('not found', { status: 404 });
+    });
 
     await expect(fetchCliGraphResult('secret', fetcher)).resolves.toEqual({
       sourceLabel: 'input.json',
@@ -27,25 +33,30 @@ describe('cli graph result client', () => {
       language: 'json',
       text: '[1,2]',
     });
-    expect(fetcher).toHaveBeenCalledWith('/cli/result?token=secret');
+    expect(fetcher).toHaveBeenNthCalledWith(1, '/cli/meta?token=secret');
+    expect(fetcher).toHaveBeenNthCalledWith(2, '/cli/source?token=secret');
   });
 
   it('URL-encodes the token when fetching', async () => {
-    const fetcher = vi.fn().mockResolvedValue(
-      new Response(
-        JSON.stringify({
-          source_label: '-',
-          expression: '.',
-          language: 'yaml',
-          text: 'a: 1\n',
-        }),
-        { status: 200 },
-      ),
-    );
+    const fetcher = vi.fn(async (input: string) => {
+      if (input === '/cli/meta?token=a%20b') {
+        return new Response(
+          JSON.stringify({
+            source_label: '-',
+            expression: '.',
+            language: 'yaml',
+            source_url: '/cli/source?token=a%20b',
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response('a: 1\n', { status: 200 });
+    });
 
     await fetchCliGraphResult('a b', fetcher);
 
-    expect(fetcher).toHaveBeenCalledWith('/cli/result?token=a%20b');
+    expect(fetcher).toHaveBeenNthCalledWith(1, '/cli/meta?token=a%20b');
+    expect(fetcher).toHaveBeenNthCalledWith(2, '/cli/source?token=a%20b');
   });
 
   it('rejects missing tokens before fetching', async () => {
@@ -58,13 +69,13 @@ describe('cli graph result client', () => {
   it('rejects non-ok responses with status', async () => {
     const fetcher = vi.fn().mockResolvedValue(new Response('forbidden', { status: 403 }));
 
-    await expect(fetchCliGraphResult('secret', fetcher)).rejects.toThrow('Failed to load CLI graph result: HTTP 403');
+    await expect(fetchCliGraphResult('secret', fetcher)).rejects.toThrow('Failed to load CLI graph metadata: HTTP 403');
   });
 
   it('rejects invalid payload shapes', async () => {
     const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify({ source_label: 'input.json' }), { status: 200 }));
 
-    await expect(fetchCliGraphResult('secret', fetcher)).rejects.toThrow('Invalid CLI graph result payload');
+    await expect(fetchCliGraphResult('secret', fetcher)).rejects.toThrow('Invalid CLI graph metadata payload');
     expect(() => normalizeCliGraphResult(null)).toThrow('Invalid CLI graph result payload');
   });
 });

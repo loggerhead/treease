@@ -88,7 +88,8 @@ EOF
   "assetVersion": "$TREEASE_WEB_ASSET_RUNTIME_VERSION",
   "files": [
     { "path": "index.html" },
-    { "path": "_app/app.js" }
+    { "path": "_app/app.js" },
+    { "path": "landing/hero.webp" }
   ]
 }
 EOF
@@ -133,10 +134,10 @@ PY
   fail "timed out waiting for treease web graph URL"
 }
 
-result_url_for_graph_url() {
+meta_url_for_graph_url() {
   python3 - "$1" <<'PY'
 import sys
-print(sys.argv[1].replace("/cli/graph?", "/cli/result?", 1))
+print(sys.argv[1].replace("/cli/graph?", "/cli/meta?", 1))
 PY
 }
 
@@ -145,6 +146,16 @@ wrong_token_url_for() {
 import re
 import sys
 print(re.sub(r"token=[^&]+", "token=wrong-token", sys.argv[1], count=1))
+PY
+}
+
+source_path_for_meta_url() {
+  python3 - "$1" <<'PY'
+import sys
+from urllib.parse import urlparse
+
+parsed = urlparse(sys.argv[1])
+print(f"/cli/source?{parsed.query}")
 PY
 }
 
@@ -173,26 +184,26 @@ pathlib.Path(status_file).write_text(str(status))
 PY
 }
 
-assert_result_payload() {
+assert_meta_payload() {
   local json_file="$1"
   local expected_source_label="$2"
   local expected_expression="$3"
   local expected_language="$4"
-  local expected_text="$5"
+  local expected_source_url="$5"
   local message="$6"
 
-  python3 - "$json_file" "$expected_source_label" "$expected_expression" "$expected_language" "$expected_text" "$message" <<'PY'
+  python3 - "$json_file" "$expected_source_label" "$expected_expression" "$expected_language" "$expected_source_url" "$message" <<'PY'
 import json
 import pathlib
 import sys
 
-json_file, source_label, expression, language, text, message = sys.argv[1:]
+json_file, source_label, expression, language, source_url, message = sys.argv[1:]
 payload = json.loads(pathlib.Path(json_file).read_text())
 expected = {
     "source_label": source_label,
     "expression": expression,
     "language": language,
-    "text": text,
+    "source_url": source_url,
 }
 for key, value in expected.items():
     if payload.get(key) != value:
@@ -202,34 +213,70 @@ for key, value in expected.items():
 PY
 }
 
+assert_file_text() {
+  local text_file="$1"
+  local expected_text="$2"
+  local message="$3"
+
+  python3 - "$text_file" "$expected_text" "$message" <<'PY'
+import pathlib
+import sys
+
+text_file, expected_text, message = sys.argv[1:]
+actual = pathlib.Path(text_file).read_text()
+if actual != expected_text:
+    print(f"FAIL: {message}", file=sys.stderr)
+    print(f"expected {expected_text!r}, got {actual!r}", file=sys.stderr)
+    raise SystemExit(1)
+PY
+}
+
+source_url_from_meta_file() {
+  python3 - "$1" "$2" <<'PY'
+import json
+import pathlib
+import sys
+from urllib.parse import urljoin
+
+meta_file, graph_url = sys.argv[1:]
+payload = json.loads(pathlib.Path(meta_file).read_text())
+print(urljoin(graph_url, payload["source_url"]))
+PY
+}
+
 test_web_file_result() {
   local input="$TMP_DIR/input.yaml"
   local stdout_file="$TMP_DIR/web-file.stdout"
   local stderr_file="$TMP_DIR/web-file.stderr"
   local body_file="$TMP_DIR/web-file.body"
   local status_file="$TMP_DIR/web-file.status"
-  local pid graph_url result_url wrong_url
+  local pid graph_url meta_url source_url wrong_url
 
   printf 'foo: 1\nbar: 2\n' >"$input"
 
   start_web_file "$stdout_file" "$stderr_file" -o json '.foo' "$input"
   pid="$TREEASE_WEB_LAST_PID"
   graph_url="$(wait_for_graph_url "$stdout_file" "$stderr_file" "$pid")"
-  result_url="$(result_url_for_graph_url "$graph_url")"
+  meta_url="$(meta_url_for_graph_url "$graph_url")"
 
   fetch_url "$graph_url" "$body_file" "$status_file"
   assert_eq 200 "$(cat "$status_file")" 'web graph URL should serve embedded index'
   assert_contains "$(cat "$body_file")" '<!doctype html>' 'web graph URL should serve embedded web shell'
 
-  fetch_url "$result_url" "$body_file" "$status_file"
-  assert_eq 200 "$(cat "$status_file")" 'web result should return 200 with matching token'
-  assert_result_payload "$body_file" "$input" '.foo' 'json' $'1\n' 'web result payload should match file input'
-  assert_contains "$(cat "$stderr_file")" 'Downloading web assets (1/' 'web should report download progress for first asset'
+  fetch_url "$meta_url" "$body_file" "$status_file"
+  assert_eq 200 "$(cat "$status_file")" 'web metadata should return 200 with matching token'
+  assert_meta_payload "$body_file" "$input" '.foo' 'json' "$(source_path_for_meta_url "$meta_url")" 'web metadata payload should match file input'
+  source_url="$(source_url_from_meta_file "$body_file" "$graph_url")"
+  fetch_url "$source_url" "$body_file" "$status_file"
+  assert_eq 200 "$(cat "$status_file")" 'web source should return 200 with matching token'
+  assert_file_text "$body_file" $'1\n' 'web source should match file input'
+  assert_contains "$(cat "$stderr_file")" $'\rDownloading web assets (' 'web should refresh download progress in place'
   assert_contains "$(cat "$stderr_file")" '_app/app.js' 'web should report downloaded asset path'
+  assert_not_contains "$(cat "$stderr_file")" 'landing/' 'web should skip landing-only assets during CLI download'
 
-  wrong_url="$(wrong_token_url_for "$result_url")"
+  wrong_url="$(wrong_token_url_for "$meta_url")"
   fetch_url "$wrong_url" "$body_file" "$status_file"
-  assert_eq 403 "$(cat "$status_file")" 'web result should reject wrong token'
+  assert_eq 403 "$(cat "$status_file")" 'web metadata should reject wrong token'
 }
 
 test_web_stdin_result() {
@@ -237,16 +284,20 @@ test_web_stdin_result() {
   local stderr_file="$TMP_DIR/web-stdin.stderr"
   local body_file="$TMP_DIR/web-stdin.body"
   local status_file="$TMP_DIR/web-stdin.status"
-  local pid graph_url result_url
+  local pid graph_url meta_url source_url
 
   start_web_stdin $'foo: 1\n' "$stdout_file" "$stderr_file" '.' '-'
   pid="$TREEASE_WEB_LAST_PID"
   graph_url="$(wait_for_graph_url "$stdout_file" "$stderr_file" "$pid")"
-  result_url="$(result_url_for_graph_url "$graph_url")"
+  meta_url="$(meta_url_for_graph_url "$graph_url")"
 
-  fetch_url "$result_url" "$body_file" "$status_file"
-  assert_eq 200 "$(cat "$status_file")" 'stdin web result should return 200 with matching token'
-  assert_result_payload "$body_file" '<stdin>' '.' 'yaml' $'foo: 1\n' 'web result payload should match stdin input'
+  fetch_url "$meta_url" "$body_file" "$status_file"
+  assert_eq 200 "$(cat "$status_file")" 'stdin web metadata should return 200 with matching token'
+  assert_meta_payload "$body_file" '<stdin>' '.' 'yaml' "$(source_path_for_meta_url "$meta_url")" 'web metadata payload should match stdin input'
+  source_url="$(source_url_from_meta_file "$body_file" "$graph_url")"
+  fetch_url "$source_url" "$body_file" "$status_file"
+  assert_eq 200 "$(cat "$status_file")" 'stdin web source should return 200 with matching token'
+  assert_file_text "$body_file" $'foo: 1\n' 'web source payload should match stdin input'
 }
 
 test_web_multiple_files_error() {
@@ -258,6 +309,13 @@ test_web_multiple_files_error() {
   run_cli '' 'web' '.' "$first" "$second"
   assert_eq 1 "$LAST_EXIT_CODE" 'web with multiple files should exit 1'
   assert_contains "$LAST_STDERR" 'INVALID_WEB_INPUT_COUNT' 'web multiple files error should include stable code'
+}
+
+test_web_missing_file_error() {
+  run_cli '' 'web' '.' "$TMP_DIR/missing.yaml"
+  assert_eq 1 "$LAST_EXIT_CODE" 'web with missing file should exit 1'
+  assert_contains "$LAST_STDERR" 'IO_ERROR' 'web missing file should include stable IO error code'
+  assert_not_contains "$LAST_STDERR" 'Downloading web assets' 'web missing file should fail before asset download'
 }
 
 test_web() {
@@ -272,4 +330,6 @@ test_web() {
 
   prepare_web_assets
   test_web_multiple_files_error
+
+  test_web_missing_file_error
 }
