@@ -48,6 +48,10 @@ function isCancelledIntakeResult(result: IntakeResult): boolean {
   return result.status === 'failed' && typeof result.error === 'string' && result.error.startsWith('cancelled:');
 }
 
+function getImportResultSourceText(result: ImportIntakeResult): string | null {
+  return typeof result.sourceText === 'string' ? result.sourceText : null;
+}
+
 type FullEditSession = {
   active: boolean;
   documentKey: string;
@@ -248,9 +252,13 @@ export function createEditorFullEditController(options: CreateEditorFullEditCont
     session.flushHandle = null;
   }
 
+  function isCurrentImportSession(sessionId: string): boolean {
+    return importSession?.active === true && importSession.sessionId === sessionId;
+  }
+
   function flushPendingText(sessionId: string, state?: { force?: boolean }): boolean {
     const session = importSession;
-    if (!session?.active || session.sessionId !== sessionId) return false;
+    if (!session || !isCurrentImportSession(sessionId)) return false;
     cancelImportTextFlush(session);
     if (!session.pendingText) {
       session.pendingBytes = 0;
@@ -282,11 +290,11 @@ export function createEditorFullEditController(options: CreateEditorFullEditCont
 
   function scheduleImportTextFlush(sessionId: string): void {
     const session = importSession;
-    if (!session?.active || session.sessionId !== sessionId) return;
+    if (!session || !isCurrentImportSession(sessionId)) return;
     if (session.flushHandle != null) return;
     session.flushHandle = requestAnimationFrame(() => {
       const activeSession = importSession;
-      if (!activeSession?.active || activeSession.sessionId !== sessionId) return;
+      if (!activeSession || !isCurrentImportSession(sessionId)) return;
       activeSession.flushHandle = null;
       flushPendingText(sessionId);
     });
@@ -294,7 +302,7 @@ export function createEditorFullEditController(options: CreateEditorFullEditCont
 
   function bufferImportText(sessionId: string, text: string, byteLength: number): void {
     const session = importSession;
-    if (!session?.active || session.sessionId !== sessionId || !text) return;
+    if (!session || !isCurrentImportSession(sessionId) || !text) return;
     session.pendingText += text;
     session.pendingBytes += byteLength;
     if (!session.hasVisibleFlush || session.pendingBytes >= IMPORT_EDITOR_FLUSH_BYTE_THRESHOLD) {
@@ -487,7 +495,7 @@ export function createEditorFullEditController(options: CreateEditorFullEditCont
     }).then((intakeResult) => {
       if (!isSessionCurrent()) return;
       if (intakeResult.status === 'completed') {
-        const authoritativeSourceText = (intakeResult as { sourceText?: string | null }).sourceText ?? null;
+        const authoritativeSourceText = getImportResultSourceText(intakeResult);
         const shouldApplyAuthoritativeSourceText =
           session.sourceWritebackPolicy === 'intake' && authoritativeSourceText != null;
         if (shouldApplyAuthoritativeSourceText) {
@@ -572,14 +580,14 @@ export function createEditorFullEditController(options: CreateEditorFullEditCont
         revision: session.revision,
         builderConfig: options.getGraphBuilderConfig(),
       }));
-    const formattedSourceText = (intakeResult as { sourceText?: string | null }).sourceText ?? null;
+    const formattedSourceText = getImportResultSourceText(intakeResult);
     if (importSession && formattedSourceText != null) {
       importSession.visibleText = formattedSourceText;
     }
 
     if (isIntakeResult(intakeResult) ? intakeResult.status === 'failed' : !intakeResult.snapshotId) {
       detachImportGraphJobSession(session);
-      if (!importSession?.active || importSession.sessionId !== sessionId) return;
+      if (!isCurrentImportSession(sessionId)) return;
       settleImportSessionUi(session, 'finish');
       const error = isIntakeResult(intakeResult) ? intakeResult.error : 'Graph import failed';
       options.updateActiveTempModel((current) => ({ ...current, error: error ?? 'Graph import failed' }));
@@ -603,7 +611,7 @@ export function createEditorFullEditController(options: CreateEditorFullEditCont
     });
 
     detachImportGraphJobSession(session);
-    if (!importSession?.active || importSession.sessionId !== sessionId) return;
+    if (!isCurrentImportSession(sessionId)) return;
     settleImportSessionUi(session, 'finish');
 
   }

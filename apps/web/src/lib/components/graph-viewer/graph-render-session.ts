@@ -916,14 +916,8 @@ export function createGraphRenderSession(deps: GraphRenderSessionDeps) {
           failed: true,
         });
       }
-      const analysis = result.analysis ?? normalizeDocumentJobAnalysisPayload(
-        selection.blockDocumentKey,
-        selection.language,
-        finalEvent?.analysis,
-      );
       if (!freshness.isCurrent()) return null;
       const requestId = deps.nextTreeToken();
-      void analysis;
       deps.clearTreeState(requestId, 'graph', selection.revision, finalSnapshotId);
       deps.completeStreamProgress();
       await flushSceneAndRedraw(

@@ -140,7 +140,7 @@ export function createGraphValueEditController(deps: GraphValueEditControllerDep
     editCell: GraphCell,
     editKind: 'key' | 'value',
     raw: string,
-    editTargetOverride: LeaferText | null = null,
+    _editTargetOverride: LeaferText | null = null,
   ): Promise<boolean> {
     if (isReadonly()) {
       return false;
@@ -151,7 +151,6 @@ export function createGraphValueEditController(deps: GraphValueEditControllerDep
     if (editCell.isMissing) {
       return false;
     }
-    void editTargetOverride;
     const editorIO = deps.getEditorIO();
     const getCurrentFreshnessContext = () => {
       const currentEditorIO = deps.getEditorIO();

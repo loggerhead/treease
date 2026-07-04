@@ -153,9 +153,8 @@
   }
 
   function applyRootScalarHighlight(
-    analysis: import('./editor-analysis-apply').EditorAnalysisLike | null | undefined,
+    _analysis: import('./editor-analysis-apply').EditorAnalysisLike | null | undefined,
   ): void {
-    void analysis;
     if (!editor) return;
     rootScalarDecorations ??= editor.createDecorationsCollection();
     const requestToken = ++rootScalarHighlightToken;

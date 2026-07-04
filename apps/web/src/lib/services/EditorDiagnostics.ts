@@ -85,13 +85,11 @@ function diagnosticMessageFromCode(code: DiagnosticItem['code']): string {
 export async function diagnosticsResultFromErrors(
   monaco: typeof Monaco,
   model: Monaco.editor.ITextModel,
-  languageId: SupportedEditorLanguageId,
+  _languageId: SupportedEditorLanguageId,
   errors: WasmError[],
-  nest: boolean,
+  _nest: boolean,
 ): Promise<DiagnosticsResult> {
   const text = model.getValue();
-  void languageId;
-  void nest;
 
   const lines = text.split(/\r?\n/);
   const orderedErrors = dedupeErrors([...errors].sort(compareErrors));

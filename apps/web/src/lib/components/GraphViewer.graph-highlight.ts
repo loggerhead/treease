@@ -1,8 +1,7 @@
 import type { TempModel } from '../store/editor-store';
 import type { PathSeg } from '../store/tree-path';
 
-export function clearGraphSelectionAfterEdit(current: TempModel, editPath: PathSeg[]): TempModel {
-  void editPath;
+export function clearGraphSelectionAfterEdit(current: TempModel, _editPath: PathSeg[]): TempModel {
   const highlight = current.graphHighlight;
   if (!highlight?.path?.length) return current;
   if (highlight.source !== 'graph') return current;

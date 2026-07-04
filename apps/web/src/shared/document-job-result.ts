@@ -40,6 +40,20 @@ export function normalizeDocumentJobAnalysisPayload(
   };
 }
 
+function toDocumentJobResult(
+  status: Extract<DocumentJobResultStatus, 'snapshotReady' | 'parseFailed'>,
+  snapshotId: SnapshotId,
+  analysis: DocumentJobAnalysisPayload | null | undefined,
+  sourceText: string | null,
+): DocumentJobResult {
+  return {
+    status,
+    snapshotId,
+    analysis: analysis ?? null,
+    sourceText,
+  };
+}
+
 /**
  * Collect the final DocumentJob result from a merged EventBatch.
  *
@@ -52,20 +66,20 @@ export function collectDocumentJobResult(batch: EventBatch): DocumentJobResult {
   for (let index = batch.events.length - 1; index >= 0; index -= 1) {
     const event = batch.events[index];
     if (event.type === 'snapshotReady') {
-      return {
-        status: 'snapshotReady',
-        snapshotId: event.snapshotId as SnapshotId,
-        analysis: event.analysis ?? null,
-        sourceText: event.sourceText ?? null,
-      };
+      return toDocumentJobResult(
+        'snapshotReady',
+        event.snapshotId as SnapshotId,
+        event.analysis,
+        event.sourceText ?? null,
+      );
     }
     if (event.type === 'parseFailed') {
-      return {
-        status: 'parseFailed',
-        snapshotId: event.snapshotId as SnapshotId,
-        analysis: event.analysis ?? null,
-        sourceText: null,
-      };
+      return toDocumentJobResult(
+        'parseFailed',
+        event.snapshotId as SnapshotId,
+        event.analysis,
+        null,
+      );
     }
   }
   return { status: 'noSnapshot', snapshotId: null, analysis: null, sourceText: null };

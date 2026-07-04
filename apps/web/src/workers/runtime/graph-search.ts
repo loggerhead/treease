@@ -29,6 +29,15 @@ type GraphSearchAnalysisRuntime = {
   searchIndexByDocumentKey: Map<string, SearchIndexEntry>;
 };
 
+function getSearchableCellText(cell: TableCell): { label: string; valueText: string } {
+  const primaryText = String(cell.text ?? cell.value ?? '').trim();
+  const fallbackText = String(cell.value ?? cell.text ?? '').trim();
+  return {
+    label: primaryText || fallbackText,
+    valueText: fallbackText || primaryText,
+  };
+}
+
 export function collectViewTableItems(
   graphStateByDocumentKey: Map<string, GraphState>,
   documentKey: string,
@@ -38,8 +47,7 @@ export function collectViewTableItems(
   if (!state) return;
   function pushCell(cell: TableCell, options?: { skipIndex?: boolean }): void {
     if (!cell) return;
-    const label = String(cell.text ?? cell.value ?? '').trim();
-    const valueText = String(cell.value ?? cell.text ?? '').trim();
+    const { label, valueText } = getSearchableCellText(cell);
     if (cell.isIndex || options?.skipIndex) return;
     if (cell.valueType === 'array' || cell.valueType === 'object') return;
     if (label === '[]' || label === '{}' || valueText === '[]' || valueText === '{}') return;
@@ -49,9 +57,9 @@ export function collectViewTableItems(
       path,
       pathKey: buildPathKey(path),
       pathText: buildPathText(path),
-      label: label || valueText,
+      label,
       keyText: '',
-      valueText: valueText || label,
+      valueText,
       target: 'value',
       lazy: cell,
     });

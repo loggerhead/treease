@@ -48,11 +48,9 @@ async function callTreePathResult(
   column: number,
   documentKey: string,
   snapshotId: SnapshotId | null,
-  languageId: SupportedEditorLanguageId,
-  nest: boolean,
+  _languageId: SupportedEditorLanguageId,
+  _nest: boolean,
 ): Promise<TreePathReadResult> {
-  void languageId;
-  void nest;
   if (snapshotId == null) return snapshotNotReady();
   const byteOffset = byteOffsetFromRowColumn(text, row, column);
   const result = await callSharedWasmWorker<SnapshotReadResult<QueryResult>>('querySnapshot', {
@@ -115,12 +113,10 @@ async function callPathSpanResult(
   path: PathSeg[],
   documentKey: string,
   snapshotId: SnapshotId | null,
-  languageId: SupportedEditorLanguageId,
+  _languageId: SupportedEditorLanguageId,
   target: QueryTargetKind,
-  nest: boolean,
+  _nest: boolean,
 ): Promise<PathSpanReadResult> {
-  void languageId;
-  void nest;
   if (snapshotId == null) return snapshotNotReady();
   const result = await callSharedWasmWorker<SnapshotReadResult<QueryResult>>('querySnapshot', {
     documentKey,

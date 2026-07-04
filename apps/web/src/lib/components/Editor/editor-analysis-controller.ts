@@ -1,6 +1,6 @@
 // 职责：Editor 文档分析控制器：触发 WASM parse/analysis、管理 analysis 结果与 diagnostics
 import type * as Monaco from 'monaco-editor';
-import { type TreeNode } from '@core-wasm/index'
+import { type TreeNode } from '@core-wasm/index';
 import { resolveDocumentAnalysis } from '../../services/DocumentAnalysisResolver';
 import { resolveTreePathResult, toByteColumn } from '../../services/TreePathService';
 import { resolveEditorPositionTargetResult } from './editor-position-target';
@@ -76,9 +76,13 @@ export function createEditorAnalysisController(options: CreateEditorAnalysisCont
     options.refreshSemanticTokensForLanguage(languageId);
   }
 
-  function clearJsonBlockSelectionForDocument(documentKey: string, clearSemanticTokens = true): void {
+  function getJsonBlockSelectionForDocument(documentKey: string): JsonBlockSelection | null {
     const current = options.getJsonBlockSelection();
-    if (current?.sourceDocumentKey === documentKey) {
+    return current?.sourceDocumentKey === documentKey ? current : null;
+  }
+
+  function clearJsonBlockSelectionForDocument(documentKey: string, clearSemanticTokens = true): void {
+    if (getJsonBlockSelectionForDocument(documentKey)) {
       options.setJsonBlockSelection(null);
       if (clearSemanticTokens) {
         clearDocumentSemanticTokens(documentKey, 'json');
@@ -87,8 +91,7 @@ export function createEditorAnalysisController(options: CreateEditorAnalysisCont
   }
 
   function hasCurrentJsonBlockSelection(documentKey: string): boolean {
-    const current = options.getJsonBlockSelection();
-    return current?.sourceDocumentKey === documentKey && current.revision === currentRevision();
+    return getJsonBlockSelectionForDocument(documentKey)?.revision === currentRevision();
   }
 
   function rememberAuthoritativeAnalysis(
@@ -151,7 +154,7 @@ export function createEditorAnalysisController(options: CreateEditorAnalysisCont
     position: Monaco.IPosition,
     requestDocumentKey: string,
     requestLanguage: SupportedEditorLanguageId,
-    freshness: ReturnType<typeof createFreshnessScope>,
+    freshness: EditorFreshnessScope,
   ): Promise<void> {
     if (requestLanguage !== 'json') {
       clearJsonBlockSelectionForDocument(requestDocumentKey);

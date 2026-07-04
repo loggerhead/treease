@@ -625,7 +625,7 @@
       }
     },
     callWorker: (method, input) => callSharedWasmWorker(method as any, input),
-    onStreamFinalAnalysis: (documentKey, language, revision, analysis) => {
+    onStreamFinalAnalysis: (documentKey, language, revision, _analysis) => {
       if (
         !isDocumentRevisionGuardCurrent(
           { documentKey, revision },
@@ -635,7 +635,6 @@
         return;
       }
       const requestId = ++treeStateToken;
-      void analysis;
       clearTreeState(requestId, 'graph', revision);
     },
     onStreamFinalRedraw: (mode, revision, guard) => {
@@ -858,11 +857,8 @@
       }
       emitReveal(path, target, source);
     },
-    onRegisteredTargetClick: async ({ path, target, cell, scope }) => {
+    onRegisteredTargetClick: async ({ path, scope }) => {
       if (scope !== 'root') return;
-      if (shouldIgnoreSubgraphOpenCell(cell)) return;
-      void cell;
-      void target;
       await openSubgraphWorkspacePath(path, -1);
     },
     commitProbe: async ({ cell, kind }, text) => {
@@ -924,15 +920,12 @@
 
   function publishTreeState(
     requestId: number,
-    tree: TreeNode | null,
-    value: unknown,
+    _tree: TreeNode | null,
+    _value: unknown,
     source: 'editor' | 'graph',
     revision: number,
-    snapshotId?: SnapshotId | null,
+    _snapshotId?: SnapshotId | null,
   ) {
-    void tree;
-    void value;
-    void snapshotId;
     const accepted = requestId === treeStateToken;
     if (!accepted) return false;
     treeState.set({ tree: null, value: null, source, revision });
@@ -943,9 +936,8 @@
     requestId: number,
     source: 'editor' | 'graph',
     revision: number,
-    snapshotId?: SnapshotId | null,
+    _snapshotId?: SnapshotId | null,
   ) {
-    void snapshotId;
     const accepted = requestId === treeStateToken;
     if (!accepted) return false;
     treeState.set({ tree: null, value: null, source, revision });
@@ -1294,7 +1286,6 @@
   ): Promise<void> {
     if (shouldIgnoreSubgraphOpenCell(payload.cell)) return;
     emitReveal(payload.path, payload.target, 'click');
-    void payload.cell;
     await openSubgraphWorkspacePath(payload.path, parentAbsoluteIndex);
   }
 
@@ -1521,6 +1512,14 @@
     clearSearchHighlight();
   }
 
+  function resetAppliedGraphHighlightState(options?: { clearHighlight?: boolean }): void {
+    if (options?.clearHighlight) {
+      clearSearchHighlight();
+    }
+    lastAppliedGraphHighlightSignature = '';
+    lastAppliedGraphHighlightRevision = -1;
+  }
+
   export function zoomIn() {
     applyZoom(1.1);
   }
@@ -1646,16 +1645,11 @@
     const graphHighlightSignature = buildGraphHighlightSignature(graphHighlight, buildPathKey);
     const appliedRevision = $graphAppliedRevision;
     if (isFullEditInteractionBlocked()) {
-      clearSearchHighlight();
-      lastAppliedGraphHighlightSignature = '';
-      lastAppliedGraphHighlightRevision = -1;
+      resetAppliedGraphHighlightState({ clearHighlight: true });
     } else if (!graphHighlightSignature) {
-      clearSearchHighlight();
-      lastAppliedGraphHighlightSignature = '';
-      lastAppliedGraphHighlightRevision = -1;
+      resetAppliedGraphHighlightState({ clearHighlight: true });
     } else if (!enableRevealSync) {
-      lastAppliedGraphHighlightSignature = '';
-      lastAppliedGraphHighlightRevision = -1;
+      resetAppliedGraphHighlightState();
     } else if (
       shouldApplyGraphHighlight({
         hasLeafer: Boolean(leafer),

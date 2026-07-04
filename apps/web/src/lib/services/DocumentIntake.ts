@@ -26,6 +26,26 @@ export type RunIntakeJobParams = {
   isFresh?: () => boolean;
 };
 
+function createFailedIntakeResult(params: {
+  documentKey: string;
+  revision: number;
+  resultStatus: IntakeResult['resultStatus'];
+  analysis?: DocumentAnalysisResult | null;
+  sourceText?: string | null;
+  error: string;
+}): IntakeResult {
+  return {
+    status: 'failed',
+    resultStatus: params.resultStatus,
+    documentKey: params.documentKey,
+    revision: params.revision,
+    snapshotId: null,
+    analysis: params.analysis ?? null,
+    sourceText: params.sourceText ?? null,
+    error: params.error,
+  };
+}
+
 /**
  * Run a complete intake lifecycle:
  *   start job → stream text → close → collect result
@@ -41,16 +61,12 @@ export async function runIntakeJob(params: RunIntakeJobParams): Promise<IntakeRe
   const { documentKey, language, text, settings, builderConfig, revision, isFresh } = params;
 
   if (isFresh && !isFresh()) {
-    return {
-      status: 'failed',
-      resultStatus: 'cancelled',
+    return createFailedIntakeResult({
       documentKey,
       revision,
-      snapshotId: null,
-      analysis: null,
-      sourceText: null,
+      resultStatus: 'cancelled',
       error: 'cancelled: operation is no longer fresh',
-    };
+    });
   }
 
   let result;
@@ -63,42 +79,32 @@ export async function runIntakeJob(params: RunIntakeJobParams): Promise<IntakeRe
       builderConfig,
     });
   } catch (error) {
-    return {
-      status: 'failed',
-      resultStatus: 'jobFailed',
+    return createFailedIntakeResult({
       documentKey,
       revision,
-      snapshotId: null,
-      analysis: null,
-      sourceText: null,
+      resultStatus: 'jobFailed',
       error: error instanceof Error ? error.message : String(error),
-    };
+    });
   }
 
   if (isFresh && !isFresh()) {
-    return {
-      status: 'failed',
-      resultStatus: 'cancelled',
+    return createFailedIntakeResult({
       documentKey,
       revision,
-      snapshotId: null,
-      analysis: null,
-      sourceText: null,
+      resultStatus: 'cancelled',
       error: 'cancelled: result is stale',
-    };
+    });
   }
 
   if (result.status !== 'snapshotReady') {
-    return {
-      status: 'failed',
-      resultStatus: result.status,
+    return createFailedIntakeResult({
       documentKey,
       revision,
-      snapshotId: null,
+      resultStatus: result.status,
       analysis: result.analysis,
       sourceText: result.sourceText,
       error: result.status === 'parseFailed' ? 'parse failed' : 'no snapshot produced',
-    };
+    });
   }
 
   return {

@@ -1,7 +1,7 @@
 // 职责：Worker 侧 tree path handler：统一经 active snapshot 查询 tree path / span / reveal
 import { querySnapshot, type PathSeg, type QueryResult, type SnapshotId, type SnapshotReadResult } from '@core-wasm/index';
 import { pathSegKeyValue } from '../../shared/path';
-import { PathSegTag, type PathSpan } from '@core-wasm/index'
+import { PathSegTag, type PathSpan } from '@core-wasm/index';
 import type { DocumentAnalysisCacheRuntime } from './document-runtime-state';
 import { postOk } from './logging';
 import type { GraphSearchTarget, WorkerContext, WorkerRequest } from './protocol';
@@ -176,17 +176,28 @@ export async function resolveSearchRevealTarget(
   return null;
 }
 
+function readMessageText(message: { text?: string | null }): string {
+  return message.text ?? '';
+}
+
+function requireSnapshotId(
+  ctx: WorkerContext,
+  messageId: number,
+  snapshotId: SnapshotId | null | undefined,
+): SnapshotId | null {
+  if (snapshotId != null) return snapshotId;
+  postOk(ctx, messageId, { status: 'snapshotNotReady' });
+  return null;
+}
+
 export async function handleTreePath(
   ctx: WorkerContext,
-  runtime: DocumentAnalysisCacheRuntime,
+  _runtime: DocumentAnalysisCacheRuntime,
   message: Extract<WorkerRequest, { type: 'treePath' }>,
 ): Promise<void> {
-  const text = message.text ?? '';
-  const snapshotId = message.snapshotId ?? null;
-  if (snapshotId == null) {
-    postOk(ctx, message.id, { status: 'snapshotNotReady' });
-    return;
-  }
+  const text = readMessageText(message);
+  const snapshotId = requireSnapshotId(ctx, message.id, message.snapshotId);
+  if (snapshotId == null) return;
   const byteOffset = byteOffsetFromRowColumn(text, message.row, message.column);
   const data: SnapshotReadResult<QueryResult> = await querySnapshot({
     documentKey: message.documentKey,
@@ -200,15 +211,12 @@ export async function handleTreePath(
 
 export async function handlePathSpan(
   ctx: WorkerContext,
-  runtime: DocumentAnalysisCacheRuntime,
+  _runtime: DocumentAnalysisCacheRuntime,
   message: Extract<WorkerRequest, { type: 'pathSpan' }>,
 ): Promise<void> {
-  const text = message.text ?? '';
-  const snapshotId = message.snapshotId ?? null;
-  if (snapshotId == null) {
-    postOk(ctx, message.id, { status: 'snapshotNotReady' });
-    return;
-  }
+  const text = readMessageText(message);
+  const snapshotId = requireSnapshotId(ctx, message.id, message.snapshotId);
+  if (snapshotId == null) return;
   const result: SnapshotReadResult<QueryResult> = await querySnapshot({
     documentKey: message.documentKey,
     snapshotId,

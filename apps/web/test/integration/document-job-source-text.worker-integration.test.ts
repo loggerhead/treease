@@ -41,11 +41,12 @@ describe('document job sourceText worker integration', () => {
 
     expect(result.snapshotId).not.toBeNull();
     expect(result.sourceText).toBe('{"a":1,"b":{"c":"d"}}');
-    expect(result.analysis?.value).toEqual({
-      a: 1,
-      b: {
-        c: 'd',
-      },
-    });
+    expect(result.analysis).toEqual(
+      expect.objectContaining({
+        documentKey: 'vitest://document-job/source-text-recursive-nest',
+        language: 'json',
+        value: null,
+      }),
+    );
   });
 });

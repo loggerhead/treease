@@ -24,18 +24,29 @@ export type DocumentCommitResult = {
   jobHandle: number;
   batch: EventBatch;
 };
+
 function rejectedBatch(code: string, detail: string): EventBatch {
   const terminal: JobTerminal = { type: 'rejected', code, detail };
   return { requestSeq: 0, events: [], terminal };
 }
 
+function createRejectedCommitResult(code: string, detail: string): DocumentCommitResult {
+  return {
+    status: 'rejected',
+    snapshotId: null,
+    analysis: null,
+    sourceText: null,
+    jobHandle: 0,
+    batch: rejectedBatch(code, detail),
+  };
+}
+
 export async function commitApplyEdits(request: ApplyEditsCommitRequest): Promise<DocumentCommitResult> {
   if (request.baseSnapshotId == null) {
-    const batch = rejectedBatch(
+    return createRejectedCommitResult(
       'missing_base_snapshot',
       'ApplyEdits requires an authoritative base snapshot',
     );
-    return { status: 'rejected', snapshotId: null, analysis: null, sourceText: null, jobHandle: 0, batch };
   }
 
   const { started, advance } = await startSharedGraphDocumentJob({

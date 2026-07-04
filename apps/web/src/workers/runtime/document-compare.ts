@@ -26,6 +26,15 @@ async function buildTextCompareResponse(left: string, right: string): Promise<Co
   return createTextCompareResponse(left, right, await diffText(left, right));
 }
 
+async function postTextCompare(
+  ctx: WorkerContext,
+  messageId: number,
+  left: string,
+  right: string,
+): Promise<void> {
+  postOk(ctx, messageId, await buildTextCompareResponse(left, right));
+}
+
 export async function handleCompare(
   ctx: WorkerContext,
   message: Extract<WorkerRequest, { type: 'compare' }>,
@@ -42,7 +51,7 @@ export async function handleCompare(
   }
 
   if (!sameLanguage) {
-    postOk(ctx, message.id, await buildTextCompareResponse(left, right));
+    await postTextCompare(ctx, message.id, left, right);
     return;
   }
 
@@ -60,5 +69,5 @@ export async function handleCompare(
     });
   }
 
-  postOk(ctx, message.id, await buildTextCompareResponse(left, right));
+  await postTextCompare(ctx, message.id, left, right);
 }

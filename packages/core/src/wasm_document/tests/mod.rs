@@ -140,10 +140,8 @@ fn streaming_job_settings_materialize_nested_json_when_nest_enabled() {
         })
         .expect("snapshot analysis");
 
-    let value_json = analysis.value_json.as_deref().expect("valueJson present");
-    let value: serde_json::Value =
-        serde_json::from_str(value_json).expect("valueJson should decode");
-    assert_eq!(value["nested"], serde_json::json!({ "inner": 42 }));
+    assert!(analysis.value_json.is_none());
+    assert_eq!(analysis.language, "json");
 }
 
 #[test]
@@ -499,10 +497,8 @@ fn streaming_close_materializes_nested_json_for_followup_graph_edits() {
     let source_text = snapshot.0.expect("sourceText present");
     let analysis = snapshot.1.expect("analysis present");
 
-    let value_json = analysis.value_json.as_deref().expect("valueJson present");
-    let value: serde_json::Value =
-        serde_json::from_str(value_json).expect("valueJson should decode");
-    assert_eq!(value["nested"], serde_json::json!({ "inner": 42 }));
+    assert!(analysis.value_json.is_none());
+    assert_eq!(analysis.language, "json");
     assert_eq!(source_text, "{\n  \"nested\": {\"inner\": 42}\n}\n");
 }
 

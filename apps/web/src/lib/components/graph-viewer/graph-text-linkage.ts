@@ -48,6 +48,16 @@ type GraphTextLinkageControllerDeps = {
   ) => void;
 };
 
+type RevealTarget = 'key' | 'value' | 'node';
+type RevealOptions = {
+  target?: RevealTarget;
+  navigate?: boolean;
+};
+
+type TableRowMetrics = {
+  rowOffsetY?: number;
+  rowHeight?: number;
+};
 
 export function createGraphTextLinkageController(deps: GraphTextLinkageControllerDeps) {
   let revealPathToken = 0;
@@ -275,6 +285,22 @@ export function createGraphTextLinkageController(deps: GraphTextLinkageControlle
     return null;
   }
 
+  function getTableRowMetrics(
+    targetRow: { boxArgs?: { y?: number; height?: number } } | undefined,
+    firstRow: { boxArgs?: { y?: number } } | undefined,
+    fallbackRowHeight?: number,
+  ): TableRowMetrics {
+    const rowOffsetY =
+      targetRow && firstRow ? Math.max(0, (targetRow.boxArgs?.y ?? 0) - (firstRow.boxArgs?.y ?? 0)) : undefined;
+    const rowHeight =
+      targetRow?.boxArgs?.height && targetRow.boxArgs.height > 0
+        ? Number(targetRow.boxArgs.height)
+        : fallbackRowHeight && fallbackRowHeight > 0
+          ? Number(fallbackRowHeight)
+          : undefined;
+    return { rowOffsetY, rowHeight };
+  }
+
   function findTableScrollFallback(path: PathSeg[]): {
     scrollContext: NonNullable<ReturnType<typeof getScrollContext>>;
     rowIndex: number;
@@ -287,14 +313,7 @@ export function createGraphTextLinkageController(deps: GraphTextLinkageControlle
       const { node } = resolveNodeForPath(indexedTarget.tablePath);
       const targetRow = node?.table?.rows?.[indexedTarget.rowIndex];
       const firstRow = node?.table?.rows?.[0];
-      const rowOffsetY =
-        targetRow && firstRow ? Math.max(0, (targetRow.boxArgs.y ?? 0) - (firstRow.boxArgs.y ?? 0)) : undefined;
-      const rowHeight =
-        targetRow?.boxArgs.height && targetRow.boxArgs.height > 0
-          ? Number(targetRow.boxArgs.height)
-          : node?.table?.rowHeight && node.table.rowHeight > 0
-            ? Number(node.table.rowHeight)
-            : undefined;
+      const { rowOffsetY, rowHeight } = getTableRowMetrics(targetRow, firstRow, node?.table?.rowHeight);
       for (const candidate of uniqueEntries) {
         const candidatePath = candidate.cell?.path;
         if (!Array.isArray(candidatePath) || candidatePath.length <= indexedTarget.rowSegIndex) continue;
@@ -337,14 +356,7 @@ export function createGraphTextLinkageController(deps: GraphTextLinkageControlle
 
     const targetRow = node.table.rows[rowIndex];
     const firstRow = node.table.rows[0];
-    const rowOffsetY =
-      targetRow && firstRow ? Math.max(0, (targetRow.boxArgs.y ?? 0) - (firstRow.boxArgs.y ?? 0)) : undefined;
-    const rowHeight =
-      targetRow?.boxArgs.height && targetRow.boxArgs.height > 0
-        ? Number(targetRow.boxArgs.height)
-        : node.table.rowHeight && node.table.rowHeight > 0
-          ? Number(node.table.rowHeight)
-          : undefined;
+    const { rowOffsetY, rowHeight } = getTableRowMetrics(targetRow, firstRow, node.table.rowHeight);
 
     for (const candidate of uniqueEntries) {
       const candidatePath = candidate.cell?.path;
@@ -379,7 +391,11 @@ export function createGraphTextLinkageController(deps: GraphTextLinkageControlle
     });
   }
 
-  function revealPathInternal(path: PathSeg[], options?: { target?: 'key' | 'value' | 'node'; navigate?: boolean }): void {
+  function hasRenderableEntry(candidate: ReturnType<typeof getCellEntry>): boolean {
+    return !!(candidate?.row || candidate?.key || candidate?.value);
+  }
+
+  function revealPathInternal(path: PathSeg[], options?: RevealOptions): void {
     const cellBoxByPathMap = deps.getCellBoxByPathMap();
     const nodeBoxMap = deps.getNodeBoxMap();
     const renderConfig = deps.getRenderConfig();
@@ -392,8 +408,6 @@ export function createGraphTextLinkageController(deps: GraphTextLinkageControlle
         entry = getCellEntry(cellBoxByPathMap, path);
       }
     }
-    const hasRenderableEntry = (candidate: ReturnType<typeof getCellEntry>): boolean =>
-      !!(candidate?.row || candidate?.key || candidate?.value);
     let missingRenderableContext = !hasRenderableEntry(entry) && renderHandle == null && !node;
     if (missingRenderableContext && options?.navigate) {
       scrollRowIntoViewFromFallback(path);
@@ -434,24 +448,7 @@ export function createGraphTextLinkageController(deps: GraphTextLinkageControlle
     }
   }
 
-  function revealSearchResult(result: GraphTextLinkageSearchResult): void {
-    if (!result?.path?.length) return;
-    const token = (revealPathToken += 1);
-    const run = async () => {
-      await ensurePathIndex(result.path);
-      if (token !== revealPathToken) return;
-      revealPathInternal(result.path, { target: result.target, navigate: true });
-      await Promise.resolve();
-      await ensurePathIndex(result.path);
-      if (token !== revealPathToken) return;
-      revealPathInternal(result.path, { target: result.target, navigate: false });
-      emitReveal(result.path, result.target, 'search');
-    };
-    void run();
-  }
-
-  function revealPath(path: PathSeg[], options?: { target?: 'key' | 'value' | 'node'; navigate?: boolean }): void {
-    if (!path || path.length === 0) return;
+  function runRevealSequence(path: PathSeg[], options?: RevealOptions, afterStable?: () => void): void {
     const token = (revealPathToken += 1);
     const run = async () => {
       await ensurePathIndex(path);
@@ -462,8 +459,21 @@ export function createGraphTextLinkageController(deps: GraphTextLinkageControlle
       await ensurePathIndex(path);
       if (token !== revealPathToken) return;
       revealPathInternal(path, { ...options, navigate: false });
+      afterStable?.();
     };
     void run();
+  }
+
+  function revealSearchResult(result: GraphTextLinkageSearchResult): void {
+    if (!result?.path?.length) return;
+    runRevealSequence(result.path, { target: result.target, navigate: true }, () => {
+      emitReveal(result.path, result.target, 'search');
+    });
+  }
+
+  function revealPath(path: PathSeg[], options?: RevealOptions): void {
+    if (!path || path.length === 0) return;
+    runRevealSequence(path, options);
   }
 
   function refreshActiveHighlight(): void {
