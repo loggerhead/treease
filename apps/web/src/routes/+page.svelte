@@ -1,13 +1,10 @@
 <script lang="ts">
   import { assetUrl } from '$lib/assets';
   import HomeHeroDemoDeck from '$lib/components/HomeHeroDemoDeck.svelte';
+  import LandingHeader from '$lib/components/LandingHeader.svelte';
+  import { homeHeaderNavItems } from '$lib/navigation/home-header-nav';
 
   let cliInstallExpanded = false;
-
-  const navItems = [
-    { href: '#features', label: 'Features' },
-    { href: '#faq', label: 'FAQ' }
-  ];
 
   const valuePoints = [
     'Open a local file and see its structure without leaving the source.',
@@ -46,23 +43,7 @@
 
 <div class="landing">
   <div class="landing-shell">
-    <header class="site-header">
-      <a class="brand" href="#top" aria-label="Treease home">
-        <img class="brand-logo" src={assetUrl('/treease-logo.png')} alt="Treease logo" />
-        <span class="brand-copy">
-          <span class="brand-mark">Treease</span>
-          <span class="brand-note">Structured text workspace</span>
-        </span>
-      </a>
-
-      <nav class="site-nav" aria-label="Primary">
-        {#each navItems as item}
-          <a href={item.href}>{item.label}</a>
-        {/each}
-      </nav>
-
-      <a class="header-cta" href="/editor">Open editor</a>
-    </header>
+    <LandingHeader navItems={[...homeHeaderNavItems]} />
 
     <main class="landing-main" id="top" aria-labelledby="hero-title">
       <section class="hero">
@@ -404,72 +385,6 @@
     padding: 28px 24px 72px;
   }
 
-  .site-header {
-    display: grid;
-    align-items: center;
-    grid-template-columns: minmax(0, 1fr) auto auto;
-    gap: 24px;
-    min-height: 68px;
-    margin-bottom: 42px;
-    padding: 0 0 18px;
-    border-bottom: 1px solid var(--line);
-  }
-
-  .brand {
-    display: inline-flex;
-    align-items: center;
-    gap: 12px;
-    min-width: 0;
-    color: inherit;
-    text-decoration: none;
-  }
-
-  .brand-logo {
-    width: 44px;
-    height: 44px;
-    flex: 0 0 auto;
-    object-fit: contain;
-    filter: drop-shadow(0 10px 18px rgba(45, 99, 226, 0.16));
-  }
-
-  .brand-copy {
-    display: inline-flex;
-    flex-direction: column;
-    min-width: 0;
-  }
-
-  .brand-mark {
-    font-family: var(--font-display);
-    font-size: 18px;
-    font-weight: 700;
-    letter-spacing: -0.03em;
-  }
-
-  .brand-note {
-    color: var(--muted-soft);
-    font-size: 13px;
-    letter-spacing: 0.02em;
-    white-space: nowrap;
-  }
-
-  .site-nav {
-    display: inline-flex;
-    align-items: center;
-    gap: 18px;
-  }
-
-  .site-nav a {
-    color: var(--muted);
-    font-size: 14px;
-    font-weight: 600;
-    text-decoration: none;
-    transition: color 160ms ease;
-  }
-
-  .site-nav a:hover {
-    color: var(--accent-strong);
-  }
-
   .site-footer,
   .site-footer__links {
     display: inline-flex;
@@ -497,7 +412,6 @@
     color: var(--accent-strong);
   }
 
-  .header-cta,
   .primary-cta,
   .secondary-cta {
     display: inline-flex;
@@ -517,7 +431,6 @@
       box-shadow 160ms ease;
   }
 
-  .header-cta,
   .primary-cta {
     background: linear-gradient(135deg, var(--accent) 0%, #4a7dff 100%);
     color: #fff;
@@ -531,7 +444,6 @@
     box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
   }
 
-  .header-cta:hover,
   .primary-cta:hover {
     transform: translateY(-1px);
     box-shadow: 0 18px 34px rgba(45, 99, 226, 0.28);
@@ -542,7 +454,6 @@
     background: #ffffff;
   }
 
-  .header-cta:active,
   .primary-cta:active,
   .secondary-cta:active {
     transform: translateY(1px) scale(0.99);
@@ -1033,8 +944,6 @@
     transform: translateY(18px);
   }
 
-  .site-nav a:focus-visible,
-  .header-cta:focus-visible,
   .primary-cta:focus-visible,
   .secondary-cta:focus-visible,
   .faq-item summary:focus-visible,
@@ -1096,18 +1005,6 @@
       padding: 20px 18px 46px;
     }
 
-    .site-header {
-      grid-template-columns: minmax(0, 1fr) auto;
-      gap: 12px;
-      margin-bottom: 28px;
-      padding: 0 0 14px;
-    }
-
-    .site-nav,
-    .brand-note {
-      display: none;
-    }
-
     h1 {
       max-width: 12ch;
       font-size: clamp(2.8rem, 11vw, 4.3rem);
@@ -1132,7 +1029,6 @@
       padding-right: 0;
     }
 
-    .header-cta,
     .primary-cta,
     .secondary-cta {
       width: 100%;
@@ -1268,7 +1164,6 @@
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .header-cta,
     .primary-cta,
     .secondary-cta {
       transition: none;
