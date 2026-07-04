@@ -16,6 +16,7 @@
     editorRevision,
     graphAppliedRevision,
     languageId as languageIdStore,
+    sourceText as sourceTextStore,
     type GraphHighlightTarget,
     type TreeSelectionSource,
   } from '../../lib/store/editor-store';
@@ -103,6 +104,8 @@
   let showTopBar = true;
   let showBottomBar = true;
   let urlPreset: ResolvedEditorUrlPreset | null = null;
+  let mirrorViewerFromSource = false;
+  let lastMirroredViewerText = '';
   const maxTabs = 9;
   const wasmUrl = getDefaultWasmURL();
   type ScrollPosition = { scrollTop: number; scrollLeft: number };
@@ -135,12 +138,18 @@
     },
   };
 
+  function shouldMirrorCommandResultToViewer(nextPreset: ResolvedEditorUrlPreset): boolean {
+    return !nextPreset.ui.editor && nextPreset.ui.viewer;
+  }
+
   function applyUrlPresetUi(nextPreset: ResolvedEditorUrlPreset): void {
     showEditorPane = nextPreset.ui.editor;
     showViewerPane = nextPreset.ui.viewer;
     showTopBar = nextPreset.ui.topbar;
     showBottomBar = nextPreset.ui.bottombar;
     viewerViewMode = nextPreset.initialViewerMode;
+    mirrorViewerFromSource = false;
+    lastMirroredViewerText = '';
   }
 
   function setUrlPresetBridgeState(nextPreset: ResolvedEditorUrlPreset): void {
@@ -149,6 +158,19 @@
       warnings: [...nextPreset.telemetry.ignored, ...nextPreset.notes],
       viewerMode: nextPreset.initialViewerMode,
     });
+  }
+
+  async function waitForEditorCommandResult(previousText: string): Promise<string> {
+    let nextText = $sourceTextStore || editorRef?.getActiveText() || previousText;
+    if (nextText !== previousText) return nextText;
+    const deadline = Date.now() + 10_000;
+    while (Date.now() < deadline) {
+      await tick();
+      await new Promise<void>((resolve) => setTimeout(resolve, 16));
+      nextText = $sourceTextStore || editorRef?.getActiveText() || previousText;
+      if (nextText !== previousText) return nextText;
+    }
+    return nextText;
   }
 
   async function applyEditorUrlPreset(nextPreset: ResolvedEditorUrlPreset): Promise<void> {
@@ -177,6 +199,7 @@
     if (presetText !== null) {
       const nextLanguage = presetTextLanguage ?? (editorRef?.getActiveLanguage() ?? $languageIdStore);
       await editorRef?.importAs(nextLanguage, presetText, nextLanguage);
+      await editorRef?.waitForIdle?.();
     } else if (nextPreset.language) {
       languageIdStore.set(nextPreset.language);
       await tick();
@@ -204,7 +227,16 @@
         }
         await viewerRef?.runCompare?.();
       } else {
+        const previousText = editorRef?.getActiveText() ?? '';
         await urlCommandHandlers[nextPreset.command]();
+        await editorRef?.waitForIdle?.();
+        if (shouldMirrorCommandResultToViewer(nextPreset)) {
+          mirrorViewerFromSource = true;
+          const nextText = await waitForEditorCommandResult(previousText);
+          lastMirroredViewerText = nextText;
+          viewerViewMode = 'text';
+          await viewerRef?.showTextPreview(nextText, editorRef?.getActiveLanguage() ?? effectiveLanguage);
+        }
       }
     }
 
@@ -272,11 +304,24 @@
     viewerRuntimeLoading = payload.loading;
   }
 
+  $: runtimeGateViewMode = showViewerPane ? viewerViewMode : 'text';
   $: synchronizedRuntimeLoading = computeSynchronizedRuntimeLoading({
-    viewMode: viewerViewMode,
+    viewMode: runtimeGateViewMode,
     editorRuntimeLoading,
     graphRuntimeLoading: viewerRuntimeLoading,
   });
+  $: if (
+    mirrorViewerFromSource &&
+    showViewerPane &&
+    !showEditorPane &&
+    viewerViewMode === 'text' &&
+    viewerRef &&
+    $sourceTextStore &&
+    $sourceTextStore !== lastMirroredViewerText
+  ) {
+    lastMirroredViewerText = $sourceTextStore;
+    void viewerRef.showTextPreview($sourceTextStore, editorRef?.getActiveLanguage() ?? $languageIdStore);
+  }
   $: syncScrollEnabled = $settings?.interaction?.enableSyncScroll ?? true;
 
   async function handleImportFileStream(payload: {
@@ -545,7 +590,13 @@
     splitLayoutConfig,
   ));
   $: ({ leftPaneCollapsed, rightPaneCollapsed, collapsedControlFlyX } = resolveSplitLayoutMotion(visibleLayoutMode));
-  $: shellRowsClass = `${showTopBar ? 'var(--topbar-height)' : '0px'} 1fr ${showBottomBar ? 'var(--bottombar-height)' : '0px'}`;
+  $: shellRowsClass = showTopBar
+    ? showBottomBar
+      ? 'var(--topbar-height) minmax(0, 1fr) var(--bottombar-height)'
+      : 'var(--topbar-height) minmax(0, 1fr)'
+    : showBottomBar
+      ? 'minmax(0, 1fr) var(--bottombar-height)'
+      : 'minmax(0, 1fr)';
 
   onMount(() => {
     urlPreset ??= resolveEditorUrlPreset(window.location.search);
@@ -568,7 +619,7 @@
 </svelte:head>
 
 <main class="grid h-screen w-screen bg-[var(--app-bg)] text-[var(--text-primary)]">
-  <div class="grid min-h-0 min-w-0 overflow-hidden" style:grid-template-rows={shellRowsClass}>
+  <div class="grid h-full min-h-0 min-w-0 overflow-hidden" style:grid-template-rows={shellRowsClass}>
     {#if showTopBar}
       <TopBar
         tabs={tabSummaries}

@@ -31,9 +31,7 @@ export function normalizeDocumentJobAnalysisResult(
   language: string,
   raw: DocumentJobAnalysisPayload | null | undefined,
 ): DocumentAnalysisResult | null {
-  return normalizeDocumentJobAnalysisPayload(documentKey, language, raw, {
-    mapTree: (tree) => clonePlainTreeNode(tree as WasmTreeNode),
-  });
+  return normalizeDocumentJobAnalysisPayload(documentKey, language, raw);
 }
 
 async function parseValueToTreeNode(language: string, text: string, nest: boolean): Promise<WasmTreeNode> {

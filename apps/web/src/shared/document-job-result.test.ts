@@ -58,7 +58,7 @@ describe('normalizeDocumentJobAnalysisPayload', () => {
     });
     expect(Array.from(new Uint32Array(result!.semanticTokens))).toEqual([0, 1, 2, 3]);
   });
-  it('allows tree and value mapping for worker-side callers', () => {
+  it('ignores full tree and valueJson payloads', () => {
     const result = normalizeDocumentJobAnalysisPayload(
       'doc-2',
       'json',
@@ -66,14 +66,10 @@ describe('normalizeDocumentJobAnalysisPayload', () => {
         tree: { id: 'tree' } as any,
         value: { name: 'Alice' },
       }),
-      {
-        mapTree: (tree) => ({ ...tree as Record<string, unknown>, cloned: true }) as any,
-        mapValue: (value) => ({ ...(value as Record<string, unknown>) }),
-      },
     );
 
-    expect(result?.tree).toEqual({ id: 'tree', cloned: true });
-    expect(result?.value).toEqual({ name: 'Alice' });
+    expect(result?.tree).toBeNull();
+    expect(result?.value).toBeNull();
   });
 });
 

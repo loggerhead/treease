@@ -29,6 +29,21 @@ const defaultGraphDocumentFormatting = {
   alignObjectArrays: true,
 };
 
+function toLightweightDocumentAnalysis(
+  documentKey: string,
+  language: string,
+  analysis: DocumentAnalysisResult | null,
+): DocumentAnalysisResult | null {
+  if (!analysis) return null;
+  return {
+    ...analysis,
+    documentKey,
+    tree: null,
+    value: null,
+    language: analysis.language || language,
+  };
+}
+
 export type ParsedTreeData = {
   tree: TreeNode;
   value: unknown;
@@ -433,7 +448,11 @@ export function createGraphRenderSession(deps: GraphRenderSessionDeps) {
       params.documentKey,
       params.language,
       params.revision,
-      params.analysis ?? normalizeDocumentJobAnalysisPayload(params.documentKey, params.language, finalEvent.analysis),
+      toLightweightDocumentAnalysis(
+        params.documentKey,
+        params.language,
+        params.analysis ?? normalizeDocumentJobAnalysisPayload(params.documentKey, params.language, finalEvent.analysis),
+      ),
       snapshotId,
     );
 
@@ -871,12 +890,8 @@ export function createGraphRenderSession(deps: GraphRenderSessionDeps) {
       );
       if (!freshness.isCurrent()) return null;
       const requestId = deps.nextTreeToken();
-      if (analysis?.tree) {
-        deps.publishTreeState(requestId, analysis.tree as TreeNode, analysis.value, 'graph', selection.revision, snapshotId);
-      } else {
-        deps.clearTreeState(requestId, 'graph', selection.revision, snapshotId);
-        deps.setErrorMessage('JSON block graph analysis unavailable');
-      }
+      void analysis;
+      deps.clearTreeState(requestId, 'graph', selection.revision, snapshotId);
       deps.completeStreamProgress();
       await flushSceneAndRedraw(
         'json-block',

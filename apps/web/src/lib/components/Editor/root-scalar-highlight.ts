@@ -1,8 +1,20 @@
 import type * as Monaco from 'monaco-editor';
 
 import type { EditorAnalysisLike } from './editor-analysis-apply';
+import type { RootValueKind } from '../../services/SnapshotProjectionService';
 
 export type RootScalarHighlightKind = 'str' | 'int' | 'float' | 'boolean' | 'nil';
+
+export function resolveRootScalarHighlightKindFromSnapshotKind(
+  value: RootValueKind | null | undefined,
+): RootScalarHighlightKind | null {
+  if (value === 'string') return 'str';
+  if (value === 'int') return 'int';
+  if (value === 'float') return 'float';
+  if (value === 'boolean') return 'boolean';
+  if (value === 'null') return 'nil';
+  return null;
+}
 
 export function resolveRootScalarHighlightKindFromValue(value: unknown): RootScalarHighlightKind | null {
   if (typeof value === 'string') return 'str';

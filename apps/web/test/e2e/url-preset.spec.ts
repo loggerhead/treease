@@ -8,6 +8,7 @@ test('viewer-only preset still initializes hidden editor and executes commands',
   await page.goto('/editor?ui=viewer&text=%7B%22b%22%3A2,%22a%22%3A1%7D&command=format');
 
   await waitForMonacoHook(page, 'source-editor');
+  await waitForMonacoHook(page, 'right-editor');
   await expect
     .poll(async () => (await readEditorState(page)).sourceText.includes('\n'))
     .toBe(true);
@@ -23,15 +24,49 @@ test('viewer-only preset still initializes hidden editor and executes commands',
   await expect(page.getByTestId('right-pane')).toHaveCount(1);
 });
 
+test('editor and viewer preset keeps the split workspace visible', async ({ page }) => {
+  await page.goto('/editor?ui=editor,viewer');
+
+  await waitForEditorReady(page);
+  await expect(page.getByTestId('left-pane')).toBeVisible();
+  await expect(page.getByTestId('right-pane')).toBeVisible();
+  await expect(page.getByTestId('splitter-divider')).toBeVisible();
+  await expect(page.getByTestId('monaco-source-editor')).toBeVisible();
+});
+
+test('editor-only preset does not keep waiting for graph runtime', async ({ page }) => {
+  await page.goto('/editor?ui=editor');
+
+  await waitForMonacoHook(page, 'source-editor');
+  await expect(page.getByTestId('left-pane')).toBeVisible();
+  await expect(page.getByTestId('right-pane')).toHaveCount(0);
+  await expect(page.getByTestId('monaco-source-editor')).toBeVisible();
+  await expect(page.getByText('Waiting for graph runtime...')).toHaveCount(0);
+});
+
 test('rightText preset forces viewer text mode and populates the right editor', async ({ page }) => {
   await page.goto('/editor?ui=editor&text=%7B%22left%22%3A1%7D&rightText=%7B%22right%22%3A2%7D');
 
   await waitForMonacoHook(page, 'right-editor');
   await expect.poll(async () => getMonacoValue(page, 'right-editor')).toContain('"right": 2');
+  await expect
+    .poll(async () => JSON.parse((await readEditorState(page)).tempModel.scratchText))
+    .toEqual({ right: 2 });
 
   const presetState = await evaluateTreease(page, (treease) => treease.test.getUrlPresetState());
   expect(presetState?.finalUi.viewer).toBe(true);
   expect(presetState?.viewerMode).toBe('text');
+});
+
+test('url compare command reads the right side from workspace state', async ({ page }) => {
+  await page.goto('/editor?text=%7B%22service%22%3A%7B%22port%22%3A8080%7D%7D&rightText=%7B%0A%20%20%22service%22%3A%20%7B%22port%22%3A%209090%7D%0A%7D&command=compare');
+
+  await waitForMonacoHook(page, 'right-editor');
+  await expect(page.getByText('Compare completed (differences found)')).toBeVisible();
+  await expect.poll(async () => (await readEditorState(page)).tempModel.scratchText).toContain('"port": 9090');
+  await expect
+    .poll(async () => Number((await page.getByTestId('right-panel-dropzone').getAttribute('data-compare-highlight-count')) ?? '0'))
+    .toBeGreaterThan(0);
 });
 
 test('textUrl preset fetches same-origin json into the source editor', async ({ page }) => {

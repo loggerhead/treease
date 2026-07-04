@@ -163,7 +163,7 @@ fn wasm_document_plan_then_apply_nested_value_edit_matches_web_probe_cases() {
 }
 
 #[test]
-fn wasm_document_query_snapshot_prefers_latest_snapshot_for_document_when_request_is_stale() {
+fn wasm_document_query_snapshot_rejects_stale_snapshot_for_document() {
     let _guard = lock_test_mutex();
     reset_test_state();
 
@@ -189,15 +189,90 @@ fn wasm_document_query_snapshot_prefers_latest_snapshot_for_document_when_reques
     })
     .expect("query should execute");
 
-    match result {
-        SnapshotReadResult::Ready { data } => {
-            assert_eq!(data.anchors.len(), 1);
-            assert_eq!(data.anchors[0].path, "$.Result.Blocks[0].Id");
-        }
-        SnapshotReadResult::SnapshotNotReady => {
-            panic!("latest snapshot for query-current should be available")
-        }
-    }
+    assert!(matches!(result, SnapshotReadResult::SnapshotNotReady));
+}
+
+#[test]
+fn wasm_document_query_snapshot_returns_lightweight_projections() {
+    let _guard = lock_test_mutex();
+    reset_test_state();
+
+    let source = r#"{"user":{"name":"Ada","age":37},"items":[true,null]}"#;
+    let (snapshot_id, _) = analyze_document_via_job("query-projections", "json", &[source]);
+
+    let root = query_snapshot_impl(QuerySnapshotRequest {
+        document_key: "query-projections".to_owned(),
+        snapshot_id: snapshot_id.0 as u32,
+        query_kind: QueryKind::RootValueKind as u8,
+        has_path: false,
+        path_pattern: String::new(),
+        span_start: 0,
+        span_end: 0,
+        target: QueryTargetKind::Value,
+    })
+    .expect("root projection should execute");
+    let root = match root {
+        SnapshotReadResult::Ready { data } => data,
+        SnapshotReadResult::SnapshotNotReady => panic!("snapshot should be ready"),
+    };
+    assert_eq!(root.root_value_kind.as_deref(), Some("object"));
+
+    let path_value = query_snapshot_impl(QuerySnapshotRequest {
+        document_key: "query-projections".to_owned(),
+        snapshot_id: snapshot_id.0 as u32,
+        query_kind: QueryKind::PathValue as u8,
+        has_path: true,
+        path_pattern: "$.user.name".to_owned(),
+        span_start: 0,
+        span_end: 0,
+        target: QueryTargetKind::Value,
+    })
+    .expect("path value projection should execute");
+    let path_value = match path_value {
+        SnapshotReadResult::Ready { data } => data.path_value.expect("path value present"),
+        SnapshotReadResult::SnapshotNotReady => panic!("snapshot should be ready"),
+    };
+    assert_eq!(path_value.value_type, "string");
+    assert_eq!(path_value.value, "Ada");
+    assert_eq!(path_value.source_text, r#""Ada""#);
+
+    let preview = query_snapshot_impl(QuerySnapshotRequest {
+        document_key: "query-projections".to_owned(),
+        snapshot_id: snapshot_id.0 as u32,
+        query_kind: QueryKind::NodePreview as u8,
+        has_path: true,
+        path_pattern: "$.user.age".to_owned(),
+        span_start: 0,
+        span_end: 0,
+        target: QueryTargetKind::Value,
+    })
+    .expect("node preview projection should execute");
+    let preview = match preview {
+        SnapshotReadResult::Ready { data } => data.node_preview.expect("node preview present"),
+        SnapshotReadResult::SnapshotNotReady => panic!("snapshot should be ready"),
+    };
+    assert_eq!(preview.value_type, "number");
+    assert_eq!(preview.value, "37");
+
+    let labels = query_snapshot_impl(QuerySnapshotRequest {
+        document_key: "query-projections".to_owned(),
+        snapshot_id: snapshot_id.0 as u32,
+        query_kind: QueryKind::FieldLabels as u8,
+        has_path: false,
+        path_pattern: String::new(),
+        span_start: 0,
+        span_end: 0,
+        target: QueryTargetKind::Value,
+    })
+    .expect("field labels projection should execute");
+    let labels = match labels {
+        SnapshotReadResult::Ready { data } => data.field_labels,
+        SnapshotReadResult::SnapshotNotReady => panic!("snapshot should be ready"),
+    };
+    assert!(labels.contains(&"user".to_owned()));
+    assert!(labels.contains(&"name".to_owned()));
+    assert!(labels.contains(&"age".to_owned()));
+    assert!(labels.contains(&"items".to_owned()));
 }
 
 #[test]

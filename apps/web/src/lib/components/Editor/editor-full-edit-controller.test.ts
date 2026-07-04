@@ -80,6 +80,7 @@ describe('editor-full-edit-controller', () => {
 
   function createOptions(overrides: Record<string, unknown> = {}) {
     let modelValue = '{"a":1}';
+    const setSourceText = vi.fn();
     const model = {
       uri: { toString: () => 'model://test' },
       getLineCount: () => 3,
@@ -105,7 +106,13 @@ describe('editor-full-edit-controller', () => {
         modelValue = value;
         return true;
       }),
-      setSourceText: vi.fn(),
+      setEditorValueForFullEdit: vi.fn((value: string) => {
+        const changed = modelValue !== value;
+        modelValue = value;
+        setSourceText(value);
+        return changed;
+      }),
+      setSourceText,
       setDocumentKey: vi.fn(),
       applyImportLanguage: vi.fn(),
       updateActiveTempModel: vi.fn(),
@@ -191,7 +198,7 @@ describe('editor-full-edit-controller', () => {
     });
 
     expect(revision).toBe(5);
-    expect(options.setEditorValue).toHaveBeenCalledWith('{"x":1}');
+    expect(options.setEditorValueForFullEdit).toHaveBeenCalledWith('{"x":1}');
     expect(mockStartDocumentJobForGraph).toHaveBeenCalledWith(
       expect.objectContaining({
         documentKey: 'doc-test',
@@ -212,7 +219,7 @@ describe('editor-full-edit-controller', () => {
     });
 
     expect(revision).toBe(5);
-    expect(options.setEditorValue).toHaveBeenCalledWith('foo: bar\n');
+    expect(options.setEditorValueForFullEdit).toHaveBeenCalledWith('foo: bar\n');
     expect(editorStore.get().fullEditUiState.reason).toBe('tab-reactivate');
   });
 
@@ -317,7 +324,7 @@ describe('editor-full-edit-controller', () => {
     });
 
     await vi.waitFor(() => {
-      expect(options.setEditorValue).toHaveBeenLastCalledWith('{\n  "a": 1\n}');
+      expect(options.setEditorValueForFullEdit).toHaveBeenLastCalledWith('{\n  "a": 1\n}');
     });
     expect(mockStartDocumentJobForGraph).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -366,7 +373,7 @@ describe('editor-full-edit-controller', () => {
     });
 
     await vi.waitFor(() => {
-      expect(options.setEditorValue).toHaveBeenLastCalledWith(secondAuthoritativeText);
+      expect(options.setEditorValueForFullEdit).toHaveBeenLastCalledWith(secondAuthoritativeText);
     });
 
     firstIntake.resolve({
@@ -376,7 +383,7 @@ describe('editor-full-edit-controller', () => {
     });
 
     await vi.waitFor(() => {
-      expect(options.setEditorValue).toHaveBeenLastCalledWith(secondAuthoritativeText);
+      expect(options.setEditorValueForFullEdit).toHaveBeenLastCalledWith(secondAuthoritativeText);
     });
     expect(options.updateActiveTempModel).not.toHaveBeenCalled();
   });
@@ -467,9 +474,9 @@ describe('editor-full-edit-controller', () => {
     });
 
     await vi.waitFor(() => {
-      expect(options.setEditorValue).toHaveBeenCalledTimes(1);
+      expect(options.setEditorValueForFullEdit).toHaveBeenCalledTimes(1);
     });
-    expect(options.setEditorValue).toHaveBeenLastCalledWith('"{\\"a\\":1}"');
+    expect(options.setEditorValueForFullEdit).toHaveBeenLastCalledWith('"{\\"a\\":1}"');
     expect(mockStartDocumentJobForGraph).toHaveBeenCalledWith(
       expect.objectContaining({
         settings: expect.objectContaining({

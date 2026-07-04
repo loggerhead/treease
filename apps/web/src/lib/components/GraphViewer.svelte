@@ -24,6 +24,7 @@
   import { shouldShowGraphRuntimeLoading, type RuntimeStateEventDetail } from '../runtime-loading';
   import { callSharedWasmWorker } from '../wasm/wasm-worker-singleton';
   import { getActiveDocumentSnapshotId } from '../services/DocumentSessionService';
+  import { queryPathValue } from '../services/SnapshotProjectionService';
   import { getFullEditDocumentJobSession } from '../graph-stream/full-edit-document-job-session';
   import { buildReadablePath, type PathSeg } from '../store/tree-path';
   import { type MinimapViewData } from '../leafer-minimap';
@@ -94,9 +95,9 @@
   import type { EditorIO, GraphHighlightTarget } from '../store/editor-store';
   import { handleError } from '../utils/error-handler';
   import { GRAPH_CONFIG } from '../config/constants';
-  import { formatScalarLiteral, resolveGraphCellDisplayText } from '../graph/literal-display';
+  import { resolveGraphCellDisplayText } from '../graph/literal-display';
   import { type GraphCell, type GraphCellKind, type GraphNode, type ValueType } from '../graph/graph-viewer-render';
-  import { buildPathKey, getValueAtPath } from '../graph/graph-viewer-path';
+  import { buildPathKey } from '../graph/graph-viewer-path';
   import type { SubgraphWorkspaceGraphData } from './graph-viewer/graph-subgraph-workspace-types';
   import { isDocumentRevisionGuardCurrent } from '../guards/document-revision-guard';
   import {
@@ -152,7 +153,6 @@
   let graphRuntimeReady = false;
   let showRuntimeLoading = true;
   let renderRuntimeReady = false;
-  let currentData: unknown = null;
   let documentKeyValue = '';
   let languageIdValue: SupportedEditorLanguageId = editorLanguageFallback;
   let editorRevisionValue = 0;
@@ -463,7 +463,7 @@
   const emitReveal = graphTextLinkageController.emitReveal;
 
   const graphValueEditController = createGraphValueEditController({
-    getCurrentData: () => currentData,
+    getCurrentData: () => null,
     getSourceText: () => $sourceText ?? '',
     getDocumentKey: () => documentKeyValue,
     getLanguageId: () => languageIdValue,
@@ -622,10 +622,7 @@
         return;
       }
       const requestId = ++treeStateToken;
-      if (analysis?.tree) {
-        publishTreeState(requestId, analysis.tree as TreeNode, analysis.value, 'graph', revision);
-        return;
-      }
+      void analysis;
       clearTreeState(requestId, 'graph', revision);
     },
     onStreamFinalRedraw: (mode, revision, guard) => {
@@ -917,11 +914,12 @@
     revision: number,
     snapshotId?: SnapshotId | null,
   ) {
+    void tree;
+    void value;
     void snapshotId;
     const accepted = requestId === treeStateToken;
     if (!accepted) return false;
-    currentData = value;
-    treeState.set({ tree, value, source, revision });
+    treeState.set({ tree: null, value: null, source, revision });
     return true;
   }
 
@@ -934,7 +932,6 @@
     void snapshotId;
     const accepted = requestId === treeStateToken;
     if (!accepted) return false;
-    currentData = null;
     treeState.set({ tree: null, value: null, source, revision });
     return true;
   }
@@ -1103,27 +1100,16 @@
     };
   }
 
-  function inferWorkspaceValueType(value: unknown): ValueType {
-    if (value == null) return 'null';
-    if (Array.isArray(value)) return 'array';
-    if (typeof value === 'string') return 'string';
-    if (typeof value === 'number') return 'number';
-    if (typeof value === 'boolean') return 'boolean';
-    return 'object';
-  }
-
-  function buildSubgraphWorkspaceContentState(path: PathSeg[]): SubgraphWorkspaceContentState | null {
-    const value = getValueAtPath(currentData, path);
-    if (path.length > 0 && value === undefined) return null;
-    const valueType = inferWorkspaceValueType(value);
+  async function buildSubgraphWorkspaceContentState(path: PathSeg[]): Promise<SubgraphWorkspaceContentState | null> {
+    const snapshotId = getActiveDocumentSnapshotId(documentKeyValue);
+    const pathValue = await queryPathValue({ documentKey: documentKeyValue, snapshotId, path });
+    if (!pathValue) return null;
+    const valueType = pathValue.valueType as ValueType;
     if (valueType === 'object' || valueType === 'array') return null;
     return {
       tabId: `subgraph-content:${buildPathKey(path)}`,
       tabName: formatSubgraphWorkspacePath(path, renderConfig),
-      sourceText:
-        valueType === 'string' && typeof value === 'string'
-          ? JSON.stringify(value)
-          : formatScalarLiteral(value == null ? 'null' : String(value), valueType, languageIdValue),
+      sourceText: pathValue.displayText,
       valueType,
     };
   }
@@ -1176,7 +1162,7 @@
     const pathKey = buildPathKey(path);
     if (!pathKey) return null;
     const title = formatSubgraphWorkspacePath(path, renderConfig);
-    const content = buildSubgraphWorkspaceContentState(path);
+    const content = await buildSubgraphWorkspaceContentState(path);
     if (content) {
       return {
         path,

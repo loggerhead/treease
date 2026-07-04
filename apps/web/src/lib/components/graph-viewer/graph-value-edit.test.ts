@@ -49,12 +49,10 @@ describe('graph-value-edit', () => {
 
   it('uses replaceSourceText when worker returns a graph edit replace plan', async () => {
     const canonicalNode = scalarNode('next-value');
-    mocked.commitTextEdit.mockResolvedValue({
-      nextValue: 'next-value',
-      nextValueNode: canonicalNode,
-      preferKey: false,
-    });
     mocked.callSharedWasmWorker.mockImplementation(async (type: string) => {
+      if (type === 'parseValueForPath') {
+        return canonicalNode;
+      }
       if (type === 'planGraphValueEdit') {
         return {
           mode: 'replace',
@@ -92,7 +90,7 @@ describe('graph-value-edit', () => {
     const applied = await controller.applyGraphEdit({ path: [{ key: 'name' }], valueType: 'string' } as any, 'value', 'next-value');
 
     expect(applied).toBe(true);
-    expect(publishTreeState).toHaveBeenCalledWith(11, canonicalNode, 'next-value', 'graph', 8);
+    expect(publishTreeState).not.toHaveBeenCalled();
     expect(applyTextEdits).not.toHaveBeenCalled();
     expect(emitEditorMutation).toHaveBeenCalledWith({
       type: 'replaceSourceText',
@@ -100,25 +98,11 @@ describe('graph-value-edit', () => {
     });
   });
 
-  it('treats string value edits as semantic strings without calling parseValueForPath', async () => {
+  it('treats string value edits as snapshot-bound parsed replacements', async () => {
     const canonicalNode = scalarNode('next-value');
-    mocked.commitTextEdit.mockImplementation(async (_context, _cell, _target, _kind, valueParser) => {
-      const parsed = await valueParser({
-        language: 'json',
-        text: 'next-value',
-        rawEdit: 'next-value',
-        nest: true,
-        path: [{ key: 'name' }],
-        preferKey: false,
-      } as any);
-      return {
-        nextValue: parsed.value,
-        nextValueNode: parsed.tree,
-        preferKey: false,
-      };
-    });
-    mocked.callSharedWasmWorker.mockImplementation(async (type: string) => {
-      if (type === 'valueToTreeNode') {
+    mocked.callSharedWasmWorker.mockImplementation(async (type: string, payload: any) => {
+      if (type === 'parseValueForPath') {
+        expect(payload).toMatchObject({ rawEdit: 'next-value', preferKey: false });
         return canonicalNode;
       }
       if (type === 'planGraphValueEdit') {
@@ -183,31 +167,16 @@ describe('graph-value-edit', () => {
       }),
     );
     expect(mocked.callSharedWasmWorker).not.toHaveBeenCalledWith(
-      'parseValueForPath',
+      'valueToTreeNode',
       expect.anything(),
     );
   });
 
   it('keeps empty-string edits semantic when the rendered placeholder is double quotes', async () => {
     const canonicalNode = scalarNode('');
-    mocked.commitTextEdit.mockImplementation(async (_context, _cell, _target, _kind, valueParser) => {
-      const parsed = await valueParser({
-        language: 'json',
-        text: '""',
-        rawEdit: '""',
-        nest: true,
-        path: [{ key: 'empty string' }],
-        preferKey: false,
-      } as any);
-      return {
-        nextValue: parsed.value,
-        nextValueNode: parsed.tree,
-        preferKey: false,
-      };
-    });
     mocked.callSharedWasmWorker.mockImplementation(async (type: string, payload: any) => {
-      if (type === 'valueToTreeNode') {
-        expect(payload).toEqual({ value: '' });
+      if (type === 'parseValueForPath') {
+        expect(payload).toMatchObject({ rawEdit: '', preferKey: false });
         return canonicalNode;
       }
       if (type === 'planGraphValueEdit') {
@@ -265,12 +234,10 @@ describe('graph-value-edit', () => {
 
   it('does not replace the whole document when edit-mode application fails in the editor', async () => {
     const canonicalNode = scalarNode('next-value');
-    mocked.commitTextEdit.mockResolvedValue({
-      nextValue: 'next-value',
-      nextValueNode: canonicalNode,
-      preferKey: false,
-    });
     mocked.callSharedWasmWorker.mockImplementation(async (type: string) => {
+      if (type === 'parseValueForPath') {
+        return canonicalNode;
+      }
       if (type === 'planGraphValueEdit') {
         return {
           mode: 'edits',
@@ -400,6 +367,9 @@ describe('graph-value-edit', () => {
     });
     let modelVersion = 1;
     mocked.callSharedWasmWorker.mockImplementation(async (type: string) => {
+      if (type === 'parseValueForPath') {
+        return canonicalNode;
+      }
       if (type === 'planGraphValueEdit') {
         modelVersion = 2;
         return {
@@ -465,6 +435,9 @@ describe('graph-value-edit', () => {
     });
     let revision = 3;
     mocked.callSharedWasmWorker.mockImplementation(async (type: string) => {
+      if (type === 'parseValueForPath') {
+        return canonicalNode;
+      }
       if (type === 'planGraphValueEdit') {
         revision = 4;
         return {

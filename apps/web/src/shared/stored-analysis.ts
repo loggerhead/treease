@@ -21,24 +21,6 @@ export function semanticTokensToArrayBuffer(raw: Uint32Array): ArrayBuffer {
   copy.set(new Uint8Array(raw.buffer, raw.byteOffset, raw.byteLength));
   return copy.buffer as ArrayBuffer;
 }
-export function decodeAnalysisValueJson(
-  valueJson: string | null | undefined,
-  documentKey: string,
-  language: string,
-): unknown {
-  if (!valueJson) return null;
-  try {
-    return JSON.parse(valueJson);
-  } catch (error) {
-    console.warn('[wasm] failed to decode analysis valueJson', {
-      documentKey,
-      language,
-      error: error instanceof Error ? error.message : String(error),
-    });
-    return undefined;
-  }
-}
-
 
 export function normalizeStoredAnalysisResult(
   documentKey: string,
@@ -46,11 +28,10 @@ export function normalizeStoredAnalysisResult(
   raw: StoredDocumentAnalysis | null | undefined,
 ): DocumentAnalysisResult | null {
   if (!raw) return null;
-  const value = decodeAnalysisValueJson(raw.valueJson, documentKey, language);
   return {
     documentKey,
-    tree: raw.tree ?? null,
-    value,
+    tree: null,
+    value: null,
     diagnostics: decodeStoredDiagnostics(raw.diagnostics),
     semanticTokens: semanticTokensToArrayBuffer(raw.semanticTokens),
     semanticTokenVersion: 1,
@@ -66,6 +47,5 @@ export function hasMeaningfulStoredAnalysis(
   if (analysis.sourceByteLength > 0) return true;
   if (analysis.semanticTokens.byteLength > 0) return true;
   if (analysis.diagnostics.length > 0) return true;
-  if (analysis.tree) return true;
-  return typeof analysis.valueJson === 'string' && analysis.valueJson.length > 0;
+  return false;
 }

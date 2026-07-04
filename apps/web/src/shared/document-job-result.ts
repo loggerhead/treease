@@ -3,7 +3,6 @@ import type {
   EventBatch,
   SnapshotId,
 } from '@core-wasm/index';
-import { decodeAnalysisValueJson } from './stored-analysis';
 import type { DocumentAnalysisResult } from './worker-protocol/protocol';
 
 export type DocumentJobResultStatus = 'snapshotReady' | 'parseFailed' | 'noSnapshot';
@@ -13,10 +12,6 @@ export type DocumentJobResult = {
   snapshotId: SnapshotId | null;
   analysis: DocumentJobAnalysisPayload | null;
   sourceText: string | null;
-};
-type NormalizeDocumentJobAnalysisOptions = {
-  mapTree?: (tree: unknown) => DocumentAnalysisResult['tree'];
-  mapValue?: (value: unknown) => unknown;
 };
 
 export function semanticTokensToBuffer(data: readonly number[] | undefined): ArrayBuffer {
@@ -31,14 +26,12 @@ export function normalizeDocumentJobAnalysisPayload(
   documentKey: string,
   language: string,
   raw: DocumentJobAnalysisPayload | null | undefined,
-  options: NormalizeDocumentJobAnalysisOptions = {},
 ): DocumentAnalysisResult | null {
   if (!raw) return null;
-  const value = decodeAnalysisValueJson(raw.valueJson, documentKey, language);
   return {
     documentKey,
-    tree: raw.tree == null ? null : options.mapTree ? options.mapTree(raw.tree) : raw.tree,
-    value: options.mapValue ? options.mapValue(value) : value,
+    tree: null,
+    value: null,
     diagnostics: raw.diagnostics ?? [],
     semanticTokens: semanticTokensToBuffer(raw.semanticTokens?.data),
     semanticTokenVersion: raw.semanticTokens?.version ?? 1,

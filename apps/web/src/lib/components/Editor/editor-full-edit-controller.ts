@@ -87,6 +87,7 @@ type CreateEditorFullEditControllerOptions = {
   setActiveTabDocumentKey?: (documentKey: string) => void;
   clearSemanticTokensForDocument: (documentKey?: string) => void;
   setEditorValue: (value: string) => boolean;
+  setEditorValueForFullEdit: (value: string) => boolean;
   setSourceText: (value: string) => void;
   setDocumentKey: (documentKey: string) => void;
   applyImportLanguage: (languageId: SupportedEditorLanguageId) => void;
@@ -413,8 +414,10 @@ export function createEditorFullEditController(options: CreateEditorFullEditCont
       formatSourceOnClose: true,
     });
     if (!session) return null;
-    options.setEditorValue('');
-    options.setSourceText('');
+    const changed = options.setEditorValueForFullEdit('');
+    if (!changed) {
+      options.setSourceText('');
+    }
     setImportModelEolToLf();
     return session;
   }
@@ -464,7 +467,7 @@ export function createEditorFullEditController(options: CreateEditorFullEditCont
     session.hasVisibleFlush = true;
     session.textFlushedChars = params.text.length;
     options.setSourceText(params.text);
-    const changed = options.setEditorValue(params.text);
+    const changed = options.setEditorValueForFullEdit(params.text);
     if (!changed) {
       options.setSourceText(params.text);
     }
@@ -489,7 +492,7 @@ export function createEditorFullEditController(options: CreateEditorFullEditCont
           session.sourceWritebackPolicy === 'intake' && authoritativeSourceText != null;
         if (shouldApplyAuthoritativeSourceText) {
           session.visibleText = authoritativeSourceText;
-          options.setEditorValue(authoritativeSourceText);
+          options.setEditorValueForFullEdit(authoritativeSourceText);
         }
         void applyIntakeSuccessEffects({
           documentKey: session.documentKey,
@@ -586,7 +589,7 @@ export function createEditorFullEditController(options: CreateEditorFullEditCont
 
     if (typeof formattedSourceText === 'string') {
       session.visibleText = formattedSourceText;
-      options.setEditorValue(formattedSourceText);
+      options.setEditorValueForFullEdit(formattedSourceText);
       setImportModelEolToLf();
     }
 

@@ -31,6 +31,7 @@ read_when:
 - Worker 统一返回 `ok/error`；跨边界错误必须序列化回传。
 - 主文档 graph 只消费 `DocumentJob` 事件与 `SnapshotReady.mainGraph`；不要回到 `buildProjection('mainGraph')` 或其他 read API 补主图。
 - snapshot-bound read API 必须显式带 `snapshotId`；缺少时返回 `SnapshotNotReady`，不得在读取 API 内偷偷建 snapshot。
+- Editor / GraphViewer 不得依赖 `SnapshotReady.analysis` 下发 full `tree` / full `valueJson`；hover、YQ completion、root scalar highlight、subgraph scalar content 与 graph edit 必须通过 snapshot-bound 局部 projection/query。
 - Graph hover 不再承担任何预览职责；局部阅读与展开统一改为 click 打开底部工作区。
 - `SnapshotReady.sourceText` 是 editor/store 的 authoritative 写回文本；`parseFailed` 不提供替换用 `sourceText`。
 - `getDiagnostics`、`parseToTree`、`parseValueToTree` 只做瞬时探测或非主文档缓存，不得回流成主文档 authority。

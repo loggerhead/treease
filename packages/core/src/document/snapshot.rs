@@ -1,15 +1,20 @@
 use super::protocol::{
-    DocumentAnalysisPayload, DocumentAnchor, DocumentDiagnostic, DocumentTreeNode,
-    GraphValueEditFallbackReason, GraphValueEditPlan, GraphValueEditRequest, QueryKind,
-    QueryResult, QueryTargetKind, SemanticTokensPayload, SnapshotId, SnapshotQuery,
+    DocumentAnalysisPayload, DocumentAnchor, DocumentDiagnostic, DocumentNodePreview,
+    DocumentPathValue, DocumentTreeNode, GraphValueEditFallbackReason, GraphValueEditPlan,
+    GraphValueEditRequest, QueryKind, QueryResult, QueryTargetKind, SemanticTokensPayload,
+    SnapshotId, SnapshotQuery,
 };
 use crate::core::document_analysis::{
     DocumentAnalysisDemand, analyze_decoded_document_with_prepared_tree_and_demand,
     analyze_document_internal_with_demand, encode_document_value_json,
 };
-use crate::core::{LineIndex, NodeId, SemType, TokenSpan, encode_semantic_tokens};
+use crate::core::{
+    LineIndex, NodeId, SemType, TokenSpan, encode_semantic_tokens,
+    tree_node::{ParsedKey, TreeNodeKind},
+};
 use crate::formats::DecodedDocument;
-use crate::wasm_types::{AnalysisSharedArtifacts, PathSpan, WasmProtocol};
+use crate::wasm_types::{AnalysisSharedArtifacts, PathSegTag, PathSpan, WasmProtocol};
+use std::collections::BTreeSet;
 
 #[derive(Debug, Clone, Default)]
 pub struct DocumentSnapshot {
@@ -301,6 +306,7 @@ impl DocumentSnapshot {
                 resolve_anchor_for_span(self.snapshot_id, analysis, document, start, end)
                     .map(|anchor| QueryResult {
                         anchors: vec![anchor],
+                        ..Default::default()
                     })
                     .unwrap_or_default()
             }
@@ -318,8 +324,35 @@ impl DocumentSnapshot {
                 })
                 .map(|anchor| QueryResult {
                     anchors: vec![anchor],
+                    ..Default::default()
                 })
                 .unwrap_or_default(),
+            QueryKind::RootValueKind => QueryResult {
+                root_value_kind: document.store.get(document.root).map(node_value_kind),
+                ..Default::default()
+            },
+            QueryKind::NodePreview => query
+                .path_pattern
+                .as_deref()
+                .and_then(|path| node_preview_for_path(document, path))
+                .map(|node_preview| QueryResult {
+                    node_preview: Some(node_preview),
+                    ..Default::default()
+                })
+                .unwrap_or_default(),
+            QueryKind::PathValue => query
+                .path_pattern
+                .as_deref()
+                .and_then(|path| path_value_for_path(analysis, document, path))
+                .map(|path_value| QueryResult {
+                    path_value: Some(path_value),
+                    ..Default::default()
+                })
+                .unwrap_or_default(),
+            QueryKind::FieldLabels => QueryResult {
+                field_labels: collect_field_labels(document),
+                ..Default::default()
+            },
         }
     }
 }
@@ -465,6 +498,145 @@ fn parse_snapshot_path(path: &str) -> Option<Vec<crate::wasm_types::PathSeg<'sta
         }
     }
     Some(segments)
+}
+
+fn parsed_keys_from_snapshot_path(path: &str) -> Option<Vec<ParsedKey>> {
+    parse_snapshot_path(path).map(|segments| {
+        segments
+            .iter()
+            .map(|segment| match segment.tag {
+                PathSegTag::Key => ParsedKey::Str(segment.key.to_owned()),
+                PathSegTag::Index => ParsedKey::Int(i64::from(segment.index)),
+            })
+            .collect()
+    })
+}
+
+fn node_id_for_path(
+    document: &DecodedDocument,
+    path_pattern: &str,
+    prefer_key: bool,
+) -> Option<NodeId> {
+    let path = parsed_keys_from_snapshot_path(path_pattern)?;
+    if path.is_empty() {
+        return Some(document.root);
+    }
+    document
+        .store
+        .find_descendant_by_path(document.root, &path, prefer_key)
+        .ok()
+        .flatten()
+}
+
+fn node_value_kind(node: &crate::core::tree_node::TreeNode) -> String {
+    match node.kind {
+        TreeNodeKind::Mapping => "object",
+        TreeNodeKind::Sequence => "array",
+        TreeNodeKind::Scalar | TreeNodeKind::Alias | TreeNodeKind::Unknown => {
+            match node.resolved_sem_type() {
+                Some(SemType::Str) => "string",
+                Some(SemType::Int) => "int",
+                Some(SemType::Float) => "float",
+                Some(SemType::Boolean) => "boolean",
+                Some(SemType::Nil) => "null",
+                Some(SemType::Map) => "object",
+                Some(SemType::Seq) => "array",
+                None => "unknown",
+            }
+        }
+    }
+    .to_owned()
+}
+
+fn node_value_type(node: &crate::core::tree_node::TreeNode) -> String {
+    match node_value_kind(node).as_str() {
+        "int" | "float" => "number".to_owned(),
+        other => other.to_owned(),
+    }
+}
+
+fn node_preview_from_node(node: &crate::core::tree_node::TreeNode) -> DocumentNodePreview {
+    let value_type = node_value_type(node);
+    DocumentNodePreview {
+        kind: tree_kind_code(node.kind),
+        sem_type: sem_type_code(node.resolved_sem_type()),
+        tag: node.tag.clone(),
+        value: node.value.clone(),
+        value_type,
+        is_scalar: matches!(node.kind, TreeNodeKind::Scalar),
+    }
+}
+
+fn node_preview_for_path(
+    document: &DecodedDocument,
+    path_pattern: &str,
+) -> Option<DocumentNodePreview> {
+    let node_id = node_id_for_path(document, path_pattern, false)?;
+    document.store.get(node_id).map(node_preview_from_node)
+}
+
+fn source_slice_by_bytes(source: &str, start: u32, end: u32) -> String {
+    let start = usize::try_from(start).ok();
+    let end = usize::try_from(end).ok();
+    match (start, end) {
+        (Some(start), Some(end)) if start <= end && end <= source.len() => {
+            source.get(start..end).unwrap_or_default().to_owned()
+        }
+        _ => String::new(),
+    }
+}
+
+fn path_value_for_path(
+    analysis: &AnalysisBundle,
+    document: &DecodedDocument,
+    path_pattern: &str,
+) -> Option<DocumentPathValue> {
+    let node_id = node_id_for_path(document, path_pattern, false)?;
+    let node = document.store.get(node_id)?;
+    let source_text = source_slice_by_bytes(&analysis.source, node.start_byte, node.end_byte);
+    let display_text = if source_text.is_empty() {
+        node.value.clone()
+    } else {
+        source_text.clone()
+    };
+    Some(DocumentPathValue {
+        value_type: node_value_type(node),
+        value: node.value.clone(),
+        source_text,
+        display_text,
+    })
+}
+
+fn collect_field_labels(document: &DecodedDocument) -> Vec<String> {
+    fn visit(
+        store: &crate::core::tree_store::TreeStore,
+        node_id: NodeId,
+        labels: &mut BTreeSet<String>,
+    ) {
+        let Some(node) = store.get(node_id) else {
+            return;
+        };
+        if node.kind == TreeNodeKind::Mapping {
+            let mut index = 0usize;
+            while index + 1 < node.content.len() {
+                if let Some(key_node) = store.get(node.content[index]) {
+                    if key_node.is_map_key && !key_node.value.is_empty() {
+                        labels.insert(key_node.value.clone());
+                    }
+                }
+                visit(store, node.content[index + 1], labels);
+                index += 2;
+            }
+            return;
+        }
+        for child in &node.content {
+            visit(store, *child, labels);
+        }
+    }
+
+    let mut labels = BTreeSet::new();
+    visit(&document.store, document.root, &mut labels);
+    labels.into_iter().collect()
 }
 
 // ── Analysis builders (existing) ───────────────────────────────────────

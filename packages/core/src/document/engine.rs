@@ -76,7 +76,7 @@ fn snapshot_ready_event(
 ) -> Result<DocumentEvent, String> {
     let analysis_payload = output
         .analysis
-        .then(|| super::snapshot::analysis_payload_from_bundle(analysis, true));
+        .then(|| super::snapshot::analysis_payload_from_bundle(analysis, false));
     validate_snapshot_ready_outputs(graph, output)?;
     let main_graph = if output.graph {
         projection_from_graph(graph)
@@ -750,10 +750,11 @@ mod tests {
             })
             .expect("ApplyEdits close batch should emit SnapshotReady");
         assert!(rt.snapshots.contains_key(&snapshot_id.0));
-        assert_eq!(
-            analysis.and_then(|payload| payload.value_json.as_deref()),
-            Some(r#"{"root":{"k":2}}"#),
-        );
+        let analysis = analysis.expect("SnapshotReady should carry lightweight analysis");
+        assert!(analysis.tree.is_none());
+        assert!(analysis.value_json.is_none());
+        assert!(analysis.diagnostics.is_empty());
+        assert_eq!(analysis.language, "json");
         assert!(main_graph.is_some());
         assert_eq!(main_graph.map(|projection| projection.clear), Some(false));
     }

@@ -6,9 +6,7 @@ import type { GraphCell, GraphCellKind } from '../../graph/graph-viewer-render';
 import type { PathSeg } from '../../store/tree-path';
 import type { EditorIO } from '../../store/editor-store';
 import { clearGraphSelectionAfterEdit } from '../GraphViewer.graph-highlight';
-import { commitTextEdit as commitGraphTextEdit, type ValueParseResult } from '../../graph/GraphEditHandler';
 import { callSharedWasmWorker } from '../../wasm/wasm-worker-singleton';
-import { treeNodeToValue } from '../../../shared/tree-node-value';
 import type { TreeNode } from '@core-wasm/index'
 import type { LeaferEditor, LeaferText } from './model';
 import { resolveCellPath } from './graph-anchor-index';
@@ -149,7 +147,7 @@ export function createGraphValueEditController(deps: GraphValueEditControllerDep
     if (editCell.isMissing) {
       return false;
     }
-    const currentData = deps.getCurrentData();
+    void editTargetOverride;
     const editorIO = deps.getEditorIO();
     const getCurrentFreshnessContext = () => {
       const currentEditorIO = deps.getEditorIO();
@@ -184,6 +182,9 @@ export function createGraphValueEditController(deps: GraphValueEditControllerDep
       text: raw,
       valueType: editCell?.valueType,
     });
+    if (!editorIO || editorIO.context !== 'editor') {
+      return false;
+    }
     const parseGraphValue = async ({
       language,
       path,
@@ -196,23 +197,19 @@ export function createGraphValueEditController(deps: GraphValueEditControllerDep
       rawEdit: string;
       preferKey: boolean;
       nest: boolean;
-    }): Promise<ValueParseResult> => {
-      if (!preferKey && editCell?.valueType === 'string') {
-        const normalizedStringEdit = editCell?.text === '' && rawEdit === '""' ? '' : rawEdit;
-        const tree = await callSharedWasmWorker<TreeNode>('valueToTreeNode', { value: normalizedStringEdit });
-        return { tree, value: normalizedStringEdit } satisfies ValueParseResult;
-      }
+    }): Promise<TreeNode> => {
       try {
-        const tree = await callSharedWasmWorker<TreeNode>('parseValueForPath', {
+        const normalizedRawEdit =
+          !preferKey && editCell?.valueType === 'string' && editCell?.text === '' && rawEdit === '""' ? '' : rawEdit;
+        return await callSharedWasmWorker<TreeNode>('parseValueForPath', {
           language,
           documentKey: deps.getDocumentKey(),
           text: deps.getSourceText(),
           path,
-          rawEdit,
+          rawEdit: normalizedRawEdit,
           preferKey,
           nest,
         });
-        return { tree, value: treeNodeToValue(tree) } satisfies ValueParseResult;
       } catch (error) {
         deps.handleError(error, {
           component: 'GraphViewer',
@@ -222,51 +219,16 @@ export function createGraphValueEditController(deps: GraphValueEditControllerDep
         throw error;
       }
     };
-    let result: Awaited<ReturnType<typeof commitGraphTextEdit>> = null;
-    if (currentData != null) {
-      result = await freshness.step(() =>
-        commitGraphTextEdit(
-          {
-            currentData,
-            languageId: deps.getLanguageId(),
-            nest: deps.getEnableNest(),
-          },
-          { ...editCell, path: editPath },
-          { ...editTargetOverride, text: raw, __graphCellKind: editKind, __graphCellValueType: editCell?.valueType },
-          editKind,
-          parseGraphValue,
-        ),
-      );
-    }
-    if (!result && editKind === 'value' && raw !== String(editCell?.text ?? '')) {
-      try {
-        const parsed = await freshness.step(() =>
-          parseGraphValue({
-            language: deps.getLanguageId(),
-            path: editPath,
-            rawEdit: raw,
-            preferKey: false,
-            nest: deps.getEnableNest(),
-          }),
-        );
-        result = {
-          updated: null,
-          nextValue: parsed.value,
-          nextValueNode: parsed.tree,
-          editPath,
-          preferKey: false,
-        };
-      } catch {
-        return false;
-      }
-    }
-    if (!result || !editorIO || editorIO.context !== 'editor') {
-      return false;
-    }
-    const { nextValue, nextValueNode, preferKey } = result;
-    const canonicalNextValueNode =
-      nextValueNode ??
-      (await freshness.step(() => callSharedWasmWorker<TreeNode>('valueToTreeNode', { value: nextValue })));
+    const preferKey = editKind === 'key';
+    const canonicalNextValueNode = await freshness.step(() =>
+      parseGraphValue({
+        language: deps.getLanguageId(),
+        path: editPath,
+        rawEdit: raw,
+        preferKey,
+        nest: deps.getEnableNest(),
+      }),
+    );
     if (!canonicalNextValueNode) {
       return false;
     }
@@ -283,10 +245,6 @@ export function createGraphValueEditController(deps: GraphValueEditControllerDep
       }),
     );
     if (!planned) {
-      return false;
-    }
-    const requestId = deps.nextTreeStateToken();
-    if (!deps.publishTreeState(requestId, planned.tree, planned.value, 'graph', deps.getEditorRevision() + 1)) {
       return false;
     }
     deps.updateActiveTempModel((current) => clearGraphSelectionAfterEdit(current, editPath));
@@ -307,7 +265,7 @@ export function createGraphValueEditController(deps: GraphValueEditControllerDep
       return;
     }
     const state = editor ? (activeEditStateByEditor.get(editor) ?? null) : getFirstActiveEditState();
-    if (deps.getCurrentData() == null || !state?.cell || !state.target) {
+    if (!state?.cell || !state.target) {
       resetActiveEditState(editor);
       return;
     }

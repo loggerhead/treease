@@ -1,6 +1,6 @@
 use std::io::Write;
 
-use crate::core::{CoreError, NodeId, SemType, TreeNodeKind, TreeStore};
+use crate::core::{CoreError, LineIndex, NodeId, SemType, TokenSpan, TreeNodeKind, TreeStore};
 
 use super::encoder_javascript::{is_js_identifier, is_safe_integer_literal};
 use super::formats_helpers::write_quoted_string;
@@ -108,7 +108,22 @@ pub struct JsonNodeFormattedSpan {
 pub struct JsonFormattedDocument {
     pub text: String,
     pub spans: Vec<JsonNodeFormattedSpan>,
+    pub semantic_token_spans: Vec<TokenSpan>,
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct JsonFormattedTokenByteSpan {
+    start_byte: u32,
+    end_byte: u32,
+    token_type: u32,
+}
+
+const TOKEN_TYPE_KEY: u32 = 1;
+const TOKEN_TYPE_STRING: u32 = 3;
+const TOKEN_TYPE_INT: u32 = 4;
+const TOKEN_TYPE_BOOLEAN: u32 = 6;
+const TOKEN_TYPE_NULL: u32 = 7;
+const TOKEN_TYPE_PUNCTUATION: u32 = 8;
 
 pub fn format_json_document_with_spans(
     decoded: &super::DecodedDocument,
@@ -116,6 +131,7 @@ pub fn format_json_document_with_spans(
 ) -> Result<JsonFormattedDocument, CoreError> {
     let text = JsonEncoder::new(prefs.clone()).encode_to_string(&decoded.store, decoded.root)?;
     let mut spans = Vec::new();
+    let mut semantic_token_byte_spans = Vec::new();
     let mut cursor = 0usize;
     let root = node(&decoded.store, decoded.root)?;
     if root.kind == TreeNodeKind::Scalar && prefs.unwrap_scalar {
@@ -125,10 +141,32 @@ pub fn format_json_document_with_spans(
             start_byte: 0,
             end_byte: end as u32,
         });
-        return Ok(JsonFormattedDocument { text, spans });
+        push_scalar_token_byte_span(root, &text, 0, end, &mut semantic_token_byte_spans);
+        let line_index = LineIndex::build(&text);
+        let semantic_token_spans =
+            encode_formatted_token_spans(&semantic_token_byte_spans, &line_index, text.len());
+        return Ok(JsonFormattedDocument {
+            text,
+            spans,
+            semantic_token_spans,
+        });
     }
-    record_formatted_span(&decoded.store, decoded.root, &text, &mut cursor, &mut spans)?;
-    Ok(JsonFormattedDocument { text, spans })
+    record_formatted_span(
+        &decoded.store,
+        decoded.root,
+        &text,
+        &mut cursor,
+        &mut spans,
+        &mut semantic_token_byte_spans,
+    )?;
+    let line_index = LineIndex::build(&text);
+    let semantic_token_spans =
+        encode_formatted_token_spans(&semantic_token_byte_spans, &line_index, text.len());
+    Ok(JsonFormattedDocument {
+        text,
+        spans,
+        semantic_token_spans,
+    })
 }
 
 fn record_formatted_span(
@@ -137,6 +175,7 @@ fn record_formatted_span(
     text: &str,
     cursor: &mut usize,
     spans: &mut Vec<JsonNodeFormattedSpan>,
+    semantic_token_byte_spans: &mut Vec<JsonFormattedTokenByteSpan>,
 ) -> Result<(), CoreError> {
     skip_json_ws(text, cursor);
     let start = *cursor;
@@ -144,29 +183,59 @@ fn record_formatted_span(
     match current.kind {
         TreeNodeKind::Scalar | TreeNodeKind::Unknown => {
             skip_json_value_token(text, cursor);
+            push_scalar_token_byte_span(current, text, start, *cursor, semantic_token_byte_spans);
         }
         TreeNodeKind::Alias => {
             if let Some(alias) = current.alias {
-                record_formatted_span(store, alias, text, cursor, spans)?;
+                record_formatted_span(
+                    store,
+                    alias,
+                    text,
+                    cursor,
+                    spans,
+                    semantic_token_byte_spans,
+                )?;
             } else {
                 skip_json_value_token(text, cursor);
+                push_scalar_token_byte_span(
+                    current,
+                    text,
+                    start,
+                    *cursor,
+                    semantic_token_byte_spans,
+                );
             }
         }
         TreeNodeKind::Sequence => {
+            let bracket_start = *cursor;
             consume_json_byte(text, cursor, b'[')?;
+            push_punctuation_token_byte_span(bracket_start, semantic_token_byte_spans);
             for (index, child) in current.content.iter().enumerate() {
                 skip_json_ws(text, cursor);
-                record_formatted_span(store, *child, text, cursor, spans)?;
+                record_formatted_span(
+                    store,
+                    *child,
+                    text,
+                    cursor,
+                    spans,
+                    semantic_token_byte_spans,
+                )?;
                 skip_json_ws(text, cursor);
                 if index + 1 < current.content.len() {
+                    let comma_start = *cursor;
                     consume_json_byte(text, cursor, b',')?;
+                    push_punctuation_token_byte_span(comma_start, semantic_token_byte_spans);
                 }
             }
             skip_json_ws(text, cursor);
+            let bracket_end = *cursor;
             consume_json_byte(text, cursor, b']')?;
+            push_punctuation_token_byte_span(bracket_end, semantic_token_byte_spans);
         }
         TreeNodeKind::Mapping => {
+            let brace_start = *cursor;
             consume_json_byte(text, cursor, b'{')?;
+            push_punctuation_token_byte_span(brace_start, semantic_token_byte_spans);
             let pairs = current.content.chunks_exact(2);
             let pair_count = pairs.len();
             for (index, pair) in pairs.enumerate() {
@@ -179,17 +248,35 @@ fn record_formatted_span(
                     start_byte: key_start as u32,
                     end_byte: key_end as u32,
                 });
+                semantic_token_byte_spans.push(JsonFormattedTokenByteSpan {
+                    start_byte: key_start as u32,
+                    end_byte: key_end as u32,
+                    token_type: TOKEN_TYPE_KEY,
+                });
                 skip_json_ws(text, cursor);
+                let colon_start = *cursor;
                 consume_json_byte(text, cursor, b':')?;
+                push_punctuation_token_byte_span(colon_start, semantic_token_byte_spans);
                 skip_json_ws(text, cursor);
-                record_formatted_span(store, pair[1], text, cursor, spans)?;
+                record_formatted_span(
+                    store,
+                    pair[1],
+                    text,
+                    cursor,
+                    spans,
+                    semantic_token_byte_spans,
+                )?;
                 skip_json_ws(text, cursor);
                 if index + 1 < pair_count {
+                    let comma_start = *cursor;
                     consume_json_byte(text, cursor, b',')?;
+                    push_punctuation_token_byte_span(comma_start, semantic_token_byte_spans);
                 }
             }
             skip_json_ws(text, cursor);
+            let brace_end = *cursor;
             consume_json_byte(text, cursor, b'}')?;
+            push_punctuation_token_byte_span(brace_end, semantic_token_byte_spans);
         }
     }
     let end = *cursor;
@@ -199,6 +286,72 @@ fn record_formatted_span(
         end_byte: end as u32,
     });
     Ok(())
+}
+
+fn push_punctuation_token_byte_span(
+    byte_offset: usize,
+    spans: &mut Vec<JsonFormattedTokenByteSpan>,
+) {
+    spans.push(JsonFormattedTokenByteSpan {
+        start_byte: byte_offset as u32,
+        end_byte: byte_offset.saturating_add(1) as u32,
+        token_type: TOKEN_TYPE_PUNCTUATION,
+    });
+}
+
+fn push_scalar_token_byte_span(
+    node: &crate::core::TreeNode,
+    text: &str,
+    start: usize,
+    end: usize,
+    spans: &mut Vec<JsonFormattedTokenByteSpan>,
+) {
+    if start >= end || end > text.len() {
+        return;
+    }
+    let token_type = match node.resolved_sem_type() {
+        Some(SemType::Boolean) => TOKEN_TYPE_BOOLEAN,
+        Some(SemType::Nil) => TOKEN_TYPE_NULL,
+        Some(SemType::Int | SemType::Float) => TOKEN_TYPE_INT,
+        Some(SemType::Str) => TOKEN_TYPE_STRING,
+        _ => match text.as_bytes().get(start).copied() {
+            Some(b'"') => TOKEN_TYPE_STRING,
+            Some(b't' | b'f') => TOKEN_TYPE_BOOLEAN,
+            Some(b'n') => TOKEN_TYPE_NULL,
+            _ => TOKEN_TYPE_INT,
+        },
+    };
+    spans.push(JsonFormattedTokenByteSpan {
+        start_byte: start as u32,
+        end_byte: end as u32,
+        token_type,
+    });
+}
+
+fn encode_formatted_token_spans(
+    spans: &[JsonFormattedTokenByteSpan],
+    line_index: &LineIndex,
+    text_len: usize,
+) -> Vec<TokenSpan> {
+    spans
+        .iter()
+        .filter_map(|span| {
+            let start = span.start_byte as usize;
+            let end = span.end_byte as usize;
+            if start >= end || end > text_len {
+                return None;
+            }
+            let start_pos = line_index.offset_to_line_column(start);
+            let end_pos = line_index.offset_to_line_column(end);
+            Some(TokenSpan {
+                start_row: start_pos.line as u32,
+                start_col: start_pos.column as u32,
+                end_row: end_pos.line as u32,
+                end_col: end_pos.column as u32,
+                token_type: span.token_type,
+            })
+        })
+        .collect()
 }
 
 fn skip_json_ws(text: &str, cursor: &mut usize) {
@@ -401,4 +554,36 @@ pub(crate) fn encode_node(
 
 pub fn encode_json(store: &TreeStore, node: NodeId) -> Result<String, CoreError> {
     JsonEncoder::default().encode_to_string(store, node)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::formats::{Decode, JsonDecoder};
+
+    #[test]
+    fn formatted_semantic_token_spans_match_fresh_encode() {
+        let decoded = JsonDecoder
+            .decode_str(r#"{"a":{"b":1,"c":[2,3]},"d":"hello","e":true,"f":null}"#)
+            .expect("json should decode");
+        let formatted = format_json_document_with_spans(
+            &decoded,
+            &FormatPreferences {
+                indent: 2,
+                smart: true,
+                ..FormatPreferences::base()
+            },
+        )
+        .expect("json should format");
+
+        let remapped = crate::core::encode_and_cache_semantic_tokens(
+            None,
+            "",
+            &formatted.text,
+            &formatted.semantic_token_spans,
+        );
+        let fresh = crate::core::encode_semantic_tokens("json", &formatted.text);
+
+        assert_eq!(remapped, fresh);
+    }
 }

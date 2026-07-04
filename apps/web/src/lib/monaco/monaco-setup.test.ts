@@ -10,12 +10,12 @@ type CallWasmWorker = <T>(type: string, payload?: Record<string, any>, transfer?
 
 const callWasmWorker: CallWasmWorker = (async <T,>() => ({ semanticTokens: new Uint32Array([1, 2, 3]).buffer } as T));
 
-const makeModel = (text: string) => {
+const makeModel = (text: string, options: { getVersionId?: () => number } = {}) => {
   const lines = text.split('\n');
   return {
     getValue: () => text,
     uri: { toString: () => 'file://test' },
-    getVersionId: () => 1,
+    getVersionId: options.getVersionId ?? (() => 1),
     getLineCount: () => lines.length,
     getLineMaxColumn: (lineNumber: number) => (lines[lineNumber - 1]?.length ?? 0) + 1,
   };
@@ -160,6 +160,31 @@ describe('monaco-setup', () => {
     const res = await pending;
 
     expect(res.data).toEqual(new Uint32Array([0, 0, 4, 0, 0]));
+    expect(callWasmWorker).not.toHaveBeenCalled();
+  });
+
+  it('drops delayed semantic tokens when the model version changes mid-request', async () => {
+    const callWasmWorker = vi.fn(async <T,>() => null as T) as unknown as CallWasmWorker;
+    const ensure = createSemanticTokensRegistrar({
+      monaco: monaco as any,
+      callWasmWorker,
+      tokenTypes: ['type'],
+    });
+    let versionId = 1;
+    const model = makeModel('true', {
+      getVersionId: () => versionId,
+    }) as ReturnType<typeof makeModel> & { __treeaseDocumentKey?: string };
+    model.__treeaseDocumentKey = 'file://pending-versioned-json';
+
+    ensure('json');
+    const provider = monaco.languages.registerDocumentSemanticTokensProvider.mock.calls.at(-1)?.[1];
+    const pending = provider.provideDocumentSemanticTokens(model, null, { isCancellationRequested: false });
+    await Promise.resolve();
+    versionId = 2;
+    ensure.primeSemanticTokens('file://pending-versioned-json', new Uint32Array([0, 0, 4, 0, 0]).buffer);
+    const res = await pending;
+
+    expect(res.data).toEqual(new Uint32Array());
     expect(callWasmWorker).not.toHaveBeenCalled();
   });
 

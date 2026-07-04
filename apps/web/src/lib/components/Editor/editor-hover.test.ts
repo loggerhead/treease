@@ -1,6 +1,7 @@
 // 职责：editor-hover 的单元测试
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { valueToTreeNode } from '../../../shared/tree-node-value';
+import { SemType, TreeKind } from '@core-wasm/index';
 
 vi.mock('../../services/TreePathService', () => ({
   resolveTreePathSafe: vi.fn(),
@@ -8,6 +9,17 @@ vi.mock('../../services/TreePathService', () => ({
 }));
 vi.mock('../../services/DocumentSessionService', () => ({
   getActiveDocumentSnapshotId: vi.fn(() => 7),
+}));
+vi.mock('../../services/SnapshotProjectionService', () => ({
+  queryNodePreview: vi.fn(),
+  queryPathValue: vi.fn(),
+  nodePreviewToTreeNode: vi.fn((preview) => ({
+    kind: preview.kind,
+    semType: preview.semType,
+    tag: preview.tag,
+    value: preview.value,
+    children: [],
+  })),
 }));
 
 vi.mock('../../preview', () => ({
@@ -20,6 +32,7 @@ vi.mock('./editor-position-target', () => ({
 
 import { generatePreview } from '../../preview';
 import { resolvePathSpan, resolveTreePathSafe } from '../../services/TreePathService';
+import { queryNodePreview, queryPathValue } from '../../services/SnapshotProjectionService';
 import { resolveEditorPositionTarget } from './editor-position-target';
 import { registerEditorHoverPreview } from './editor-hover';
 
@@ -66,6 +79,20 @@ describe('registerEditorHoverPreview', () => {
     vi.mocked(resolveTreePathSafe).mockResolvedValue([{ tag: 0, key: 'message', index: 0 }] as any);
     vi.mocked(resolveEditorPositionTarget).mockResolvedValue('value');
     vi.mocked(resolvePathSpan).mockResolvedValue({ startByte, endByte, row: 0, column: 11 } as any);
+    vi.mocked(queryNodePreview).mockResolvedValue({
+      kind: TreeKind.SCALAR,
+      semType: SemType.STR,
+      tag: 'str',
+      value: '你好',
+      valueType: 'string',
+      isScalar: true,
+    });
+    vi.mocked(queryPathValue).mockResolvedValue({
+      valueType: 'string',
+      value: '你好',
+      sourceText: '"\\u4f60\\u597d"',
+      displayText: '"\\u4f60\\u597d"',
+    });
     vi.mocked(generatePreview).mockResolvedValue('<div>Preview</div>');
 
     registerEditorHoverPreview({
@@ -147,6 +174,20 @@ describe('registerEditorHoverPreview', () => {
     vi.mocked(resolveTreePathSafe).mockResolvedValue([{ tag: 0, key: 'message', index: 0 }] as any);
     vi.mocked(resolveEditorPositionTarget).mockResolvedValue('value');
     vi.mocked(resolvePathSpan).mockResolvedValue({ startByte: 11, endByte: 18, row: 0, column: 11 } as any);
+    vi.mocked(queryNodePreview).mockResolvedValue({
+      kind: TreeKind.SCALAR,
+      semType: SemType.STR,
+      tag: 'str',
+      value: 'hello',
+      valueType: 'string',
+      isScalar: true,
+    });
+    vi.mocked(queryPathValue).mockResolvedValue({
+      valueType: 'string',
+      value: 'hello',
+      sourceText: '"hello"',
+      displayText: '"hello"',
+    });
     vi.mocked(generatePreview).mockResolvedValue(['<div>A</div>', '<div>B</div>']);
 
     registerEditorHoverPreview({

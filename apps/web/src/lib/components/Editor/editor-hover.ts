@@ -6,9 +6,10 @@ import type { SupportedEditorLanguageId } from '../../monaco/language-support';
 import { supportedEditorLanguageIds } from '../../monaco/language-support';
 import type { TreeSyncState } from '../../store/editor-store';
 import { generatePreview } from '../../preview';
-import { findNodeByPath, isPreviewableNode, readTreeNodeString } from '../../preview/tree-node';
+import { isPreviewableNode, readTreeNodeString } from '../../preview/tree-node';
 import { resolvePathSpan, resolveTreePathSafe } from '../../services/TreePathService';
 import { getActiveDocumentSnapshotId } from '../../services/DocumentSessionService';
+import { nodePreviewToTreeNode, queryNodePreview, queryPathValue } from '../../services/SnapshotProjectionService';
 import { valueToTreeNode } from '../../../shared/tree-node-value';
 import { resolveEditorPositionTarget } from './editor-position-target';
 
@@ -32,14 +33,12 @@ function sliceUtf8ByBytes(text: string, startByte: number, endByte: number): str
   return utf8Decoder.decode(bytes.slice(startByte, Math.min(endByte, bytes.length)));
 }
 
-function buildPreviewContextFromTree(
-  treeState: TreeSyncState,
-  path: PathSeg[],
+function buildPreviewContextFromNodePreview(
+  preview: ReturnType<typeof nodePreviewToTreeNode> | null,
   rawValue: string,
   language: SupportedEditorLanguageId,
 ): PreviewContext | null {
-  if (!treeState.tree) return null;
-  const node = findNodeByPath(treeState.tree, path, false);
+  const node = preview;
   if (!isPreviewableNode(node)) return null;
   const value = readTreeNodeString(node);
   return {
@@ -114,16 +113,21 @@ function isPositionInsideModel(model: Monaco.editor.ITextModel, position: Monaco
 
 async function resolveHoverPreviewContext(
   model: Monaco.editor.ITextModel,
-  treeState: TreeSyncState,
   path: PathSeg[],
   documentKey: string,
   language: SupportedEditorLanguageId,
   nest: boolean,
   snapshotId: number | null,
 ): Promise<PreviewContext | null> {
-  const span = await resolvePathSpan(model, path, documentKey, language, 'value', nest, snapshotId);
-  const rawValue = span ? sliceUtf8ByBytes(model.getValue(), span.startByte, span.endByte) : '';
-  return buildPreviewContextFromTree(treeState, path, rawValue, language) ?? buildPreviewContextFromRawValue(rawValue, language);
+  const [span, nodePreview, pathValue] = await Promise.all([
+    resolvePathSpan(model, path, documentKey, language, 'value', nest, snapshotId),
+    queryNodePreview({ documentKey, snapshotId, path }),
+    queryPathValue({ documentKey, snapshotId, path }),
+  ]);
+  const rawValue =
+    pathValue?.sourceText || (span ? sliceUtf8ByBytes(model.getValue(), span.startByte, span.endByte) : '');
+  const node = nodePreview ? nodePreviewToTreeNode(nodePreview) : null;
+  return buildPreviewContextFromNodePreview(node, rawValue, language) ?? buildPreviewContextFromRawValue(rawValue, language);
 }
 
 export function registerEditorHoverPreview({
@@ -167,7 +171,6 @@ export function registerEditorHoverPreview({
         if (!target || target === 'key') return null;
         const previewContext = await resolveHoverPreviewContext(
           model,
-          treeState,
           path,
           requestDocumentKey,
           activeLanguageId,

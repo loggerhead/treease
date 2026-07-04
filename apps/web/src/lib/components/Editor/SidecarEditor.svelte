@@ -14,6 +14,7 @@
   import type { DocumentAnalysisResult } from '../../../shared/worker-protocol/protocol';
   import { editorStore, editorWorkspace } from '../../store/editor-store';
   import { clearActiveDocumentSnapshot, getActiveDocumentSnapshotId } from '../../services/DocumentSessionService';
+  import { queryRootValueKind } from '../../services/SnapshotProjectionService';
   import { monacoChangesToDocumentTextEdits, type MonacoTextChange } from '../../../shared/document-text-edits';
   import { markSidecarRequested, markSidecarSettled } from '../../test-bridge/runtime-readiness';
   import { applyDocumentAnalysisToEditor } from './editor-analysis-apply';
@@ -23,7 +24,7 @@
   import {
     buildRootScalarHighlightDecorations,
     resolveJsonRootScalarHighlightKindFromText,
-    resolveRootScalarHighlightKind,
+    resolveRootScalarHighlightKindFromSnapshotKind,
   } from './root-scalar-highlight';
   import { createSidecarExternalSync } from './sidecar-external-sync';
 
@@ -49,6 +50,7 @@
   let diffBlankZoneIds: string[] = [];
   let runtimeToken = 0;
   let sidecarAnalysisSyncToken = 0;
+  let rootScalarHighlightToken = 0;
   let sidecarReadinessRequestId = 0;
   let suppressChange = false;
   let lastModelLength = 0;
@@ -87,6 +89,7 @@
     setActiveTabDocumentKey: (documentKey) => setModelDocumentKey(model, documentKey),
     clearSemanticTokensForDocument: (documentKey) => clearSemanticTokensForDocument(documentKey),
     setEditorValue,
+    setEditorValueForFullEdit: setEditorValue,
     setSourceText: (value) => {
       if (!fullEditController.isImportActive()) return;
       updateSidecarSourceText(value);
@@ -152,11 +155,24 @@
   function applyRootScalarHighlight(
     analysis: import('./editor-analysis-apply').EditorAnalysisLike | null | undefined,
   ): void {
+    void analysis;
     if (!editor) return;
     rootScalarDecorations ??= editor.createDecorationsCollection();
-    rootScalarDecorations.set(
-      buildRootScalarHighlightDecorations(monaco, model, resolveRootScalarHighlightKind(analysis)),
-    );
+    const requestToken = ++rootScalarHighlightToken;
+    const requestDocumentKey = sidecarDocumentKey();
+    const requestSnapshotId = getActiveDocumentSnapshotId(requestDocumentKey);
+    if (!requestDocumentKey || requestSnapshotId == null) {
+      rootScalarDecorations.set([]);
+      return;
+    }
+    void queryRootValueKind({ documentKey: requestDocumentKey, snapshotId: requestSnapshotId }).then((rootKind) => {
+      if (requestToken !== rootScalarHighlightToken) return;
+      if (requestDocumentKey !== sidecarDocumentKey()) return;
+      if (getActiveDocumentSnapshotId(requestDocumentKey) !== requestSnapshotId) return;
+      rootScalarDecorations?.set(
+        buildRootScalarHighlightDecorations(monaco, model, resolveRootScalarHighlightKindFromSnapshotKind(rootKind)),
+      );
+    });
   }
 
   function applyRootScalarHighlightFromText(

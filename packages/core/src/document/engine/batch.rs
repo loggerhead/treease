@@ -210,15 +210,10 @@ pub(super) fn advance_close(
                                 Ok(formatted) => {
                                     let line_index =
                                         apply_formatted_spans(&mut document, &formatted);
+                                    *token_spans = formatted.semantic_token_spans.clone();
                                     source = formatted.text.clone();
                                     encoded_source_text = Some(formatted.text);
                                     streamed_line_index = Some(line_index);
-                                    // Clear streaming token spans: after smart format-on-close
-                                    // the source text has changed, so positions collected during
-                                    // streaming no longer correspond to the formatted text.
-                                    // build_streaming_json_analysis will fall back to
-                                    // encode_semantic_tokens for a fresh full-tree parse.
-                                    token_spans.clear();
                                     Some(document)
                                 }
                                 Err(error) => {

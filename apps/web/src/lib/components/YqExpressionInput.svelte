@@ -6,10 +6,10 @@
   import { initMonacoRuntime } from '../monaco/editor-runtime'
   import { hasYqCompletionMatches, YQ_LANGUAGE_ID } from '../monaco/yq-language-support'
   import { attachMonacoTestHook } from '../monaco/test-hook'
-  import { treeState } from '../store/editor-store'
+  import { documentKey } from '../store/editor-store'
+  import { getActiveDocumentSnapshotId } from '../services/DocumentSessionService'
+  import { queryFieldLabels } from '../services/SnapshotProjectionService'
   import { callSharedWasmWorker } from '../wasm/wasm-worker-singleton'
-  import { readWasmString } from '../../shared/tree-node-value'
-  import { TreeKind, type TreeNode } from '@core-wasm/index'
 
   export let value = ''
   export let busy = false
@@ -27,7 +27,7 @@
   let syncingValue = false
   let suppressNextSuggestTrigger = false
   let suggestTriggerVersion = 0
-  let cachedPathCompletionTree: TreeNode | null = null
+  let cachedPathCompletionSignature = ''
   let cachedPathCompletionLabels: string[] = []
   let currentValue = normalizeExpressionInput(value)
 
@@ -82,46 +82,32 @@
     return beforeCursor.match(/\.([A-Za-z_][\w-]*)?$/)?.[1] ?? null
   }
 
-  function collectTreeFieldLabels(node: TreeNode | null, out = new Set<string>()) {
-    if (!node) return out
-    if (node.kind === TreeKind.MAPPING) {
-      const entries = node.children ?? []
-      for (let index = 0; index + 1 < entries.length; index += 2) {
-        const keyNode = entries[index]
-        const valueNode = entries[index + 1]
-        const key = readWasmString((keyNode as TreeNode | undefined)?.value).trim()
-        if (/^[A-Za-z_][\w-]*$/.test(key)) out.add(key)
-        collectTreeFieldLabels(valueNode, out)
-      }
-      return out
-    }
-    for (const child of node.children ?? []) {
-      collectTreeFieldLabels(child, out)
-    }
-    return out
-  }
-
-  function getYqPathCompletionLabels(prefix: string) {
+  async function getYqPathCompletionLabels(prefix: string) {
     const normalizedPrefix = prefix.toLowerCase()
-    if ($treeState.tree !== cachedPathCompletionTree) {
-      cachedPathCompletionTree = $treeState.tree
-      cachedPathCompletionLabels = [...collectTreeFieldLabels($treeState.tree)].sort((left, right) =>
-        left.localeCompare(right)
-      )
+    const activeDocumentKey = $documentKey
+    const snapshotId = getActiveDocumentSnapshotId(activeDocumentKey)
+    const signature = activeDocumentKey && snapshotId != null ? `${activeDocumentKey}:${snapshotId}` : ''
+    if (signature !== cachedPathCompletionSignature) {
+      cachedPathCompletionSignature = signature
+      cachedPathCompletionLabels = signature
+        ? (await queryFieldLabels({ documentKey: activeDocumentKey, snapshotId }))
+            .filter((label) => /^[A-Za-z_][\w-]*$/.test(label))
+            .sort((left, right) => left.localeCompare(right))
+        : []
     }
     return cachedPathCompletionLabels
       .filter((label) => !normalizedPrefix || label.toLowerCase().startsWith(normalizedPrefix))
   }
 
   function hasYqPathCompletionMatches(prefix: string | null) {
-    return prefix !== null && getYqPathCompletionLabels(prefix).length > 0
+    return prefix !== null
   }
 
   function registerYqPathCompletionProvider(monaco: typeof Monaco) {
     yqPathCompletionDisposable?.dispose()
     yqPathCompletionDisposable = monaco.languages.registerCompletionItemProvider(YQ_LANGUAGE_ID, {
       triggerCharacters: ['.'],
-      provideCompletionItems(model, position) {
+      async provideCompletionItems(model, position) {
         const beforeCursor = model.getLineContent(position.lineNumber).slice(0, position.column - 1)
         const match = beforeCursor.match(/\.([A-Za-z_][\w-]*)?$/)
         if (!match) return { suggestions: [] }
@@ -133,7 +119,7 @@
           endColumn: position.column
         }
         return {
-          suggestions: getYqPathCompletionLabels(prefix).map((label) => ({
+          suggestions: (await getYqPathCompletionLabels(prefix)).map((label) => ({
             label,
             kind: monaco.languages.CompletionItemKind.Field,
             insertText: label,

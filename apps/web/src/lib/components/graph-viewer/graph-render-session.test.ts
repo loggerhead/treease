@@ -559,7 +559,7 @@ describe('graph-render-session coordinator', () => {
       'test-key',
       'json',
       5,
-      expect.objectContaining({ value: { a: 1 } }),
+      expect.objectContaining({ value: null, tree: null, language: 'json' }),
       12,
     );
     expect(deps.onStreamFinalRedraw).toHaveBeenCalledWith(
@@ -594,7 +594,7 @@ describe('graph-render-session coordinator', () => {
       'test-key',
       'json',
       5,
-      expect.objectContaining({ value: { a: 1 }, language: 'json' }),
+      expect.objectContaining({ value: null, tree: null, language: 'json' }),
       3,
     );
   });
@@ -996,7 +996,8 @@ describe('graph-render-session coordinator', () => {
       endColumn: 25,
     });
 
-    expect(deps.publishTreeState).toHaveBeenCalledWith(1, tree as any, { nested: true }, 'graph', 8, 8);
+    expect(deps.publishTreeState).not.toHaveBeenCalled();
+    expect(deps.clearTreeState).toHaveBeenCalledWith(1, 'graph', 8, 8);
   });
   it('renderDocumentGraph keeps parse-failed snapshots in diagnostics flow without raw UI error', async () => {
     const diagnostics = [{ startLineNumber: 1, startColumn: 1, endLineNumber: 1, endColumn: 2, kind: 1 }];

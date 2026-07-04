@@ -140,9 +140,12 @@ export function createEditorAnalysisController(options: CreateEditorAnalysisCont
     return resolved.status === 'resolved' ? resolved.analysis : null;
   }
 
-  function isValidWholeDocumentAnalysis(analysis: EditorAnalysisLike | null | undefined): boolean {
+  function isValidWholeDocumentAnalysis(
+    documentKey: string,
+    analysis: EditorAnalysisLike | null | undefined,
+  ): boolean {
     const diagnostics = analysis?.diagnostics ?? [];
-    return Boolean(analysis?.tree) && diagnostics.length === 0;
+    return getActiveDocumentSnapshotId(documentKey) != null && diagnostics.length === 0;
   }
 
   async function primeJsonBlockSemanticTokens(
@@ -184,7 +187,7 @@ export function createEditorAnalysisController(options: CreateEditorAnalysisCont
 
     const analysis = await resolveCurrentAuthoritativeAnalysis(requestDocumentKey, requestLanguage, freshness);
     if (analysis === undefined) return;
-    if (isValidWholeDocumentAnalysis(analysis)) {
+    if (isValidWholeDocumentAnalysis(requestDocumentKey, analysis)) {
       clearJsonBlockSelectionForDocument(requestDocumentKey, false);
       return;
     }
@@ -489,8 +492,8 @@ export function createEditorAnalysisController(options: CreateEditorAnalysisCont
     );
     if (!freshness.isCurrent()) return;
     options.setTreeState({
-      tree: analysis?.tree ? (analysis.tree as TreeNode) : null,
-      value: analysis?.value ?? null,
+      tree: null,
+      value: null,
       source: 'editor',
       revision,
     });

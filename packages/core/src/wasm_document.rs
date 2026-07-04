@@ -339,7 +339,11 @@ fn query_snapshot_impl(
     let kind = match req.query_kind {
         0 => QueryKind::FindAnchors,
         1 => QueryKind::ResolvePath,
-        _ => QueryKind::ResolveHover,
+        2 => QueryKind::ResolveHover,
+        3 => QueryKind::RootValueKind,
+        4 => QueryKind::NodePreview,
+        5 => QueryKind::PathValue,
+        _ => QueryKind::FieldLabels,
     };
     let query = SnapshotQuery {
         snapshot_id: SnapshotId(requested_snapshot_id),
@@ -357,19 +361,11 @@ fn query_snapshot_impl(
         target: Some(req.target),
     };
     with_global_document_runtime(|runtime| {
-        let resolve_snapshot = || {
-            runtime
-                .snapshots
-                .get(&requested_snapshot_id)
-                .filter(|snapshot| snapshot.document_key == req.document_key)
-                .or_else(|| {
-                    runtime
-                        .latest_snapshot_by_document
-                        .get(&req.document_key)
-                        .and_then(|snapshot_id| runtime.snapshots.get(&snapshot_id.0))
-                })
-        };
-        let Some(snapshot) = resolve_snapshot() else {
+        let Some(snapshot) = runtime
+            .snapshots
+            .get(&requested_snapshot_id)
+            .filter(|snapshot| snapshot.document_key == req.document_key)
+        else {
             return SnapshotReadResult::SnapshotNotReady;
         };
         SnapshotReadResult::Ready {

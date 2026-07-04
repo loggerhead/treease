@@ -58,6 +58,7 @@
   let rightCompareHighlightCount = 0
   let languageIdValue: SupportedEditorLanguageId = editorLanguageFallback
   let scratchText = ''
+  let scratchLanguage: SupportedEditorLanguageId = editorLanguageFallback
   let lastSourceText: string | null = null
   let lastCompareEditToken: number | null = null
   let rightPanelFileInput: HTMLInputElement | null = null
@@ -107,12 +108,23 @@
     return sidecarEditor
   }
 
+  async function waitForSidecarStoreSync(): Promise<void> {
+    const readySidecarEditor = await ensureSidecarEditorReady()
+    if (!readySidecarEditor) return
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      const textSynced = scratchText === readySidecarEditor.getText()
+      const languageSynced = scratchLanguage === readySidecarEditor.getLanguage()
+      if (textSynced && languageSynced) return
+      await tick()
+    }
+  }
+
   function getSidecarText(): string {
-    return sidecarEditor?.getText() ?? scratchText
+    return scratchText
   }
 
   function getSidecarLanguage(): SupportedEditorLanguageId {
-    return sidecarEditor?.getLanguage() ?? languageIdValue
+    return scratchLanguage
   }
 
   function clearRightDiff() {
@@ -134,10 +146,11 @@
   async function runDiffCompare() {
     if (graphOnly || effectiveViewMode !== 'text') return
     try {
-      const readySidecarEditor = await ensureSidecarEditorReady()
-      const rightText = normalizeCompareText(readySidecarEditor?.getText() ?? scratchText)
+      await waitForSidecarStoreSync()
+      const rightText = normalizeCompareText(getSidecarText())
       const leftText = normalizeCompareText($sourceText)
       const rightLanguage = getSidecarLanguage()
+      const readySidecarEditor = await ensureSidecarEditorReady()
       diffError = ''
       const data = await callSharedWasmWorker<DiffResponse>('compare', {
         language: languageIdValue,
@@ -188,6 +201,10 @@
     activeTempModel.update((current) => ({ ...current, scratchText: value }))
   }
 
+  function updateScratchLanguage(value: SupportedEditorLanguageId) {
+    scratchLanguage = value
+  }
+
   async function loadRightPanelFile(file: File) {
     if (graphOnly) return
     const [sample, text] = await Promise.all([readImportSourceSample(file), file.text()])
@@ -232,6 +249,7 @@
     viewMode = 'text'
     clearCompareHighlights()
     updateScratchText(value)
+    updateScratchLanguage(nextLanguage)
     const readySidecarEditor = await ensureSidecarEditorReady()
     await readySidecarEditor?.showText(value, nextLanguage)
   }
@@ -431,7 +449,10 @@
         bind:this={sidecarEditor}
         language={languageIdValue}
         onScroll={onTextScroll}
-        onContentChange={clearCompareHighlights}
+        onContentChange={(text) => {
+          updateScratchText(text)
+          clearCompareHighlights()
+        }}
       />
     </div>
   {/if}

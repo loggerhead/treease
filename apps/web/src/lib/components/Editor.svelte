@@ -25,6 +25,10 @@
     await editorCore?.ensureReady?.();
   }
 
+  export async function waitForIdle() {
+    await editorCore?.waitForIdle?.();
+  }
+
   export function closeTab(id: string) {
     editorCore?.closeTab(id);
   }

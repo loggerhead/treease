@@ -89,10 +89,10 @@ cancel_job(handle) -> EventBatch
 
 - `Progress { processedBytes }`：结构化运行进度；Web 不从日志字符串反推 byte offset。
 - `AnalysisDelta`：流式过程中的临时可见 analysis；不提交 snapshot，不能作为 Query、Reveal 或 ApplyEdits 的权威基线。
-- `SnapshotReady { snapshotId, analysis, mainGraph }`：提交 authoritative snapshot。
+- `SnapshotReady { snapshotId, analysis, mainGraph }`：提交 authoritative snapshot；`analysis` 只携带 diagnostics、semantic tokens、source size、language 等轻量元数据。
 - `ParseFailed { snapshotId, analysis }`：提交 diagnostics-only snapshot；同批事件用主图 clear projection 清理可见 graph。
 
-`DocumentAnalysisPayload` 供 `AnalysisDelta`、`SnapshotReady.analysis` 与 `ParseFailed.analysis` 共用，包含 `tree`、`value`、`diagnostics`、`semanticTokens`、`sourceByteLength`、`language`，不携带 source 文本。`AnalysisDelta` / `ParseFailed` 中 `tree: null`、`value: null`；`SnapshotReady.analysis` 可携带权威 tree/value。
+`DocumentAnalysisPayload` 供 `AnalysisDelta`、`SnapshotReady.analysis` 与 `ParseFailed.analysis` 共用，包含 `tree`、`valueJson`、`diagnostics`、`semanticTokens`、`sourceByteLength`、`language`，不携带 source 文本。主文档产品路径中 `AnalysisDelta`、`ParseFailed` 与成功 `SnapshotReady.analysis` 都不下发 full `tree` / full `valueJson`；结构和值读取必须通过同一 snapshot 的 projection query 获取。
 
 ### DocumentIntake
 
@@ -119,8 +119,10 @@ same-language 文件导入走另一条链路：`editor-full-edit-controller.ts` 
 
 只读 API 不推进文档状态，必须显式接收 `snapshotId`：
 
-- `query_snapshot`：path/span lookup、anchor resolution、reveal query。
+- `query_snapshot`：path/span lookup、anchor resolution、reveal query、root value kind、node preview、path scalar value、field labels。
 - `buildHoverSubgraphProjection({ snapshotId, path })`：基于已有 snapshot 构建 transient hover 子图。
+
+默认 UI 路径不得新增 full tree/full value query。hover、YQ completion、root scalar highlight、subgraph scalar content 与 graph edit 都应查询局部 projection；调试或导出若需要完整结构，必须另行定义 dev-only 能力，不能接入 `SnapshotReady` 主链。
 
 统一返回：
 

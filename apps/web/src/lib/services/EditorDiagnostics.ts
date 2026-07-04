@@ -5,7 +5,6 @@ import type { SupportedEditorLanguageId } from '../monaco/language-support';
 import { resolveDocumentAnalysis } from './DocumentAnalysisResolver';
 import { mergeEventBatches, streamDocumentJobText } from '../../shared/document-job-stream';
 import { collectDocumentJobResult, semanticTokensToBuffer } from '../../shared/document-job-result';
-import { decodeAnalysisValueJson } from '../../shared/stored-analysis';
 export type WasmError = {
   startLineNumber: number;
   startColumn: number;
@@ -92,8 +91,8 @@ function normalizeAnalysisPayload(
 ): StoredDocumentAnalysis | null {
   if (!raw) return null;
   return {
-    tree: raw.tree,
-    value: decodeAnalysisValueJson(raw.valueJson, 'editor-diagnostics', raw.language),
+    tree: null,
+    value: null,
     diagnostics: raw.diagnostics ?? [],
     semanticTokens: semanticTokensToBuffer(raw.semanticTokens?.data),
     semanticTokenVersion: raw.semanticTokens?.version ?? 1,

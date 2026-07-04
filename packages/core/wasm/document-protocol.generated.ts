@@ -204,6 +204,22 @@ export interface DocumentTreeNode {
     children: DocumentTreeNode[];
 }
 
+export interface DocumentNodePreview {
+    kind: number;
+    semType: number;
+    tag: string;
+    value: string;
+    valueType?: string;
+    isScalar?: boolean;
+}
+
+export interface DocumentPathValue {
+    valueType: string;
+    value: string;
+    sourceText: string;
+    displayText: string;
+}
+
 export interface DocumentAnalysisPayload {
     tree: DocumentTreeNode | null;
     valueJson?: string | null;
@@ -264,7 +280,7 @@ export interface DocumentAnchor {
     spanEnd: number;
 }
 
-export type QueryKind = "findAnchors" | "resolvePath" | "resolveHover";
+export type QueryKind = "findAnchors" | "resolvePath" | "resolveHover" | "rootValueKind" | "nodePreview" | "pathValue" | "fieldLabels";
 
 export type QueryTargetKind = "key" | "value" | "node";
 
@@ -278,6 +294,10 @@ export interface SnapshotQuery {
 
 export interface QueryResult {
     anchors: DocumentAnchor[];
+    rootValueKind?: string | null;
+    nodePreview?: DocumentNodePreview | null;
+    pathValue?: DocumentPathValue | null;
+    fieldLabels?: string[];
 }
 
 export type SnapshotReadResult<T> = { status: "ready"; data: T } | { status: "snapshotNotReady" };

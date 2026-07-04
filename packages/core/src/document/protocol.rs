@@ -562,6 +562,10 @@ pub enum QueryKind {
     FindAnchors,
     ResolvePath,
     ResolveHover,
+    RootValueKind,
+    NodePreview,
+    PathValue,
+    FieldLabels,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, Tsify)]
@@ -587,6 +591,39 @@ pub struct SnapshotQuery {
 #[serde(rename_all = "camelCase")]
 pub struct QueryResult {
     pub anchors: Vec<DocumentAnchor>,
+    #[serde(default, rename = "rootValueKind")]
+    pub root_value_kind: Option<String>,
+    #[serde(default, rename = "nodePreview")]
+    pub node_preview: Option<DocumentNodePreview>,
+    #[serde(default, rename = "pathValue")]
+    pub path_value: Option<DocumentPathValue>,
+    #[serde(default, rename = "fieldLabels")]
+    pub field_labels: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize, Tsify)]
+#[serde(rename_all = "camelCase")]
+pub struct DocumentNodePreview {
+    pub kind: i32,
+    pub sem_type: i32,
+    pub tag: String,
+    pub value: String,
+    #[serde(default, rename = "valueType")]
+    pub value_type: String,
+    #[serde(default, rename = "isScalar")]
+    pub is_scalar: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize, Tsify)]
+#[serde(rename_all = "camelCase")]
+pub struct DocumentPathValue {
+    #[serde(rename = "valueType")]
+    pub value_type: String,
+    pub value: String,
+    #[serde(rename = "sourceText")]
+    pub source_text: String,
+    #[serde(rename = "displayText")]
+    pub display_text: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Tsify)]

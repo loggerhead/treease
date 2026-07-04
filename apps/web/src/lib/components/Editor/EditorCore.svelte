@@ -56,7 +56,11 @@
   import { createEditorFullEditController } from './editor-full-edit-controller';
   import { resolveLanguageSwitchPolicy } from './language-switch-policy';
   import { createEditorRuntimeController } from './editor-runtime-controller';
-  import { buildRootScalarHighlightDecorations, resolveRootScalarHighlightKind } from './root-scalar-highlight';
+  import { queryRootValueKind } from '../../services/SnapshotProjectionService';
+  import {
+    buildRootScalarHighlightDecorations,
+    resolveRootScalarHighlightKindFromSnapshotKind,
+  } from './root-scalar-highlight';
   import { commitEditorTabTextChange } from './editor-tab-edit-commit';
   import { settleWholeDocumentReplacement } from './whole-document-replacement';
   import type { EditorModelWithDocumentKey, EditorTab, TabSummary } from './types';
@@ -102,6 +106,7 @@
   let diffBlankZoneIds: string[] = [];
   let suppressGraphHighlightSync = 0;
   let suppressTreePathUpdate = 0;
+  let rootScalarHighlightToken = 0;
   let wholeDocumentReplacementToken = 0;
   let formattingOptionsValue;
   let suppressNextWholeDocumentAutoGuess = false;
@@ -162,19 +167,30 @@
   function applyRootScalarHighlight(
     analysis: import('./editor-analysis-apply').EditorAnalysisLike | null | undefined,
   ): void {
+    void analysis;
     if (!editor) return;
     rootScalarDecorations ??= editor.createDecorationsCollection();
-    const highlightKind = jsonBlockSelectionValue ? null : resolveRootScalarHighlightKind(analysis);
-    rootScalarDecorations.set(
-      buildRootScalarHighlightDecorations(monaco, model, highlightKind),
-    );
+    const requestToken = ++rootScalarHighlightToken;
+    const requestDocumentKey = getDocumentKey();
+    const requestSnapshotId = getActiveDocumentSnapshotId(requestDocumentKey);
+    if (jsonBlockSelectionValue || !requestDocumentKey || requestSnapshotId == null) {
+      rootScalarDecorations.set([]);
+      return;
+    }
+    void queryRootValueKind({ documentKey: requestDocumentKey, snapshotId: requestSnapshotId }).then((rootKind) => {
+      if (requestToken !== rootScalarHighlightToken) return;
+      if (requestDocumentKey !== getDocumentKey()) return;
+      if (getActiveDocumentSnapshotId(requestDocumentKey) !== requestSnapshotId) return;
+      const highlightKind = resolveRootScalarHighlightKindFromSnapshotKind(rootKind);
+      rootScalarDecorations?.set(buildRootScalarHighlightDecorations(monaco, model, highlightKind));
+    });
   }
 
   function setActiveEditorIo(): void {
     editorIO.set({
       context: 'editor',
       getModel: () => model,
-      getText: () => model?.getValue() ?? '',
+      getText: () => editorStore.get().sourceText,
       setText: (value: string) => setEditorValue(value),
       applyTextEdits: (edits: DocumentTextEdit[]) => applyDocumentTextEdits(edits),
       getLanguage: () => languageIdValue,
@@ -217,6 +233,7 @@
   }
 
   let fullEditUiStateValue = $fullEditUiState;
+  let queuedProgrammaticSourceText: string | null = null;
   $: fullEditUiStateValue = $fullEditUiState;
 
   const treePathLanguages = supportedEditorLanguageSet;
@@ -296,6 +313,7 @@
     },
     clearSemanticTokensForDocument: clearDocumentSemanticTokens,
     setEditorValue,
+    setEditorValueForFullEdit,
     setSourceText: (value) => sourceText.set(value),
     setDocumentKey: (documentKey) => documentKeyStore.set(documentKey),
     applyImportLanguage: setLanguageIdWithoutExample,
@@ -422,7 +440,7 @@
       ensureLanguageRegistered(next);
       let shouldDeferTreePath = false;
       if (model && monaco) {
-        const languageSwitchSourceText = model.getValue();
+        const languageSwitchSourceText = editorStore.get().sourceText;
         const languageSwitchPolicy = isManualLanguageSwitch
           ? resolveLanguageSwitchPolicy({
               nextLanguage: next,
@@ -796,7 +814,11 @@
         requestModel === model &&
         requestDocumentKey === getDocumentKey() &&
         requestLanguage === languageIdValue,
-      applyCommittedSourceText: (sourceTextValue) => requestModel.setValue(sourceTextValue),
+      applyCommittedSourceText: (sourceTextValue) => {
+        if (sourceTextValue !== editorStore.get().sourceText) {
+          sourceText.set(sourceTextValue)
+        }
+      },
       bindSnapshot: bindActiveDocumentSnapshotIfPresent,
       applyGraphAnalysis: (modelValue, languageValue, documentKeyValue, revisionValue, analysis) =>
         editorAnalysisController.applyGraphAnalysis(
@@ -822,17 +844,31 @@
   }
 
   function setEditorValue(value: string): boolean {
-    if (!model) return false;
-    const previousValue = model.getValue();
+    const previousValue = editorStore.get().sourceText;
     if (value === previousValue) {
       return false;
     }
-    if (editor) {
-      editor.setValue(value);
-    } else {
-      model.setValue(value);
+    if (fullEditUiStateValue.active) {
+      queuedProgrammaticSourceText = value;
+      return true;
     }
+    sourceText.set(value);
     return true;
+  }
+
+  function setEditorValueForFullEdit(value: string): boolean {
+    if (!model) return false;
+    const previousValue = model.getValue();
+    isStoreUpdateSuppressed = true;
+    if (previousValue !== value) {
+      model.setValue(value);
+      syncLastModelSnapshot();
+    }
+    if (editorStore.get().sourceText !== value) {
+      sourceText.set(value);
+    }
+    releaseStoreUpdateSuppression();
+    return previousValue !== value;
   }
 
   function queueWholeDocumentReplacement(
@@ -1049,8 +1085,7 @@
   }
 
   export async function exportAs(targetFormat: string) {
-    if (!model) return null;
-    const text = model.getValue();
+    const text = editorStore.get().sourceText;
     if (!text.trim()) return '';
     return callSharedWasmWorker<string>('convert', {
       sourceLanguage: languageIdValue,
@@ -1061,7 +1096,7 @@
   }
 
   export function getActiveText() {
-    return model?.getValue() ?? '';
+    return editorStore.get().sourceText;
   }
 
   export function getActiveLanguage() {
@@ -1069,8 +1104,7 @@
   }
 
   export async function escapeActive(): Promise<void> {
-    if (!model) return;
-    const text = model.getValue();
+    const text = editorStore.get().sourceText;
     if (!text.trim()) {
       toast.info('No content to escape');
       return;
@@ -1092,8 +1126,7 @@
   }
 
   export async function unescapeActive(): Promise<void> {
-    if (!model) return;
-    const text = model.getValue();
+    const text = editorStore.get().sourceText;
     if (!text.trim()) {
       toast.info('No content to unescape');
       return;
@@ -1389,6 +1422,7 @@
     if (mutation.type === 'applyValueEdit') {
       const { path, preferKey, value } = mutation.payload;
       try {
+        const currentSourceText = editorStore.get().sourceText;
         const node = isTreeNodeLike(value)
           ? value
           : await callSharedWasmWorker<TreeNode>('valueToTreeNode', {
@@ -1396,12 +1430,12 @@
             });
         const nextText = await callSharedWasmWorker<string>('applyValueEdit', {
           language: languageIdValue,
-          text: model.getValue(),
+          text: currentSourceText,
           path,
           preferKey,
           value: node,
         });
-        if (typeof nextText === 'string' && nextText !== model.getValue()) {
+        if (typeof nextText === 'string' && nextText !== currentSourceText) {
           setEditorValue(nextText);
         }
         return;
@@ -1420,6 +1454,14 @@
     editorRuntimeController.applyTheme(monaco);
   }
 
+  $: if (!fullEditUiStateValue.active && queuedProgrammaticSourceText !== null) {
+    const nextValue = queuedProgrammaticSourceText;
+    queuedProgrammaticSourceText = null;
+    if (nextValue !== editorStore.get().sourceText) {
+      sourceText.set(nextValue);
+    }
+  }
+
   $: if (tabManager) {
     tabSummaries = editorStore.actions.getWorkspaceTabSummaries();
     activeTabId = editorStore.get().workspace.activeTabId;
@@ -1427,6 +1469,13 @@
 
   export async function ensureReady(): Promise<void> {
     while (!editor || !model || !editorRuntimeReady) {
+      await new Promise<void>((resolve) => setTimeout(resolve, 16));
+    }
+  }
+
+  export async function waitForIdle(): Promise<void> {
+    await ensureReady();
+    while (editorFullEditController.isImportActive() || fullEditUiStateValue.active) {
       await new Promise<void>((resolve) => setTimeout(resolve, 16));
     }
   }

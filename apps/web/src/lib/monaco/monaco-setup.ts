@@ -145,6 +145,7 @@ export function createSemanticTokensRegistrar(options: SemanticTokensRegistrarOp
         _lastResultId: string | null,
         token: Monaco.CancellationToken,
       ) => {
+        const requestVersionId = textModel.getVersionId();
         const documentKey =
           (textModel as Monaco.editor.ITextModel & { __treeaseDocumentKey?: string }).__treeaseDocumentKey ??
           `${textModel.uri.toString()}-${textModel.getVersionId()}`;
@@ -152,10 +153,12 @@ export function createSemanticTokensRegistrar(options: SemanticTokensRegistrarOp
         try {
           const _validate = (data: Uint32Array) =>
             validateSemanticTokensData(data, textModel.getLineCount(), (line) => textModel.getLineMaxColumn(line) - 1);
+          const _isCurrentVersion = () => textModel.getVersionId() === requestVersionId;
 
           const primed = semanticTokensByDocumentKey.get(documentKey);
           if (primed) {
             if (token?.isCancellationRequested) return { data: new Uint32Array() };
+            if (!_isCurrentVersion()) return { data: new Uint32Array() };
             const data = new Uint32Array(primed.slice(0));
             if (!_validate(data)) return { data: new Uint32Array() };
             return { data };
@@ -164,10 +167,12 @@ export function createSemanticTokensRegistrar(options: SemanticTokensRegistrarOp
             documentKey,
           });
           if (token?.isCancellationRequested) return { data: new Uint32Array() };
+          if (!_isCurrentVersion()) return { data: new Uint32Array() };
           if (resolved.status !== 'resolved' || !(resolved.analysis.semanticTokens instanceof ArrayBuffer)) {
             if (!(options.isImportActive?.() ?? false)) {
               const delayed = await waitForPrimedSemanticTokens(documentKey, token);
               if (delayed && !token?.isCancellationRequested) {
+                if (!_isCurrentVersion()) return { data: new Uint32Array() };
                 const data = new Uint32Array(delayed);
                 if (!_validate(data)) return { data: new Uint32Array() };
                 return { data };
@@ -176,6 +181,7 @@ export function createSemanticTokensRegistrar(options: SemanticTokensRegistrarOp
             return { data: new Uint32Array() };
           }
           primeSemanticTokens(documentKey, resolved.analysis.semanticTokens);
+          if (!_isCurrentVersion()) return { data: new Uint32Array() };
           const freshData = new Uint32Array(resolved.analysis.semanticTokens.slice(0));
           if (!_validate(freshData)) return { data: new Uint32Array() };
           return { data: freshData };
