@@ -1,17 +1,17 @@
 // 职责：Editor hover 预览控制器：hover 位置计算、TreeNode 值读取、preview 触发
 import type * as Monaco from 'monaco-editor';
-import type { PathSeg } from '@core-wasm/index'
+import type { PathSeg, SnapshotReadResult } from '@core-wasm/index'
 import type { PreviewContext } from '../../preview/types';
 import type { SupportedEditorLanguageId } from '../../monaco/language-support';
 import { supportedEditorLanguageIds } from '../../monaco/language-support';
 import type { TreeSyncState } from '../../store/editor-store';
 import { generatePreview } from '../../preview';
 import { isPreviewableNode, readTreeNodeString } from '../../preview/tree-node';
-import { resolvePathSpan, resolveTreePathSafe } from '../../services/TreePathService';
-import { getActiveDocumentSnapshotId } from '../../services/DocumentSessionService';
+import { resolvePathSpanResult, resolveTreePathResult } from '../../services/TreePathService';
+import { getWorkspaceSnapshotId } from '../../store/workspace-snapshot-bindings';
 import { nodePreviewToTreeNode, queryNodePreview, queryPathValue } from '../../services/SnapshotProjectionService';
 import { valueToTreeNode } from '../../../shared/tree-node-value';
-import { resolveEditorPositionTarget } from './editor-position-target';
+import { resolveEditorPositionTargetResult } from './editor-position-target';
 
 type RegisterEditorHoverPreviewOptions = {
   monaco: typeof Monaco;
@@ -118,16 +118,25 @@ async function resolveHoverPreviewContext(
   language: SupportedEditorLanguageId,
   nest: boolean,
   snapshotId: number | null,
-): Promise<PreviewContext | null> {
-  const [span, nodePreview, pathValue] = await Promise.all([
-    resolvePathSpan(model, path, documentKey, language, 'value', nest, snapshotId),
+): Promise<SnapshotReadResult<PreviewContext | null>> {
+  const [spanResult, nodePreview, pathValue] = await Promise.all([
+    resolvePathSpanResult(model, path, documentKey, language, 'value', nest, snapshotId),
     queryNodePreview({ documentKey, snapshotId, path }),
     queryPathValue({ documentKey, snapshotId, path }),
   ]);
+  if (spanResult.status !== 'ready' || nodePreview.status !== 'ready' || pathValue.status !== 'ready') {
+    return { status: 'snapshotNotReady' };
+  }
+  const span = spanResult.data;
+  const readyNodePreview = nodePreview.status === 'ready' ? nodePreview.data : null;
+  const readyPathValue = pathValue.status === 'ready' ? pathValue.data : null;
   const rawValue =
-    pathValue?.sourceText || (span ? sliceUtf8ByBytes(model.getValue(), span.startByte, span.endByte) : '');
-  const node = nodePreview ? nodePreviewToTreeNode(nodePreview) : null;
-  return buildPreviewContextFromNodePreview(node, rawValue, language) ?? buildPreviewContextFromRawValue(rawValue, language);
+    readyPathValue?.sourceText || (span ? sliceUtf8ByBytes(model.getValue(), span.startByte, span.endByte) : '');
+  const node = readyNodePreview ? nodePreviewToTreeNode(readyNodePreview) : null;
+  return {
+    status: 'ready',
+    data: buildPreviewContextFromNodePreview(node, rawValue, language) ?? buildPreviewContextFromRawValue(rawValue, language),
+  };
 }
 
 export function registerEditorHoverPreview({
@@ -162,14 +171,18 @@ export function registerEditorHoverPreview({
         if (treeState.revision !== requestRevision) return null;
         if (activeLanguageId !== languageId) return null;
         const nest = getNestEnabled();
-        const snapshotId = getActiveDocumentSnapshotId(requestDocumentKey);
-        const path = await resolveTreePathSafe(model, position, requestDocumentKey, activeLanguageId, nest, snapshotId);
+        const snapshotId = getWorkspaceSnapshotId(requestDocumentKey);
+        const pathResult = await resolveTreePathResult(model, position, requestDocumentKey, activeLanguageId, nest, snapshotId);
         if (!isCurrent()) return null;
+        if (pathResult.status !== 'ready') return null;
+        const path = pathResult.data;
         if (!path?.length) return null;
-        const target = await resolveEditorPositionTarget(model, position, path, requestDocumentKey, activeLanguageId, nest);
+        const targetResult = await resolveEditorPositionTargetResult(model, position, path, requestDocumentKey, activeLanguageId, nest);
         if (!isCurrent()) return null;
+        if (targetResult.status !== 'ready') return null;
+        const target = targetResult.data;
         if (!target || target === 'key') return null;
-        const previewContext = await resolveHoverPreviewContext(
+        const previewContextResult = await resolveHoverPreviewContext(
           model,
           path,
           requestDocumentKey,
@@ -178,6 +191,8 @@ export function registerEditorHoverPreview({
           snapshotId,
         );
         if (!isCurrent()) return null;
+        if (previewContextResult.status !== 'ready') return null;
+        const previewContext = previewContextResult.data;
         if (!previewContext) return null;
         const htmlOrHtmls = await generatePreview(previewContext);
         if (!isCurrent()) return null;

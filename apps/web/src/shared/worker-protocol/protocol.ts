@@ -68,7 +68,6 @@ export type ReplaceReason =
   | 'parse-and-store-failed'
   | 'build-graph-delta-failed'
   | 'graph-edit-not-single-range'
-  | 'snapshotNotReady'
   | 'missingAnalysis'
   | 'missingDocument'
   | 'invalidPath'
@@ -122,7 +121,15 @@ export type WorkerRequest =
       snapshotId: SnapshotId | null;
       nest: boolean;
     }
-  | { id: number; type: 'graphSearch'; documentKey: string; snapshotId: SnapshotId | null; language: string; text: string; query: string; nest: boolean }
+  | {
+      id: number;
+      type: 'graphSearch';
+      documentKey: string;
+      snapshotId: SnapshotId | null;
+      language: string;
+      query: string;
+      nest: boolean;
+    }
   | {
       id: number;
       type: 'format';
@@ -140,7 +147,6 @@ export type WorkerRequest =
   | { id: number; type: 'guessLanguage'; text: string }
   | { id: number; type: 'parseToTree'; language: string; text: string; nest: boolean }
   | { id: number; type: 'parseValueToTree'; language: string; text: string; nest: boolean }
-  | { id: number; type: 'parseValueToData'; language: string; text: string; nest: boolean }
   | {
       id: number;
       type: 'parseValueForPath';
@@ -153,15 +159,6 @@ export type WorkerRequest =
       nest: boolean;
     }
   | { id: number; type: 'valueToTreeNode'; value: unknown }
-  | {
-      id: number;
-      type: 'applyValueEdit';
-      language: string;
-      text: string;
-      path: PathSeg[];
-      preferKey: boolean;
-      value: any;
-    }
   | {
       id: number;
       type: 'applyValueEditCanonical';
@@ -218,6 +215,9 @@ export type PlanGraphValueEditResponse =
       text: string;
       tree: unknown;
       value: unknown;
+    }
+  | {
+      mode: 'snapshotNotReady';
     };
 
 export type CompareResponse = {

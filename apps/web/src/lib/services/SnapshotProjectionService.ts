@@ -17,49 +17,52 @@ export async function querySnapshotProjection(options: {
   snapshotId: SnapshotId | null;
   queryKind: 'rootValueKind' | 'nodePreview' | 'pathValue' | 'fieldLabels';
   path?: PathSeg[];
-}): Promise<QueryResult | null> {
-  if (!options.documentKey || options.snapshotId == null) return null;
-  const result = await callSharedWasmWorker<SnapshotReadResult<QueryResult>>('querySnapshot', {
+}): Promise<SnapshotReadResult<QueryResult>> {
+  if (!options.documentKey || options.snapshotId == null) return { status: 'snapshotNotReady' };
+  return callSharedWasmWorker<SnapshotReadResult<QueryResult>>('querySnapshot', {
     documentKey: options.documentKey,
     snapshotId: options.snapshotId,
     queryKind: options.queryKind,
     pathPattern: options.path ? serializePath(options.path) : undefined,
   });
-  return result.status === 'ready' ? result.data : null;
 }
 
 export async function queryRootValueKind(options: {
   documentKey: string;
   snapshotId: SnapshotId | null;
-}): Promise<RootValueKind | null> {
+}): Promise<SnapshotReadResult<RootValueKind | null>> {
   const result = await querySnapshotProjection({ ...options, queryKind: 'rootValueKind' });
-  return (result?.rootValueKind as RootValueKind | undefined) ?? null;
+  if (result.status !== 'ready') return result;
+  return { status: 'ready', data: (result.data.rootValueKind as RootValueKind | undefined) ?? null };
 }
 
 export async function queryNodePreview(options: {
   documentKey: string;
   snapshotId: SnapshotId | null;
   path: PathSeg[];
-}): Promise<DocumentNodePreview | null> {
+}): Promise<SnapshotReadResult<DocumentNodePreview | null>> {
   const result = await querySnapshotProjection({ ...options, queryKind: 'nodePreview' });
-  return result?.nodePreview ?? null;
+  if (result.status !== 'ready') return result;
+  return { status: 'ready', data: result.data.nodePreview ?? null };
 }
 
 export async function queryPathValue(options: {
   documentKey: string;
   snapshotId: SnapshotId | null;
   path: PathSeg[];
-}): Promise<DocumentPathValue | null> {
+}): Promise<SnapshotReadResult<DocumentPathValue | null>> {
   const result = await querySnapshotProjection({ ...options, queryKind: 'pathValue' });
-  return result?.pathValue ?? null;
+  if (result.status !== 'ready') return result;
+  return { status: 'ready', data: result.data.pathValue ?? null };
 }
 
 export async function queryFieldLabels(options: {
   documentKey: string;
   snapshotId: SnapshotId | null;
-}): Promise<string[]> {
+}): Promise<SnapshotReadResult<string[]>> {
   const result = await querySnapshotProjection({ ...options, queryKind: 'fieldLabels' });
-  return result?.fieldLabels ?? [];
+  if (result.status !== 'ready') return result;
+  return { status: 'ready', data: result.data.fieldLabels };
 }
 
 export function nodePreviewToTreeNode(preview: DocumentNodePreview): TreeNode {

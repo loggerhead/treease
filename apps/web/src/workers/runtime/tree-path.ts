@@ -102,7 +102,7 @@ export function serializePath(path: PathSeg[]): string {
   }, '$');
 }
 
-function parseAnchorPath(path?: string | null): PathSeg[] {
+export function parseAnchorPath(path?: string | null): PathSeg[] {
   if (!path || path === '$') return [];
   const segments: PathSeg[] = [];
   let index = path.startsWith('$') ? 1 : 0;

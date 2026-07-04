@@ -5,7 +5,7 @@ import { buildPathKey } from '../../graph/graph-viewer-path';
 import type { GraphCell, GraphNode } from '../../graph/graph-viewer-render';
 import { isPathSegIndex, type PathSeg } from '../../store/tree-path';
 import type { GraphHighlightTarget } from '../../store/editor-store';
-import { resolveTreePathFromText } from '../../services/TreePathService';
+import { resolveTreePathFromTextResult } from '../../services/TreePathService';
 import type { CellBoxEntry, GraphViewerClickTarget, LeaferBox } from './model';
 import { getCellEntry, getHighlightTarget, getScrollContext } from './graph-anchor-index';
 
@@ -94,14 +94,26 @@ export function createGraphTextLinkageController(deps: GraphTextLinkageControlle
     if (!text) return [];
     const snapshotId = deps.getActiveSnapshotId();
     if (snapshotId == null) return [];
-    return resolveTreePathFromText(text, row, column, documentKey, deps.getLanguageId(), deps.getEnableNest(), 'auto', snapshotId).catch((error) => {
+    try {
+      const result = await resolveTreePathFromTextResult(
+        text,
+        row,
+        column,
+        documentKey,
+        deps.getLanguageId(),
+        deps.getEnableNest(),
+        'auto',
+        snapshotId,
+      );
+      return result.status === 'ready' ? result.data : [];
+    } catch (error) {
       deps.handleError(error, {
         component: 'GraphViewer',
         operation: 'resolveTreePath',
         metadata: { documentKey, row, column },
       });
       return [];
-    });
+    }
   }
 
 

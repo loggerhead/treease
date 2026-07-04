@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
-  clearActiveDocumentSnapshot,
-  getActiveDocumentSnapshotId,
-} from '../../services/DocumentSessionService';
+  clearWorkspaceSnapshot,
+  getWorkspaceSnapshotId,
+} from '../../store/workspace-snapshot-bindings';
 import { editorStore, type FullEditUiState } from '../../store/editor-store';
 import { createPrimaryFullEditSink, createWorkspaceTabFullEditSink } from './editor-full-edit-sink';
 
@@ -20,8 +20,8 @@ function expectLegacyPrimaryFullEditState(expected: Partial<FullEditUiState> = {
 describe('editor-full-edit-sink', () => {
   beforeEach(() => {
     editorStore.reset();
-    clearActiveDocumentSnapshot(primaryDocumentKey);
-    clearActiveDocumentSnapshot(sidecarDocumentKey);
+    clearWorkspaceSnapshot(primaryDocumentKey);
+    clearWorkspaceSnapshot(sidecarDocumentKey);
     editorStore.actions.setDocumentKey(primaryDocumentKey);
     editorStore.actions.setLanguageId('json');
     editorStore.actions.initWorkspaceFromPrimaryTab({
@@ -248,8 +248,8 @@ describe('editor-full-edit-sink', () => {
       revision: 4,
       snapshotId: 101,
     });
-    expect(getActiveDocumentSnapshotId(primaryDocumentKey)).toBeNull();
-    expect(getActiveDocumentSnapshotId(sidecarDocumentKey)).toBe(101);
+    expect(getWorkspaceSnapshotId(primaryDocumentKey)).toBeNull();
+    expect(getWorkspaceSnapshotId(sidecarDocumentKey)).toBe(101);
   });
 
   it('sidecar bindSnapshot ignores foreign documentKey without binding the primary document snapshot', () => {
@@ -280,8 +280,8 @@ describe('editor-full-edit-sink', () => {
       revision: sidecarBeforeBind.revision,
       snapshotId: sidecarBeforeBind.snapshotId,
     });
-    expect(getActiveDocumentSnapshotId(primaryDocumentKey)).toBeNull();
-    expect(getActiveDocumentSnapshotId(sidecarDocumentKey)).toBeNull();
+    expect(getWorkspaceSnapshotId(primaryDocumentKey)).toBeNull();
+    expect(getWorkspaceSnapshotId(sidecarDocumentKey)).toBeNull();
   });
 
   it('sidecar bindSnapshot ignores stale revision without overwriting the current tab snapshot', () => {
@@ -311,7 +311,7 @@ describe('editor-full-edit-sink', () => {
       revision: 10,
       snapshotId: null,
     });
-    expect(getActiveDocumentSnapshotId(sidecarDocumentKey)).toBeNull();
+    expect(getWorkspaceSnapshotId(sidecarDocumentKey)).toBeNull();
     expectLegacyPrimaryFullEditState();
   });
 
@@ -326,7 +326,7 @@ describe('editor-full-edit-sink', () => {
       }),
     ).not.toThrow();
 
-    expect(getActiveDocumentSnapshotId(sidecarDocumentKey)).toBeNull();
+    expect(getWorkspaceSnapshotId(sidecarDocumentKey)).toBeNull();
     expectLegacyPrimaryFullEditState();
   });
 });

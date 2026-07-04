@@ -8,7 +8,7 @@ vi.mock('../wasm/wasm-worker-singleton', () => ({
   getSharedWasmWorkerClient: (...args: any[]) => mockGetSharedWasmWorkerClient(...args),
 }));
 
-import { commitDocument } from './DocumentCommitService';
+import { commitApplyEdits } from './DocumentCommitService';
 
 const builderConfig = toWasmBuilderConfig({
   keyWidth: 160,
@@ -43,19 +43,20 @@ function createRequest() {
   };
 }
 
-describe('commitDocument', () => {
+describe('commitApplyEdits', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
   it('rejects edits without a base snapshot', async () => {
-    const result = await commitDocument({
+    const result = await commitApplyEdits({
       ...createRequest(),
       baseSnapshotId: null,
     });
 
     expect(mockGetSharedWasmWorkerClient).not.toHaveBeenCalled();
     expect(result).toEqual({
+      status: 'rejected',
       snapshotId: null,
       analysis: null,
       sourceText: null,
@@ -98,7 +99,7 @@ describe('commitDocument', () => {
 
     mockGetSharedWasmWorkerClient.mockResolvedValue({ call });
 
-    const result = await commitDocument(createRequest());
+    const result = await commitApplyEdits(createRequest());
 
     expect(call).toHaveBeenNthCalledWith(1, 'startDocumentJob', {
       documentKey: 'doc-1',
@@ -115,6 +116,7 @@ describe('commitDocument', () => {
       kind: 'close',
     });
     expect(result.snapshotId).toBe(9);
+    expect(result.status).toBe('snapshotReady');
     expect(result.sourceText).toBeNull();
     expect(result.jobHandle).toBe(41);
     expect(result.batch).toEqual({

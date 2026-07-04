@@ -26,6 +26,13 @@ export type EditorWorkspaceState = {
   activeTabId: string;
   tabOrder: string[];
   paneTabIds: Record<EditorPaneId, string | null>;
+  snapshotBindingsByDocumentKey: Record<string, WorkspaceSnapshotBinding>;
+};
+
+export type WorkspaceSnapshotBinding = {
+  documentKey: string;
+  revision: number;
+  snapshotId: SnapshotId;
 };
 
 export type EditorWorkspaceTabSummary = { id: string; name: string; languageId: SupportedEditorLanguageId };
@@ -204,6 +211,7 @@ export function createEditorWorkspaceState(primaryTab: EditorWorkspaceTab): Edit
       left: normalizedPrimary.id,
       right: null,
     },
+    snapshotBindingsByDocumentKey: {},
   };
 }
 

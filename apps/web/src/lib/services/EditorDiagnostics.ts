@@ -1,10 +1,6 @@
-import type { DocumentJobAnalysisPayload, DocumentJobSettings, EventBatch, SnapshotId, StartDocumentJobResult } from '@core-wasm/index';
 import type * as Monaco from 'monaco-editor';
-import { callSharedWasmWorker } from '../wasm/wasm-worker-singleton';
 import type { SupportedEditorLanguageId } from '../monaco/language-support';
 import { resolveDocumentAnalysis } from './DocumentAnalysisResolver';
-import { mergeEventBatches, streamDocumentJobText } from '../../shared/document-job-stream';
-import { collectDocumentJobResult, semanticTokensToBuffer } from '../../shared/document-job-result';
 export type WasmError = {
   startLineNumber: number;
   startColumn: number;
@@ -12,95 +8,6 @@ export type WasmError = {
   endColumn: number;
   kind: number;
 };
-
-type StoredDocumentAnalysis = {
-  tree?: unknown;
-  value?: unknown;
-  diagnostics: WasmError[];
-  semanticTokens?: ArrayBuffer;
-  semanticTokenVersion?: number;
-  sourceByteLength?: number;
-  language?: string;
-  snapshotId: SnapshotId | null;
-};
-type AnalyzeDocumentAndStoreOptions = {
-  onAnalysisDelta?: (analysis: StoredDocumentAnalysis) => void | Promise<void>;
-};
-
-function createEditorAnalysisJobSettings(nest: boolean): DocumentJobSettings {
-  return {
-    parser: {
-      enableNest: nest,
-      nestMaxDepth: 8,
-    },
-    formatting: {
-      indent: 2,
-      smart: false,
-      formatSourceOnClose: false,
-      maxLineLength: 100,
-      maxInlineComplexity: 1,
-      maxArrayInlineItems: 6,
-      alignObjectArrays: true,
-    },
-  };
-}
-
-export async function analyzeDocumentAndStore(
-  languageId: SupportedEditorLanguageId,
-  text: string,
-  documentKey: string,
-  nest: boolean,
-  options?: AnalyzeDocumentAndStoreOptions,
-): Promise<StoredDocumentAnalysis | null> {
-  if (!documentKey) return null;
-  let latestStreamingAnalysis: StoredDocumentAnalysis | null = null;
-  const started = await callSharedWasmWorker<StartDocumentJobResult>('startDocumentJob', {
-    documentKey,
-    language: languageId,
-    nest,
-    settings: createEditorAnalysisJobSettings(nest),
-    outputAnalysis: true,
-    outputGraph: false,
-  });
-  const streamedBatches = await streamDocumentJobText({
-    jobHandle: started.jobHandle,
-    text,
-    advance: (input) => callSharedWasmWorker<EventBatch>('advanceDocumentJob', input),
-    onBatch: async (batch) => {
-      for (const event of batch.events) {
-        if (event.type !== 'analysisDelta') continue;
-        const analysis = normalizeAnalysisPayload(event.analysis, null);
-        if (!analysis) continue;
-        latestStreamingAnalysis = analysis;
-        await options?.onAnalysisDelta?.(analysis);
-      }
-    },
-  });
-  const batch = mergeEventBatches([started.batch, ...streamedBatches]);
-  const result = collectDocumentJobResult(batch);
-  const terminalAnalysis = normalizeAnalysisPayload(result.analysis, result.snapshotId);
-  if (terminalAnalysis) return terminalAnalysis;
-  if (!latestStreamingAnalysis) return null;
-  return { ...latestStreamingAnalysis, snapshotId: result.snapshotId };
-}
-
-
-function normalizeAnalysisPayload(
-  raw: DocumentJobAnalysisPayload | null,
-  snapshotId: SnapshotId | null,
-): StoredDocumentAnalysis | null {
-  if (!raw) return null;
-  return {
-    tree: null,
-    value: null,
-    diagnostics: raw.diagnostics ?? [],
-    semanticTokens: semanticTokensToBuffer(raw.semanticTokens?.data),
-    semanticTokenVersion: raw.semanticTokens?.version ?? 1,
-    sourceByteLength: raw.sourceByteLength,
-    language: raw.language,
-    snapshotId,
-  };
-}
 
 export type DiagnosticItem = {
   code: 'syntax-error' | 'missing-node';

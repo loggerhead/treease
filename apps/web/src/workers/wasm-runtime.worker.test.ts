@@ -22,7 +22,6 @@ const mocked = vi.hoisted(() => ({
   findJsonBlockAtPosition: vi.fn(async () => ({ found: false, startByte: 0, endByte: 0, startRow: 0, startColumn: 0, endRow: 0, endColumn: 0 })),
   getTreePath: vi.fn(),
   getPathSpan: vi.fn(),
-  applyValueEdit: vi.fn(),
   applyValueEditCanonical: vi.fn(),
   getGraphDeltaChunk: vi.fn(),
   freeStreams: vi.fn(),
@@ -71,7 +70,6 @@ vi.mock('@core-wasm/index', () => ({
   findJsonBlockAtPosition: mocked.findJsonBlockAtPosition,
   getTreePath: mocked.getTreePath,
   getPathSpan: mocked.getPathSpan,
-  applyValueEdit: mocked.applyValueEdit,
   applyValueEditCanonical: mocked.applyValueEditCanonical,
   getGraphDeltaChunk: mocked.getGraphDeltaChunk,
   freeStreams: mocked.freeStreams,
@@ -331,7 +329,7 @@ it('falls back to text diff when compareStructured returns false for structurall
     });
 
 
-    it('returns graph search empty result without indexing when query is blank', async () => {
+    it('returns graph search ready empty result without indexing when query is blank', async () => {
       const res = await send({
         id: 7,
         type: 'graphSearch',
@@ -343,7 +341,47 @@ it('falls back to text diff when compareStructured returns false for structurall
       });
 
       expect(res.ok).toBe(true);
-      expect(res.data).toEqual([]);
+      expect(res.data).toEqual({ status: 'ready', data: [] });
+    });
+
+    it('graphSearch 缺少 current snapshot 时返回 snapshotNotReady', async () => {
+      const res = await send({
+        id: 71,
+        type: 'graphSearch',
+        documentKey: 'search-not-ready',
+        snapshotId: null,
+        language: 'json',
+        query: 'a',
+        nest: false,
+      });
+
+      expect(res.ok).toBe(true);
+      expect(res.data).toEqual({ status: 'snapshotNotReady' });
+      expect(mocked.querySnapshot).not.toHaveBeenCalled();
+    });
+
+    it('graphSearch returns snapshotNotReady when search index snapshot query is not ready', async () => {
+      mocked.querySnapshot.mockResolvedValueOnce({ status: 'snapshotNotReady' });
+
+      const res = await send({
+        id: 72,
+        type: 'graphSearch',
+        documentKey: 'search-query-not-ready',
+        snapshotId: 72,
+        language: 'json',
+        query: 'a',
+        nest: false,
+      });
+
+      expect(res.ok).toBe(true);
+      expect(res.data).toEqual({ status: 'snapshotNotReady' });
+      expect(mocked.querySnapshot).toHaveBeenCalledWith(
+        expect.objectContaining({
+          documentKey: 'search-query-not-ready',
+          snapshotId: 72,
+          queryKind: 'searchIndex',
+        }),
+      );
     });
 
     it('treePath 缺少 current snapshot 时返回 snapshotNotReady', async () => {
@@ -480,20 +518,27 @@ it('falls back to text diff when compareStructured returns false for structurall
     });
 
     it('graphSearch 在 snapshot 已就绪时只依赖 query 结果，不读取旧 authoritative cache', async () => {
-      mocked.parseToTree.mockResolvedValueOnce({
-        kind: TreeKind.MAPPING,
-        semType: SemType.MAP,
-        tag: '',
-        value: '',
-        children: [
-          { kind: TreeKind.SCALAR, semType: SemType.STR, tag: '', value: 'a', children: [] },
-          { kind: TreeKind.SCALAR, semType: SemType.INT, tag: '', value: '1', children: [] },
-        ],
-      });
-      mocked.querySnapshot.mockResolvedValueOnce({
-        status: 'ready',
-        data: { anchors: [{ path: '$.a', spanStart: 2, spanEnd: 3 }] },
-      });
+      mocked.querySnapshot
+        .mockResolvedValueOnce({
+          status: 'ready',
+          data: {
+            anchors: [],
+            searchItems: [
+              {
+                path: '$.a',
+                pathText: '$.a',
+                label: 'a',
+                keyText: 'a',
+                valueText: '1',
+                target: 'key',
+              },
+            ],
+          },
+        })
+        .mockResolvedValueOnce({
+          status: 'ready',
+          data: { anchors: [{ path: '$.a', spanStart: 2, spanEnd: 3 }] },
+        });
 
       const res = await send({
         id: 9,
@@ -501,22 +546,33 @@ it('falls back to text diff when compareStructured returns false for structurall
         documentKey: 'stored-search',
         snapshotId: 9,
         language: 'json',
-        text: '{"a":1}',
         query: 'a',
         nest: false,
       });
 
       expect(res.ok).toBe(true);
-      expect(res.data).toMatchObject([
+      expect(res.data).toMatchObject({
+        status: 'ready',
+        data: [
         {
           label: 'a',
           target: 'key',
           pathText: '$.a',
         },
-      ]);
+      ],
+      });
       expect(mocked.getStoredDocumentAnalysis).not.toHaveBeenCalled();
-      expect(mocked.parseToTree).toHaveBeenCalledWith('json', '{"a":1}', { nest: false });
-      expect(mocked.querySnapshot).toHaveBeenCalledWith(
+      expect(mocked.parseToTree).not.toHaveBeenCalled();
+      expect(mocked.querySnapshot).toHaveBeenNthCalledWith(
+        1,
+        expect.objectContaining({
+          documentKey: 'stored-search',
+          snapshotId: 9,
+          queryKind: 'searchIndex',
+        }),
+      );
+      expect(mocked.querySnapshot).toHaveBeenNthCalledWith(
+        2,
         expect.objectContaining({
           documentKey: 'stored-search',
           snapshotId: 9,
@@ -797,28 +853,6 @@ it('falls back to text diff when compareStructured returns false for structurall
       expect(res.data).toMatchObject({ tag: 'tag', value: 'value' });
     });
 
-    it('returns parsed value data for UI consumers', async () => {
-      mocked.parseValueToTreeJson.mockImplementation(async () => ({
-        kind: TreeKind.SCALAR,
-        semType: SemType.INT,
-        tag: '',
-        value: '42',
-        children: [],
-      }));
-
-      const res = await send({
-        id: 72,
-        type: 'parseValueToData',
-        language: 'json',
-        text: '42',
-        nest: true,
-      });
-
-      expect(res.ok).toBe(true);
-      expect(res.data.tree).toMatchObject({ value: '42' });
-      expect(res.data.value).toBe(42);
-    });
-
     it('converts raw values into plain tree nodes', async () => {
       const res = await send({
         id: 73,
@@ -898,7 +932,6 @@ it('falls back to text diff when compareStructured returns false for structurall
         tree: expect.objectContaining({ kind: TreeKind.MAPPING }),
         value: { name: 'Bob' },
       });
-      expect(mocked.applyValueEdit).not.toHaveBeenCalled();
       expect(mocked.parseToTree).not.toHaveBeenCalled();
       expect(mocked.applyValueEditCanonical).toHaveBeenCalledWith(
         'json',
@@ -951,16 +984,10 @@ it('falls back to text diff when compareStructured returns false for structurall
         expect(res.data.edits).toHaveLength(1);
       }
 
-      expect(mocked.applyValueEdit).not.toHaveBeenCalled();
     });
 
-    it('returns replace fallback when snapshot-bound planning is unavailable', async () => {
+    it('returns snapshotNotReady when snapshot-bound planning is unavailable', async () => {
       mocked.planGraphValueEdit.mockResolvedValue({ status: 'snapshotNotReady' });
-      mocked.applyValueEditCanonical.mockResolvedValue({
-        text: 'ab11cd22ef',
-        tree: scalarNode('patched'),
-        value: 'patched',
-      });
       const res = await send({
         id: 741,
         type: 'planGraphValueEdit',
@@ -974,21 +1001,10 @@ it('falls back to text diff when compareStructured returns false for structurall
       });
       expect(res.ok).toBe(true);
       expect(res.data).toEqual({
-        mode: 'replace',
-        reason: 'snapshotNotReady',
-        text: 'ab11cd22ef',
-        tree: scalarNode('patched'),
-        value: 'patched',
+        mode: 'snapshotNotReady',
       });
-      expect(mocked.applyValueEdit).not.toHaveBeenCalled();
       expect(mocked.parseToTree).not.toHaveBeenCalled();
-      expect(mocked.applyValueEditCanonical).toHaveBeenCalledWith(
-        'json',
-        'abXXcdYYef',
-        [{ tag: 0, key: 'name', index: 0 }],
-        false,
-        'patched',
-      );
+      expect(mocked.applyValueEditCanonical).not.toHaveBeenCalled();
     });
   });
 

@@ -7,12 +7,11 @@ vi.mock('../wasm/wasm-worker-singleton', () => ({
 
 import { callSharedWasmWorker } from '../wasm/wasm-worker-singleton';
 import {
-  getTreePathAtPosition,
-  resolvePathAnchorSafe,
-  resolvePathSelectionRangeSafe,
-  resolvePathSpan,
-  resolveTreePath,
-  resolveTreePathFromText,
+  resolvePathAnchorResult,
+  resolvePathSelectionRangeResult,
+  resolvePathSpanResult,
+  resolveTreePathResult,
+  resolveTreePathFromTextResult,
   toByteColumn,
 } from './TreePathService';
 
@@ -40,7 +39,7 @@ describe('TreePathService', () => {
     const callMock = vi.mocked(callSharedWasmWorker as any);
     callMock.mockResolvedValueOnce(readyResult([{ path: '$["你"]', spanStart: 0, spanEnd: 0, target: 'path', snapshotId: 7 }]));
 
-    const path = await resolveTreePath(
+    const result = await resolveTreePathResult(
       model,
       { lineNumber: 1, column: 99 } as any,
       'vitest://tree-path/clamp',
@@ -49,7 +48,8 @@ describe('TreePathService', () => {
       7,
     );
 
-    expect(path).toHaveLength(1);
+    expect(result.status).toBe('ready');
+    expect(result.status === 'ready' ? result.data : []).toHaveLength(1);
     expect(callMock).toHaveBeenCalledWith('querySnapshot', expect.objectContaining({ snapshotId: 7, spanStart: 4, spanEnd: 4 }));
   });
 
@@ -61,7 +61,7 @@ describe('TreePathService', () => {
     const callMock = vi.mocked(callSharedWasmWorker as any);
     callMock.mockResolvedValueOnce(readyResult([{ path: '$.value', spanStart: 4, spanEnd: 4, target: 'path', snapshotId: 7 }]));
 
-    const path = await resolveTreePath(
+    const result = await resolveTreePathResult(
       model,
       { lineNumber: 1, column: 3 } as any,
       'vitest://tree-path/char-column',
@@ -70,7 +70,8 @@ describe('TreePathService', () => {
       7,
     );
 
-    expect(path).toHaveLength(1);
+    expect(result.status).toBe('ready');
+    expect(result.status === 'ready' ? result.data : []).toHaveLength(1);
     expect(callMock).toHaveBeenCalledTimes(1);
     expect(callMock.mock.calls[0][0]).toBe('querySnapshot');
     expect(callMock.mock.calls[0][1]).toMatchObject({ snapshotId: 7, spanStart: 4, spanEnd: 4 });
@@ -84,7 +85,7 @@ describe('TreePathService', () => {
     const callMock = vi.mocked(callSharedWasmWorker as any);
     callMock.mockResolvedValueOnce(readyResult([]));
 
-    const path = await resolveTreePath(
+    const result = await resolveTreePathResult(
       model,
       { lineNumber: 1, column: 1 } as any,
       'vitest://tree-path/whitespace',
@@ -93,12 +94,12 @@ describe('TreePathService', () => {
       7,
     );
 
-    expect(path).toEqual([]);
+    expect(result).toEqual({ status: 'ready', data: [] });
     expect(callMock).toHaveBeenCalledTimes(1);
     expect(callMock.mock.calls[0][1]).toMatchObject({ snapshotId: 7, spanStart: 0, spanEnd: 0 });
   });
 
-  it('getTreePathAtPosition returns empty array on failure', async () => {
+  it('resolveTreePathResult propagates worker failures', async () => {
     const model = {
       getLineContent: vi.fn().mockReturnValue('{"a":1}'),
       getValue: vi.fn().mockReturnValue('{"a":1}'),
@@ -107,16 +108,30 @@ describe('TreePathService', () => {
     const callMock = vi.mocked(callSharedWasmWorker as any);
     callMock.mockRejectedValueOnce(new Error('boom'));
 
-    const path = await getTreePathAtPosition(
+    await expect(resolveTreePathResult(
       model,
       { lineNumber: 1, column: 2 } as any,
       'vitest://tree-path/error',
       'json' as any,
       true,
       7,
+    )).rejects.toThrow('boom');
+  });
+
+  it('resolveTreePathFromTextResult returns snapshotNotReady when snapshot is missing', async () => {
+    const result = await resolveTreePathFromTextResult(
+      '{"a":1}',
+      0,
+      1,
+      'vitest://tree-path/no-snapshot',
+      'json' as any,
+      true,
+      'char',
+      null,
     );
 
-    expect(path).toEqual([]);
+    expect(result).toEqual({ status: 'snapshotNotReady' });
+    expect(callSharedWasmWorker).not.toHaveBeenCalled();
   });
 
   it('resolvePathSpan forwards query target to the worker', async () => {
@@ -126,7 +141,7 @@ describe('TreePathService', () => {
     const callMock = vi.mocked(callSharedWasmWorker as any);
     callMock.mockResolvedValueOnce(readyResult([{ path: '$.flags', spanStart: 11, spanEnd: 15, target: 'span', snapshotId: 7 }]));
 
-    await resolvePathSpan(
+    await resolvePathSpanResult(
       model,
       [{ tag: 0, key: 'flags' as any, index: 0 } as any],
       'vitest://path-span/nest',
@@ -156,7 +171,7 @@ describe('TreePathService', () => {
       .mockResolvedValueOnce(readyResult([]))
       .mockResolvedValueOnce(readyResult([{ path: '$.a', spanStart: 5, spanEnd: 6, target: 'span', snapshotId: 7 }]));
 
-    const anchor = await resolvePathAnchorSafe(
+    const anchor = await resolvePathAnchorResult(
       model,
       [{ tag: 0, key: 'a', index: 0 } as any],
       'vitest://path-anchor/target-fallback',
@@ -166,7 +181,7 @@ describe('TreePathService', () => {
       7,
     );
 
-    expect(anchor).toEqual({ row: 0, column: 5 });
+    expect(anchor).toEqual({ status: 'ready', data: { row: 0, column: 5 } });
     expect(callMock).toHaveBeenNthCalledWith(
       1,
       'querySnapshot',
@@ -186,7 +201,7 @@ describe('TreePathService', () => {
     const callMock = vi.mocked(callSharedWasmWorker as any);
     callMock.mockResolvedValueOnce(readyResult([{ path: '$.a', spanStart: 5, spanEnd: 6, target: 'span', snapshotId: 7 }]));
 
-    const span = await resolvePathSpan(
+    const span = await resolvePathSpanResult(
       model,
       [{ tag: 1, key: 'a', index: 0 } as any],
       'vitest://path-span/ok',
@@ -196,7 +211,7 @@ describe('TreePathService', () => {
       7,
     );
 
-    expect(span).toEqual({ startByte: 5, endByte: 6, row: 0, column: 5 });
+    expect(span).toEqual({ status: 'ready', data: { startByte: 5, endByte: 6, row: 0, column: 5 } });
   });
 
   it('resolvePathSpan returns null for invalid span', async () => {
@@ -206,7 +221,7 @@ describe('TreePathService', () => {
     const callMock = vi.mocked(callSharedWasmWorker as any);
     callMock.mockResolvedValueOnce(readyResult([{ path: '$.a', spanStart: 8, spanEnd: 6, target: 'span', snapshotId: 7 }]));
 
-    const span = await resolvePathSpan(
+    const span = await resolvePathSpanResult(
       model,
       [{ tag: 1, key: 'a', index: 0 } as any],
       'vitest://path-span/invalid',
@@ -216,7 +231,46 @@ describe('TreePathService', () => {
       7,
     );
 
-    expect(span).toBeNull();
+    expect(span).toEqual({ status: 'ready', data: null });
+  });
+
+  it('resolvePathSpanResult returns snapshotNotReady when snapshot is missing', async () => {
+    const model = {
+      getValue: vi.fn().mockReturnValue('{"a":1}'),
+    } as any;
+
+    const result = await resolvePathSpanResult(
+      model,
+      [{ tag: 1, key: 'a', index: 0 } as any],
+      'vitest://path-span/no-snapshot',
+      'json' as any,
+      'value',
+      true,
+      null,
+    );
+
+    expect(result).toEqual({ status: 'snapshotNotReady' });
+    expect(callSharedWasmWorker).not.toHaveBeenCalled();
+  });
+
+  it('resolvePathSpanResult propagates worker failures', async () => {
+    const model = {
+      getValue: vi.fn().mockReturnValue('{"a":1}'),
+    } as any;
+    const callMock = vi.mocked(callSharedWasmWorker as any);
+    callMock.mockRejectedValueOnce(new Error('span boom'));
+
+    await expect(
+      resolvePathSpanResult(
+        model,
+        [{ tag: 1, key: 'a', index: 0 } as any],
+        'vitest://path-span/error',
+        'json' as any,
+        'value',
+        true,
+        7,
+      ),
+    ).rejects.toThrow('span boom');
   });
 
   it('resolvePathAnchorSafe uses the first valid span candidate', async () => {
@@ -226,7 +280,7 @@ describe('TreePathService', () => {
     const callMock = vi.mocked(callSharedWasmWorker as any);
     callMock.mockResolvedValueOnce(readyResult([{ path: '$.a', spanStart: 5, spanEnd: 6, target: 'span', snapshotId: 7 }]));
 
-    const anchor = await resolvePathAnchorSafe(
+    const anchor = await resolvePathAnchorResult(
       model,
       [{ tag: 1, key: 'a', index: 0 } as any],
       'vitest://path-anchor/span-first',
@@ -236,7 +290,7 @@ describe('TreePathService', () => {
       7,
     );
 
-    expect(anchor).toEqual({ row: 0, column: 5 });
+    expect(anchor).toEqual({ status: 'ready', data: { row: 0, column: 5 } });
     expect(callMock).toHaveBeenCalledTimes(1);
     expect(callMock).toHaveBeenCalledWith('querySnapshot', expect.objectContaining({ queryKind: 'findAnchors' }));
   });
@@ -250,7 +304,7 @@ describe('TreePathService', () => {
       .mockResolvedValueOnce(readyResult([{ path: '$.a', spanStart: 8, spanEnd: 6, target: 'span', snapshotId: 7 }]))
       .mockResolvedValueOnce(readyResult([{ path: '$.a', spanStart: 8, spanEnd: 6, target: 'span', snapshotId: 7 }]));
 
-    const anchor = await resolvePathAnchorSafe(
+    const anchor = await resolvePathAnchorResult(
       model,
       [{ tag: 1, key: 'a', index: 0 } as any],
       'vitest://path-anchor/fallback',
@@ -260,7 +314,7 @@ describe('TreePathService', () => {
       7,
     );
 
-    expect(anchor).toBeNull();
+    expect(anchor).toEqual({ status: 'ready', data: null });
     expect(callMock.mock.calls[0][0]).toBe('querySnapshot');
     expect(callMock.mock.calls[1][0]).toBe('querySnapshot');
   });
@@ -276,7 +330,7 @@ describe('TreePathService', () => {
     const callMock = vi.mocked(callSharedWasmWorker as any);
     callMock.mockResolvedValueOnce(readyResult([{ path: '$.message', spanStart: startByte, spanEnd: endByte, target: 'span', snapshotId: 7 }]));
 
-    const range = await resolvePathSelectionRangeSafe(
+    const range = await resolvePathSelectionRangeResult(
       model,
       [{ tag: 1, key: 'message', index: 0 } as any],
       'vitest://path-selection/utf8',
@@ -287,32 +341,37 @@ describe('TreePathService', () => {
     );
 
     expect(range).toEqual({
-      start: { lineNumber: 1, column: 13 },
-      end: { lineNumber: 1, column: 15 },
+      status: 'ready',
+      data: {
+        start: { lineNumber: 1, column: 13 },
+        end: { lineNumber: 1, column: 15 },
+      },
     });
     expect(model.getPositionAt).toHaveBeenNthCalledWith(1, 12);
     expect(model.getPositionAt).toHaveBeenNthCalledWith(2, 14);
   });
 
-  it('resolveTreePathFromText sends a single normalized byte column in auto mode', async () => {
+  it('resolveTreePathFromTextResult sends a single normalized byte column in auto mode', async () => {
     const callMock = vi.mocked(callSharedWasmWorker as any);
     callMock.mockResolvedValueOnce(readyResult([{ path: '$.value', spanStart: 4, spanEnd: 4, target: 'path', snapshotId: 7 }]));
 
-    const path = await resolveTreePathFromText('a你b', 0, 2, 'vitest://tree-path/auto', 'javascript' as any, true, 'auto', 7);
+    const result = await resolveTreePathFromTextResult('a你b', 0, 2, 'vitest://tree-path/auto', 'javascript' as any, true, 'auto', 7);
 
-    expect(path).toHaveLength(1);
+    expect(result.status).toBe('ready');
+    expect(result.status === 'ready' ? result.data : []).toHaveLength(1);
     expect(callMock).toHaveBeenCalledTimes(1);
     expect(callMock.mock.calls[0][1]).toMatchObject({ snapshotId: 7, spanStart: 4, spanEnd: 4 });
   });
 
-  it('resolveTreePathFromText leaves punctuation fallback to core', async () => {
+  it('resolveTreePathFromTextResult leaves punctuation fallback to core', async () => {
     const line = 'user = { name: "Ada" }';
     const callMock = vi.mocked(callSharedWasmWorker as any);
     callMock.mockResolvedValueOnce(readyResult([{ path: '$.name', spanStart: 14, spanEnd: 14, target: 'path', snapshotId: 7 }]));
 
-    const path = await resolveTreePathFromText(line, 0, 14, 'vitest://tree-path/auto-punct', 'javascript' as any, true, 'auto', 7);
+    const result = await resolveTreePathFromTextResult(line, 0, 14, 'vitest://tree-path/auto-punct', 'javascript' as any, true, 'auto', 7);
 
-    expect(path).toHaveLength(1);
+    expect(result.status).toBe('ready');
+    expect(result.status === 'ready' ? result.data : []).toHaveLength(1);
     expect(callMock).toHaveBeenCalledTimes(1);
     expect(callMock.mock.calls[0][1]).toMatchObject({ snapshotId: 7, spanStart: 14, spanEnd: 14 });
   });

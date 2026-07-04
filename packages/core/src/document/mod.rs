@@ -16,13 +16,13 @@ pub use protocol::{
     AdvanceInput, CommitMode, DocumentAnalysisPayload, DocumentAnchor, DocumentDiagnostic,
     DocumentEvent, DocumentFormattingSettings, DocumentInputPlan, DocumentJobKind,
     DocumentJobSettings, DocumentJobSpec, DocumentNodePreview, DocumentParserSettings,
-    DocumentPathValue, DocumentTreeNode, EventBatch, GraphBezierArgsData, GraphBoxArgs,
-    GraphCellData, GraphDelta, GraphEdgeData, GraphEdgeRemoved, GraphNodeData, GraphPathSeg,
-    GraphRowData, GraphTableData, GraphTextArgs, GraphValueEditFallbackReason, GraphValueEditPlan,
-    GraphValueEditPlanMode, GraphValueEditRequest, JobTerminal, LayoutPatch, OutputPlan,
-    ParseFailed, ProjectionDelta, ProjectionRequest, QueryKind, QueryResult, QueryTargetKind,
-    SemanticTokensPayload, SnapshotId, SnapshotQuery, SnapshotReadResult, SnapshotReady,
-    TableCellPatchData, TablePatch,
+    DocumentPathValue, DocumentSearchItem, DocumentTreeNode, EventBatch, GraphBezierArgsData,
+    GraphBoxArgs, GraphCellData, GraphDelta, GraphEdgeData, GraphEdgeRemoved, GraphNodeData,
+    GraphPathSeg, GraphRowData, GraphTableData, GraphTextArgs, GraphValueEditFallbackReason,
+    GraphValueEditPlan, GraphValueEditPlanMode, GraphValueEditRequest, JobTerminal, LayoutPatch,
+    OutputPlan, ParseFailed, ProjectionDelta, ProjectionRequest, QueryKind, QueryResult,
+    QueryTargetKind, SemanticTokensPayload, SnapshotId, SnapshotQuery, SnapshotReadResult,
+    SnapshotReady, TableCellPatchData, TablePatch,
 };
 pub use runtime::{DocumentRuntime, commit_snapshot};
 pub use snapshot::{AnalysisBundle, DocumentSnapshot, GraphProjection, IncrementalState};

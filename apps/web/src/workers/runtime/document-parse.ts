@@ -14,7 +14,7 @@ import {
 
 import { mergeEventBatches, streamDocumentJobText } from '../../shared/document-job-stream';
 import { collectDocumentJobResult, normalizeDocumentJobAnalysisPayload } from '../../shared/document-job-result';
-import { clonePlainTreeNode, createParsedTreeData } from '../../shared/tree-node-value';
+import { clonePlainTreeNode } from '../../shared/tree-node-value';
 import type { DocumentAnalysisCacheRuntime } from './document-runtime-state';
 import { postOk } from './logging';
 import type { DocumentAnalysisResult, JsonBlockAtPositionResult, WorkerContext, WorkerRequest } from './protocol';
@@ -94,7 +94,7 @@ async function startSnapshotDocumentJob(
         alignObjectArrays: true,
       },
     },
-    outputGraph: false,
+    outputGraph: true,
     outputAnalysis: true,
   });
   const streamedBatches = await streamDocumentJobText({
@@ -222,11 +222,4 @@ export async function handleParseValueToTree(
   message: Extract<WorkerRequest, { type: 'parseValueToTree' }>,
 ): Promise<void> {
   await postHandlerResult(ctx, message, () => parseValueToTreeNode(message.language, message.text, message.nest));
-}
-
-export async function handleParseValueToData(
-  ctx: WorkerContext,
-  message: Extract<WorkerRequest, { type: 'parseValueToData' }>,
-): Promise<void> {
-  await postHandlerResult(ctx, message, async () => createParsedTreeData(await parseValueToTreeNode(message.language, message.text, message.nest)));
 }

@@ -1,4 +1,4 @@
-import type { DocumentTextEdit } from '@core-wasm/index';
+import type { DocumentTextEdit, SnapshotId } from '@core-wasm/index';
 import type * as Monaco from 'monaco-editor';
 import { writable, get, derived, type Writable, type Readable } from 'svelte/store';
 import { editorLanguageFallback, type SupportedEditorLanguageId } from '../monaco/language-support';
@@ -65,15 +65,26 @@ export type TempModel = {
   graphHighlight: GraphHighlightState | null;
   diagnostics: DiagnosticItem[];
 };
-export type EditorMutation =
-  | {
-      type: 'applyValueEdit';
-      payload: { path: PathSeg[]; preferKey: boolean; value: unknown };
-    }
-  | {
-      type: 'replaceSourceText';
-      payload: { text: string };
+export type GraphEditReplaceFallbackReason =
+  | 'graph-edit-not-single-range'
+  | 'missingAnalysis'
+  | 'missingDocument'
+  | 'invalidPath'
+  | 'invalidReplacement'
+  | 'unsupportedLanguage'
+  | 'unsupportedEdit'
+  | 'unsafeEdit';
+export type EditorMutation = {
+  type: 'replaceSourceText';
+  payload: {
+    text: string;
+    graphEditFallback?: {
+      reason: GraphEditReplaceFallbackReason;
+      path: PathSeg[];
+      kind: 'key' | 'value';
     };
+  };
+};
 export type EditorMutationEnvelope = { id: number; mutation: EditorMutation };
 export type TreeSyncSource = 'editor' | 'graph';
 export type TreeSyncState = {
@@ -430,6 +441,12 @@ function baseCloneWorkspaceForRead(workspace: EditorWorkspaceState): EditorWorks
     paneTabIds: {
       ...workspace.paneTabIds,
     },
+    snapshotBindingsByDocumentKey: Object.fromEntries(
+      Object.entries(workspace.snapshotBindingsByDocumentKey).map(([documentKey, binding]) => [
+        documentKey,
+        { ...binding },
+      ]),
+    ),
     tabsById: Object.fromEntries(
       Object.entries(workspace.tabsById).map(([tabId, tab]) => [
         tabId,
@@ -440,6 +457,73 @@ function baseCloneWorkspaceForRead(workspace: EditorWorkspaceState): EditorWorks
         },
       ]),
     ),
+  };
+}
+
+function bindWorkspaceSnapshot(
+  state: EditorState,
+  payload: { documentKey: string; revision: number; snapshotId: SnapshotId | null | undefined },
+): EditorState {
+  if (!payload.documentKey || payload.snapshotId == null) return state;
+  const current = state.workspace.snapshotBindingsByDocumentKey[payload.documentKey];
+  if (current && payload.revision < current.revision) return state;
+  const newestTabRevision = Object.values(state.workspace.tabsById).reduce(
+    (newest, tab) => (tab.documentKey === payload.documentKey ? Math.max(newest, tab.revision) : newest),
+    -1,
+  );
+  if (newestTabRevision >= 0 && payload.revision < newestTabRevision) return state;
+  let tabsById = state.workspace.tabsById;
+  for (const [tabId, tab] of Object.entries(state.workspace.tabsById)) {
+    if (tab.documentKey !== payload.documentKey) continue;
+    if (payload.revision < tab.revision) continue;
+    if (tabsById === state.workspace.tabsById) tabsById = { ...tabsById };
+    tabsById[tabId] = {
+      ...tab,
+      revision: Math.max(tab.revision, payload.revision),
+      snapshotId: payload.snapshotId,
+    };
+  }
+  return {
+    ...state,
+    workspace: {
+      ...state.workspace,
+      tabsById,
+      snapshotBindingsByDocumentKey: {
+        ...state.workspace.snapshotBindingsByDocumentKey,
+        [payload.documentKey]: {
+          documentKey: payload.documentKey,
+          revision: payload.revision,
+          snapshotId: payload.snapshotId,
+        },
+      },
+    },
+  };
+}
+
+function clearWorkspaceSnapshot(
+  state: EditorState,
+  payload: { documentKey: string; snapshotId?: SnapshotId | null },
+): EditorState {
+  if (!payload.documentKey) return state;
+  const current = state.workspace.snapshotBindingsByDocumentKey[payload.documentKey];
+  if (!current) return state;
+  if (payload.snapshotId != null && current.snapshotId !== payload.snapshotId) return state;
+  const snapshotBindingsByDocumentKey = { ...state.workspace.snapshotBindingsByDocumentKey };
+  delete snapshotBindingsByDocumentKey[payload.documentKey];
+  let tabsById = state.workspace.tabsById;
+  for (const [tabId, tab] of Object.entries(state.workspace.tabsById)) {
+    if (tab.documentKey !== payload.documentKey) continue;
+    if (payload.snapshotId != null && tab.snapshotId !== payload.snapshotId) continue;
+    if (tabsById === state.workspace.tabsById) tabsById = { ...tabsById };
+    tabsById[tabId] = { ...tab, snapshotId: null };
+  }
+  return {
+    ...state,
+    workspace: {
+      ...state.workspace,
+      tabsById,
+      snapshotBindingsByDocumentKey,
+    },
   };
 }
 
@@ -488,19 +572,17 @@ function cloneJsonBlockSelectionForWrite(jsonBlockSelection: JsonBlockSelection 
 }
 
 function cloneEditorMutationForWrite(mutation: EditorMutation): EditorMutation {
-  if (mutation.type === 'applyValueEdit') {
-    return {
-      ...mutation,
-      payload: {
-        ...mutation.payload,
-        path: clonePathSegs(mutation.payload.path),
-        value: cloneUnknownForRead(mutation.payload.value),
-      },
-    };
-  }
   return {
     ...mutation,
-    payload: { ...mutation.payload },
+    payload: {
+      ...mutation.payload,
+      graphEditFallback: mutation.payload.graphEditFallback
+        ? {
+            ...mutation.payload.graphEditFallback,
+            path: clonePathSegs(mutation.payload.graphEditFallback.path),
+          }
+        : undefined,
+    },
   };
 }
 
@@ -572,24 +654,19 @@ function cloneTreeStateForRead(treeState: TreeSyncState): TreeSyncState {
 function baseCloneEditorMutationForRead(editorMutation: EditorMutationEnvelope | null): EditorMutationEnvelope | null {
   if (!editorMutation) return null;
   const mutation = editorMutation.mutation;
-  if (mutation.type === 'applyValueEdit') {
-    return {
-      ...editorMutation,
-      mutation: {
-        ...mutation,
-        payload: {
-          ...mutation.payload,
-          path: clonePathSegs(mutation.payload.path),
-          value: cloneUnknownForRead(mutation.payload.value),
-        },
-      },
-    };
-  }
   return {
     ...editorMutation,
     mutation: {
       ...mutation,
-      payload: { ...mutation.payload },
+      payload: {
+        ...mutation.payload,
+        graphEditFallback: mutation.payload.graphEditFallback
+          ? {
+              ...mutation.payload.graphEditFallback,
+              path: clonePathSegs(mutation.payload.graphEditFallback.path),
+            }
+          : undefined,
+      },
     },
   };
 }
@@ -799,6 +876,15 @@ function createEditorStore() {
             workspace: patchWorkspaceTab(s.workspace, tabId, safePatch),
           };
         }),
+      bindWorkspaceSnapshot: (payload: { documentKey: string; revision: number; snapshotId: SnapshotId | null | undefined }) =>
+        updateState((s) => bindWorkspaceSnapshot(s, payload)),
+      clearWorkspaceSnapshot: (documentKey: string, snapshotId?: SnapshotId | null) =>
+        updateState((s) => clearWorkspaceSnapshot(s, { documentKey, snapshotId })),
+      getWorkspaceSnapshotId: (documentKey: string): SnapshotId | null => {
+        if (!documentKey) return null;
+        const state = get(internalStore);
+        return state.workspace.snapshotBindingsByDocumentKey[documentKey]?.snapshotId ?? null;
+      },
       syncSidecarLanguageFromPrimary: () =>
         updateState((s) => ({
           ...s,

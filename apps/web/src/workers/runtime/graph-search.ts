@@ -1,11 +1,10 @@
-import { parseToTree, type PathSeg, type SnapshotId } from '@core-wasm/index';
+import { querySnapshot, type PathSeg, type QueryResult, type SnapshotId, type SnapshotReadResult } from '@core-wasm/index';
 import fuzzysort from 'fuzzysort';
-import { PathSegTag, SemType, TreeKind, type TreeNode } from '@core-wasm/index'
 import { postOk } from './logging';
 import { type WorkerContext, type WorkerRequest } from './protocol';
 import type { GraphState } from './graph-state-service';
-import type { GraphSearchItem, GraphSearchResult, SearchIndexEntry } from './graph-search-types';
-import { buildPathKey, buildPathText, createPathResolver, resolveLazyPath, resolveSearchRevealTarget, toPathSeg } from './tree-path';
+import type { GraphSearchItem, GraphSearchReadResult, GraphSearchResult, SearchIndexEntry } from './graph-search-types';
+import { buildPathKey, buildPathText, createPathResolver, parseAnchorPath, resolveLazyPath, resolveSearchRevealTarget } from './tree-path';
 
 type TableCell = {
   text?: string;
@@ -24,71 +23,11 @@ type GraphTable = {
   rows?: TableRow[];
 };
 
-export type { GraphSearchItem, GraphSearchResult, SearchIndexEntry } from './graph-search-types';
+export type { GraphSearchItem, GraphSearchReadResult, GraphSearchResult, SearchIndexEntry } from './graph-search-types';
 
 type GraphSearchAnalysisRuntime = {
   searchIndexByDocumentKey: Map<string, SearchIndexEntry>;
 };
-
-export function collectSearchItems(node: TreeNode, path: PathSeg[], items: GraphSearchItem[]): void {
-  if (!node) return;
-  const children = Array.isArray(node.children) ? node.children : [];
-  const isMapping = node.kind === TreeKind.MAPPING || node.semType === SemType.MAP;
-  const isSequence = node.kind === TreeKind.SEQUENCE || node.semType === SemType.SEQ;
-  if (isMapping) {
-    for (let i = 0; i < children.length; i += 2) {
-      const keyNode = children[i];
-      const valueNode = children[i + 1];
-      const keyText = String(keyNode?.value ?? '').trim();
-      if (keyText) {
-        const nextPath = [...path, toPathSeg(PathSegTag.KEY, keyText, 0)];
-        items.push({
-          path: nextPath,
-          pathKey: buildPathKey(nextPath),
-          pathText: buildPathText(nextPath),
-          label: keyText,
-          keyText,
-          valueText: String(valueNode?.value ?? ''),
-          target: 'key',
-        });
-        if (valueNode) collectSearchItems(valueNode, nextPath, items);
-      } else if (valueNode) {
-        collectSearchItems(valueNode, path, items);
-      }
-    }
-    return;
-  }
-  if (isSequence) {
-    children.forEach((child, index) => {
-      const nextPath = [...path, toPathSeg(PathSegTag.INDEX, '', index)];
-      const valueText = String(child?.value ?? '').trim();
-      if (valueText) {
-        items.push({
-          path: nextPath,
-          pathKey: buildPathKey(nextPath),
-          pathText: buildPathText(nextPath),
-          label: valueText,
-          keyText: String(index),
-          valueText,
-          target: 'value',
-        });
-      }
-      if (child) collectSearchItems(child, nextPath, items);
-    });
-    return;
-  }
-  const valueText = String(node.value ?? '').trim();
-  if (!valueText) return;
-  items.push({
-    path,
-    pathKey: buildPathKey(path),
-    pathText: buildPathText(path),
-    label: valueText,
-    keyText: '',
-    valueText,
-    target: 'value',
-  });
-}
 
 export function collectViewTableItems(
   graphStateByDocumentKey: Map<string, GraphState>,
@@ -132,27 +71,49 @@ export async function getSearchItems(
   runtime: GraphSearchAnalysisRuntime,
   graphStateByDocumentKey: Map<string, GraphState>,
   documentKey: string,
-  language: string,
-  text: string,
-  nest: boolean,
-): Promise<GraphSearchItem[]> {
+  snapshotId: SnapshotId | null,
+): Promise<SnapshotReadResult<GraphSearchItem[]>> {
+  if (snapshotId == null) return { status: 'snapshotNotReady' };
   const { searchIndexByDocumentKey } = runtime;
   const cached = searchIndexByDocumentKey.get(documentKey);
-  if (cached && cached.text === text) {
+  if (cached && cached.snapshotId === snapshotId) {
     const items = [...cached.items];
     collectViewTableItems(graphStateByDocumentKey, documentKey, items);
-    return items;
+    return { status: 'ready', data: items };
   }
-  const root = await parseToTree(language, text, { nest }) as unknown as TreeNode | null;
-  if (!root) {
-    searchIndexByDocumentKey.set(documentKey, { text, items: [], pathMap: undefined });
-    return [];
+  const result = await querySnapshot({
+    documentKey,
+    snapshotId,
+    queryKind: 'searchIndex',
+  });
+  if (result.status !== 'ready') {
+    return { status: 'snapshotNotReady' };
   }
-  const items: GraphSearchItem[] = [];
-  collectSearchItems(root, [], items);
+  const queryResult = result.data as QueryResult & {
+    searchItems?: Array<{
+      path: string;
+      pathText: string;
+      label: string;
+      keyText: string;
+      valueText: string;
+      target: 'key' | 'value' | 'node';
+    }>;
+  };
+  const items: GraphSearchItem[] = (queryResult.searchItems ?? []).map((item) => {
+    const path = parseAnchorPath(item.path);
+    return {
+      path,
+      pathKey: buildPathKey(path),
+      pathText: item.pathText || buildPathText(path),
+      label: item.label,
+      keyText: item.keyText,
+      valueText: item.valueText,
+      target: item.target,
+    };
+  });
   collectViewTableItems(graphStateByDocumentKey, documentKey, items);
-  searchIndexByDocumentKey.set(documentKey, { text, items, pathMap: undefined });
-  return items;
+  searchIndexByDocumentKey.set(documentKey, { snapshotId, items, pathMap: undefined });
+  return { status: 'ready', data: items };
 }
 
 export async function buildGraphPathMap(
@@ -165,7 +126,7 @@ export async function buildGraphPathMap(
 ): Promise<Map<string, number>> {
   const { searchIndexByDocumentKey } = runtime;
   const cached = searchIndexByDocumentKey.get(documentKey);
-  if (cached?.text === text && cached.pathMap) {
+  if (snapshotId != null && cached?.snapshotId === snapshotId && cached.pathMap) {
     return cached.pathMap;
   }
   const state = graphStateByDocumentKey.get(documentKey);
@@ -220,7 +181,7 @@ export async function buildGraphPathMap(
       }
     }
   }
-  if (cached && cached.text === text) {
+  if (snapshotId != null && cached && cached.snapshotId === snapshotId) {
     cached.pathMap = map;
   }
   return map;
@@ -234,13 +195,18 @@ export async function handleGraphSearch(
 ): Promise<void> {
   const query = message.query?.trim();
   if (!query) {
-    postOk(ctx, message.id, []);
+    postOk(ctx, message.id, { status: 'ready', data: [] } satisfies GraphSearchReadResult);
     return;
   }
-  const nest = message.nest;
-  const items = await getSearchItems(runtime, graphStateByDocumentKey, message.documentKey, message.language, message.text, nest);
   const snapshotId = message.snapshotId ?? null;
-  const pathMap = await buildGraphPathMap(runtime, graphStateByDocumentKey, message.documentKey, message.language, message.text, snapshotId);
+  const nest = message.nest;
+  const itemsResult = await getSearchItems(runtime, graphStateByDocumentKey, message.documentKey, snapshotId);
+  if (itemsResult.status !== 'ready') {
+    postOk(ctx, message.id, { status: 'snapshotNotReady' } satisfies GraphSearchReadResult);
+    return;
+  }
+  const items = itemsResult.data;
+  const pathMap = await buildGraphPathMap(runtime, graphStateByDocumentKey, message.documentKey, message.language, '', snapshotId);
   const resolved = await Promise.all(
     fuzzysort
       .go(query, items as any, {
@@ -251,7 +217,7 @@ export async function handleGraphSearch(
       .map(async (item) => {
         let path = item.path;
         if (!path || path.length === 0) {
-          path = await resolveLazyPath(message.documentKey, message.language, message.text, item.lazy ?? {}, snapshotId);
+          path = await resolveLazyPath(message.documentKey, message.language, '', item.lazy ?? {}, snapshotId);
         }
         const pathKey = buildPathKey(path);
         if (!pathKey) return null;
@@ -259,7 +225,7 @@ export async function handleGraphSearch(
         const resolvedTarget = await resolveSearchRevealTarget(
           message.documentKey,
           message.language,
-          message.text,
+          '',
           path,
           item.target,
           nest,
@@ -283,5 +249,5 @@ export async function handleGraphSearch(
     uniqueResults.set(entry.dedupeKey, entry.data);
     if (uniqueResults.size >= 20) break;
   }
-  postOk(ctx, message.id, [...uniqueResults.values()]);
+  postOk(ctx, message.id, { status: 'ready', data: [...uniqueResults.values()] } satisfies GraphSearchReadResult);
 }

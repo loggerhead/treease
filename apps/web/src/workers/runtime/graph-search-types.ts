@@ -20,8 +20,12 @@ export type GraphSearchResult = {
   pathText: string;
 };
 
+export type GraphSearchReadResult =
+  | { status: 'ready'; data: GraphSearchResult[] }
+  | { status: 'snapshotNotReady' };
+
 export type SearchIndexEntry = {
-  text: string;
+  snapshotId: number;
   items: GraphSearchItem[];
   pathMap?: Map<string, number>;
 };

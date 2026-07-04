@@ -566,6 +566,7 @@ pub enum QueryKind {
     NodePreview,
     PathValue,
     FieldLabels,
+    SearchIndex,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, Tsify)]
@@ -589,6 +590,20 @@ pub struct SnapshotQuery {
 
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize, Tsify)]
 #[serde(rename_all = "camelCase")]
+pub struct DocumentSearchItem {
+    pub path: String,
+    #[serde(rename = "pathText")]
+    pub path_text: String,
+    pub label: String,
+    #[serde(rename = "keyText")]
+    pub key_text: String,
+    #[serde(rename = "valueText")]
+    pub value_text: String,
+    pub target: QueryTargetKind,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize, Tsify)]
+#[serde(rename_all = "camelCase")]
 pub struct QueryResult {
     pub anchors: Vec<DocumentAnchor>,
     #[serde(default, rename = "rootValueKind")]
@@ -599,6 +614,8 @@ pub struct QueryResult {
     pub path_value: Option<DocumentPathValue>,
     #[serde(default, rename = "fieldLabels")]
     pub field_labels: Vec<String>,
+    #[serde(default, rename = "searchItems")]
+    pub search_items: Vec<DocumentSearchItem>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize, Tsify)]

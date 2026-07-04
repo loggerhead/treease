@@ -4,7 +4,7 @@ import type { DocumentTextEdit } from '@core-wasm/index';
 import type { SupportedEditorLanguageId } from '../../monaco/language-support';
 import type { GraphCell, GraphCellKind } from '../../graph/graph-viewer-render';
 import type { PathSeg } from '../../store/tree-path';
-import type { EditorIO } from '../../store/editor-store';
+import type { EditorIO, GraphEditReplaceFallbackReason } from '../../store/editor-store';
 import { clearGraphSelectionAfterEdit } from '../GraphViewer.graph-highlight';
 import { callSharedWasmWorker } from '../../wasm/wasm-worker-singleton';
 import type { TreeNode } from '@core-wasm/index'
@@ -12,7 +12,7 @@ import type { LeaferEditor, LeaferText } from './model';
 import { resolveCellPath } from './graph-anchor-index';
 import { createFreshnessScope } from '../../guards/freshness-scope';
 
-type GraphEditEventType = 'graph-edit-open' | 'graph-edit-commit';
+type GraphEditEventType = 'graph-edit-open' | 'graph-edit-commit' | 'graph-edit-replace-fallback';
 
 type PlannedGraphValueEditResult =
   | {
@@ -24,19 +24,13 @@ type PlannedGraphValueEditResult =
     }
   | {
       mode: 'replace';
-      reason:
-        | 'graph-edit-not-single-range'
-        | 'snapshotNotReady'
-        | 'missingAnalysis'
-        | 'missingDocument'
-        | 'invalidPath'
-        | 'invalidReplacement'
-        | 'unsupportedLanguage'
-        | 'unsupportedEdit'
-        | 'unsafeEdit';
+      reason: GraphEditReplaceFallbackReason;
       text: string;
       tree: TreeNode;
       value: unknown;
+    }
+  | {
+      mode: 'snapshotNotReady';
     };
 
 type GraphValueEditControllerDeps = {
@@ -58,7 +52,17 @@ type GraphValueEditControllerDeps = {
     source: 'graph',
     revision: number,
   ) => boolean;
-  emitEditorMutation: (mutation: { type: 'replaceSourceText'; payload: { text: string } }) => void;
+  emitEditorMutation: (mutation: {
+    type: 'replaceSourceText';
+    payload: {
+      text: string;
+      graphEditFallback?: {
+        reason: GraphEditReplaceFallbackReason;
+        path: PathSeg[];
+        kind: 'key' | 'value';
+      };
+    };
+  }) => void;
   updateActiveTempModel: (updater: (current: any) => any) => void;
   dispatchGraphEditEvent: (type: GraphEditEventType, detail: unknown) => void;
   handleError: (
@@ -248,10 +252,27 @@ export function createGraphValueEditController(deps: GraphValueEditControllerDep
       return false;
     }
     deps.updateActiveTempModel((current) => clearGraphSelectionAfterEdit(current, editPath));
+    if (planned.mode === 'snapshotNotReady') {
+      return false;
+    }
     if (planned.mode === 'replace') {
+      const graphEditFallback = {
+        reason: planned.reason,
+        path: editPath,
+        kind: editKind,
+      };
+      deps.dispatchGraphEditEvent('graph-edit-replace-fallback', {
+        ...graphEditFallback,
+        documentKey: deps.getDocumentKey(),
+        language: deps.getLanguageId(),
+        snapshotId: deps.getActiveSnapshotId(),
+      });
       deps.emitEditorMutation({
         type: 'replaceSourceText',
-        payload: { text: planned.text },
+        payload: {
+          text: planned.text,
+          graphEditFallback,
+        },
       });
       return true;
     }

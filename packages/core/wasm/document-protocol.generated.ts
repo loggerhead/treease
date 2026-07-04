@@ -220,6 +220,15 @@ export interface DocumentPathValue {
     displayText: string;
 }
 
+export interface DocumentSearchItem {
+    path: string;
+    pathText: string;
+    label: string;
+    keyText: string;
+    valueText: string;
+    target: QueryTargetKind;
+}
+
 export interface DocumentAnalysisPayload {
     tree: DocumentTreeNode | null;
     valueJson?: string | null;
@@ -280,7 +289,7 @@ export interface DocumentAnchor {
     spanEnd: number;
 }
 
-export type QueryKind = "findAnchors" | "resolvePath" | "resolveHover" | "rootValueKind" | "nodePreview" | "pathValue" | "fieldLabels";
+export type QueryKind = "findAnchors" | "resolvePath" | "resolveHover" | "rootValueKind" | "nodePreview" | "pathValue" | "fieldLabels" | "searchIndex";
 
 export type QueryTargetKind = "key" | "value" | "node";
 
@@ -298,6 +307,7 @@ export interface QueryResult {
     nodePreview?: DocumentNodePreview | null;
     pathValue?: DocumentPathValue | null;
     fieldLabels?: string[];
+    searchItems?: DocumentSearchItem[];
 }
 
 export type SnapshotReadResult<T> = { status: "ready"; data: T } | { status: "snapshotNotReady" };

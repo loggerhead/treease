@@ -12,9 +12,9 @@ import {
   toMonacoColor,
   type CssColorFormat,
 } from '../preview/color';
-import { resolveTreePathSafe, resolvePathSpan, toByteColumn } from '../services/TreePathService';
-import { resolveEditorPositionTarget } from '../components/Editor/editor-position-target';
-import { getActiveDocumentSnapshotId } from '../services/DocumentSessionService';
+import { resolveTreePathResult, resolvePathSpanResult, toByteColumn } from '../services/TreePathService';
+import { resolveEditorPositionTargetResult } from '../components/Editor/editor-position-target';
+import { getWorkspaceSnapshotId } from '../store/workspace-snapshot-bindings';
 import { settings } from '../settings/settings-store';
 
 type ColorProviderRegistrarOptions = {
@@ -229,15 +229,21 @@ async function findValueConstrainedColors(
       const candidateGlobalEnd = scanStartOffset + candidate.end;
       const candidateOffset = candidateGlobalStart + Math.max(1, Math.floor((candidate.end - candidate.start) / 2));
       const position = getCandidatePosition(monaco, model, candidateOffset);
-      const snapshotId = getActiveDocumentSnapshotId(documentKey);
-      const path = await resolveTreePathSafe(model, position, documentKey, languageId, nest, snapshotId);
+      const snapshotId = getWorkspaceSnapshotId(documentKey);
+      const pathResult = await resolveTreePathResult(model, position, documentKey, languageId, nest, snapshotId);
       if (isStaleColorResolution(model, token, initialVersionId, initialLanguageId)) return [];
+      if (pathResult.status !== 'ready') return [];
+      const path = pathResult.data;
       if (!path.length) continue;
-      const target = await resolveEditorPositionTarget(model, position, path, documentKey, languageId, nest);
+      const targetResult = await resolveEditorPositionTargetResult(model, position, path, documentKey, languageId, nest);
       if (isStaleColorResolution(model, token, initialVersionId, initialLanguageId)) return [];
+      if (targetResult.status !== 'ready') return [];
+      const target = targetResult.data;
       if (!target || target === 'key') continue;
-      const span = await resolvePathSpan(model, path, documentKey, languageId, 'value', nest, snapshotId);
+      const spanResult = await resolvePathSpanResult(model, path, documentKey, languageId, 'value', nest, snapshotId);
       if (isStaleColorResolution(model, token, initialVersionId, initialLanguageId)) return [];
+      if (spanResult.status !== 'ready') return [];
+      const span = spanResult.data;
       if (!span) continue;
       fullText ??= model.getValue();
       const valueText = sliceUtf8ByBytes(fullText, span.startByte, span.endByte);

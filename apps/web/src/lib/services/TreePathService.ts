@@ -10,12 +10,15 @@ import { toWasmPathSeg } from '../../shared/brand-bridge';
 const textEncoder = new TextEncoder();
 type TreePathColumnMode = 'char' | 'byte' | 'auto';
 type PathSelectionRange = { start: Monaco.IPosition; end: Monaco.IPosition };
-type PathSpan = {
+export type PathSpan = {
   startByte: number;
   endByte: number;
   row: number;
   column: number;
 };
+
+export type TreePathReadResult = SnapshotReadResult<PathSeg[]>;
+export type PathSpanReadResult = SnapshotReadResult<PathSpan | null>;
 
 
 /**
@@ -35,7 +38,11 @@ function resolveTreePathColumn(text: string, row: number, column: number, mode: 
   return toByteColumn(lineText, Math.max(0, column));
 }
 
-async function callTreePath(
+function snapshotNotReady<T>(): SnapshotReadResult<T> {
+  return { status: 'snapshotNotReady' };
+}
+
+async function callTreePathResult(
   text: string,
   row: number,
   column: number,
@@ -43,10 +50,10 @@ async function callTreePath(
   snapshotId: SnapshotId | null,
   languageId: SupportedEditorLanguageId,
   nest: boolean,
-): Promise<PathSeg[]> {
+): Promise<TreePathReadResult> {
   void languageId;
   void nest;
-  if (snapshotId == null) return [];
+  if (snapshotId == null) return snapshotNotReady();
   const byteOffset = byteOffsetFromRowColumn(text, row, column);
   const result = await callSharedWasmWorker<SnapshotReadResult<QueryResult>>('querySnapshot', {
     documentKey,
@@ -55,8 +62,8 @@ async function callTreePath(
     spanStart: byteOffset,
     spanEnd: byteOffset,
   });
-  if (result.status !== 'ready') return [];
-  return parseAnchorPath(result.data.anchors[0]?.path);
+  if (result.status !== 'ready') return snapshotNotReady();
+  return { status: 'ready', data: parseAnchorPath(result.data.anchors[0]?.path) };
 }
 
 function byteOffsetFromRowColumn(text: string, row: number, column: number): number {
@@ -103,7 +110,7 @@ function parseAnchorPath(path?: string | null): PathSeg[] {
   return segments;
 }
 
-async function callPathSpan(
+async function callPathSpanResult(
   text: string,
   path: PathSeg[],
   documentKey: string,
@@ -111,10 +118,10 @@ async function callPathSpan(
   languageId: SupportedEditorLanguageId,
   target: QueryTargetKind,
   nest: boolean,
-): Promise<PathSpan | null> {
+): Promise<PathSpanReadResult> {
   void languageId;
   void nest;
-  if (snapshotId == null) return null;
+  if (snapshotId == null) return snapshotNotReady();
   const result = await callSharedWasmWorker<SnapshotReadResult<QueryResult>>('querySnapshot', {
     documentKey,
     snapshotId,
@@ -122,19 +129,22 @@ async function callPathSpan(
     pathPattern: serializePath(path),
     target,
   });
-  if (result.status !== 'ready') return null;
+  if (result.status !== 'ready') return snapshotNotReady();
   const anchor = result.data.anchors[0];
-  if (!anchor || anchor.spanEnd < anchor.spanStart) return null;
+  if (!anchor || anchor.spanEnd < anchor.spanStart) return { status: 'ready', data: null };
   const start = byteOffsetToRowColumn(text, anchor.spanStart);
   return {
-    startByte: anchor.spanStart,
-    endByte: anchor.spanEnd,
-    row: start.row,
-    column: start.column,
+    status: 'ready',
+    data: {
+      startByte: anchor.spanStart,
+      endByte: anchor.spanEnd,
+      row: start.row,
+      column: start.column,
+    },
   };
 }
 
-export async function resolveTreePathFromText(
+export async function resolveTreePathFromTextResult(
   text: string,
   row: number,
   column: number,
@@ -143,74 +153,27 @@ export async function resolveTreePathFromText(
   nest: boolean,
   columnMode: TreePathColumnMode = 'char',
   snapshotId: SnapshotId | null,
-): Promise<PathSeg[]> {
+): Promise<TreePathReadResult> {
   const resolvedColumn = resolveTreePathColumn(text, row, column, columnMode);
-  return callTreePath(text, row, resolvedColumn, documentKey, snapshotId, languageId, nest);
+  return callTreePathResult(text, row, resolvedColumn, documentKey, snapshotId, languageId, nest);
 }
 
-/**
- * 解析指定位置的树路径。
- * @param model 文本模型
- * @param position 位置信息
- * @param documentKey 缓存键
- * @param languageId 语言 ID
- * @param nest 是否启用嵌套解析
- * @returns 路径段数组
- */
-export async function resolveTreePath(
+export async function resolveTreePathResult(
   model: Monaco.editor.ITextModel,
   position: Monaco.IPosition,
   documentKey: string,
   languageId: SupportedEditorLanguageId,
   nest: boolean,
   snapshotId: SnapshotId | null,
-): Promise<PathSeg[]> {
+): Promise<TreePathReadResult> {
   const row = Math.max(0, position.lineNumber - 1);
   const columnIndex = Math.max(0, position.column - 1);
-  return resolveTreePathFromText(model.getValue(), row, columnIndex, documentKey, languageId, nest, 'char', snapshotId);
-}
-
-/**
- * 获取指定位置的树路径。
- * @param model 文本模型
- * @param position 位置信息
- * @param documentKey 缓存键
- * @param languageId 语言 ID
- * @param nest 是否启用嵌套解析
- * @returns 路径段数组
- */
-export async function getTreePathAtPosition(
-  model: Monaco.editor.ITextModel,
-  position: Monaco.IPosition,
-  documentKey: string,
-  languageId: SupportedEditorLanguageId,
-  nest: boolean,
-  snapshotId: SnapshotId | null,
-): Promise<PathSeg[]> {
-  if (!position) return [];
-  try {
-    return await resolveTreePath(model, position, documentKey, languageId, nest, snapshotId);
-  } catch (error) {
-    console.error('[TreePathService] resolveTreePath failed', { documentKey, languageId, row: position.lineNumber, column: position.column }, error);
-    return [];
-  }
-}
-
-export async function resolveTreePathSafe(
-  model: Monaco.editor.ITextModel,
-  position: Monaco.IPosition | null,
-  documentKey: string,
-  languageId: SupportedEditorLanguageId,
-  nest: boolean,
-  snapshotId: SnapshotId | null,
-): Promise<PathSeg[]> {
-  if (!position) return [];
-  return getTreePathAtPosition(model, position, documentKey, languageId, nest, snapshotId);
+  return resolveTreePathFromTextResult(model.getValue(), row, columnIndex, documentKey, languageId, nest, 'char', snapshotId);
 }
 
 // Snapshot-bound source lookup. Graph payloads provide paths only; byte spans
 // come from the active snapshot so formatted close output and editor text stay aligned.
-export async function resolvePathSpan(
+export async function resolvePathSpanResult(
   model: Monaco.editor.ITextModel,
   path: PathSeg[],
   documentKey: string,
@@ -218,24 +181,21 @@ export async function resolvePathSpan(
   target: 'key' | 'value',
   nest: boolean,
   snapshotId: SnapshotId | null,
-): Promise<PathSpan | null> {
-  if (!path || path.length === 0) return null;
-  try {
-    const span = await callPathSpan(
-      model.getValue(),
-      path,
-      documentKey,
-      snapshotId,
-      languageId,
-      target === 'key' ? 'key' : 'value',
-      nest,
-    );
-    if (!span || span.row < 0 || span.column < 0 || span.endByte < span.startByte) return null;
-    return span;
-  } catch (error) {
-    console.debug('[TreePathService] resolvePathSpan failed', { documentKey, languageId, path, target, nest }, error);
-    return null;
-  }
+): Promise<PathSpanReadResult> {
+  if (!path || path.length === 0) return { status: 'ready', data: null };
+  const result = await callPathSpanResult(
+    model.getValue(),
+    path,
+    documentKey,
+    snapshotId,
+    languageId,
+    target === 'key' ? 'key' : 'value',
+    nest,
+  );
+  if (result.status !== 'ready') return result;
+  const span = result.data;
+  if (!span || span.row < 0 || span.column < 0 || span.endByte < span.startByte) return { status: 'ready', data: null };
+  return { status: 'ready', data: span };
 }
 
 function getPathSpanCandidates(target: 'key' | 'value' | 'node'): Array<'key' | 'value'> {
@@ -243,7 +203,7 @@ function getPathSpanCandidates(target: 'key' | 'value' | 'node'): Array<'key' | 
 }
 
 // Internal graph/text linkage anchor — row/column stay 0-based byte coordinates here.
-// Use resolvePathSelectionRangeSafe when a Monaco 1-based editor range is required.
+// Use resolvePathSelectionRangeResult when a Monaco 1-based editor range is required.
 function toPathAnchor(span: PathSpan | null): { row: number; column: number } | null {
   if (!span) return null;
   return { row: span.row, column: span.column };
@@ -271,17 +231,18 @@ async function resolveFirstPathSpanCandidate<T>(
   nest: boolean,
   mapSpan: (span: PathSpan | null) => T | null,
   snapshotId: SnapshotId | null,
-): Promise<T | null> {
-  if (!path || path.length === 0) return null;
+): Promise<SnapshotReadResult<T | null>> {
+  if (!path || path.length === 0) return { status: 'ready', data: null };
   for (const candidate of getPathSpanCandidates(target)) {
-    const span = await resolvePathSpan(model, path, documentKey, languageId, candidate, nest, snapshotId);
-    const result = mapSpan(span);
-    if (result) return result;
+    const spanResult = await resolvePathSpanResult(model, path, documentKey, languageId, candidate, nest, snapshotId);
+    if (spanResult.status !== 'ready') return spanResult;
+    const result = mapSpan(spanResult.data);
+    if (result) return { status: 'ready', data: result };
   }
-  return null;
+  return { status: 'ready', data: null };
 }
 
-export async function resolvePathAnchorSafe(
+export async function resolvePathAnchorResult(
   model: Monaco.editor.ITextModel,
   path: PathSeg[],
   documentKey: string,
@@ -289,11 +250,11 @@ export async function resolvePathAnchorSafe(
   target: 'key' | 'value' | 'node',
   nest: boolean,
   snapshotId: SnapshotId | null,
-): Promise<{ row: number; column: number } | null> {
+): Promise<SnapshotReadResult<{ row: number; column: number } | null>> {
   return resolveFirstPathSpanCandidate(model, path, documentKey, languageId, target, nest, toPathAnchor, snapshotId);
 }
 
-export async function resolvePathSelectionRangeSafe(
+export async function resolvePathSelectionRangeResult(
   model: Monaco.editor.ITextModel,
   path: PathSeg[],
   documentKey: string,
@@ -301,9 +262,15 @@ export async function resolvePathSelectionRangeSafe(
   target: 'key' | 'value' | 'node',
   nest: boolean,
   snapshotId: SnapshotId | null,
-): Promise<PathSelectionRange | null> {
-  return resolveFirstPathSpanCandidate(model, path, documentKey, languageId, target, nest, (span) =>
-    toPathSelectionRange(model, span),
+): Promise<SnapshotReadResult<PathSelectionRange | null>> {
+  return resolveFirstPathSpanCandidate(
+    model,
+    path,
+    documentKey,
+    languageId,
+    target,
+    nest,
+    (span) => toPathSelectionRange(model, span),
     snapshotId,
   );
 }

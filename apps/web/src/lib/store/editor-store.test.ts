@@ -159,18 +159,14 @@ describe('editor-store', () => {
       expect(get(jsonBlockSelection)?.text).toBe('{"x":1}');
 
       editorStore.actions.emitMutation({
-        type: 'applyValueEdit',
-        payload: { path: [{ key: 'root' } as any], preferKey: false, value: { nested: { ok: true } } },
+        type: 'replaceSourceText',
+        payload: { text: '{"root":true}' },
       });
       const exposedEditorMutation = get(editorMutation) as any;
       try {
-        exposedEditorMutation.mutation.payload.path.push({ key: 'extra' });
+        exposedEditorMutation.mutation.payload.text = '{"bad":true}';
       } catch {}
-      try {
-        exposedEditorMutation.mutation.payload.value.nested.ok = false;
-      } catch {}
-      expect((get(editorMutation) as any)?.mutation.payload.path).toEqual([{ key: 'root' }]);
-      expect((get(editorMutation) as any)?.mutation.payload.value).toEqual({ nested: { ok: true } });
+      expect((get(editorMutation) as any)?.mutation.payload.text).toBe('{"root":true}');
     });
   });
 
@@ -221,19 +217,19 @@ describe('editor-store', () => {
 
     it('emitMutation sets mutation with auto-incremented id', () => {
       editorStore.actions.emitMutation({
-        type: 'applyValueEdit',
-        payload: { path: [], preferKey: false, value: 'test' },
+        type: 'replaceSourceText',
+        payload: { text: '{"name":"Bob"}' },
       });
       const m = get(editorMutation);
       expect(m).not.toBeNull();
       expect(m!.id).toBeGreaterThan(0);
-      expect(m!.mutation.type).toBe('applyValueEdit');
+      expect(m!.mutation.type).toBe('replaceSourceText');
     });
 
     it('clearMutation sets mutation to null', () => {
       editorStore.actions.emitMutation({
-        type: 'applyValueEdit',
-        payload: { path: [], preferKey: false, value: 'test' },
+        type: 'replaceSourceText',
+        payload: { text: '{"name":"Bob"}' },
       });
       editorStore.actions.clearMutation();
       expect(get(editorMutation)).toBeNull();
@@ -242,13 +238,27 @@ describe('editor-store', () => {
     it('emitMutation supports replaceSourceText', () => {
       editorStore.actions.emitMutation({
         type: 'replaceSourceText',
-        payload: { text: '{"name":"Bob"}' },
+        payload: {
+          text: '{"name":"Bob"}',
+          graphEditFallback: {
+            reason: 'unsupportedEdit',
+            path: [{ key: 'name' } as any],
+            kind: 'value',
+          },
+        },
       });
       const m = get(editorMutation);
       expect(m).not.toBeNull();
       expect(m!.mutation).toEqual({
         type: 'replaceSourceText',
-        payload: { text: '{"name":"Bob"}' },
+        payload: {
+          text: '{"name":"Bob"}',
+          graphEditFallback: {
+            reason: 'unsupportedEdit',
+            path: [{ key: 'name' }],
+            kind: 'value',
+          },
+        },
       });
     });
 
@@ -344,20 +354,23 @@ describe('editor-store', () => {
 
     it('isolates emitMutation input from later caller mutations', () => {
       const inputMutation = {
-        type: 'applyValueEdit' as const,
+        type: 'replaceSourceText' as const,
         payload: {
-          path: [{ key: 'root' } as any],
-          preferKey: false,
-          value: { nested: { ok: true } },
+          text: '{"root":true}',
+          graphEditFallback: {
+            reason: 'unsupportedEdit' as const,
+            path: [{ key: 'root' } as any],
+            kind: 'value' as const,
+          },
         },
       };
       editorStore.actions.emitMutation(inputMutation);
 
-      inputMutation.payload.path.push({ key: 'mutated' } as any);
-      inputMutation.payload.value.nested.ok = false;
+      inputMutation.payload.text = '{"mutated":true}';
+      inputMutation.payload.graphEditFallback.path.push({ key: 'mutated' } as any);
 
-      expect((get(editorMutation) as any)?.mutation.payload.path).toEqual([{ key: 'root' }]);
-      expect((get(editorMutation) as any)?.mutation.payload.value).toEqual({ nested: { ok: true } });
+      expect((get(editorMutation) as any)?.mutation.payload.text).toBe('{"root":true}');
+      expect((get(editorMutation) as any)?.mutation.payload.graphEditFallback.path).toEqual([{ key: 'root' }]);
     });
 
     it('isolates setTempModel input from later caller mutations', () => {

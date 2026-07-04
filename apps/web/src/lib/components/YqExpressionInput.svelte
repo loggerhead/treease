@@ -7,7 +7,7 @@
   import { hasYqCompletionMatches, YQ_LANGUAGE_ID } from '../monaco/yq-language-support'
   import { attachMonacoTestHook } from '../monaco/test-hook'
   import { documentKey } from '../store/editor-store'
-  import { getActiveDocumentSnapshotId } from '../services/DocumentSessionService'
+  import { getWorkspaceSnapshotId } from '../store/workspace-snapshot-bindings'
   import { queryFieldLabels } from '../services/SnapshotProjectionService'
   import { callSharedWasmWorker } from '../wasm/wasm-worker-singleton'
 
@@ -85,15 +85,21 @@
   async function getYqPathCompletionLabels(prefix: string) {
     const normalizedPrefix = prefix.toLowerCase()
     const activeDocumentKey = $documentKey
-    const snapshotId = getActiveDocumentSnapshotId(activeDocumentKey)
+    const snapshotId = getWorkspaceSnapshotId(activeDocumentKey)
     const signature = activeDocumentKey && snapshotId != null ? `${activeDocumentKey}:${snapshotId}` : ''
     if (signature !== cachedPathCompletionSignature) {
       cachedPathCompletionSignature = signature
-      cachedPathCompletionLabels = signature
-        ? (await queryFieldLabels({ documentKey: activeDocumentKey, snapshotId }))
-            .filter((label) => /^[A-Za-z_][\w-]*$/.test(label))
-            .sort((left, right) => left.localeCompare(right))
-        : []
+      if (signature) {
+        const result = await queryFieldLabels({ documentKey: activeDocumentKey, snapshotId })
+        cachedPathCompletionLabels =
+          result.status === 'ready'
+            ? result.data
+                .filter((label) => /^[A-Za-z_][\w-]*$/.test(label))
+                .sort((left, right) => left.localeCompare(right))
+            : []
+      } else {
+        cachedPathCompletionLabels = []
+      }
     }
     return cachedPathCompletionLabels
       .filter((label) => !normalizedPrefix || label.toLowerCase().startsWith(normalizedPrefix))

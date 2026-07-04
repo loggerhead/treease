@@ -12,7 +12,7 @@ import type {
 import { isRawGraphDelta } from '../../../shared/worker-protocol/graph-delta-normalize';
 import { buildGraphStreamBuilderConfig } from '../../graph-stream/graph-stream-builder-config';
 import { processGraphBatchEvents, projectionToRawGraphDelta } from '../../../shared/document-job-graph-stream';
-import { bindActiveDocumentSnapshotIfPresent, clearActiveDocumentSnapshot } from '../../services/DocumentSessionService';
+import { bindWorkspaceSnapshotIfPresent, clearWorkspaceSnapshot } from '../../store/workspace-snapshot-bindings';
 import { createFreshnessScope } from '../../guards/freshness-scope';
 import { streamDocumentJobText, type AdvanceDocumentJobRequest } from '../../../shared/document-job-stream';
 import type { FullEditDocumentJobSession } from '../../graph-stream/full-edit-document-job-session';
@@ -397,14 +397,14 @@ export function createGraphRenderSession(deps: GraphRenderSessionDeps) {
     freshness: ReturnType<typeof createFreshnessScope>;
   }): Promise<GraphRenderResult | null> {
     const finalEvent = finalDocumentEvent(params.batch);
-    const snapshotId = params.snapshotId ?? extractSnapshotIdFromBatch(params.batch);
-    if (snapshotId == null || finalEvent == null) {
+    if (finalEvent == null) {
       deps.setErrorMessage('Document analysis did not produce a snapshot');
       deps.completeStreamProgress();
       return null;
     }
 
     if (finalEvent.type === 'snapshotReady') {
+      const snapshotId = (params.snapshotId ?? finalEvent.snapshotId) as SnapshotId;
       if (!finalEvent.mainGraph) {
         throw new Error('Document analysis did not produce requested main graph');
       }
@@ -427,23 +427,58 @@ export function createGraphRenderSession(deps: GraphRenderSessionDeps) {
       deps.clearErrorMessage();
       clearGraphStreamFailure();
       markGraphStreamFinal('snapshot-ready');
-    } else {
-      markGraphStreamFinal('parse-failed', {
-        failed: true,
+
+      activeSnapshotId = snapshotId;
+      renderedDocumentKey = params.documentKey;
+      renderedRevision = params.revision;
+      renderedLanguage = params.language;
+      renderedText = params.renderedText;
+      bindWorkspaceSnapshotIfPresent({
+        documentKey: params.documentKey,
+        revision: params.revision,
+        snapshotId,
       });
+
+      deps.onStreamFinalAnalysis(
+        params.documentKey,
+        params.language,
+        params.revision,
+        toLightweightDocumentAnalysis(
+          params.documentKey,
+          params.language,
+          params.analysis ?? normalizeDocumentJobAnalysisPayload(params.documentKey, params.language, finalEvent.analysis),
+        ),
+        snapshotId,
+      );
+
+      deps.completeStreamProgress();
+      await flushSceneAndRedraw(
+        params.redrawMode,
+        params.revision,
+        {
+          documentKey: params.documentKey,
+          revision: params.revision,
+          snapshotId,
+          renderToken: params.renderToken,
+          mode: params.redrawMode,
+        },
+        {
+          documentKey: params.documentKey,
+          revision: params.revision,
+          mode: params.redrawMode,
+        },
+        params.freshness,
+      );
+      performance.mark('pipeline:render-document-graph:end');
+      performance.measure('pipeline:render-document-graph', 'pipeline:render-document-graph:start', 'pipeline:render-document-graph:end');
+      markGraphStreamDone();
+
+      return getSceneBridge().getLastRenderedGraph() ?? emptyRenderResult();
     }
 
-    activeSnapshotId = snapshotId;
-    renderedDocumentKey = params.documentKey;
-    renderedRevision = params.revision;
-    renderedLanguage = params.language;
-    renderedText = params.renderedText;
-    bindActiveDocumentSnapshotIfPresent({
-      documentKey: params.documentKey,
-      revision: params.revision,
-      snapshotId,
+    markGraphStreamFinal('parse-failed', {
+      failed: true,
     });
-
     deps.onStreamFinalAnalysis(
       params.documentKey,
       params.language,
@@ -453,17 +488,18 @@ export function createGraphRenderSession(deps: GraphRenderSessionDeps) {
         params.language,
         params.analysis ?? normalizeDocumentJobAnalysisPayload(params.documentKey, params.language, finalEvent.analysis),
       ),
-      snapshotId,
+      null,
     );
-
     deps.completeStreamProgress();
+    const requestId = deps.nextTreeToken();
+    deps.clearTreeState(requestId, 'graph', params.revision, null);
     await flushSceneAndRedraw(
       params.redrawMode,
       params.revision,
       {
         documentKey: params.documentKey,
         revision: params.revision,
-        snapshotId,
+        snapshotId: null,
         renderToken: params.renderToken,
         mode: params.redrawMode,
       },
@@ -474,10 +510,7 @@ export function createGraphRenderSession(deps: GraphRenderSessionDeps) {
       },
       params.freshness,
     );
-    performance.mark('pipeline:render-document-graph:end');
-    performance.measure('pipeline:render-document-graph', 'pipeline:render-document-graph:start', 'pipeline:render-document-graph:end');
     markGraphStreamDone();
-
     return getSceneBridge().getLastRenderedGraph() ?? emptyRenderResult();
   }
 
@@ -506,7 +539,7 @@ export function createGraphRenderSession(deps: GraphRenderSessionDeps) {
       }
     }
     if (renderedDocumentKey) {
-      clearActiveDocumentSnapshot(renderedDocumentKey, activeSnapshotId);
+      clearWorkspaceSnapshot(renderedDocumentKey, activeSnapshotId);
     }
     renderedDocumentKey = null;
     renderedRevision = null;
@@ -764,7 +797,7 @@ export function createGraphRenderSession(deps: GraphRenderSessionDeps) {
 
     await dispose();
     const renderToken = ++activeRenderToken;
-    clearActiveDocumentSnapshot(selection.sourceDocumentKey, activeSnapshotId);
+    clearWorkspaceSnapshot(selection.sourceDocumentKey, activeSnapshotId);
     activeSnapshotId = null;
     deps.clearErrorMessage();
     deps.resetStreamProgress();
@@ -850,17 +883,17 @@ export function createGraphRenderSession(deps: GraphRenderSessionDeps) {
         buildGraphLifecycleProgressEvent(streamRunId, totalBytes, 'flushing'),
       );
       const finalEvent = finalDocumentEvent(result.batch);
-      const snapshotId = result.snapshotId ?? extractSnapshotIdFromBatch(result.batch);
+      let finalSnapshotId: SnapshotId | null = null;
       renderedDocumentKey = selection.blockDocumentKey;
-      if (snapshotId != null) {
+      if (finalEvent?.type === 'snapshotReady') {
+        const snapshotId = (result.snapshotId ?? finalEvent.snapshotId) as SnapshotId;
+        finalSnapshotId = snapshotId;
         activeSnapshotId = snapshotId;
-        bindActiveDocumentSnapshotIfPresent({
+        bindWorkspaceSnapshotIfPresent({
           documentKey: selection.blockDocumentKey,
           revision: selection.revision,
           snapshotId,
         });
-      }
-      if (finalEvent?.type === 'snapshotReady') {
         const delta = projectionToRawGraphDelta(finalEvent.mainGraph);
         if (delta) {
           if (!isRawGraphDelta(delta)) {
@@ -891,7 +924,7 @@ export function createGraphRenderSession(deps: GraphRenderSessionDeps) {
       if (!freshness.isCurrent()) return null;
       const requestId = deps.nextTreeToken();
       void analysis;
-      deps.clearTreeState(requestId, 'graph', selection.revision, snapshotId);
+      deps.clearTreeState(requestId, 'graph', selection.revision, finalSnapshotId);
       deps.completeStreamProgress();
       await flushSceneAndRedraw(
         'json-block',
@@ -899,7 +932,7 @@ export function createGraphRenderSession(deps: GraphRenderSessionDeps) {
         {
           documentKey: selection.blockDocumentKey,
           revision: selection.revision,
-          snapshotId: snapshotId ?? null,
+          snapshotId: finalSnapshotId,
           renderToken,
           mode: 'json-block',
         },
@@ -944,7 +977,6 @@ function extractSnapshotIdFromBatch(batch: EventBatch): SnapshotId | null {
   for (let index = batch.events.length - 1; index >= 0; index -= 1) {
     const event = batch.events[index];
     if (event.type === 'snapshotReady') return event.snapshotId as SnapshotId;
-    if (event.type === 'parseFailed' && event.snapshotId != null) return event.snapshotId as SnapshotId;
   }
   return null;
 }

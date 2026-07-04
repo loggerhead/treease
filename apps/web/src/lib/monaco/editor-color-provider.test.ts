@@ -1,16 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../services/TreePathService', () => ({
-  resolveTreePathSafe: vi.fn(),
-  resolvePathSpan: vi.fn(),
+  resolveTreePathResult: vi.fn(),
+  resolvePathSpanResult: vi.fn(),
   toByteColumn: vi.fn((text: string, columnIndex: number) => new TextEncoder().encode(text.slice(0, columnIndex)).length),
 }));
-vi.mock('../services/DocumentSessionService', () => ({
-  getActiveDocumentSnapshotId: vi.fn(() => 7),
+vi.mock('../store/workspace-snapshot-bindings', () => ({
+  getWorkspaceSnapshotId: vi.fn(() => 7),
 }));
 
 vi.mock('../components/Editor/editor-position-target', () => ({
-  resolveEditorPositionTarget: vi.fn(),
+  resolveEditorPositionTargetResult: vi.fn(),
 }));
 
 vi.mock('../settings/settings-store', () => ({
@@ -25,8 +25,8 @@ vi.mock('svelte/store', async () => {
   };
 });
 
-import { resolvePathSpan, resolveTreePathSafe } from '../services/TreePathService';
-import { resolveEditorPositionTarget } from '../components/Editor/editor-position-target';
+import { resolvePathSpanResult, resolveTreePathResult } from '../services/TreePathService';
+import { resolveEditorPositionTargetResult } from '../components/Editor/editor-position-target';
 import { createDocumentColorRegistrar } from './editor-color-provider';
 
 function createMonacoStub() {
@@ -132,9 +132,12 @@ describe('createDocumentColorRegistrar', () => {
     const colorStart = text.indexOf('#4f46e5ff');
     const colorEnd = colorStart + '#4f46e5ff'.length;
 
-    vi.mocked(resolveTreePathSafe).mockResolvedValue([{ tag: 0, key: 'color', index: 0 }] as any);
-    vi.mocked(resolveEditorPositionTarget).mockResolvedValue('value');
-    vi.mocked(resolvePathSpan).mockResolvedValue({ startByte: colorStart - 1, endByte: colorEnd + 1, row: 0, column: colorStart - 1 } as any);
+    vi.mocked(resolveTreePathResult).mockResolvedValue({ status: 'ready', data: [{ tag: 0, key: 'color', index: 0 }] } as any);
+    vi.mocked(resolveEditorPositionTargetResult).mockResolvedValue({ status: 'ready', data: 'value' });
+    vi.mocked(resolvePathSpanResult).mockResolvedValue({
+      status: 'ready',
+      data: { startByte: colorStart - 1, endByte: colorEnd + 1, row: 0, column: colorStart - 1 },
+    } as any);
 
     const colors = await provider.provideDocumentColors(createModel(text), { isCancellationRequested: false });
     expect(colors).toHaveLength(1);
@@ -159,8 +162,8 @@ describe('createDocumentColorRegistrar', () => {
 
     const provider = providers.get('json');
     const text = '{"#4f46e5":"value"}';
-    vi.mocked(resolveTreePathSafe).mockResolvedValue([{ tag: 0, key: '#4f46e5', index: 0 }] as any);
-    vi.mocked(resolveEditorPositionTarget).mockResolvedValue('key');
+    vi.mocked(resolveTreePathResult).mockResolvedValue({ status: 'ready', data: [{ tag: 0, key: '#4f46e5', index: 0 }] } as any);
+    vi.mocked(resolveEditorPositionTargetResult).mockResolvedValue({ status: 'ready', data: 'key' });
 
     const colors = await provider.provideDocumentColors(createModel(text), { isCancellationRequested: false });
     expect(colors).toEqual([]);
@@ -175,16 +178,16 @@ describe('createDocumentColorRegistrar', () => {
     const text = '{"color":"#4f46e5"}';
     const token = { isCancellationRequested: false };
 
-    vi.mocked(resolveTreePathSafe).mockImplementationOnce(async () => {
+    vi.mocked(resolveTreePathResult).mockImplementationOnce(async () => {
       token.isCancellationRequested = true;
-      return [{ tag: 0, key: 'color', index: 0 }] as any;
+      return { status: 'ready', data: [{ tag: 0, key: 'color', index: 0 }] } as any;
     });
 
     const colors = await provider.provideDocumentColors(createModel(text), token as any);
 
     expect(colors).toEqual([]);
-    expect(resolveEditorPositionTarget).not.toHaveBeenCalled();
-    expect(resolvePathSpan).not.toHaveBeenCalled();
+    expect(resolveEditorPositionTargetResult).not.toHaveBeenCalled();
+    expect(resolvePathSpanResult).not.toHaveBeenCalled();
   });
 
   it('stops color resolution when the model language changes mid-flight', async () => {
@@ -200,16 +203,16 @@ describe('createDocumentColorRegistrar', () => {
       getLanguageId: () => languageId,
     } as any;
 
-    vi.mocked(resolveTreePathSafe).mockImplementationOnce(async () => {
+    vi.mocked(resolveTreePathResult).mockImplementationOnce(async () => {
       languageId = 'yaml';
-      return [{ tag: 0, key: 'color', index: 0 }] as any;
+      return { status: 'ready', data: [{ tag: 0, key: 'color', index: 0 }] } as any;
     });
 
     const colors = await provider.provideDocumentColors(model, { isCancellationRequested: false });
 
     expect(colors).toEqual([]);
-    expect(resolveEditorPositionTarget).not.toHaveBeenCalled();
-    expect(resolvePathSpan).not.toHaveBeenCalled();
+    expect(resolveEditorPositionTargetResult).not.toHaveBeenCalled();
+    expect(resolvePathSpanResult).not.toHaveBeenCalled();
   });
 
   it('preserves original color family in presentations', () => {
@@ -252,13 +255,13 @@ describe('createDocumentColorRegistrar', () => {
     const model = createModel('{"color":"#4f46e5"}');
     model.__treeaseDocumentKey = 'tab-doc:42';
 
-    vi.mocked(resolveTreePathSafe).mockResolvedValue([{ tag: 0, key: 'color', index: 0 }] as any);
-    vi.mocked(resolveEditorPositionTarget).mockResolvedValue('value');
-    vi.mocked(resolvePathSpan).mockResolvedValue({ startByte: 9, endByte: 18, row: 0, column: 9 } as any);
+    vi.mocked(resolveTreePathResult).mockResolvedValue({ status: 'ready', data: [{ tag: 0, key: 'color', index: 0 }] } as any);
+    vi.mocked(resolveEditorPositionTargetResult).mockResolvedValue({ status: 'ready', data: 'value' });
+    vi.mocked(resolvePathSpanResult).mockResolvedValue({ status: 'ready', data: { startByte: 9, endByte: 18, row: 0, column: 9 } } as any);
 
     await provider.provideDocumentColors(model, { isCancellationRequested: false });
 
-    expect(resolveTreePathSafe).toHaveBeenCalledWith(
+    expect(resolveTreePathResult).toHaveBeenCalledWith(
       model,
       expect.anything(),
       'tab-doc:42',
@@ -280,14 +283,17 @@ describe('createDocumentColorRegistrar', () => {
     const model = createModel(text);
     ensure.updateViewport(model, [new monaco.Range(20, 1, 20, 20)]);
 
-    vi.mocked(resolveTreePathSafe).mockResolvedValue([{ tag: 0, key: 'color', index: 0 }] as any);
-    vi.mocked(resolveEditorPositionTarget).mockResolvedValue('value');
-    vi.mocked(resolvePathSpan).mockResolvedValue({ startByte: colorStart - 1, endByte: colorEnd + 1, row: 0, column: colorStart - 1 } as any);
+    vi.mocked(resolveTreePathResult).mockResolvedValue({ status: 'ready', data: [{ tag: 0, key: 'color', index: 0 }] } as any);
+    vi.mocked(resolveEditorPositionTargetResult).mockResolvedValue({ status: 'ready', data: 'value' });
+    vi.mocked(resolvePathSpanResult).mockResolvedValue({
+      status: 'ready',
+      data: { startByte: colorStart - 1, endByte: colorEnd + 1, row: 0, column: colorStart - 1 },
+    } as any);
 
     const colors = await provider.provideDocumentColors(model, { isCancellationRequested: false });
 
     expect(colors).toHaveLength(1);
-    expect(resolveTreePathSafe).toHaveBeenCalledTimes(1);
+    expect(resolveTreePathResult).toHaveBeenCalledTimes(1);
   });
 
   it('skips large document color candidates outside the viewport', async () => {
@@ -302,9 +308,9 @@ describe('createDocumentColorRegistrar', () => {
     const colors = await provider.provideDocumentColors(model, { isCancellationRequested: false });
 
     expect(colors).toEqual([]);
-    expect(resolveTreePathSafe).not.toHaveBeenCalled();
-    expect(resolveEditorPositionTarget).not.toHaveBeenCalled();
-    expect(resolvePathSpan).not.toHaveBeenCalled();
+    expect(resolveTreePathResult).not.toHaveBeenCalled();
+    expect(resolveEditorPositionTargetResult).not.toHaveBeenCalled();
+    expect(resolvePathSpanResult).not.toHaveBeenCalled();
   });
 
   it('also skips small document color candidates outside the viewport', async () => {
@@ -319,8 +325,8 @@ describe('createDocumentColorRegistrar', () => {
     const colors = await provider.provideDocumentColors(model, { isCancellationRequested: false });
 
     expect(colors).toEqual([]);
-    expect(resolveTreePathSafe).not.toHaveBeenCalled();
-    expect(resolveEditorPositionTarget).not.toHaveBeenCalled();
-    expect(resolvePathSpan).not.toHaveBeenCalled();
+    expect(resolveTreePathResult).not.toHaveBeenCalled();
+    expect(resolveEditorPositionTargetResult).not.toHaveBeenCalled();
+    expect(resolvePathSpanResult).not.toHaveBeenCalled();
   });
 });

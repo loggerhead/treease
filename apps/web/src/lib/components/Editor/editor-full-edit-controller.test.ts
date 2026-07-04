@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mockStartDocumentJobForGraph = vi.hoisted(() =>
-  vi.fn().mockResolvedValue({ snapshotId: 1, analysis: null, batch: { requestSeq: 1, events: [], terminal: null }, jobHandle: 1 }),
+  vi.fn().mockResolvedValue({ status: 'snapshotReady', snapshotId: 1, analysis: null, batch: { requestSeq: 1, events: [], terminal: null }, jobHandle: 1 }),
 );
 const mockStartReadableDocumentJobSessionForGraph = vi.hoisted(() =>
   vi.fn((input: any) => ({
@@ -15,6 +15,7 @@ const mockStartReadableDocumentJobSessionForGraph = vi.hoisted(() =>
     streamRunId: input.sessionId,
     jobHandle: 2,
     result: Promise.resolve({
+      status: 'snapshotReady',
       snapshotId: 1,
       analysis: null,
       batch: { requestSeq: 1, events: [], terminal: null },
@@ -50,9 +51,9 @@ vi.mock('../../graph-stream/full-edit-document-job-session', () => ({
 }));
 
 import {
-  clearActiveDocumentSnapshot,
-  getActiveDocumentSnapshotId,
-} from '../../services/DocumentSessionService';
+  clearWorkspaceSnapshot,
+  getWorkspaceSnapshotId,
+} from '../../store/workspace-snapshot-bindings';
 import { editorStore, type FullEditUiState } from '../../store/editor-store';
 import { createEditorFullEditController } from './editor-full-edit-controller';
 import type { FullEditSink } from './editor-full-edit-sink';
@@ -64,8 +65,8 @@ describe('editor-full-edit-controller', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     editorStore.reset();
-    clearActiveDocumentSnapshot('doc-test');
-    clearActiveDocumentSnapshot('sidecar:tab-sidecar:0');
+    clearWorkspaceSnapshot('doc-test');
+    clearWorkspaceSnapshot('sidecar:tab-sidecar:0');
     globalThis.requestAnimationFrame = ((callback: FrameRequestCallback) => {
       callback(0);
       return 1;
@@ -263,7 +264,8 @@ describe('editor-full-edit-controller', () => {
   ] as const) {
     it(`language-example session for ${languageCase.language} should stay fresh when the same model remains active`, async () => {
       mockStartDocumentJobForGraph.mockResolvedValueOnce({
-        snapshotId: 10,
+      status: 'snapshotReady',
+      snapshotId: 10,
         analysis: { documentKey: 'doc-test', language: languageCase.language, tree: {}, value: {} },
       });
       const options = createOptions();
@@ -290,6 +292,7 @@ describe('editor-full-edit-controller', () => {
 
   it('calls applyGraphAnalysis when graph analysis result is available', async () => {
     mockStartDocumentJobForGraph.mockResolvedValueOnce({
+      status: 'snapshotReady',
       snapshotId: 10,
       analysis: { documentKey: 'doc-test', language: 'json', tree: {}, value: {} },
     });
@@ -309,6 +312,7 @@ describe('editor-full-edit-controller', () => {
   });
   it('applies authoritative source text after whole-document replacement intake by default', async () => {
     mockStartDocumentJobForGraph.mockResolvedValueOnce({
+      status: 'snapshotReady',
       snapshotId: 10,
       analysis: null,
       sourceText: '{\n  "a": 1\n}',
@@ -338,8 +342,8 @@ describe('editor-full-edit-controller', () => {
   });
 
   it('ignores stale intake results after a newer full-edit session starts', async () => {
-    const firstIntake = createDeferred<{ snapshotId: number; analysis: null; sourceText: string }>();
-    const secondIntake = createDeferred<{ snapshotId: number; analysis: null; sourceText: string }>();
+    const firstIntake = createDeferred<{ status: 'snapshotReady', snapshotId: number; analysis: null; sourceText: string }>();
+    const secondIntake = createDeferred<{ status: 'snapshotReady', snapshotId: number; analysis: null; sourceText: string }>();
     mockStartDocumentJobForGraph
       .mockImplementationOnce(() => firstIntake.promise)
       .mockImplementationOnce(() => secondIntake.promise);
@@ -367,6 +371,7 @@ describe('editor-full-edit-controller', () => {
     });
 
     secondIntake.resolve({
+      status: 'snapshotReady',
       snapshotId: 22,
       analysis: null,
       sourceText: secondAuthoritativeText,
@@ -377,6 +382,7 @@ describe('editor-full-edit-controller', () => {
     });
 
     firstIntake.resolve({
+      status: 'snapshotReady',
       snapshotId: 11,
       analysis: null,
       sourceText: '{\n  "sample": true\n}',
@@ -389,8 +395,8 @@ describe('editor-full-edit-controller', () => {
   });
 
   it('does not finish a cancelled full-edit session again from finally', async () => {
-    const firstIntake = createDeferred<{ snapshotId: number; analysis: null; sourceText: string }>();
-    const secondIntake = createDeferred<{ snapshotId: number; analysis: null; sourceText: string }>();
+    const firstIntake = createDeferred<{ status: 'snapshotReady', snapshotId: number; analysis: null; sourceText: string }>();
+    const secondIntake = createDeferred<{ status: 'snapshotReady', snapshotId: number; analysis: null; sourceText: string }>();
     mockStartDocumentJobForGraph
       .mockImplementationOnce(() => firstIntake.promise)
       .mockImplementationOnce(() => secondIntake.promise);
@@ -427,6 +433,7 @@ describe('editor-full-edit-controller', () => {
     });
 
     secondIntake.resolve({
+      status: 'snapshotReady',
       snapshotId: 22,
       analysis: null,
       sourceText: '{\n  "user": true\n}',
@@ -436,6 +443,7 @@ describe('editor-full-edit-controller', () => {
     });
 
     firstIntake.resolve({
+      status: 'snapshotReady',
       snapshotId: 11,
       analysis: null,
       sourceText: '{\n  "sample": true\n}',
@@ -457,6 +465,7 @@ describe('editor-full-edit-controller', () => {
 
   it('preserves submitted source text when whole-document replacement opts out of intake writeback', async () => {
     mockStartDocumentJobForGraph.mockResolvedValueOnce({
+      status: 'snapshotReady',
       snapshotId: 10,
       analysis: null,
       sourceText: '{\n  "a": 1\n}',
@@ -501,6 +510,7 @@ describe('editor-full-edit-controller', () => {
       bindSnapshot: (payload) => sinkEvents.push({ kind: 'bindSnapshot', payload }),
     };
     mockStartDocumentJobForGraph.mockResolvedValueOnce({
+      status: 'snapshotReady',
       snapshotId: 42,
       analysis: null,
       sourceText: '{\n  "right": true\n}',
@@ -538,7 +548,7 @@ describe('editor-full-edit-controller', () => {
       revision: 0,
     });
     expectLegacyFullEditActionsNotCalled(legacyFullEditActionSpies);
-    expect(getActiveDocumentSnapshotId('sidecar:tab-sidecar:0')).toBeNull();
+    expect(getWorkspaceSnapshotId('sidecar:tab-sidecar:0')).toBeNull();
   });
   it('updates source text progressively and finishes with the full streamed import text', async () => {
     const options = createOptions();
@@ -564,6 +574,7 @@ describe('editor-full-edit-controller', () => {
       streamRunId: input.sessionId,
       jobHandle: 2,
       result: Promise.resolve({
+        status: 'snapshotReady',
         snapshotId: 11,
         analysis: { documentKey: 'doc-test', language: 'json', tree: {}, value: { a: 1 } },
         batch: { requestSeq: 1, events: [], terminal: null },
@@ -618,6 +629,7 @@ describe('editor-full-edit-controller', () => {
         streamRunId: request.sessionId,
         jobHandle: 2,
         result: Promise.resolve({
+          status: 'snapshotReady',
           snapshotId: 11,
           analysis: request.outputAnalysis === false ? null : analysis,
           batch: { requestSeq: 1, events: [], terminal: null },

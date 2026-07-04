@@ -41,6 +41,7 @@ describe('runIntakeJob', () => {
 
   it('returns completed when job succeeds', async () => {
     vi.mocked(runTextDocumentJobForGraph).mockResolvedValue({
+      status: 'snapshotReady',
       batch: { requestSeq: 0, events: [], terminal: null },
       jobHandle: 1,
       snapshotId: mockSnapshotId,
@@ -63,6 +64,7 @@ describe('runIntakeJob', () => {
 
   it('returns failed when no snapshot is produced', async () => {
     vi.mocked(runTextDocumentJobForGraph).mockResolvedValue({
+      status: 'noSnapshot',
       batch: { requestSeq: 0, events: [], terminal: null },
       jobHandle: 0,
       snapshotId: null,
@@ -82,6 +84,30 @@ describe('runIntakeJob', () => {
     expect(result.snapshotId).toBeNull();
   });
 
+  it('does not expose parseFailed snapshot as a completed semantic snapshot', async () => {
+    vi.mocked(runTextDocumentJobForGraph).mockResolvedValue({
+      status: 'parseFailed',
+      batch: { requestSeq: 0, events: [], terminal: null },
+      jobHandle: 0,
+      snapshotId: mockSnapshotId,
+      analysis: mockAnalysis,
+      sourceText: null,
+    });
+
+    const result = await runIntakeJob({
+      documentKey: 'test',
+      language: 'json',
+      text: 'invalid{',
+      settings: documentJobSettings,
+      revision: 0,
+    });
+
+    expect(result.status).toBe('failed');
+    expect(result.resultStatus).toBe('parseFailed');
+    expect(result.snapshotId).toBeNull();
+    expect(result.analysis).toBe(mockAnalysis);
+  });
+
   it('cancels early when isFresh returns false before job', async () => {
     const result = await runIntakeJob({
       documentKey: 'test',
@@ -99,6 +125,7 @@ describe('runIntakeJob', () => {
 
   it('passes correct parameters to runTextDocumentJobForGraph', async () => {
     vi.mocked(runTextDocumentJobForGraph).mockResolvedValue({
+      status: 'snapshotReady',
       batch: { requestSeq: 0, events: [], terminal: null },
       jobHandle: 1,
       snapshotId: mockSnapshotId,

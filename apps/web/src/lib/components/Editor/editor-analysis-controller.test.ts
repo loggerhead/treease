@@ -8,10 +8,9 @@ type CursorPathSettledMarker = NonNullable<ControllerOptions['markCursorPathSett
 
 const mocked = vi.hoisted(() => ({
   resolveDocumentAnalysis: vi.fn(),
-  resolveTreePathSafe: vi.fn(async () => []),
-  resolveEditorPositionTarget: vi.fn(async () => null),
+  resolveTreePathResult: vi.fn(async () => ({ status: 'ready', data: [] })),
+  resolveEditorPositionTargetResult: vi.fn(async () => ({ status: 'ready', data: null })),
   callSharedWasmWorker: vi.fn(),
-  analyzeDocumentAndStore: vi.fn(),
   readStoredDiagnosticsResult: vi.fn(),
 }));
 
@@ -20,7 +19,7 @@ vi.mock('../../services/DocumentAnalysisResolver', () => ({
 }));
 
 vi.mock('../../services/TreePathService', () => ({
-  resolveTreePathSafe: mocked.resolveTreePathSafe,
+  resolveTreePathResult: mocked.resolveTreePathResult,
   toByteColumn: (text: string, column: number) => new TextEncoder().encode(text.slice(0, column)).byteLength,
 }));
 
@@ -29,16 +28,14 @@ vi.mock('../../wasm/wasm-worker-singleton', () => ({
 }));
 
 vi.mock('./editor-position-target', () => ({
-  resolveEditorPositionTarget: mocked.resolveEditorPositionTarget,
+  resolveEditorPositionTargetResult: mocked.resolveEditorPositionTargetResult,
 }));
 
 vi.mock('../../services/EditorDiagnostics', () => ({
-  analyzeDocumentAndStore: mocked.analyzeDocumentAndStore,
   readStoredDiagnosticsResult: mocked.readStoredDiagnosticsResult,
 }));
-vi.mock('../../services/DocumentSessionService', () => ({
-  bindActiveDocumentSnapshotIfPresent: vi.fn(),
-  getActiveDocumentSnapshotId: vi.fn(() => 7),
+vi.mock('../../store/workspace-snapshot-bindings', () => ({
+  getWorkspaceSnapshotId: vi.fn(() => 7),
 }));
 
 type TestControllerOptions = {
@@ -130,7 +127,7 @@ function resolvedAnalysis(overrides: Record<string, unknown> = {}) {
 describe('editor analysis controller json block selection', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocked.resolveTreePathSafe.mockResolvedValue([]);
+    mocked.resolveTreePathResult.mockResolvedValue({ status: 'ready', data: [] });
     mocked.resolveDocumentAnalysis.mockResolvedValue(resolvedAnalysis());
     mocked.callSharedWasmWorker.mockResolvedValue({
       found: false,
@@ -173,27 +170,6 @@ describe('editor analysis controller json block selection', () => {
     expect(model.getValue()).toBe('prefix\n{"a":1}\nsuffix');
   });
 
-  it('reuses the latest authoritative analysis for valid whole-document JSON cursor sync', async () => {
-    const semanticTokens = new ArrayBuffer(0);
-    const analysis = {
-      tree: { kind: 1 },
-      value: { a: 1 },
-      diagnostics: [],
-      semanticTokens,
-    };
-    const { controller, model, getSelection } = createController({ text: '{"a":1}' });
-    mocked.analyzeDocumentAndStore.mockResolvedValue(analysis);
-    mocked.resolveDocumentAnalysis.mockResolvedValueOnce(resolvedAnalysis(analysis));
-
-    await controller.syncAuthoritativeAnalysis(model as any, 'json', 'doc-json', false);
-
-    mocked.resolveDocumentAnalysis.mockResolvedValue({ status: 'unknown', analysis: null });
-    await controller.updateTreePath({ lineNumber: 1, column: 2 }, { syncGraphHighlight: true });
-
-    expect(mocked.callSharedWasmWorker).not.toHaveBeenCalled();
-    expect(getSelection()).toBeNull();
-  });
-
   it('marks cursor path readiness around successful tree path resolution', async () => {
     const markCursorPathRequested = vi.fn<CursorPathRequestMarker>();
     const markCursorPathSettled = vi.fn<CursorPathSettledMarker>();
@@ -201,7 +177,7 @@ describe('editor analysis controller json block selection', () => {
       markCursorPathRequested,
       markCursorPathSettled,
     });
-    mocked.resolveTreePathSafe.mockResolvedValue([{ tag: 1, key: 'a', index: 0 }]);
+    mocked.resolveTreePathResult.mockResolvedValue({ status: 'ready', data: [{ tag: 1, key: 'a', index: 0 }] });
 
     await controller.updateTreePath({ lineNumber: 2, column: 3 }, { syncGraphHighlight: true });
 
@@ -222,62 +198,6 @@ describe('editor analysis controller json block selection', () => {
     });
   });
 
-  it('routes empty authoritative sources through analysis instead of short-circuiting them', async () => {
-    const analysis = {
-      tree: null,
-      value: null,
-      diagnostics: [{ message: 'parse failed' }],
-      semanticTokens: new ArrayBuffer(0),
-      snapshotId: null,
-    };
-    const { controller, model, setTreeState } = createController({ text: '' });
-    mocked.analyzeDocumentAndStore.mockResolvedValue(analysis);
-    mocked.resolveDocumentAnalysis.mockResolvedValue(resolvedAnalysis(analysis));
-
-    await controller.syncAuthoritativeAnalysis(model as any, 'json', 'doc-json', false);
-
-    expect(mocked.analyzeDocumentAndStore).toHaveBeenCalledWith(
-      'json',
-      '',
-      'doc-json',
-      false,
-      expect.objectContaining({
-        onAnalysisDelta: expect.any(Function),
-      }),
-    );
-    expect(setTreeState).not.toHaveBeenCalled();
-  });
-
-  it('clears tree state only when authoritative analysis returns null', async () => {
-    const { controller, model, setTreeState, updateActiveTempModel } = createController({ text: '' });
-    mocked.analyzeDocumentAndStore.mockResolvedValue(null);
-
-    await controller.syncAuthoritativeAnalysis(model as any, 'json', 'doc-json', false);
-
-    expect(mocked.analyzeDocumentAndStore).toHaveBeenCalled();
-    expect(setTreeState).toHaveBeenCalledWith({
-      tree: null,
-      value: null,
-      source: 'editor',
-      revision: 3,
-    });
-    expect(updateActiveTempModel).toHaveBeenCalled();
-    const currentTempModel: any = {
-      treePath: [{ tag: 0, key: 'before', index: 0 }],
-      graphHighlight: {
-        path: [{ tag: 0, key: 'before', index: 0 }],
-        target: 'value',
-        revision: 2,
-        source: 'search',
-      },
-    };
-    const clearsGraphHighlight = updateActiveTempModel.mock.calls.some(([updater]) => {
-      const nextTempModel = (updater as (current: any) => any)(currentTempModel);
-      return nextTempModel.treePath.length === 0 && nextTempModel.graphHighlight === null;
-    });
-    expect(clearsGraphHighlight).toBe(true);
-  });
-
   it('sets JSON block selection when invalid JSON cursor is inside a valid block', async () => {
     const { controller, getSelection, primeSemanticTokensForDocument, refreshSemanticTokensForLanguage } =
       createController();
@@ -292,9 +212,6 @@ describe('editor analysis controller json block selection', () => {
         endLineNumber: 2,
         endColumn: 8,
       })
-    mocked.analyzeDocumentAndStore.mockResolvedValueOnce({
-      semanticTokens: new Uint32Array([0, 1, 3, 0, 0]).buffer,
-    });
 
     await controller.updateTreePath({ lineNumber: 2, column: 3 }, { syncGraphHighlight: true });
 
@@ -311,17 +228,8 @@ describe('editor analysis controller json block selection', () => {
       endLineNumber: 2,
       endColumn: 8,
     });
-    expect(mocked.analyzeDocumentAndStore).toHaveBeenCalledWith(
-      'json',
-      '{"a":1}',
-      'doc-json:json-block:3:7:14',
-      false,
-    );
-    expect(primeSemanticTokensForDocument).toHaveBeenCalledWith(
-      'doc-json',
-      new Uint32Array([1, 1, 3, 0, 0]).buffer,
-    );
-    expect(refreshSemanticTokensForLanguage).toHaveBeenCalledWith('json');
+    expect(primeSemanticTokensForDocument).not.toHaveBeenCalled();
+    expect(refreshSemanticTokensForLanguage).not.toHaveBeenCalledWith('json');
   });
 
   it('clears JSON block selection when the cursor moves outside blocks', async () => {
@@ -370,42 +278,6 @@ describe('editor analysis controller json block selection', () => {
     expect(setJsonBlockSelection).toHaveBeenCalledWith(null);
   });
 
-  it('does not prime whole-document semantic tokens for invalid JSON', async () => {
-    const semanticTokens = new Uint32Array([0, 1, 3, 0, 0]).buffer;
-    const { controller, model, primeSemanticTokensForDocument, clearSemanticTokensForDocument } = createController();
-    const analysis = {
-      tree: null,
-      value: null,
-      diagnostics: [{ message: 'parse failed' }],
-      semanticTokens,
-    };
-    mocked.analyzeDocumentAndStore.mockResolvedValue(analysis);
-    mocked.resolveDocumentAnalysis.mockResolvedValue(resolvedAnalysis(analysis));
-
-    await controller.syncAuthoritativeAnalysis(model as any, 'json', 'doc-json', false);
-
-    expect(primeSemanticTokensForDocument).not.toHaveBeenCalledWith('doc-json', semanticTokens);
-    expect(clearSemanticTokensForDocument).toHaveBeenCalledWith('doc-json');
-  });
-
-  it('keeps priming whole-document semantic tokens for valid JSON', async () => {
-    const semanticTokens = new Uint32Array([0, 1, 3, 0, 0]).buffer;
-    const { controller, model, primeSemanticTokensForDocument, clearSemanticTokensForDocument } = createController();
-    const analysis = {
-      tree: { kind: 1 },
-      value: { a: 1 },
-      diagnostics: [],
-      semanticTokens,
-    };
-    mocked.analyzeDocumentAndStore.mockResolvedValue(analysis);
-    mocked.resolveDocumentAnalysis.mockResolvedValue(resolvedAnalysis(analysis));
-
-    await controller.syncAuthoritativeAnalysis(model as any, 'json', 'doc-json', false);
-
-    expect(primeSemanticTokensForDocument).toHaveBeenCalledWith('doc-json', semanticTokens);
-    expect(clearSemanticTokensForDocument).not.toHaveBeenCalledWith('doc-json');
-  });
-
   it('does not let stale async results overwrite the latest selection', async () => {
     let resolveFirstBlock: (value: unknown) => void = () => {};
     const firstBlock = new Promise((resolve) => {
@@ -423,9 +295,6 @@ describe('editor analysis controller json block selection', () => {
         startColumn: 1,
         endLineNumber: 3,
         endColumn: 8,
-      })
-      .mockResolvedValueOnce({
-        semanticTokens: new Uint32Array([0, 1, 3, 0, 0]).buffer,
       });
 
     const firstUpdate = controller.updateTreePath({ lineNumber: 2, column: 3 }, { syncGraphHighlight: true });

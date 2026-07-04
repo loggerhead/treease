@@ -17,6 +17,7 @@ import {
 import {
   collectDocumentJobResult,
   normalizeDocumentJobAnalysisPayload,
+  type DocumentJobResultStatus,
 } from '../../shared/document-job-result';
 import type { DocumentAnalysisResult } from '../../shared/worker-protocol/protocol';
 
@@ -73,6 +74,7 @@ export type ReadableGraphDocumentJobInput = GraphDocumentJobInput & {
 };
 
 export type DocumentJobGraphResult = {
+  status: DocumentJobResultStatus;
   batch: EventBatch;
   analysis: DocumentAnalysisResult | null;
   jobHandle: number;
@@ -132,7 +134,14 @@ export function collectGraphDocumentJobResult(params: {
   const batch = mergeEventBatches(params.batches);
   const result = collectDocumentJobResult(batch);
   const analysis = normalizeDocumentJobAnalysisPayload(params.documentKey, params.language, result.analysis);
-  return { batch, analysis, jobHandle: params.jobHandle, snapshotId: result.snapshotId, sourceText: result.sourceText };
+  return {
+    status: result.status,
+    batch,
+    analysis,
+    jobHandle: params.jobHandle,
+    snapshotId: result.snapshotId,
+    sourceText: result.sourceText,
+  };
 }
 
 export async function runSharedGraphDocumentJob(

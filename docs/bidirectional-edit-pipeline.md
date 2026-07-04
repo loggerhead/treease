@@ -10,7 +10,7 @@ read_when:
 
 ## 先记住的结论
 
-- Editor → Graph 的对外入口是 `commitDocument(...edits...)`，Core 内部统一落到 `ApplyEdits` job。
+- Editor → Graph 的增量提交入口是 `commitApplyEdits(...edits...)`，Core 内部统一落到 `ApplyEdits` job。
 - Graph → Editor 不是直接改文档；它先做 snapshot-bound planner，再把结果回送成 `DocumentTextEdit[]` 或显式 fallback `replace`。
 - 支持增量时要说明是哪一层增量：Monaco text edit、tree-sitter syntax incremental、或 structural incremental。
 
@@ -22,7 +22,7 @@ read_when:
 Monaco onDidChangeModelContent
   → monacoChangesToDocumentTextEdits(...)
   → DocumentTextEdit[]
-  → commitDocument({ text, edits, baseSnapshotId, ... })
+  → commitApplyEdits({ edits, baseSnapshotId, ... })
   → startSharedGraphDocumentJob(... kind = ApplyEdits ...)
   → Worker startDocumentJob / advanceDocumentJob(close)
   → Rust materialize_with_base()

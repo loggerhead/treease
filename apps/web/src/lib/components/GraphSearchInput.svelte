@@ -5,7 +5,7 @@
   import { settings } from '../settings/settings-store'
   import type { PathSeg } from '../store/tree-path'
   import { editorRevision, graphAppliedRevision } from '../store/editor-store'
-  import { getActiveDocumentSnapshotId } from '../services/DocumentSessionService'
+  import { getWorkspaceSnapshotId } from '../store/workspace-snapshot-bindings'
 
   type GraphSearchResult = {
     nodeId?: number
@@ -14,6 +14,9 @@
     path: PathSeg[]
     pathText: string
   }
+  type GraphSearchReadResult =
+    | { status: 'ready'; data: GraphSearchResult[] }
+    | { status: 'snapshotNotReady' }
 
   export let documentKey = ''
   export let language = ''
@@ -90,22 +93,21 @@
    * @returns Promise<void>
    */
   async function runSearch(keyword: string): Promise<void> {
-    if (!documentKey || !text || !language) {
+    if (!documentKey || !language) {
       results = []
       return
     }
     const token = (searchToken += 1)
     try {
-      const data = await callSharedWasmWorker<GraphSearchResult[]>('graphSearch', {
+      const result = await callSharedWasmWorker<GraphSearchReadResult>('graphSearch', {
         documentKey,
-        snapshotId: getActiveDocumentSnapshotId(documentKey),
+        snapshotId: getWorkspaceSnapshotId(documentKey),
         language,
-        text,
         query: keyword,
         nest: $settings.parser.enableNest
       })
       if (token !== searchToken) return
-      results = Array.isArray(data) ? data : []
+      results = result.status === 'ready' ? result.data : []
       resolvedQuery = keyword
       activeIndex = 0
     } catch {

@@ -4,11 +4,11 @@ import {
   startSharedGraphDocumentJob,
 } from '../graph-stream/document-job-runner';
 import type { DocumentAnalysisResult } from '../../shared/worker-protocol/protocol';
+import type { DocumentJobResultStatus } from '../../shared/document-job-result';
 
-export type DocumentCommitRequest = {
+export type ApplyEditsCommitRequest = {
   documentKey: string;
   language: string;
-  text: string;
   edits: DocumentTextEdit[];
   baseSnapshotId?: SnapshotId | null;
   revision: number;
@@ -17,6 +17,7 @@ export type DocumentCommitRequest = {
 };
 
 export type DocumentCommitResult = {
+  status: DocumentJobResultStatus | 'rejected';
   snapshotId: SnapshotId | null;
   analysis: DocumentAnalysisResult | null;
   sourceText: string | null;
@@ -28,14 +29,13 @@ function rejectedBatch(code: string, detail: string): EventBatch {
   return { requestSeq: 0, events: [], terminal };
 }
 
-
-export async function commitDocument(request: DocumentCommitRequest): Promise<DocumentCommitResult> {
+export async function commitApplyEdits(request: ApplyEditsCommitRequest): Promise<DocumentCommitResult> {
   if (request.baseSnapshotId == null) {
     const batch = rejectedBatch(
       'missing_base_snapshot',
       'ApplyEdits requires an authoritative base snapshot',
     );
-    return { snapshotId: null, analysis: null, sourceText: null, jobHandle: 0, batch };
+    return { status: 'rejected', snapshotId: null, analysis: null, sourceText: null, jobHandle: 0, batch };
   }
 
   const { started, advance } = await startSharedGraphDocumentJob({
@@ -58,5 +58,12 @@ export async function commitDocument(request: DocumentCommitRequest): Promise<Do
     jobHandle: started.jobHandle,
     batches: [started.batch, closeBatch],
   });
-  return { snapshotId: result.snapshotId, analysis: result.analysis, sourceText: result.sourceText, jobHandle: started.jobHandle, batch: result.batch };
+  return {
+    status: result.status,
+    snapshotId: result.snapshotId,
+    analysis: result.analysis,
+    sourceText: result.sourceText,
+    jobHandle: started.jobHandle,
+    batch: result.batch,
+  };
 }

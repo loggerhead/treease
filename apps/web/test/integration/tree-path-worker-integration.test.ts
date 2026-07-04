@@ -5,7 +5,7 @@ import {
   buildDocumentJobSettings,
   runTextDocumentJobForGraph,
 } from '../../src/lib/graph-stream/document-job-runner';
-import { resolvePathSpan, resolveTreePath } from '../../src/lib/services/TreePathService';
+import { resolvePathSpanResult, resolveTreePathResult } from '../../src/lib/services/TreePathService';
 import { toWasmPathSeg } from '../../src/shared/brand-bridge';
 import { initWasmWorkerForTests, shutdownWasmWorkerForTests } from '../wasm-test-helpers';
 
@@ -82,9 +82,10 @@ describe('TreePathService worker integration', () => {
     const model = createModel(text);
     const position = getEditorPosition(text, '值');
 
-    const path = await resolveTreePath(model, position as any, 'vitest://tree-path/utf8', 'json' as any, true, snapshotId);
+    const result = await resolveTreePathResult(model, position as any, 'vitest://tree-path/utf8', 'json' as any, true, snapshotId);
 
-    expect(Array.isArray(path)).toBe(true);
+    expect(result.status).toBe('ready');
+    expect(Array.isArray(result.status === 'ready' ? result.data : null)).toBe(true);
   });
 
   it('returns null for a path that does not exist in the stored document', async () => {
@@ -92,7 +93,7 @@ describe('TreePathService worker integration', () => {
     const snapshotId = await seedStoredSnapshot('vitest://tree-path/missing', 'json', text);
     const model = createModel(text);
 
-    const resolved = await resolvePathSpan(
+    const resolved = await resolvePathSpanResult(
       model,
       [toWasmPathSeg({ tag: 0, key: 'missing', index: 0 })],
       'vitest://tree-path/missing',
@@ -102,7 +103,7 @@ describe('TreePathService worker integration', () => {
       snapshotId,
     );
 
-    expect(resolved).toBeNull();
+    expect(resolved).toEqual({ status: 'ready', data: null });
   });
 
   it('resolves top-level key path in complex.1.json fixture', async () => {
@@ -112,7 +113,7 @@ describe('TreePathService worker integration', () => {
     const path = [toWasmPathSeg({ tag: 0, key: 'empty array', index: 0 })];
 
     const model = createModel(text);
-    const resolved = await resolvePathSpan(
+    const resolved = await resolvePathSpanResult(
       model,
       path,
       'vitest://tree-path/complex-simple',
@@ -122,7 +123,8 @@ describe('TreePathService worker integration', () => {
       snapshotId,
     );
 
-    expect(resolved).not.toBeNull();
+    expect(resolved.status).toBe('ready');
+    expect(resolved.status === 'ready' ? resolved.data : null).not.toBeNull();
   });
 
   it('resolves deep empty-key path in complex.1.json fixture', async () => {
@@ -136,7 +138,7 @@ describe('TreePathService worker integration', () => {
     ];
 
     const model = createModel(text);
-    const resolved = await resolvePathSpan(
+    const resolved = await resolvePathSpanResult(
       model,
       path,
       'vitest://tree-path/complex-deep',
@@ -146,7 +148,9 @@ describe('TreePathService worker integration', () => {
       snapshotId,
     );
 
-    expect(resolved).not.toBeNull();
-    expect(resolved!.startByte).toBeLessThan(resolved!.endByte);
+    expect(resolved.status).toBe('ready');
+    const span = resolved.status === 'ready' ? resolved.data : null;
+    expect(span).not.toBeNull();
+    expect(span!.startByte).toBeLessThan(span!.endByte);
   });
 });

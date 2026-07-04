@@ -13,7 +13,7 @@
   import { callSharedWasmWorker, getSharedWasmWorkerClient } from '../../wasm/wasm-worker-singleton';
   import type { DocumentAnalysisResult } from '../../../shared/worker-protocol/protocol';
   import { editorStore, editorWorkspace } from '../../store/editor-store';
-  import { clearActiveDocumentSnapshot, getActiveDocumentSnapshotId } from '../../services/DocumentSessionService';
+  import { clearWorkspaceSnapshot, getWorkspaceSnapshotId } from '../../store/workspace-snapshot-bindings';
   import { queryRootValueKind } from '../../services/SnapshotProjectionService';
   import { monacoChangesToDocumentTextEdits, type MonacoTextChange } from '../../../shared/document-text-edits';
   import { markSidecarRequested, markSidecarSettled } from '../../test-bridge/runtime-readiness';
@@ -160,7 +160,7 @@
     rootScalarDecorations ??= editor.createDecorationsCollection();
     const requestToken = ++rootScalarHighlightToken;
     const requestDocumentKey = sidecarDocumentKey();
-    const requestSnapshotId = getActiveDocumentSnapshotId(requestDocumentKey);
+    const requestSnapshotId = getWorkspaceSnapshotId(requestDocumentKey);
     if (!requestDocumentKey || requestSnapshotId == null) {
       rootScalarDecorations.set([]);
       return;
@@ -168,9 +168,13 @@
     void queryRootValueKind({ documentKey: requestDocumentKey, snapshotId: requestSnapshotId }).then((rootKind) => {
       if (requestToken !== rootScalarHighlightToken) return;
       if (requestDocumentKey !== sidecarDocumentKey()) return;
-      if (getActiveDocumentSnapshotId(requestDocumentKey) !== requestSnapshotId) return;
+      if (getWorkspaceSnapshotId(requestDocumentKey) !== requestSnapshotId) return;
       rootScalarDecorations?.set(
-        buildRootScalarHighlightDecorations(monaco, model, resolveRootScalarHighlightKindFromSnapshotKind(rootKind)),
+        buildRootScalarHighlightDecorations(
+          monaco,
+          model,
+          resolveRootScalarHighlightKindFromSnapshotKind(rootKind.status === 'ready' ? rootKind.data : null),
+        ),
       );
     });
   }
@@ -255,7 +259,7 @@
       },
     });
     if (shouldClearSnapshot) {
-      clearActiveDocumentSnapshot(documentKey);
+      clearWorkspaceSnapshot(documentKey);
     }
     clearSemanticTokensForDocument(documentKey);
     refreshSemanticTokensForLanguage(activeLanguage);
@@ -451,7 +455,7 @@
           requestDocumentKey: documentKey,
           nextText,
           documentTextEdits,
-          baseSnapshotId: getActiveDocumentSnapshotId(documentKey),
+          baseSnapshotId: getWorkspaceSnapshotId(documentKey),
           commitRevision: commitSidecarEditorState,
           settings: buildDocumentJobSettings({
             enableNest: $settings.parser.enableNest,

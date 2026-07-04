@@ -11,6 +11,7 @@
 - `FRONTEND.md` — Web 规则、GraphViewer / worker / freshness 边界
 - `TESTING.md` — 真实覆盖、验证命令、timeout / mock / E2E 规则
 - `CODING.md` — 跨目录协作、可读性与所有权规则
+- `editor-data-flow.md` — Editor / Workspace / Runtime / Snapshot 的统一数据流与 authority 约束
 - `cli-design.md` — CLI agent 友好设计调研
 - `cli/README.md` — CLI 使用、发现命令与 agent 路由
 - `formats/README.md` — 手写格式说明入口与生成格式快照说明

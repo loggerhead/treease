@@ -1,6 +1,5 @@
-// 职责：Worker 侧值编辑 handler：applyValueEdit、parseValueForPath
+// 职责：Worker 侧值编辑 handler：applyValueEditCanonical、parseValueForPath
 import {
-  applyValueEdit as applyValueEditText,
   applyValueEditCanonical as applyValueEditCanonicalText,
   parseValueForPath,
   planGraphValueEdit as planGraphValueEditFromSnapshot,
@@ -66,24 +65,6 @@ export async function handleValueToTreeNode(
   postOk(ctx, message.id, await valueToTreeNode(message.value));
 }
 
-export async function handleApplyValueEdit(
-  ctx: WorkerContext,
-  message: Extract<WorkerRequest, { type: 'applyValueEdit' }>,
-): Promise<void> {
-  const normalizedValue = normalizeEditValue(message.value);
-  postOk(
-    ctx,
-    message.id,
-    await applyValueEditText(
-      message.language,
-      message.text,
-      normalizePathSegs(message.path),
-      message.preferKey,
-      normalizedValue.plainValue,
-    ),
-  );
-}
-
 export async function handleApplyValueEditCanonical(
   ctx: WorkerContext,
   message: Extract<WorkerRequest, { type: 'applyValueEditCanonical' }>,
@@ -107,7 +88,6 @@ export async function handlePlanGraphValueEdit(
   const normalizedValue = normalizeEditValue(message.value);
   const { plainValue } = normalizedValue;
 
-  let fallbackReason: ReplaceReason;
   if (message.documentKey && message.snapshotId != null) {
     const planned = await planGraphValueEditFromSnapshot({
       documentKey: message.documentKey,
@@ -127,11 +107,31 @@ export async function handlePlanGraphValueEdit(
       } satisfies PlanGraphValueEditResponse);
       return;
     }
-    fallbackReason = planned.status === 'ready' ? (planned.data.reason ?? 'unsupportedEdit') : 'snapshotNotReady';
+    if (planned.status !== 'ready') {
+      postOk(ctx, message.id, { mode: 'snapshotNotReady' } satisfies PlanGraphValueEditResponse);
+      return;
+    }
+    if (planned.data.reason === 'snapshotNotReady') {
+      postOk(ctx, message.id, { mode: 'snapshotNotReady' } satisfies PlanGraphValueEditResponse);
+      return;
+    }
+    const fallbackReason: ReplaceReason = planned.data.reason ?? 'unsupportedEdit';
+    postOk(
+      ctx,
+      message.id,
+      await createCanonicalReplaceResult(
+        message.language,
+        message.text,
+        normalizedPath,
+        message.preferKey,
+        plainValue,
+        fallbackReason,
+      ),
+    );
+    return;
   } else if (message.snapshotId == null) {
-    fallbackReason = 'snapshotNotReady';
-  } else {
-    fallbackReason = 'unsupportedEdit';
+    postOk(ctx, message.id, { mode: 'snapshotNotReady' } satisfies PlanGraphValueEditResponse);
+    return;
   }
   postOk(
     ctx,
@@ -142,7 +142,7 @@ export async function handlePlanGraphValueEdit(
       normalizedPath,
       message.preferKey,
       plainValue,
-      fallbackReason,
+      'unsupportedEdit',
     ),
   );
 }

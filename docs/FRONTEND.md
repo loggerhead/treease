@@ -7,8 +7,7 @@ read_when:
 # Treease 前端约束
 
 ## 适用范围
-- 本文件只约束 `apps/web/`。
-- 默认前置导航：`../apps/web/AGENTS.md`、`./agent-entrypoints.md`。
+- 本文件只约束 `apps/web/`；默认前置导航：`../apps/web/AGENTS.md`、`./agent-entrypoints.md`。
 
 ## Web 主链
 - `apps/web/src/lib/components/Editor.svelte`（核心在 `apps/web/src/lib/components/Editor/EditorCore.svelte`）→ `apps/web/src/workers/wasm-runtime.worker.ts` → `packages/core/wasm/index.ts` → `packages/core/src/wasm_document.rs` → `packages/core/src/document/`
@@ -34,11 +33,13 @@ read_when:
 - Editor / GraphViewer 不得依赖 `SnapshotReady.analysis` 下发 full `tree` / full `valueJson`；hover、YQ completion、root scalar highlight、subgraph scalar content 与 graph edit 必须通过 snapshot-bound 局部 projection/query。
 - Graph hover 不再承担任何预览职责；局部阅读与展开统一改为 click 打开底部工作区。
 - `SnapshotReady.sourceText` 是 editor/store 的 authoritative 写回文本；`parseFailed` 不提供替换用 `sourceText`。
+- 当前文本读取统一经 `ActiveDocumentContext`：优先 `Monaco model`，其次 `editorIO.getText()`，最后才回退到 active workspace tab / store 镜像文本。
 - `getDiagnostics`、`parseToTree`、`parseValueToTree` 只做瞬时探测或非主文档缓存，不得回流成主文档 authority。
 - JSON block 容错渲染只是光标派生 UI 状态；整文 invalid JSON 仍走 diagnostics-only 主链，不替代主文档 authoritative analysis。
 - Monaco 语言高亮必须来自 Core/WASM 主链；禁止引入 `monaco-editor/esm/vs/basic-languages/*/*.contribution`，唯一例外是 settings 的 JSON 配置编辑。
 - 跨组件共享状态优先走现有 store；不要直接耦合非父子组件。
 - `apps/web/src/lib/components/ui/` 视为基础组件目录；新增通用组件前先确认 shadcn-svelte 是否已有现成实现。
+- `workspace-snapshot-bindings.ts` 只是 `editorStore.actions` 的薄适配层；前端可见 `snapshotId` authority 仍在 `Workspace Store`，不要把这个 helper 当成独立 session/service。
 
 ## GraphViewer 边界
 - `apps/web/src/lib/components/GraphViewer.svelte` 是稳定入口，只负责生命周期、controller 组装、test runtime 暴露与跨域编排。

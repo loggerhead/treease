@@ -100,7 +100,7 @@ cancel_job(handle) -> EventBatch
 
 - 调用前执行一次 `isFresh` 检查。
 - 调用 `runTextDocumentJobForGraph()`，由 `apps/web/src/lib/graph-stream/document-job-runner.ts` 完成 `start job → stream text → close → merge EventBatch`。
-- 调用返回后再执行一次 `isFresh` 检查，并把 merged batch 收敛为 `IntakeResult { status, snapshotId, analysis, error? }` 交还 UI。
+- 调用返回后再执行一次 `isFresh` 检查，并把 merged batch 收敛为 `IntakeResult { status, resultStatus, snapshotId, analysis, sourceText, error? }` 交还 UI。
 
 当前 intake 不拥有：
 - chunk buffer、reader 生命周期或 stream / close 驱动；这些收敛在 `apps/web/src/lib/graph-stream/document-job-runner.ts` 与 `apps/web/src/lib/graph-stream/full-edit-document-job-session.ts`。
@@ -109,7 +109,17 @@ cancel_job(handle) -> EventBatch
 
 same-language 文件导入走另一条链路：`editor-full-edit-controller.ts` 直接 `File.stream().tee()`，一路给 UI flush 文本，一路调用 `startReadableDocumentJobSessionForGraph()`；session 内部通过 `runReadableDocumentJobForGraph()` 以 `BinaryChunk` 推进 readable job。这条 reader 路径不经过 `runIntakeJob()`，完成后把 readable job 的结果作为 `finishImportStream()` 的 `intakeOverride`。
 
-`IntakeResult.status` 当前只有 `completed | failed`。只要 merged batch 提供了 `snapshotId`，即使该 snapshot 来自 `ParseFailed` 事件，intake 也会把它连同 diagnostics analysis 一起交还 UI；它不单独暴露 parse-failed 枚举。
+`IntakeResult.status` 当前只有 `completed | failed`，并额外通过 `resultStatus` 区分 `snapshotReady`、`parseFailed`、`cancelled`、`jobFailed` 等结果。`runIntakeJob()` 只把 `snapshotReady` 视为 completed 语义成功；`parseFailed` 会作为 failed 返回，保留 diagnostics analysis 供 UI 展示，但不会把 diagnostics-only snapshot 暴露为可继续复用的成功 snapshot。
+
+### ActiveDocumentContext
+
+当前文本读取统一经 `apps/web/src/lib/services/ActiveDocumentContext.ts`：
+
+- 已挂载 Monaco model 时，优先读 model 当前文本，它才是当前草稿 authority。
+- model 缺席但 editor runtime 仍在线时，退回 `editorIO.getText()`。
+- 只有 editor runtime 也缺席时，才退回 active workspace tab 或 legacy store 镜像文本。
+
+这条读取顺序只解决“当前文本”问题；一旦需要 graph/search/reveal/planner 等结构语义，仍必须回到显式携带 `snapshotId` 的 snapshot-bound read。
 
 ### DocumentAnchor
 

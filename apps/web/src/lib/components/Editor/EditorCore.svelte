@@ -2,7 +2,6 @@
   import { createEventDispatcher, onMount, onDestroy } from 'svelte';
   import type * as Monaco from 'monaco-editor';
   import type { DocumentTextEdit } from '@core-wasm/index';
-  import { type TreeNode, TreeKind } from '@core-wasm/index';
   import type { DiffPlan } from '../../graph/diff-plan';
   import {
     sourceText,
@@ -37,8 +36,9 @@
   import { callSharedWasmWorker, getSharedWasmWorkerClient } from '../../wasm/wasm-worker-singleton';
   import { attachMonacoTestHook } from '../../monaco/test-hook';
   import { toast } from 'svelte-sonner';
-  import { resolvePathSelectionRangeSafe } from '../../services/TreePathService';
-  import { bindActiveDocumentSnapshotIfPresent, getActiveDocumentSnapshotId } from '../../services/DocumentSessionService';
+  import { getActiveDocumentText } from '../../services/ActiveDocumentContext';
+  import { resolvePathSelectionRangeResult } from '../../services/TreePathService';
+  import { bindWorkspaceSnapshotIfPresent, getWorkspaceSnapshotId } from '../../store/workspace-snapshot-bindings';
   import { resolveEditorRuntimeOverlay, type RuntimeStateEventDetail } from '../../runtime-loading';
   import {
     markCursorPathRequested,
@@ -172,7 +172,7 @@
     rootScalarDecorations ??= editor.createDecorationsCollection();
     const requestToken = ++rootScalarHighlightToken;
     const requestDocumentKey = getDocumentKey();
-    const requestSnapshotId = getActiveDocumentSnapshotId(requestDocumentKey);
+    const requestSnapshotId = getWorkspaceSnapshotId(requestDocumentKey);
     if (jsonBlockSelectionValue || !requestDocumentKey || requestSnapshotId == null) {
       rootScalarDecorations.set([]);
       return;
@@ -180,8 +180,10 @@
     void queryRootValueKind({ documentKey: requestDocumentKey, snapshotId: requestSnapshotId }).then((rootKind) => {
       if (requestToken !== rootScalarHighlightToken) return;
       if (requestDocumentKey !== getDocumentKey()) return;
-      if (getActiveDocumentSnapshotId(requestDocumentKey) !== requestSnapshotId) return;
-      const highlightKind = resolveRootScalarHighlightKindFromSnapshotKind(rootKind);
+      if (getWorkspaceSnapshotId(requestDocumentKey) !== requestSnapshotId) return;
+      const highlightKind = resolveRootScalarHighlightKindFromSnapshotKind(
+        rootKind.status === 'ready' ? rootKind.data : null,
+      );
       rootScalarDecorations?.set(buildRootScalarHighlightDecorations(monaco, model, highlightKind));
     });
   }
@@ -190,7 +192,7 @@
     editorIO.set({
       context: 'editor',
       getModel: () => model,
-      getText: () => editorStore.get().sourceText,
+      getText: () => model?.getValue() ?? editorStore.get().sourceText,
       setText: (value: string) => setEditorValue(value),
       applyTextEdits: (edits: DocumentTextEdit[]) => applyDocumentTextEdits(edits),
       getLanguage: () => languageIdValue,
@@ -361,19 +363,6 @@
     },
   });
 
-  const treeKinds = new Set<TreeKind>([TreeKind.SCALAR, TreeKind.SEQUENCE, TreeKind.MAPPING, TreeKind.ALIAS]);
-
-  function isTreeNodeLike(value: unknown): value is TreeNode {
-    if (!value || typeof value !== 'object') return false;
-    const node = value as { kind?: unknown; semType?: unknown; children?: unknown };
-    return (
-      typeof node.kind === 'number' &&
-      treeKinds.has(node.kind as TreeKind) &&
-      typeof node.semType === 'number' &&
-      Array.isArray(node.children)
-    );
-  }
-
   $: formattingOptionsValue = $settings.formatting;
   $: editorRevisionValue = $editorRevision;
   $: editorRuntimeOverlay = resolveEditorRuntimeOverlay({
@@ -440,7 +429,7 @@
       ensureLanguageRegistered(next);
       let shouldDeferTreePath = false;
       if (model && monaco) {
-        const languageSwitchSourceText = editorStore.get().sourceText;
+        const languageSwitchSourceText = getActiveDocumentText();
         const languageSwitchPolicy = isManualLanguageSwitch
           ? resolveLanguageSwitchPolicy({
               nextLanguage: next,
@@ -704,7 +693,7 @@
           changes,
         );
         markActiveTabUserInput(true);
-        commitDocumentChanges(activeModel, languageIdValue, documentKeyValue, nextText, documentTextEdits);
+        commitActiveTabEdits(activeModel, languageIdValue, documentKeyValue, nextText, documentTextEdits);
       } else {
         commitEditorState();
       }
@@ -789,7 +778,7 @@
     return nextRevision;
   }
 
-  function commitDocumentChanges(
+  function commitActiveTabEdits(
     requestModel: Monaco.editor.ITextModel,
     requestLanguage: SupportedEditorLanguageId,
     requestDocumentKey: string,
@@ -802,7 +791,7 @@
       requestDocumentKey,
       nextText,
       documentTextEdits,
-      baseSnapshotId: getActiveDocumentSnapshotId(requestDocumentKey),
+      baseSnapshotId: getWorkspaceSnapshotId(requestDocumentKey),
       commitRevision: commitEditorState,
       settings: buildDocumentJobSettings({
         enableNest: $settings.parser.enableNest,
@@ -815,11 +804,11 @@
         requestDocumentKey === getDocumentKey() &&
         requestLanguage === languageIdValue,
       applyCommittedSourceText: (sourceTextValue) => {
-        if (sourceTextValue !== editorStore.get().sourceText) {
+        if (sourceTextValue !== getActiveDocumentText()) {
           sourceText.set(sourceTextValue)
         }
       },
-      bindSnapshot: bindActiveDocumentSnapshotIfPresent,
+      bindSnapshot: bindWorkspaceSnapshotIfPresent,
       applyGraphAnalysis: (modelValue, languageValue, documentKeyValue, revisionValue, analysis) =>
         editorAnalysisController.applyGraphAnalysis(
           modelValue,
@@ -844,12 +833,16 @@
   }
 
   function setEditorValue(value: string): boolean {
-    const previousValue = editorStore.get().sourceText;
+    const previousValue = getActiveDocumentText();
     if (value === previousValue) {
       return false;
     }
     if (fullEditUiStateValue.active) {
       queuedProgrammaticSourceText = value;
+      return true;
+    }
+    if (model) {
+      model.setValue(value);
       return true;
     }
     sourceText.set(value);
@@ -967,7 +960,7 @@
     const snapshotId = workspaceTab
       ? workspaceTab.snapshotId
       : isActiveEditorTab
-        ? getActiveDocumentSnapshotId(tab.documentKey)
+        ? getWorkspaceSnapshotId(tab.documentKey)
         : null;
     const fullEditState = workspaceTab
       ? workspaceTab.fullEditUiState
@@ -1085,7 +1078,7 @@
   }
 
   export async function exportAs(targetFormat: string) {
-    const text = editorStore.get().sourceText;
+    const text = getActiveDocumentText();
     if (!text.trim()) return '';
     return callSharedWasmWorker<string>('convert', {
       sourceLanguage: languageIdValue,
@@ -1096,7 +1089,7 @@
   }
 
   export function getActiveText() {
-    return editorStore.get().sourceText;
+    return getActiveDocumentText();
   }
 
   export function getActiveLanguage() {
@@ -1104,7 +1097,7 @@
   }
 
   export async function escapeActive(): Promise<void> {
-    const text = editorStore.get().sourceText;
+    const text = getActiveDocumentText();
     if (!text.trim()) {
       toast.info('No content to escape');
       return;
@@ -1126,7 +1119,7 @@
   }
 
   export async function unescapeActive(): Promise<void> {
-    const text = editorStore.get().sourceText;
+    const text = getActiveDocumentText();
     if (!text.trim()) {
       toast.info('No content to unescape');
       return;
@@ -1211,15 +1204,17 @@
     if (!path || path.length === 0) return;
     const documentKeyValue = getDocumentKey();
     if (!documentKeyValue) return;
-    const selectionRange = await resolvePathSelectionRangeSafe(
+    const selectionRangeResult = await resolvePathSelectionRangeResult(
       model,
       path,
       documentKeyValue,
       languageIdValue,
       options?.target ?? 'node',
       $settings.parser.enableNest,
-      getActiveDocumentSnapshotId(documentKeyValue),
+      getWorkspaceSnapshotId(documentKeyValue),
     );
+    if (selectionRangeResult.status !== 'ready') return false;
+    const selectionRange = selectionRangeResult.data;
     if (!selectionRange) {
       const message = `Failed to reveal path ${JSON.stringify(path)}`;
       // Clear graphHighlight to prevent the reactive subscription from
@@ -1419,32 +1414,6 @@
 
   async function applyEditorMutation(mutation: EditorMutation): Promise<void> {
     if (!model) return;
-    if (mutation.type === 'applyValueEdit') {
-      const { path, preferKey, value } = mutation.payload;
-      try {
-        const currentSourceText = editorStore.get().sourceText;
-        const node = isTreeNodeLike(value)
-          ? value
-          : await callSharedWasmWorker<TreeNode>('valueToTreeNode', {
-              value,
-            });
-        const nextText = await callSharedWasmWorker<string>('applyValueEdit', {
-          language: languageIdValue,
-          text: currentSourceText,
-          path,
-          preferKey,
-          value: node,
-        });
-        if (typeof nextText === 'string' && nextText !== currentSourceText) {
-          setEditorValue(nextText);
-        }
-        return;
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        activeTempModel.update((current) => ({ ...current, error: message }));
-      }
-      return;
-    }
     if (mutation.type === 'replaceSourceText') {
       setEditorValue(mutation.payload.text);
     }

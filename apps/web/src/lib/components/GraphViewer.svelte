@@ -23,7 +23,7 @@
   import { settings, settingsStore } from '../settings/settings-store';
   import { shouldShowGraphRuntimeLoading, type RuntimeStateEventDetail } from '../runtime-loading';
   import { callSharedWasmWorker } from '../wasm/wasm-worker-singleton';
-  import { getActiveDocumentSnapshotId } from '../services/DocumentSessionService';
+  import { getWorkspaceSnapshotId } from '../store/workspace-snapshot-bindings';
   import { queryPathValue } from '../services/SnapshotProjectionService';
   import { getFullEditDocumentJobSession } from '../graph-stream/full-edit-document-job-session';
   import { buildReadablePath, type PathSeg } from '../store/tree-path';
@@ -471,7 +471,7 @@
     isReadonly: () => readonly,
     getEditorIO: () => editorIOValue,
     getEditorRevision: () => editorRevisionValue,
-    getActiveSnapshotId: () => getActiveDocumentSnapshotId(documentKeyValue),
+    getActiveSnapshotId: () => getWorkspaceSnapshotId(documentKeyValue),
     resolveTreePathByPosition,
     nextTreeStateToken: () => ++treeStateToken,
     publishTreeState,
@@ -1055,7 +1055,10 @@
     graphMeasurementController.scheduleMeasure();
   }
 
-  function emitGraphEditEvent(type: 'graph-edit-open' | 'graph-edit-commit' | 'graph-edit-probes', detail: unknown) {
+  function emitGraphEditEvent(
+    type: 'graph-edit-open' | 'graph-edit-commit' | 'graph-edit-replace-fallback' | 'graph-edit-probes',
+    detail: unknown,
+  ) {
     if (!container) return;
     container.dispatchEvent(new CustomEvent(type, { detail, bubbles: true }));
   }
@@ -1101,15 +1104,15 @@
   }
 
   async function buildSubgraphWorkspaceContentState(path: PathSeg[]): Promise<SubgraphWorkspaceContentState | null> {
-    const snapshotId = getActiveDocumentSnapshotId(documentKeyValue);
+    const snapshotId = getWorkspaceSnapshotId(documentKeyValue);
     const pathValue = await queryPathValue({ documentKey: documentKeyValue, snapshotId, path });
-    if (!pathValue) return null;
-    const valueType = pathValue.valueType as ValueType;
+    if (pathValue.status !== 'ready' || !pathValue.data) return null;
+    const valueType = pathValue.data.valueType as ValueType;
     if (valueType === 'object' || valueType === 'array') return null;
     return {
       tabId: `subgraph-content:${buildPathKey(path)}`,
       tabName: formatSubgraphWorkspacePath(path, renderConfig),
-      sourceText: pathValue.displayText,
+      sourceText: pathValue.data.displayText,
       valueType,
     };
   }

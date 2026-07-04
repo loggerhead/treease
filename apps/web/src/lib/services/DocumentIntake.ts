@@ -1,11 +1,13 @@
 import type { BuilderConfig, DocumentJobSettings, SnapshotId } from '@core-wasm/index';
 import type { DocumentAnalysisResult } from '../../shared/worker-protocol/protocol';
 import { runTextDocumentJobForGraph } from '../graph-stream/document-job-runner';
+import type { DocumentJobResultStatus } from '../../shared/document-job-result';
 
 export type IntakeResultStatus = 'completed' | 'failed';
 
 export type IntakeResult = {
   status: IntakeResultStatus;
+  resultStatus: DocumentJobResultStatus | 'cancelled' | 'jobFailed';
   documentKey: string;
   revision: number;
   snapshotId: SnapshotId | null;
@@ -41,6 +43,7 @@ export async function runIntakeJob(params: RunIntakeJobParams): Promise<IntakeRe
   if (isFresh && !isFresh()) {
     return {
       status: 'failed',
+      resultStatus: 'cancelled',
       documentKey,
       revision,
       snapshotId: null,
@@ -62,6 +65,7 @@ export async function runIntakeJob(params: RunIntakeJobParams): Promise<IntakeRe
   } catch (error) {
     return {
       status: 'failed',
+      resultStatus: 'jobFailed',
       documentKey,
       revision,
       snapshotId: null,
@@ -74,6 +78,7 @@ export async function runIntakeJob(params: RunIntakeJobParams): Promise<IntakeRe
   if (isFresh && !isFresh()) {
     return {
       status: 'failed',
+      resultStatus: 'cancelled',
       documentKey,
       revision,
       snapshotId: null,
@@ -83,20 +88,22 @@ export async function runIntakeJob(params: RunIntakeJobParams): Promise<IntakeRe
     };
   }
 
-  if (!result.snapshotId) {
+  if (result.status !== 'snapshotReady') {
     return {
       status: 'failed',
+      resultStatus: result.status,
       documentKey,
       revision,
       snapshotId: null,
       analysis: result.analysis,
       sourceText: result.sourceText,
-      error: 'no snapshot produced',
+      error: result.status === 'parseFailed' ? 'parse failed' : 'no snapshot produced',
     };
   }
 
   return {
     status: 'completed',
+    resultStatus: result.status,
     documentKey,
     revision,
     snapshotId: result.snapshotId,

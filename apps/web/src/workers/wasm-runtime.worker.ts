@@ -9,12 +9,10 @@ import {
   handleParseAndStore,
   handleFindJsonBlockAtPosition,
   handleParseToTree,
-  handleParseValueToData,
   handleParseValueToTree,
   type DocumentParseRuntime,
 } from './runtime/document-parse';
 import {
-  handleApplyValueEdit,
   handleApplyValueEditCanonical,
   handlePlanGraphValueEdit,
   handleParseValueForPath,
@@ -190,10 +188,8 @@ const messageHandlers: Record<string, (msg: WorkerRequest) => Promise<void>> = {
   runYq: typedHandler<'runYq'>((msg) => handleRunYq(ctx, msg)),
   parseToTree: typedHandler<'parseToTree'>((msg) => handleParseToTree(ctx, msg)),
   parseValueToTree: typedHandler<'parseValueToTree'>((msg) => handleParseValueToTree(ctx, msg)),
-  parseValueToData: typedHandler<'parseValueToData'>((msg) => handleParseValueToData(ctx, msg)),
   parseValueForPath: typedHandler<'parseValueForPath'>((msg) => handleParseValueForPath(ctx, msg)),
   valueToTreeNode: typedHandler<'valueToTreeNode'>((msg) => handleValueToTreeNode(ctx, msg)),
-  applyValueEdit: typedHandler<'applyValueEdit'>((msg) => handleApplyValueEdit(ctx, msg)),
   applyValueEditCanonical: typedHandler<'applyValueEditCanonical'>((msg) => handleApplyValueEditCanonical(ctx, msg)),
   planGraphValueEdit: typedHandler<'planGraphValueEdit'>((msg) => handlePlanGraphValueEdit(ctx, msg)),
   compare: typedHandler<'compare'>((msg) => handleCompare(ctx, msg)),

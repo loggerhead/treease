@@ -1,12 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../../services/TreePathService', () => ({
-  resolveTreePathFromText: vi.fn(),
+  resolveTreePathFromTextResult: vi.fn(),
 }));
 
 import { createGraphTextLinkageController } from './graph-text-linkage';
 import { buildPathKey } from '../../graph/graph-viewer-path';
-import { resolveTreePathFromText } from '../../services/TreePathService';
+import { resolveTreePathFromTextResult } from '../../services/TreePathService';
 
 class MockBox {
   fill: string | undefined;
@@ -416,22 +416,30 @@ describe('graph-text-linkage', () => {
   });
 
   it('preserves explicit table value cell paths during hydration', async () => {
-    vi.mocked(resolveTreePathFromText).mockImplementation(async (_text, row, column) => {
-      if (row === 10 && column === 2) return [{ tag: 0, key: 'table_with_header', index: 0 }] as any[];
+    vi.mocked(resolveTreePathFromTextResult).mockImplementation(async (_text, row, column) => {
+      if (row === 10 && column === 2) {
+        return { status: 'ready', data: [{ tag: 0, key: 'table_with_header', index: 0 }] as any[] };
+      }
       if (row === 11 && column === 2) {
-        return [
-          { tag: 0, key: 'table_with_header', index: 0 },
-          { tag: 1, key: '', index: 0 },
-        ] as any[];
+        return {
+          status: 'ready',
+          data: [
+            { tag: 0, key: 'table_with_header', index: 0 },
+            { tag: 1, key: '', index: 0 },
+          ] as any[],
+        };
       }
       if (row === 11 && column === 8) {
-        return [
-          { tag: 0, key: 'table_with_header', index: 0 },
-          { tag: 1, key: '', index: 0 },
-          { tag: 0, key: 'h1', index: 0 },
-        ] as any[];
+        return {
+          status: 'ready',
+          data: [
+            { tag: 0, key: 'table_with_header', index: 0 },
+            { tag: 1, key: '', index: 0 },
+            { tag: 0, key: 'h1', index: 0 },
+          ] as any[],
+        };
       }
-      return [];
+      return { status: 'snapshotNotReady' };
     });
 
     const valueCellPath = [

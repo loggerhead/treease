@@ -9,9 +9,9 @@ vi.mock('@core-wasm/index', () => ({
 }));
 
 
-vi.mock('../../services/DocumentSessionService', () => ({
-  bindActiveDocumentSnapshotIfPresent: vi.fn(),
-  clearActiveDocumentSnapshot: vi.fn(),
+vi.mock('../../store/workspace-snapshot-bindings', () => ({
+  bindWorkspaceSnapshotIfPresent: vi.fn(),
+  clearWorkspaceSnapshot: vi.fn(),
 }));
 
 vi.mock('../../wasm/wasm-worker-singleton', () => ({
@@ -24,7 +24,7 @@ vi.mock('../../wasm/wasm-worker-singleton', () => ({
 }));
 
 import { createGraphRenderSession } from './graph-render-session';
-import { bindActiveDocumentSnapshotIfPresent } from '../../services/DocumentSessionService';
+import { bindWorkspaceSnapshotIfPresent } from '../../store/workspace-snapshot-bindings';
 import { readRuntimeReadiness, resetRuntimeReadiness, syncRuntimeReadinessFromEditorState } from '../../test-bridge/runtime-readiness';
 
 function startJobResult(jobHandle = 1, requestSeq = 1) {
@@ -397,7 +397,7 @@ describe('graph-render-session coordinator', () => {
       appliedRevision: 5,
       flushedRevision: 5,
     });
-    expect(bindActiveDocumentSnapshotIfPresent).toHaveBeenCalledWith(
+    expect(bindWorkspaceSnapshotIfPresent).toHaveBeenCalledWith(
       expect.objectContaining({ documentKey: 'test-key', revision: 5 }),
     );
   });
@@ -1028,7 +1028,7 @@ describe('graph-render-session coordinator', () => {
       expect.objectContaining({
         diagnostics,
       }),
-      10,
+      null,
     );
   });
   it('renderDocumentGraph does not leak parse-failed raw UI error over a later success for the same revision', async () => {
@@ -1110,7 +1110,7 @@ describe('graph-render-session coordinator', () => {
       endColumn: 25,
     });
 
-    expect(bindActiveDocumentSnapshotIfPresent).toHaveBeenCalledWith(
+    expect(bindWorkspaceSnapshotIfPresent).toHaveBeenCalledWith(
       expect.objectContaining({ documentKey: 'block-key', revision: 8, snapshotId: 11 }),
     );
     expect(coordinator.getActiveSnapshotId()).toBe(11);

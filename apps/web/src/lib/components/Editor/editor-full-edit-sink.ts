@@ -1,5 +1,5 @@
 import type { SnapshotId } from '@core-wasm/index';
-import { bindActiveDocumentSnapshotIfPresent } from '../../services/DocumentSessionService';
+import { bindWorkspaceSnapshotIfPresent } from '../../store/workspace-snapshot-bindings';
 import { editorStore, type FullEditTransportKind, type FullEditUiState } from '../../store/editor-store';
 
 type FullEditReason = FullEditUiState['reason'];
@@ -87,7 +87,7 @@ export function createPrimaryFullEditSink(): FullEditSink {
     markFinalizing: (payload) => editorStore.actions.markFullEditStreamFinalizing(payload),
     finish: (payload) => editorStore.actions.finishFullEditStream(payload),
     cancel: (payload) => editorStore.actions.cancelFullEditStream(payload),
-    bindSnapshot: (payload) => bindActiveDocumentSnapshotIfPresent(payload),
+    bindSnapshot: (payload) => bindWorkspaceSnapshotIfPresent(payload),
   };
 }
 
@@ -144,7 +144,7 @@ export function createWorkspaceTabFullEditSink(tabId: string): FullEditSink {
         revision: payload.revision,
         snapshotId: payload.snapshotId,
       });
-      bindActiveDocumentSnapshotIfPresent(payload);
+      bindWorkspaceSnapshotIfPresent(payload);
     },
   };
 }

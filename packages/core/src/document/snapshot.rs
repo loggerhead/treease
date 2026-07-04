@@ -1,8 +1,8 @@
 use super::protocol::{
     DocumentAnalysisPayload, DocumentAnchor, DocumentDiagnostic, DocumentNodePreview,
-    DocumentPathValue, DocumentTreeNode, GraphValueEditFallbackReason, GraphValueEditPlan,
-    GraphValueEditRequest, QueryKind, QueryResult, QueryTargetKind, SemanticTokensPayload,
-    SnapshotId, SnapshotQuery,
+    DocumentPathValue, DocumentSearchItem, DocumentTreeNode, GraphValueEditFallbackReason,
+    GraphValueEditPlan, GraphValueEditRequest, QueryKind, QueryResult, QueryTargetKind,
+    SemanticTokensPayload, SnapshotId, SnapshotQuery,
 };
 use crate::core::document_analysis::{
     DocumentAnalysisDemand, analyze_decoded_document_with_prepared_tree_and_demand,
@@ -353,6 +353,10 @@ impl DocumentSnapshot {
                 field_labels: collect_field_labels(document),
                 ..Default::default()
             },
+            QueryKind::SearchIndex => QueryResult {
+                search_items: collect_search_items(document),
+                ..Default::default()
+            },
         }
     }
 }
@@ -637,6 +641,107 @@ fn collect_field_labels(document: &DecodedDocument) -> Vec<String> {
     let mut labels = BTreeSet::new();
     visit(&document.store, document.root, &mut labels);
     labels.into_iter().collect()
+}
+
+fn format_parsed_path(path: &[ParsedKey]) -> String {
+    let segments = path
+        .iter()
+        .map(|segment| match segment {
+            ParsedKey::Str(key) => crate::core::path_seg_key(key),
+            ParsedKey::Int(index) => {
+                crate::core::path_seg_index(i32::try_from(*index).unwrap_or(0))
+            }
+        })
+        .collect::<Vec<_>>();
+    crate::core::format_tree_path(&segments)
+}
+
+fn scalar_search_text(node: &crate::core::tree_node::TreeNode) -> String {
+    node.value.trim().to_owned()
+}
+
+fn collect_search_items(document: &DecodedDocument) -> Vec<DocumentSearchItem> {
+    fn push_value_item(
+        store: &crate::core::tree_store::TreeStore,
+        node_id: NodeId,
+        path: &[ParsedKey],
+        items: &mut Vec<DocumentSearchItem>,
+    ) {
+        let Some(node) = store.get(node_id) else {
+            return;
+        };
+        let value_text = scalar_search_text(node);
+        if value_text.is_empty() {
+            return;
+        }
+        let path_text = format_parsed_path(path);
+        items.push(DocumentSearchItem {
+            path: path_text.clone(),
+            path_text,
+            label: value_text.clone(),
+            key_text: String::new(),
+            value_text,
+            target: QueryTargetKind::Value,
+        });
+    }
+
+    fn visit(
+        store: &crate::core::tree_store::TreeStore,
+        node_id: NodeId,
+        path: &mut Vec<ParsedKey>,
+        items: &mut Vec<DocumentSearchItem>,
+    ) {
+        let Some(node) = store.get(node_id) else {
+            return;
+        };
+        match node.kind {
+            TreeNodeKind::Mapping => {
+                let mut index = 0usize;
+                while index + 1 < node.content.len() {
+                    let key_id = node.content[index];
+                    let value_id = node.content[index + 1];
+                    let Some(key_node) = store.get(key_id) else {
+                        index += 2;
+                        continue;
+                    };
+                    let key_text = scalar_search_text(key_node);
+                    path.push(ParsedKey::Str(key_node.value.clone()));
+                    if !key_text.is_empty() {
+                        let value_text = store
+                            .get(value_id)
+                            .map(scalar_search_text)
+                            .unwrap_or_default();
+                        let path_text = format_parsed_path(path);
+                        items.push(DocumentSearchItem {
+                            path: path_text.clone(),
+                            path_text,
+                            label: key_text.clone(),
+                            key_text,
+                            value_text,
+                            target: QueryTargetKind::Key,
+                        });
+                    }
+                    visit(store, value_id, path, items);
+                    path.pop();
+                    index += 2;
+                }
+            }
+            TreeNodeKind::Sequence => {
+                for (index, child_id) in node.content.iter().copied().enumerate() {
+                    path.push(ParsedKey::Int(index as i64));
+                    visit(store, child_id, path, items);
+                    path.pop();
+                }
+            }
+            TreeNodeKind::Scalar | TreeNodeKind::Alias | TreeNodeKind::Unknown => {
+                push_value_item(store, node_id, path, items);
+            }
+        }
+    }
+
+    let mut items = Vec::new();
+    visit(&document.store, document.root, &mut Vec::new(), &mut items);
+    items
 }
 
 // ── Analysis builders (existing) ───────────────────────────────────────
@@ -1202,6 +1307,37 @@ mod tests {
 
         assert_eq!(result.anchors.len(), 1);
         assert!(result.anchors[0].span_start < result.anchors[0].span_end);
+    }
+
+    #[test]
+    fn snapshot_query_builds_search_index_from_snapshot_document() {
+        let source = r#"{"user":{"name":"Ada","roles":["admin"]}}"#;
+        let decoded = CodecService::new()
+            .decode("json", source)
+            .expect("json fixture should decode");
+        let analysis = build_decoded_analysis("doc-json", "json", source, &decoded);
+        let mut snapshot = DocumentSnapshot::with_analysis("doc-json", analysis);
+        snapshot.snapshot_id = SnapshotId(10);
+
+        let result = snapshot.query(&SnapshotQuery {
+            snapshot_id: SnapshotId(10),
+            kind: QueryKind::SearchIndex,
+            path_pattern: None,
+            span: None,
+            target: None,
+        });
+
+        assert!(result.search_items.iter().any(|item| {
+            item.path == "$.user.name"
+                && item.label == "name"
+                && item.value_text == "Ada"
+                && item.target == QueryTargetKind::Key
+        }));
+        assert!(result.search_items.iter().any(|item| {
+            item.path == "$.user.roles[0]"
+                && item.label == "admin"
+                && item.target == QueryTargetKind::Value
+        }));
     }
 
     #[test]

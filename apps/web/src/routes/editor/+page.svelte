@@ -49,6 +49,7 @@
   import { splitLayoutDrag } from '../../lib/components/ui/split-layout';
   import { importFormatOptions, supportedEditorLanguageSet, editorLanguageFallback, type SupportedEditorLanguageId } from '../../lib/monaco/language-support';
   import { computeSynchronizedRuntimeLoading, type RuntimeStateEventDetail } from '../../lib/runtime-loading';
+  import { getActiveDocumentText } from '../../lib/services/ActiveDocumentContext';
   import { breadcrumbTargetForPath, type PathSeg } from '../../lib/store/tree-path';
   import { markPreviewCompleted, markPreviewRequested } from '../../lib/test-bridge/runtime-readiness';
   import { setTreeaseUrlPresetState } from '../../lib/test-bridge/window-treease';
@@ -161,13 +162,13 @@
   }
 
   async function waitForEditorCommandResult(previousText: string): Promise<string> {
-    let nextText = $sourceTextStore || editorRef?.getActiveText() || previousText;
+    let nextText = getActiveDocumentText() || editorRef?.getActiveText() || previousText;
     if (nextText !== previousText) return nextText;
     const deadline = Date.now() + 10_000;
     while (Date.now() < deadline) {
       await tick();
       await new Promise<void>((resolve) => setTimeout(resolve, 16));
-      nextText = $sourceTextStore || editorRef?.getActiveText() || previousText;
+      nextText = getActiveDocumentText() || editorRef?.getActiveText() || previousText;
       if (nextText !== previousText) return nextText;
     }
     return nextText;
@@ -227,7 +228,7 @@
         }
         await viewerRef?.runCompare?.();
       } else {
-        const previousText = editorRef?.getActiveText() ?? '';
+        const previousText = getActiveDocumentText();
         await urlCommandHandlers[nextPreset.command]();
         await editorRef?.waitForIdle?.();
         if (shouldMirrorCommandResultToViewer(nextPreset)) {
@@ -413,7 +414,7 @@
     yqError = '';
     const result = await runYqPreview({
       expression: nextExpression,
-      text: editorRef?.getActiveText() ?? '',
+      text: getActiveDocumentText(),
       language: editorRef?.getActiveLanguage() ?? $languageIdStore,
       formatting: $settings.formatting,
       enableNest: $settings.parser.enableNest,
@@ -470,7 +471,7 @@
   }
 
   async function handleSwapEditors(payload: { rightText: string; rightLanguage: SupportedEditorLanguageId }) {
-    const leftText = editorRef?.getActiveText() ?? '';
+    const leftText = getActiveDocumentText();
     await editorRef?.importAs(payload.rightLanguage, payload.rightText, payload.rightLanguage);
     await showViewerTextPreviewForRevision(leftText, $editorRevision);
   }

@@ -1,17 +1,15 @@
 // 职责：Editor 文档分析控制器：触发 WASM parse/analysis、管理 analysis 结果与 diagnostics
 import type * as Monaco from 'monaco-editor';
 import { type TreeNode } from '@core-wasm/index'
-import { analyzeDocumentAndStore } from '../../services/EditorDiagnostics';
 import { resolveDocumentAnalysis } from '../../services/DocumentAnalysisResolver';
-import { resolveTreePathSafe, toByteColumn } from '../../services/TreePathService';
-import { resolveEditorPositionTarget } from './editor-position-target';
+import { resolveTreePathResult, toByteColumn } from '../../services/TreePathService';
+import { resolveEditorPositionTargetResult } from './editor-position-target';
 import { applyFailedTreePath, applyResolvedTreePath } from './EditorCore.graph-highlight';
 import { createFreshnessScope } from '../../guards/freshness-scope';
 import { supportedEditorLanguageSet, type SupportedEditorLanguageId } from '../../monaco/language-support';
-import { offsetSemanticTokens } from '../../monaco/semantic-token-offset';
 import { callSharedWasmWorker } from '../../wasm/wasm-worker-singleton';
 import type { DocumentAnalysisResult, JsonBlockAtPositionResult } from '../../../shared/worker-protocol/protocol';
-import { bindActiveDocumentSnapshotIfPresent, getActiveDocumentSnapshotId } from '../../services/DocumentSessionService';
+import { getWorkspaceSnapshotId } from '../../store/workspace-snapshot-bindings';
 import type { JsonBlockSelection } from '../../store/editor-store';
 import { applyDocumentAnalysisToEditor, type EditorAnalysisLike } from './editor-analysis-apply';
 
@@ -145,32 +143,7 @@ export function createEditorAnalysisController(options: CreateEditorAnalysisCont
     analysis: EditorAnalysisLike | null | undefined,
   ): boolean {
     const diagnostics = analysis?.diagnostics ?? [];
-    return getActiveDocumentSnapshotId(documentKey) != null && diagnostics.length === 0;
-  }
-
-  async function primeJsonBlockSemanticTokens(
-    requestDocumentKey: string,
-    selection: JsonBlockSelection,
-    freshness: ReturnType<typeof createFreshnessScope>,
-  ): Promise<void> {
-    const blockAnalysis = await freshness.step(() =>
-      analyzeDocumentAndStore(
-        selection.language,
-        selection.text,
-        selection.blockDocumentKey,
-        options.getNestEnabled(),
-      ),
-    );
-    if (!blockAnalysis) return;
-    if (!freshness.isCurrent()) return;
-
-    const shiftedTokens = offsetSemanticTokens(
-      blockAnalysis.semanticTokens,
-      selection.startLineNumber,
-      selection.startColumn,
-    );
-    options.primeSemanticTokensForDocument(requestDocumentKey, shiftedTokens);
-    options.refreshSemanticTokensForLanguage('json');
+    return getWorkspaceSnapshotId(documentKey) != null && diagnostics.length === 0;
   }
 
   async function updateJsonBlockSelection(
@@ -226,8 +199,6 @@ export function createEditorAnalysisController(options: CreateEditorAnalysisCont
       endLineNumber: block.endLineNumber,
       endColumn: block.endColumn,
     };
-    await primeJsonBlockSemanticTokens(requestDocumentKey, selection, freshness);
-    if (!freshness.isCurrent()) return;
     options.setJsonBlockSelection(selection);
   }
 
@@ -287,20 +258,21 @@ export function createEditorAnalysisController(options: CreateEditorAnalysisCont
         token: treePathToken,
       }),
     );
-    const treePath = await freshness.step(() =>
-      resolveTreePathSafe(
+    const treePathResult = await freshness.step(() =>
+      resolveTreePathResult(
         requestModel,
         position,
         requestDocumentKey,
         requestLanguage,
         options.getNestEnabled(),
-        getActiveDocumentSnapshotId(requestDocumentKey),
+        getWorkspaceSnapshotId(requestDocumentKey),
       ),
     );
-    if (!treePath) return;
+    if (!treePathResult || treePathResult.status !== 'ready') return;
+    const treePath = treePathResult.data;
     const graphHighlightTargetResult = treePath.length
       ? await freshness.step(() =>
-          resolveEditorPositionTarget(
+          resolveEditorPositionTargetResult(
             requestModel,
             position,
             treePath,
@@ -310,8 +282,9 @@ export function createEditorAnalysisController(options: CreateEditorAnalysisCont
           ),
         )
       : undefined;
+    if (graphHighlightTargetResult?.status === 'snapshotNotReady') return;
     if (!freshness.isCurrent()) return;
-    const graphHighlightTarget = graphHighlightTargetResult ?? undefined;
+    const graphHighlightTarget = graphHighlightTargetResult?.data ?? undefined;
     options.updateActiveTempModel((current) => ({
       ...applyResolvedTreePath(current, {
         treePath,
@@ -365,98 +338,6 @@ export function createEditorAnalysisController(options: CreateEditorAnalysisCont
     });
   }
 
-  async function syncAuthoritativeAnalysis(
-    requestModel: Monaco.editor.ITextModel,
-    requestLanguage: SupportedEditorLanguageId,
-    requestDocumentKey: string,
-    requestNest: boolean,
-  ): Promise<void> {
-    const syncToken = analysisSyncToken + 1;
-    analysisSyncToken = syncToken;
-    const freshness = createFreshnessScope(
-      {
-        documentKey: requestDocumentKey,
-        languageId: requestLanguage,
-        model: requestModel,
-        revision: currentRevision(),
-        token: syncToken,
-      },
-      () => ({
-        documentKey: options.getDocumentKey(),
-        languageId: options.getLanguageId(),
-        model: options.getModel(),
-        revision: currentRevision(),
-        token: analysisSyncToken,
-      }),
-    );
-    const text = requestModel.getValue();
-    if (!requestDocumentKey) {
-      clearAuthoritativeAnalysis(requestDocumentKey || undefined);
-      if (!freshness.isCurrent()) return;
-      clearEditorDiagnostics(requestModel);
-      options.setTreeState({
-        tree: null,
-        value: null,
-        source: 'editor',
-        revision: currentRevision(),
-      });
-      options.updateActiveTempModel((current) => ({
-        ...current,
-        treePath: [],
-        graphHighlight: null,
-      }));
-      await freshness.step(() => updateTreePath(options.getEditor()?.getPosition() ?? null, { syncGraphHighlight: false }));
-      return;
-    }
-    const analysis = await freshness.step(() =>
-      analyzeDocumentAndStore(requestLanguage, text, requestDocumentKey, requestNest, {
-        onAnalysisDelta: async (delta) => {
-          if (!freshness.isCurrent()) return;
-          await syncStoredAnalysisToEditor(
-            requestModel,
-            requestLanguage,
-            requestDocumentKey,
-            requestNest,
-            freshness,
-            delta,
-          );
-        },
-      }),
-    );
-    if (!analysis) {
-      clearAuthoritativeAnalysis(requestDocumentKey);
-      if (!freshness.isCurrent()) return;
-      clearEditorDiagnostics(requestModel);
-      options.setTreeState({
-        tree: null,
-        value: null,
-        source: 'editor',
-        revision: currentRevision(),
-      });
-      options.updateActiveTempModel((current) => ({
-        ...current,
-        treePath: [],
-        graphHighlight: null,
-      }));
-      await freshness.step(() => updateTreePath(options.getEditor()?.getPosition() ?? null, { syncGraphHighlight: false }));
-      return;
-    }
-    bindActiveDocumentSnapshotIfPresent({
-      documentKey: requestDocumentKey,
-      revision: currentRevision(),
-      snapshotId: analysis.snapshotId,
-    });
-    await syncStoredAnalysisToEditor(
-      requestModel,
-      requestLanguage,
-      requestDocumentKey,
-      requestNest,
-      freshness,
-      analysis,
-    );
-    await freshness.step(() => updateTreePath(options.getEditor()?.getPosition() ?? null, { syncGraphHighlight: false }));
-  }
-
   async function applyGraphAnalysis(
     requestModel: Monaco.editor.ITextModel,
     requestLanguage: SupportedEditorLanguageId,
@@ -503,7 +384,6 @@ export function createEditorAnalysisController(options: CreateEditorAnalysisCont
   return {
     prepareLanguageSwitchAnalysisReset,
     clearEditorDiagnostics,
-    syncAuthoritativeAnalysis,
     updateTreePath,
     applyGraphAnalysis,
   };

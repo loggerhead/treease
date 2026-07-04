@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocked = vi.hoisted(() => ({
-  applyValueEdit: vi.fn(),
   applyValueEditCanonical: vi.fn(),
   parseValueForPath: vi.fn(),
   planGraphValueEdit: vi.fn(),
@@ -11,7 +10,6 @@ const mocked = vi.hoisted(() => ({
 }));
 
 vi.mock('@core-wasm/index', () => ({
-  applyValueEdit: mocked.applyValueEdit,
   applyValueEditCanonical: mocked.applyValueEditCanonical,
   parseValueForPath: mocked.parseValueForPath,
   planGraphValueEdit: mocked.planGraphValueEdit,
@@ -63,7 +61,6 @@ describe('document-value-edit', () => {
       value: inputTree,
       nest: true,
     } as any);
-    expect(mocked.applyValueEdit).not.toHaveBeenCalled();
     expect(mocked.parseToTreeNode).not.toHaveBeenCalled();
     expect(mocked.applyValueEditCanonical).toHaveBeenCalledWith('json', 'source', [{ key: 'name' }], false, 'patched');
     expect(ctx.postMessage).toHaveBeenCalledWith({
@@ -118,18 +115,12 @@ describe('document-value-edit', () => {
       },
     });
   });
-  it('uses canonical wasm fallback when snapshot planning is unavailable', async () => {
+  it('returns snapshotNotReady when snapshot planning is unavailable', async () => {
     const inputTree = { kind: 2, semType: 3, children: [] };
     const normalizedTree = { kind: 'normalized' };
-    const parsedTree = { kind: 'parsed' };
     mocked.treeNodeToValue.mockReturnValueOnce(43);
     mocked.valueToTreeNode.mockReturnValueOnce(normalizedTree);
     mocked.planGraphValueEdit.mockResolvedValueOnce({ status: 'snapshotNotReady' });
-    mocked.applyValueEditCanonical.mockResolvedValueOnce({
-      text: '{"object":{"int":43}}',
-      tree: parsedTree,
-      value: { object: { int: 43 } },
-    });
     const ctx = createContext();
     await handlePlanGraphValueEdit(ctx, {
       id: 3,
@@ -144,24 +135,13 @@ describe('document-value-edit', () => {
       nest: true,
     } as any);
     expect(mocked.planGraphValueEdit).not.toHaveBeenCalled();
-    expect(mocked.applyValueEdit).not.toHaveBeenCalled();
     expect(mocked.parseToTreeNode).not.toHaveBeenCalled();
-    expect(mocked.applyValueEditCanonical).toHaveBeenCalledWith(
-      'json',
-      '{"object":{"int":42}}',
-      [{ key: 'object' }, { key: 'int' }],
-      false,
-      43,
-    );
+    expect(mocked.applyValueEditCanonical).not.toHaveBeenCalled();
     expect(ctx.postMessage).toHaveBeenCalledWith({
       id: 3,
       ok: true,
       data: {
-        mode: 'replace',
-        reason: 'snapshotNotReady',
-        text: '{"object":{"int":43}}',
-        tree: parsedTree,
-        value: { object: { int: 43 } },
+        mode: 'snapshotNotReady',
       },
     });
   });

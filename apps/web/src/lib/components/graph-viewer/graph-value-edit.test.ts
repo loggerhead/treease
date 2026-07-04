@@ -6,7 +6,6 @@ import { createGraphValueEditController } from './graph-value-edit';
 
 const mocked = vi.hoisted(() => ({
   callSharedWasmWorker: vi.fn(),
-  commitTextEdit: vi.fn(),
   resolveCellPath: vi.fn(async (cell: { path?: unknown[] }, _resolve: unknown, fallback: unknown[] = []) => cell.path ?? fallback),
   clearGraphSelectionAfterEdit: vi.fn((current: unknown) => current),
   treeNodeToValue: vi.fn((tree: TreeNode) => tree.value),
@@ -14,10 +13,6 @@ const mocked = vi.hoisted(() => ({
 
 vi.mock('../../wasm/wasm-worker-singleton', () => ({
   callSharedWasmWorker: mocked.callSharedWasmWorker,
-}));
-
-vi.mock('../../graph/GraphEditHandler', () => ({
-  commitTextEdit: mocked.commitTextEdit,
 }));
 
 vi.mock('./graph-anchor-index', () => ({
@@ -67,6 +62,7 @@ describe('graph-value-edit', () => {
 
     const applyTextEdits = vi.fn(() => true);
     const emitEditorMutation = vi.fn();
+    const dispatchGraphEditEvent = vi.fn();
     const publishTreeState = vi.fn(() => true);
     const model = { getVersionId: vi.fn(() => 1) };
     const controller = createGraphValueEditController({
@@ -83,7 +79,7 @@ describe('graph-value-edit', () => {
       publishTreeState,
       emitEditorMutation,
       updateActiveTempModel: vi.fn(),
-      dispatchGraphEditEvent: vi.fn(),
+      dispatchGraphEditEvent,
       handleError: vi.fn(),
     });
 
@@ -94,7 +90,22 @@ describe('graph-value-edit', () => {
     expect(applyTextEdits).not.toHaveBeenCalled();
     expect(emitEditorMutation).toHaveBeenCalledWith({
       type: 'replaceSourceText',
-      payload: { text: '{"name":"next-value"}' },
+      payload: {
+        text: '{"name":"next-value"}',
+        graphEditFallback: {
+          reason: 'graph-edit-not-single-range',
+          path: [{ key: 'name' }],
+          kind: 'value',
+        },
+      },
+    });
+    expect(dispatchGraphEditEvent).toHaveBeenCalledWith('graph-edit-replace-fallback', {
+      reason: 'graph-edit-not-single-range',
+      path: [{ key: 'name' }],
+      kind: 'value',
+      documentKey: 'doc-key',
+      language: 'json',
+      snapshotId: 42,
     });
   });
 
@@ -293,20 +304,6 @@ describe('graph-value-edit', () => {
 
   it('passes documentKey when delegating non-string edits to parseValueForPath', async () => {
     const parsedNode = scalarNode('a');
-    mocked.commitTextEdit.mockImplementation(async (_context, _cell, _target, _kind, valueParser) => {
-      const parsed = await valueParser({
-        language: 'json',
-        rawEdit: 'a',
-        nest: true,
-        path: [{ key: 'enabled' }],
-        preferKey: false,
-      } as any);
-      return {
-        nextValue: parsed.value,
-        nextValueNode: parsed.tree,
-        preferKey: false,
-      };
-    });
     mocked.callSharedWasmWorker.mockImplementation(async (type: string, payload: any) => {
       if (type === 'parseValueForPath') {
         expect(payload).toMatchObject({
@@ -360,11 +357,6 @@ describe('graph-value-edit', () => {
 
   it('drops stale graph edit plans when the Monaco model version changes before apply', async () => {
     const canonicalNode = scalarNode('next-value');
-    mocked.commitTextEdit.mockResolvedValue({
-      nextValue: 'next-value',
-      nextValueNode: canonicalNode,
-      preferKey: false,
-    });
     let modelVersion = 1;
     mocked.callSharedWasmWorker.mockImplementation(async (type: string) => {
       if (type === 'parseValueForPath') {
@@ -428,11 +420,6 @@ describe('graph-value-edit', () => {
 
   it('drops stale graph edit plans when the document revision changes before apply', async () => {
     const canonicalNode = scalarNode('next-value');
-    mocked.commitTextEdit.mockResolvedValue({
-      nextValue: 'next-value',
-      nextValueNode: canonicalNode,
-      preferKey: false,
-    });
     let revision = 3;
     mocked.callSharedWasmWorker.mockImplementation(async (type: string) => {
       if (type === 'parseValueForPath') {
@@ -555,7 +542,6 @@ describe('graph-value-edit', () => {
 
     expect(controller.hasActiveEdit()).toBe(false);
     expect(dispatchGraphEditEvent).not.toHaveBeenCalled();
-    expect(mocked.commitTextEdit).not.toHaveBeenCalled();
     expect(mocked.callSharedWasmWorker).not.toHaveBeenCalled();
     expect(applyTextEdits).not.toHaveBeenCalled();
     expect(emitEditorMutation).not.toHaveBeenCalled();
@@ -564,7 +550,6 @@ describe('graph-value-edit', () => {
     await expect(controller.applyGraphEdit(cell as any, 'value', 'next')).resolves.toBe(false);
 
     expect(dispatchGraphEditEvent).not.toHaveBeenCalled();
-    expect(mocked.commitTextEdit).not.toHaveBeenCalled();
     expect(mocked.callSharedWasmWorker).not.toHaveBeenCalled();
     expect(applyTextEdits).not.toHaveBeenCalled();
     expect(emitEditorMutation).not.toHaveBeenCalled();
