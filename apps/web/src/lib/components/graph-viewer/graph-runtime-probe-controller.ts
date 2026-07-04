@@ -1,5 +1,6 @@
 import type { GraphHighlightTarget } from '../../store/editor-store';
 import type { GraphCell, GraphCellKind, GraphNode } from '../../graph/graph-viewer-render';
+import { resolveGraphCellDisplayText } from '../../graph/literal-display';
 import { getCellEntry, getHighlightTarget, getScrollContext } from './graph-anchor-index';
 import type { GraphViewerClickTarget, GraphViewerClickTargetStore, LeaferAppLike, LeaferBox } from './model';
 import type {
@@ -23,6 +24,7 @@ type CreateGraphRuntimeProbeControllerOptions = {
   getContainerRect: () => DOMRect | null;
   getRootClickTargets: () => GraphViewerClickTarget[];
   getRootApp: () => LeaferAppLike | null;
+  getLanguageId: () => string;
   getCellBoxByPathMap: () => Map<string, any>;
   buildPathKey: (path: any[]) => string;
   getClientProbeCoordFromBox: (box: LeaferBox, app: LeaferAppLike | null) => GraphRuntimePoint | null;
@@ -185,7 +187,12 @@ export function createGraphRuntimeProbeController(options: CreateGraphRuntimePro
         worldRect: options.getWorldRectFromBox(entry.box),
         cell: entry.cell
           ? {
-              text: String(entry.cell.text ?? ''),
+              text: resolveGraphCellDisplayText(
+                entry.cell.text,
+                entry.cell.value,
+                String(entry.cell.valueType ?? ''),
+                options.getLanguageId(),
+              ),
               valueType: String(entry.cell.valueType ?? ''),
               isTableCell: !!entry.cell.isTableCell,
               isHeader: !!entry.cell.isHeader,

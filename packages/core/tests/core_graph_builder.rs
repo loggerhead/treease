@@ -903,14 +903,28 @@ fn graph_builder_computes_width_and_height_for_object_and_scalar_nodes() {
     assert_incremental_layout_relations(&result_scalar);
 
     assert_eq!(node_scalar.kind, GraphKind::Scalar);
-    let scalar_key_width = max_width(&config, &["value"], config.key_width);
     let scalar_val_width = max_width(&config, &["7"], config.value_width);
     assert_eq!(
-        scalar_key_width + scalar_val_width + config.node_border_width * 2,
+        scalar_val_width + config.node_border_width * 2,
         node_scalar.width
     );
     let expected_scalar_height = config.row_height + config.node_border_width * 2;
     assert_eq!(expected_scalar_height, node_scalar.height);
+}
+
+#[test]
+fn graph_builder_scalar_rows_render_without_value_label() {
+    let builder = GraphBuilder::new(default_config(), GraphLanguage::Json);
+    let graph_node = builder.build_node_only(&typed_scalar_node(SemType::Int, "123"), 0, &[], 0);
+
+    assert_eq!(graph_node.kind, GraphKind::Scalar);
+    assert_eq!(graph_node.rows.len(), 1);
+    assert_eq!(graph_node.rows[0].key.text, "");
+    assert_eq!(graph_node.rows[0].value.text, "123");
+    assert_eq!(graph_node.rows[0].cells[0].text, "");
+    assert_eq!(graph_node.rows[0].cells[1].text, "123");
+    assert_eq!(graph_node.rows[0].key.box_args.width, 0);
+    assert_eq!(graph_node.rows[0].value.box_args.x, 0);
 }
 
 // ---------------------------------------------------------------------------

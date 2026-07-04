@@ -94,7 +94,7 @@
   import type { EditorIO, GraphHighlightTarget } from '../store/editor-store';
   import { handleError } from '../utils/error-handler';
   import { GRAPH_CONFIG } from '../config/constants';
-  import { formatScalarLiteral } from '../graph/literal-display';
+  import { formatScalarLiteral, resolveGraphCellDisplayText } from '../graph/literal-display';
   import { type GraphCell, type GraphCellKind, type GraphNode, type ValueType } from '../graph/graph-viewer-render';
   import { buildPathKey, getValueAtPath } from '../graph/graph-viewer-path';
   import type { SubgraphWorkspaceGraphData } from './graph-viewer/graph-subgraph-workspace-types';
@@ -379,7 +379,12 @@
           worldRect: getWorldRectFromBoxLike(entry.box),
           cell: entry.cell
             ? {
-                text: String(entry.cell.text ?? ''),
+                text: resolveGraphCellDisplayText(
+                  entry.cell.text,
+                  entry.cell.value,
+                  String(entry.cell.valueType ?? ''),
+                  languageIdValue,
+                ),
                 valueType: String(entry.cell.valueType ?? ''),
                 isTableCell: !!entry.cell.isTableCell,
                 isHeader: !!entry.cell.isHeader,
@@ -802,6 +807,7 @@
     getContainerRect: () => container?.getBoundingClientRect() ?? null,
     getRootClickTargets: () => listClickTargetProbes(),
     getRootApp: () => leafer as LeaferAppLike | null,
+    getLanguageId: () => languageIdValue,
     getCellBoxByPathMap: () => cellBoxByPathMap,
     buildPathKey,
     getClientProbeCoordFromBox: (box, app) => getClientProbeCoordFromBoxLike(box, app),

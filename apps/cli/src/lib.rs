@@ -1429,6 +1429,27 @@ mod tests {
     }
 
     #[test]
+    fn web_payload_maps_missing_expression_result_to_miss_scalar() {
+        let parsed = parse_args(&[
+            "treease".to_string(),
+            "web".to_string(),
+            ".missing".to_string(),
+            "input.json".to_string(),
+        ])
+        .expect("web should parse");
+        let inputs = vec![InputPayload {
+            name: "input.json".to_string(),
+            bytes: br#"{"foo":1}"#.to_vec(),
+        }];
+
+        let payload = web_payload::build_cli_graph_result_payload(&parsed, &inputs)
+            .expect("web payload should be produced");
+
+        assert_eq!(payload.language, "json");
+        assert_eq!(payload.text, "\"miss\"");
+    }
+
+    #[test]
     fn web_payload_supports_stdin_and_defaults_to_yaml() {
         let parsed = parse_args(&[
             "treease".to_string(),
@@ -1472,5 +1493,4 @@ mod tests {
             }
         }
     }
-
 }

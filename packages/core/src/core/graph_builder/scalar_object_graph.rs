@@ -55,9 +55,9 @@ pub(super) fn build_object_children(
 
 // ── scalar rows ──────────────────────────────────────────────────
 
-/// Build a single row for a scalar node: "value" label + the node's value.
+/// Build a single row for a scalar node without an extra "value" label.
 fn build_scalar_rows(builder: &GraphBuilder, node: &TreeNode, path: &[PathSeg]) -> Vec<GraphRow> {
-    let key_cell = label_cell(path, "value", true);
+    let key_cell = empty_cell(path);
     let value_cell = node_value_cell(builder, node, path, true);
     vec![GraphRow {
         index: 0,
@@ -177,16 +177,23 @@ fn node_value_cell(
 /// Compute key/value column widths from rows.
 /// Key and value widths are computed independently.
 pub(super) fn row_column_widths(builder: &GraphBuilder, rows: &[GraphRow]) -> RowColumnWidths {
-    let mut key = estimated_column_width(builder, "");
+    let has_visible_key = rows.iter().any(|row| !row.key.text.is_empty());
+    let mut key = if has_visible_key {
+        estimated_column_width(builder, "")
+    } else {
+        0
+    };
     let mut value = estimated_column_width(builder, "");
     for row in rows {
-        key = key.max(estimated_column_width(builder, &row.key.text));
+        if has_visible_key {
+            key = key.max(estimated_column_width(builder, &row.key.text));
+        }
         value = value.max(estimated_column_width(builder, &row.value.text));
     }
     key = key.min(builder.config.key_width);
     value = value.min(builder.config.value_width);
     RowColumnWidths {
-        key: key.max(1),
+        key: if has_visible_key { key.max(1) } else { 0 },
         value: value.max(1),
     }
 }

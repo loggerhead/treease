@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { formatScalarLiteral, formatStructuredPreview } from './literal-display';
+import { formatScalarLiteral, formatStructuredPreview, resolveGraphCellDisplayText } from './literal-display';
 
 describe('literal-display', () => {
   describe('formatScalarLiteral', () => {
@@ -41,6 +41,17 @@ describe('literal-display', () => {
 
     it('shows empty null placeholders as null', () => {
       expect(formatScalarLiteral('', 'null', 'json')).toBe('null');
+    });
+  });
+
+  describe('resolveGraphCellDisplayText', () => {
+    it('falls back to the scalar value when text is empty', () => {
+      expect(resolveGraphCellDisplayText('', '', 'null', 'json')).toBe('null');
+      expect(resolveGraphCellDisplayText('', '', 'string', 'json')).toBe('""');
+    });
+
+    it('prefers explicit text when present', () => {
+      expect(resolveGraphCellDisplayText('Alice', 'ignored', 'string', 'json')).toBe('Alice');
     });
   });
 

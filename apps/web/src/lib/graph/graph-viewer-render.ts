@@ -1,4 +1,4 @@
-import { formatScalarLiteral } from './literal-display';
+import { resolveGraphCellDisplayText } from './literal-display';
 import {
   createTableRuntime,
   describeTableRuntime,
@@ -147,15 +147,20 @@ function buildCellTextProps(
   const paddingBottom = useCellBounds
     ? resolvedPadBlock
     : Math.max(0, hitY + (hitHeight ?? 0) - (textArgs.x + textArgs.height));
-  const cellText = textArgs.text === '' || textArgs.text == null ? (cell.text || cell.value || '') : textArgs.text;
-  let displayText =
+  const cellText =
     kind === 'value'
-      ? formatScalarLiteral(String(cellText), cell.valueType, ctx.languageIdValue)
-      : cellText;
+      ? resolveGraphCellDisplayText(textArgs.text, cell.text || cell.value || '', cell.valueType, ctx.languageIdValue)
+      : textArgs.text === '' || textArgs.text == null
+        ? (cell.text || cell.value || '')
+        : textArgs.text;
+  let displayText = cellText;
   if (kind === 'value' && cell.valueType === 'string' && displayText.includes('\n')) {
     displayText = displayText.replace(/\n/g, ' ');
   }
-  const shouldApplyTextOverflow = !!resolvedMaxWidth && !(kind === 'meta' && cell.text === cell.value);
+  const shouldKeepFullNullLiteral =
+    kind === 'value' && cell.valueType === 'null' && isHeaderlessSequenceTable(node);
+  const shouldApplyTextOverflow =
+    !!resolvedMaxWidth && !(kind === 'meta' && cell.text === cell.value) && !shouldKeepFullNullLiteral;
   return {
     x: useCellBounds ? hitX : textArgs.x,
     y: useCellBounds ? hitY : textArgs.y,

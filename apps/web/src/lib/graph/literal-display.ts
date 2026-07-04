@@ -10,6 +10,16 @@ export function formatScalarLiteral(text: string, valueType: string, language?: 
   return text;
 }
 
+export function resolveGraphCellDisplayText(
+  text: string | null | undefined,
+  value: string | null | undefined,
+  valueType: string,
+  language?: string,
+): string {
+  const raw = text === '' || text == null ? (value ?? '') : text;
+  return formatScalarLiteral(String(raw), valueType, language);
+}
+
 function formatPythonValue(value: unknown, depth: number): string {
   if (value === null) return 'None';
   if (typeof value === 'boolean') return value ? 'True' : 'False';

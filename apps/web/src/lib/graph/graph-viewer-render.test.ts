@@ -468,6 +468,46 @@ describe('graph-viewer-render', () => {
     expect(text.fontSize).toBe(18);
   });
 
+  it('keeps null literals fully visible in headerless sequence tables', () => {
+    const ctx = createTestDrawContext();
+    const parent = new MockBox();
+    const node: GraphNode = {
+      renderHandle: 11,
+      kind: 'table',
+      depth: 0,
+      path: [],
+      meta: createCell('$', 'array', [], 0),
+      boxArgs: { x: 0, y: 0, width: 60, height: 20, cornerRadius: 0 },
+      rows: [],
+      table: {
+        columns: [],
+        headerHeight: 0,
+        totalHeight: 20,
+        viewHeight: 20,
+        rowHeight: 20,
+        rows: [],
+      },
+    };
+    const nullCell = {
+      ...createCell('null', 'null', [{ tag: 1, index: 0, key: '' }], 20, 0, 24),
+      textArgs: {
+        x: 20,
+        y: 0,
+        width: 24,
+        height: 20,
+        text: 'null',
+        textAlign: 'left' as const,
+        verticalAlign: 'middle' as const,
+        editable: false,
+      },
+    };
+
+    const text = createCellText(ctx, parent, nullCell, 'value', 'table', node) as MockText;
+
+    expect(text.text).toBe('null');
+    expect(text.textOverflow).toBeUndefined();
+  });
+
   it('uses draw context textEditInnerName for editable text and falls back to TextEditor', () => {
     const createCtx = (textEditInnerName?: string, editable?: boolean): DrawContext => ({
       nodeLayer: { add: vi.fn() },
