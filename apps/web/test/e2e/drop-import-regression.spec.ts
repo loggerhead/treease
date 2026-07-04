@@ -794,6 +794,34 @@ test('dropping a 5MB json file shows source text before import finishes', async 
 
   await expect.poll(async () => getMonacoValue(page, 'source-editor'), { timeout: SOURCE_DROP_BUDGET_MS }).toBe(largeJsonFixtureText);
 });
+
+test('dropping the 5MB json fixture surfaces an explicit finishing phase before graph completion', async ({ page }) => {
+  test.setTimeout(30_000);
+  await page.goto('/editor');
+  await waitForEditorReady(page);
+  await installGraphProgressObservation(page);
+
+  await dropFile(page, {
+    targetTestId: 'source-editor-region',
+    fileName: '5MB-min.json',
+    content: largeJsonFixtureText,
+    mimeType: 'application/json',
+  });
+
+  await waitForImportSettled(page, SOURCE_DROP_BUDGET_MS);
+  await waitForGraphRendered(page, SOURCE_DROP_BUDGET_MS);
+
+  const observation = await stopGraphProgressObservation(page);
+  const streamRunId = observation?.samples.at(-1)?.streamRunId ?? '';
+  const phases = (observation?.samples ?? [])
+    .filter((sample) => sample.streamRunId === streamRunId)
+    .map((sample) => sample.phase)
+    .filter((phase): phase is string => !!phase);
+
+  expect(phases, JSON.stringify(observation?.samples ?? [])).toContain('finishing');
+  expect(phases.at(-1), JSON.stringify(observation?.samples ?? [])).not.toBe('streaming');
+});
+
 test('dropping the 1mb json fixture keeps graph progress monotonic', async ({ page }) => {
   await page.goto('/editor');
   await waitForEditorReady(page);

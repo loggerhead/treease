@@ -131,6 +131,23 @@ function buildGraphProgressEvent(streamRunId: string, processedBytes: number, to
   };
 }
 
+function buildGraphLifecycleProgressEvent(
+  streamRunId: string,
+  totalBytes: number,
+  phase: 'flushing' | 'finishing',
+) {
+  return {
+    event: 'graphProgress',
+    phase,
+    processedBytes: totalBytes,
+    totalBytes,
+    final: false,
+    streamRunId,
+    eventSeq: totalBytes + (phase === 'flushing' ? 1 : 2),
+    value: 99,
+  };
+}
+
 
 function finalDocumentEvent(batch: EventBatch): DocumentJobFinalEvent | null {
   for (let index = batch.events.length - 1; index >= 0; index -= 1) {
@@ -356,6 +373,8 @@ export function createGraphRenderSession(deps: GraphRenderSessionDeps) {
     revision: number;
     renderedText: string | null;
     redrawMode: 'committed' | 'streaming';
+    totalBytes: number;
+    streamRunId: string;
     batch: EventBatch;
     analysis: DocumentAnalysisResult | null;
     snapshotId: SnapshotId | null;
@@ -378,6 +397,9 @@ export function createGraphRenderSession(deps: GraphRenderSessionDeps) {
       if (!finalDelta || !isRawGraphDelta(finalDelta)) {
         throw new Error('document graph projection decode failed');
       }
+      deps.updateStreamProgress(
+        buildGraphLifecycleProgressEvent(params.streamRunId, params.totalBytes, 'finishing'),
+      );
       // SnapshotReady.mainGraph is the authoritative final graph. Always apply
       // it so streaming-time approximation or stale edge geometry cannot leak
       // into the settled scene state.
@@ -590,12 +612,17 @@ export function createGraphRenderSession(deps: GraphRenderSessionDeps) {
         jobHandle: started.jobHandle,
         batches: [started.batch, ...streamedBatches],
       });
+      deps.updateStreamProgress(
+        buildGraphLifecycleProgressEvent(streamRunId, totalBytes, 'flushing'),
+      );
       return await finalizeGraphDocumentJob({
         documentKey: request.documentKey,
         language: request.language,
         revision: request.revision,
         renderedText: request.text,
         redrawMode: request.kind === 'incremental' ? 'committed' : 'streaming',
+        totalBytes,
+        streamRunId,
         batch: result.batch,
         analysis: result.analysis,
         snapshotId: result.snapshotId,
@@ -679,12 +706,17 @@ export function createGraphRenderSession(deps: GraphRenderSessionDeps) {
       const result = await session.result;
       if (!freshness.isCurrent()) return null;
 
+      deps.updateStreamProgress(
+        buildGraphLifecycleProgressEvent(streamRunId, totalBytes, 'flushing'),
+      );
       return await finalizeGraphDocumentJob({
         documentKey: session.documentKey,
         language: session.language,
         revision: session.revision,
         renderedText: null,
         redrawMode: 'streaming',
+        totalBytes,
+        streamRunId,
         batch: result.batch,
         analysis: result.analysis,
         snapshotId: result.snapshotId,
@@ -795,6 +827,9 @@ export function createGraphRenderSession(deps: GraphRenderSessionDeps) {
         jobHandle: started.jobHandle,
         batches: [started.batch, ...streamedBatches],
       });
+      deps.updateStreamProgress(
+        buildGraphLifecycleProgressEvent(streamRunId, totalBytes, 'flushing'),
+      );
       const finalEvent = finalDocumentEvent(result.batch);
       const snapshotId = result.snapshotId ?? extractSnapshotIdFromBatch(result.batch);
       renderedDocumentKey = selection.blockDocumentKey;
@@ -812,6 +847,9 @@ export function createGraphRenderSession(deps: GraphRenderSessionDeps) {
           if (!isRawGraphDelta(delta)) {
             throw new Error('json block graph projection decode failed');
           }
+          deps.updateStreamProgress(
+            buildGraphLifecycleProgressEvent(streamRunId, totalBytes, 'finishing'),
+          );
           await applyTrackedProjectionDelta(delta, {
             documentKey: selection.blockDocumentKey,
             revision: selection.revision,

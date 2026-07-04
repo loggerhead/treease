@@ -323,6 +323,47 @@ describe('graph-render-session coordinator', () => {
     expect(result).toEqual({ nodes: [{ id: 1 }], edges: [] });
   });
 
+  it('renderDocumentGraph publishes flushing and finishing progress around the close snapshot', async () => {
+    mockedCallWorker
+      .mockResolvedValueOnce(startJobResult(11))
+      .mockResolvedValueOnce(
+        textChunkBatch([
+          {
+            type: 'progress',
+            processedBytes: 7,
+          },
+        ]),
+      )
+      .mockResolvedValueOnce(closeCompletedBatch(11, { mainGraph: projectionDelta(true) }));
+
+    const deps = createDeps();
+    const coordinator = createGraphRenderSession(deps as any);
+    coordinator.attachSceneBridge(createSceneBridge());
+
+    await coordinator.renderDocumentGraph({
+      kind: 'incremental',
+      documentKey: 'test-key',
+      language: 'json',
+      text: '{"a":1}',
+      revision: 5,
+    });
+
+    expect(deps.updateStreamProgress).toHaveBeenCalledWith(
+      expect.objectContaining({
+        phase: 'flushing',
+        final: false,
+        value: 99,
+      }),
+    );
+    expect(deps.updateStreamProgress).toHaveBeenCalledWith(
+      expect.objectContaining({
+        phase: 'finishing',
+        final: false,
+        value: 99,
+      }),
+    );
+  });
+
   it('renderDocumentGraph applies streamed graph deltas through the scene bridge', async () => {
     mockedCallWorker
       .mockResolvedValueOnce(startJobResult(2))

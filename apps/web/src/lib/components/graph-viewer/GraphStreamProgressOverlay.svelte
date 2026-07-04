@@ -6,6 +6,9 @@
 
   export let state: GraphStreamProgressState;
 
+  $: progressText =
+    state.phase === 'flushing' || state.phase === 'finishing' ? '...' : `${Math.round(state.value)}%`;
+
   const motion = {
     y: 6,
     duration: 150,
@@ -20,7 +23,7 @@
   >
     <div class="mb-2 flex items-center justify-between gap-3 text-[12px] leading-none">
       <span class="font-medium text-[#0f172a]">{state.label}</span>
-      <span class="font-mono text-[#64748b]">{Math.round(state.value)}%</span>
+      <span class="font-mono text-[#64748b]">{progressText}</span>
     </div>
     <Progress value={state.value} max={100} class="h-2 w-full" />
     {#if state.detail}
