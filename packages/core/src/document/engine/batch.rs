@@ -99,7 +99,8 @@ pub(super) fn advance_close(
         let job_settings = entry.spec.settings;
 
         let mut diagnostics_only = false;
-        let mut close_update: Option<crate::document::protocol::GraphDelta> = None;
+        let mut close_update: Option<crate::core::streaming_graph_projector::ProjectionUpdate> =
+            None;
         let mut streaming_incremental_state = None;
         let mut encoded_source_text: Option<String> = None;
         let mut format_error_detail: Option<String> = None;
@@ -170,13 +171,28 @@ pub(super) fn advance_close(
                 let patches = builder.take_patches();
                 if let Some((store, root)) = builder.tree_ref() {
                     if let Some(upd) = projector.update(store, root, &patches) {
-                        close_update = Some(upd.delta);
+                        close_update = Some(upd);
                     }
                 }
                 if let Some(relayout) = projector.finalize_layout() {
                     match close_update.as_mut() {
-                        Some(delta) => delta.nodes_updated.extend(relayout.nodes_updated),
-                        None => close_update = Some(relayout),
+                        Some(update) => update.delta.nodes_updated.extend(relayout.nodes_updated),
+                        None => {
+                            close_update =
+                                Some(crate::core::streaming_graph_projector::ProjectionUpdate {
+                                    delta: relayout,
+                                    patch_seq: 0,
+                                    base_graph_version: 0,
+                                    graph_version: 0,
+                                    new_nodes: 0,
+                                    updated_nodes: 0,
+                                    new_edges: 0,
+                                    removed_edges: 0,
+                                    rows_appended: 0,
+                                    cells_updated: 0,
+                                    layout_summaries: 0,
+                                })
+                        }
                     }
                 }
                 streaming_incremental_state = projector.take_incremental_state();
@@ -298,11 +314,11 @@ pub(super) fn advance_close(
 
                 let mut graph = None;
                 let mut incremental = None;
-                if let Some(delta) = close_update {
+                if let Some(update) = close_update {
                     graph = Some(GraphProjection {
                         ready: true,
-                        clear: false,
-                        graph_data: Some(delta),
+                        clear: update.base_graph_version == 0,
+                        graph_data: Some(update.delta),
                     });
                     incremental = streaming_incremental_state
                         .or_else(|| Some(crate::document::snapshot::IncrementalState::resumable()));

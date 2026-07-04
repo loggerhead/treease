@@ -1721,6 +1721,75 @@ mod tests {
     }
 
     #[test]
+    fn materialize_whole_document_object_to_scalar_graph_delta_clears_or_removes_old_graph() {
+        let source = r#"{"object":{"int":42,"float":0.125,"bool":true,"nil":null},"table_without_header":["a","b","c"]}"#;
+        let replacement = "123";
+        let edit = DocumentTextEdit {
+            start_byte: 0,
+            old_end_byte: source.len() as u32,
+            new_end_byte: replacement.len() as u32,
+            replacement: replacement.to_owned(),
+        };
+
+        let base_result = materialize(
+            &DocumentInputPlan::SourceText,
+            "whole-root-object-to-scalar",
+            "json",
+            source,
+            false,
+            &OutputPlan {
+                analysis: true,
+                graph: true,
+            },
+            &[],
+            None,
+        );
+        let base_graph = base_result
+            .graph
+            .as_ref()
+            .and_then(|projection| projection.graph_data.as_ref())
+            .expect("base graph should be present");
+        let base_node_count = base_graph.nodes_added.len();
+        assert!(
+            base_node_count > 1,
+            "base sample should render a multi-node graph"
+        );
+
+        let updated = materialize_with_base_context(
+            &DocumentInputPlan::BaseTextWithEdits,
+            "whole-root-object-to-scalar",
+            "json",
+            source,
+            false,
+            &OutputPlan {
+                analysis: true,
+                graph: true,
+            },
+            &[edit],
+            base_result.analysis.ts_tree.clone(),
+            MaterializeBaseContext {
+                document: base_result.analysis.document.as_ref(),
+                incremental: base_result.incremental.as_ref(),
+                line_index: Some(&base_result.analysis.line_index),
+                semantic_tokens: Some(&base_result.analysis.semantic_tokens),
+            },
+        );
+
+        let projection = updated
+            .graph
+            .as_ref()
+            .expect("root scalar replacement should produce final graph projection");
+        let graph_data = projection
+            .graph_data
+            .as_ref()
+            .expect("root scalar replacement should carry graph delta");
+        assert!(
+            projection.clear || graph_data.nodes_removed.len() == base_node_count,
+            "root scalar replacement must either clear the graph or remove every old node"
+        );
+    }
+
+    #[test]
     fn materialize_csv_header_edits_fall_back_to_reparse() {
         let source = "\"Region\",\"Code\"\n\"Afghanistan\",\"AF\"\n";
         let base_result = materialize(

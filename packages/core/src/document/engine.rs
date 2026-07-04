@@ -1634,6 +1634,34 @@ mod tests {
     }
 
     #[test]
+    fn streaming_root_scalar_snapshot_main_graph_is_authoritative_replacement() {
+        let mut rt = DocumentRuntime::default();
+        let mut m = DocumentEngineMetrics::default();
+        let h = add_streaming_job(&mut rt, "stream-root-scalar");
+
+        let chunk = advance_job(&mut rt, &mut m, h, AdvanceInput::TextChunk("123".into()));
+        assert!(chunk.terminal.is_none());
+        let close = advance_job(&mut rt, &mut m, h, AdvanceInput::Close);
+
+        let main_graph = close
+            .events
+            .iter()
+            .find_map(|event| match event {
+                DocumentEvent::SnapshotReady { main_graph, .. } => main_graph.as_ref(),
+                _ => None,
+            })
+            .expect("root scalar close should emit SnapshotReady.mainGraph");
+        assert!(
+            main_graph.clear
+                || main_graph
+                    .graph_data
+                    .as_ref()
+                    .is_some_and(|delta| !delta.nodes_removed.is_empty()),
+            "SnapshotReady.mainGraph must be safe to apply over a previously rendered complex graph"
+        );
+    }
+
+    #[test]
     fn streaming_apply_edits_json_still_accumulates() {
         let mut rt = DocumentRuntime::default();
         let mut m = DocumentEngineMetrics::default();
