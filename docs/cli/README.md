@@ -1,3 +1,9 @@
+---
+summary: "Treease CLI 的常用命令、graph 页面与机器可读输出入口。"
+read_when:
+  - 任务涉及 CLI 行为、命令发现或 docs/generated 快照
+  - 需要确认 treease web、本地 graph 页面或 CLI 错误码
+---
 # Treease CLI
 
 Treease CLI keeps the execution path short:

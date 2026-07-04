@@ -7,6 +7,7 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'
 const governanceDocs = collectGovernanceDocs();
 const cargoBinsByDir = collectCargoBinNamesByDir();
 const cargoBins = new Set([...cargoBinsByDir.values()].flatMap((bins) => [...bins]));
+const packageScriptsByDir = collectPackageScriptsByDir();
 
 const errors = [];
 
@@ -16,6 +17,47 @@ function fail(message) {
 
 function readRepoFile(relativePath) {
   return readFileSync(path.join(repoRoot, relativePath), 'utf8');
+}
+
+function parseFrontmatter(content) {
+  if (!content.startsWith('---\n')) {
+    return { error: 'missing front matter' };
+  }
+
+  const endIndex = content.indexOf('\n---\n', 4);
+  if (endIndex === -1) {
+    return { error: 'unterminated front matter' };
+  }
+
+  const frontmatter = content.slice(4, endIndex);
+  const summaryMatch = frontmatter.match(/^summary:\s*(.+)$/m);
+  if (!summaryMatch) {
+    return { error: 'summary key missing' };
+  }
+
+  const summary = summaryMatch[1].trim().replace(/^['"]|['"]$/g, '');
+  if (!summary) {
+    return { error: 'summary is empty' };
+  }
+
+  const readWhen = [];
+  let inReadWhen = false;
+  for (const rawLine of frontmatter.split('\n')) {
+    const line = rawLine.trim();
+    if (line.startsWith('read_when:')) {
+      inReadWhen = true;
+      continue;
+    }
+    if (inReadWhen && line.startsWith('- ')) {
+      readWhen.push(line.slice(2).trim());
+      continue;
+    }
+    if (line !== '') {
+      inReadWhen = false;
+    }
+  }
+
+  return { summary, readWhen };
 }
 
 function normalizeRelativePath(relativePath) {
@@ -148,6 +190,29 @@ function collectCargoBinNamesByDir() {
   return binsByDir;
 }
 
+function collectPackageScriptsByDir() {
+  const manifests = [
+    'package.json',
+    ...collectNamedFiles('apps', 'package.json'),
+    ...collectNamedFiles('packages', 'package.json'),
+  ];
+  const scriptsByDir = new Map();
+  for (const manifestPath of manifests) {
+    const content = readRepoFile(manifestPath);
+    const dir = normalizeRelativePath(path.dirname(manifestPath));
+    const packageJson = JSON.parse(content);
+    scriptsByDir.set(dir === '.' ? '' : dir, packageJson.scripts ?? {});
+  }
+  return scriptsByDir;
+}
+
+function hasScriptInAnyPackage(command) {
+  for (const scripts of packageScriptsByDir.values()) {
+    if (scripts[command]) return true;
+  }
+  return false;
+}
+
 function resolveInlineDocPath(docPath, token) {
   const [cleanToken] = token.split('#');
   const baseDir = path.dirname(path.join(repoRoot, docPath));
@@ -206,9 +271,9 @@ function validateDocPaths(docPath, content, collector = fail) {
   }
 }
 
-function validateCommands(docPath, content, webScripts) {
+function validateCommands(docPath, content) {
   for (const token of collectInlineCodeTokens(content)) {
-    validateCommandToken(docPath, token, webScripts);
+    validateCommandToken(docPath, token);
   }
 }
 
@@ -226,7 +291,17 @@ function findCargoManifestDir(cwd) {
   return null;
 }
 
-function validateCommandToken(docPath, token, webScripts) {
+function findNearestPackageDir(cwd) {
+  let currentDir = cwd;
+  while (currentDir.startsWith(repoRoot)) {
+    if (existsSync(path.join(currentDir, 'package.json'))) return currentDir;
+    if (currentDir === repoRoot) break;
+    currentDir = path.dirname(currentDir);
+  }
+  return null;
+}
+
+function validateCommandToken(docPath, token) {
   let cwd = repoRoot;
   for (const rawSegment of token.split('&&')) {
     const segment = rawSegment.trim();
@@ -244,10 +319,29 @@ function validateCommandToken(docPath, token, webScripts) {
     }
 
     if (segment.startsWith('pnpm ')) {
-      const command = segment.split(/\s+/)[1];
+      const parts = segment.split(/\s+/);
+      const command = parts[1];
       if (!command || ['install', 'exec', 'dlx'].includes(command)) continue;
-      if (!webScripts[command]) {
-        fail(`${docPath}: 未在 apps/web/package.json 中找到脚本 -> pnpm ${command}`);
+
+      if (command === '--dir') {
+        const dir = parts[2];
+        const nestedCommand = parts[3];
+        const normalizedDir = normalizeRelativePath(dir);
+        const packageScripts = packageScriptsByDir.get(normalizedDir);
+        if (nestedCommand && packageScripts && !packageScripts[nestedCommand]) {
+          fail(`${docPath}: 未在 ${normalizedDir}/package.json 中找到脚本 -> pnpm ${nestedCommand}`);
+        }
+        continue;
+      }
+
+      const packageDir = findNearestPackageDir(cwd);
+      const normalizedDir = packageDir
+        ? normalizeRelativePath(path.relative(repoRoot, packageDir))
+        : '';
+      const packageScripts = packageScriptsByDir.get(normalizedDir);
+      if (packageScripts && !packageScripts[command] && !hasScriptInAnyPackage(command)) {
+        const packageLabel = normalizedDir ? `${normalizedDir}/package.json` : '根 package.json';
+        fail(`${docPath}: 未在 ${packageLabel} 中找到脚本 -> pnpm ${command}`);
       }
       continue;
     }
@@ -306,12 +400,33 @@ function validateAgentRoutingContract() {
   if (rootAgents.includes('README.md` → `CONTEXT.md` → `ARCHITECTURE.md` → `docs/README.md`')) {
     fail('AGENTS.md: 仍存在无条件多跳阅读链');
   }
+
+  if (!rootAgents.includes('pnpm docs:list')) {
+    fail('AGENTS.md: 缺少 pnpm docs:list 前置约束');
+  }
+
+  if (!docsIndex.includes('pnpm docs:list')) {
+    fail('docs/README.md: 文档索引未说明 pnpm docs:list');
+  }
+}
+
+function validateDocMetadata(docPath, content) {
+  const needsMetadata =
+    docPath.startsWith('docs/') ||
+    ['ARCHITECTURE.md', 'CONTEXT.md', 'guess-failure.md'].includes(docPath);
+
+  if (!needsMetadata) return;
+
+  const { summary, error } = parseFrontmatter(content);
+  if (!summary) {
+    fail(`${docPath}: 文档元信息缺失 -> ${error}`);
+  }
 }
 
 function validateHotDocBudgets() {
   const budgets = {
-    'AGENTS.md': 60,
-    'docs/README.md': 45,
+    'AGENTS.md': 65,
+    'docs/README.md': 55,
     'docs/FRONTEND.md': 80,
     'docs/CORE.md': 50,
     'apps/web/AGENTS.md': 24,
@@ -329,13 +444,11 @@ function validateHotDocBudgets() {
 }
 
 function main() {
-  const webPackage = JSON.parse(readRepoFile('apps/web/package.json'));
-  const webScripts = webPackage.scripts ?? {};
-
   for (const docPath of governanceDocs) {
     const content = readRepoFile(docPath);
+    validateDocMetadata(docPath, content);
     validateDocPaths(docPath, content);
-    validateCommands(docPath, content, webScripts);
+    validateCommands(docPath, content);
   }
 
   validateAgentRoutingContract();

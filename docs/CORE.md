@@ -1,3 +1,9 @@
+---
+summary: "Core Rust、WASM、protocol 与 document runtime 约束。"
+read_when:
+  - 任务涉及 packages/core、WASM 导出、协议真源或 snapshot 语义
+  - 需要确认 Core 与 Web 的职责边界
+---
 # Treease Core 约束
 
 ## 适用范围

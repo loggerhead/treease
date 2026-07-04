@@ -1,3 +1,9 @@
+---
+summary: "常见 YAML 子集、fixture 分类与 rare 数据集边界。"
+read_when:
+  - 任务涉及 YAML 支持边界、fixture 分类或 rare 数据集
+  - 需要说明为何某类 YAML 输入被支持或被限制
+---
 # YAML 常见子集
 
 本文档定义 Treease 在 fixture 与实现层优先保证的“常见 YAML 子集”。

@@ -1,3 +1,9 @@
+---
+summary: "Graph topology、布局 authority 与 changed-region relayout 说明。"
+read_when:
+  - 任务涉及 graph layout、topology、dirty region 或 edge 几何
+  - 需要判断 full build 与 streaming 是否共享同一布局语义
+---
 # Graph Layout 链路
 
 本文覆盖 graph node 如何从结构树生成、如何布局，以及 streaming / full build 如何共享同一套 authority。

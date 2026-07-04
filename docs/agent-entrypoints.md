@@ -1,6 +1,13 @@
+---
+summary: "按任务路由 agent 的最短阅读路径与稳定入口。"
+read_when:
+  - 需要快速判断当前任务先读哪篇文档
+  - 需要在 Web、Core、CLI、测试之间选择最短入口
+---
 # Agent 最短路径
 
 ## 默认规则
+- 本文默认是在执行完 `pnpm docs:list` 后打开；先按 `Read when` 判断是否命中，再沿最短路径继续读。
 - 先用 CodeGraph / `search` / `find` 缩小范围，再用 `read` 读取必要行段。
 - 默认不先读 `../CONTEXT.md`、`./user-stories.md`；只有任务直接触及对应语义时再补读。
 - 先看局部 `AGENTS.md`，只在需要跨层边界时再回主题文档。

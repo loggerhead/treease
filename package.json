@@ -2,6 +2,7 @@
   "name": "treease",
   "private": true,
   "scripts": {
+    "docs:list": "node ./scripts/docs-list.mjs",
     "dev": "pnpm --dir apps/web dev",
     "cli:web:local": "node ./scripts/treease-web-local.mjs",
     "core:test": "cd packages/core && cargo nextest run --locked",

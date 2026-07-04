@@ -1,3 +1,9 @@
+---
+summary: "Editor 与 Graph 双向编辑如何收敛到统一 snapshot 主链。"
+read_when:
+  - 任务涉及图上编辑回写、planner、增量编辑或 fallback
+  - 需要追踪 Editor -> Graph 或 Graph -> Editor 链路
+---
 # 双向编辑链路
 
 本文覆盖 Editor → Graph 与 Graph → Editor 两条路径，以及它们如何在 snapshot 语义上重新收敛。

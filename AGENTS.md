@@ -1,8 +1,13 @@
 # Repository Guidelines
 
+## 0. 最高优先级：任何操作前先执行 `pnpm docs:list`
+- 这是本仓库的硬性前置规则。
+- 进入仓库后的第一条工作命令必须是 `pnpm docs:list`。
+- 在执行 `pnpm docs:list` 之前，不要搜索、读业务文件、改代码、跑测试、执行其他命令，或基于仓库内容回答问题。
+- 跑完 `pnpm docs:list` 后，先按输出中的 `Read when` 读取命中的文档；默认先读 `docs/agent-entrypoints.md` 选择最短阅读路径，只有任务直接触及 Document Runtime、snapshot、protocol、mainGraph 语义时再补 `CONTEXT.md`。
+
 ## Project Overview
 - Treease 是一个多格式结构化文档工具链：`packages/core/` 负责 Rust 解析/格式化/算子/评估/建图，`apps/web/` 负责编辑器与图形界面，`apps/cli/` 负责独立 CLI crate、acceptance 测试与文档入口。
-- 先读 `docs/agent-entrypoints.md` 选择最短阅读路径；只有任务直接触及 Document Runtime、snapshot、protocol、mainGraph 语义时再补 `CONTEXT.md`。
 - 根文件只保留跨仓约束与稳定入口；细节规则下沉到模块级 `AGENTS.md` 与 `docs/` 主题文档。
 
 ## Stable Entry Points
@@ -53,3 +58,6 @@
 - `docs/TESTING.md`：真实覆盖、timeout、mock 与 E2E 规则
 - `scripts/check-docs.mjs`：文档路径、命令、选择器一致性校验
 - `.github/workflows/core.yml`、`.github/workflows/web.yml`：CI 入口
+
+## Final Reminder
+- 如果这次任务还没有执行 `pnpm docs:list`，立刻先执行它；在此之前，不要进行任何其他仓库相关操作。

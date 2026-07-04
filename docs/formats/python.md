@@ -1,3 +1,9 @@
+---
+summary: "Python Dict 格式的支持范围、示例与边界说明。"
+read_when:
+  - 需要理解或修改 Python Dict 编解码、导入或导出行为
+  - 需要核对格式文档与实际支持范围是否一致
+---
 # Python Dict
 
 Parse Python dict or list literals into Treease's structured tree model.

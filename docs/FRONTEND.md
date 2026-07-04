@@ -1,3 +1,9 @@
+---
+summary: "Web 前端、Worker、GraphViewer 与 freshness 约束。"
+read_when:
+  - 任务涉及 apps/web、Svelte、store、Worker 或 GraphViewer
+  - 需要确认前端 authority、协议边界或 freshness 规则
+---
 # Treease 前端约束
 
 ## 适用范围

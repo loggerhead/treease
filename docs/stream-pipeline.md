@@ -1,3 +1,9 @@
+---
+summary: "流式导入、ProjectionDelta、真流式与假流式链路说明。"
+read_when:
+  - 任务涉及 JSON streaming、chunk/close、ProjectionDelta
+  - 需要排查导入、图增量或 close 收尾行为
+---
 # 流式导入链路
 
 本文只覆盖“输入如何变成 snapshot / graph delta”。

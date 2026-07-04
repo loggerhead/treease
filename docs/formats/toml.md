@@ -1,3 +1,9 @@
+---
+summary: "TOML 格式的支持范围、示例与边界说明。"
+read_when:
+  - 需要理解或修改 TOML 编解码、导入或导出行为
+  - 需要核对格式文档与实际支持范围是否一致
+---
 # TOML
 
 Parse from TOML. The current build also supports outputting TOML, so `treease '.' sample.toml` can roundtrip TOML documents. TOML output uses normalized formatting: root-level non-empty inline tables are emitted as table sections, and non-minified inline arrays include spaces inside the brackets.

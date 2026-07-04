@@ -1,3 +1,9 @@
+---
+summary: "Document Runtime、snapshot、protocol 与领域术语的权威语境。"
+read_when:
+  - 任务直接涉及 Document Runtime、snapshot、protocol、mainGraph
+  - 需要解释跨文档共享的核心术语
+---
 # CONTEXT.md
 
 Treease 的全局领域语境与规范。agent 需要判断主文档链路、协议边界或术语含义时，以本文为准；执行计划、迁移步骤和临时 TODO 不放在这里。
