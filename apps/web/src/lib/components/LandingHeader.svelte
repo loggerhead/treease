@@ -3,7 +3,7 @@
 
   export let navItems: Array<{ href: string; label: string }> = [];
   export let ctaHref = '/editor';
-  export let ctaLabel = 'Open editor';
+  export let ctaLabel = 'Editor';
 </script>
 
 <header class="site-header">

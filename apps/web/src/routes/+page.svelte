@@ -57,7 +57,7 @@
           </p>
           <div class="hero-cta-stack">
             <div class="hero-actions">
-              <a class="primary-cta" href="/editor">Open editor</a>
+              <a class="primary-cta" href="/editor">Open Editor</a>
               <button
                 type="button"
                 class="secondary-cta"
@@ -314,7 +314,7 @@
           anchored to what you already understand.
         </p>
         <div class="hero-actions hero-actions--centered">
-          <a class="primary-cta" href="/editor">Open editor</a>
+          <a class="primary-cta" href="/editor">Open Editor</a>
         </div>
       </section>
     </main>

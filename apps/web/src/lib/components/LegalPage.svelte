@@ -23,7 +23,7 @@
 
       <div class="legal-header__actions">
         <a class="legal-link" href="/">Home</a>
-        <a class="legal-cta" href="/editor">Open editor</a>
+        <a class="legal-cta" href="/editor">Open Editor</a>
       </div>
     </header>
 
