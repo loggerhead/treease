@@ -8,6 +8,7 @@ import type { GraphHighlightTarget } from '../../store/editor-store';
 import { resolveTreePathFromTextResult } from '../../services/TreePathService';
 import type { CellBoxEntry, GraphViewerClickTarget, LeaferBox } from './model';
 import { getCellEntry, getHighlightTarget, getScrollContext } from './graph-anchor-index';
+import type { TableCellAnchor } from './graph-table-anchor-index';
 
 export type GraphTextLinkageSearchResult = {
   target: 'key' | 'value' | 'node';
@@ -24,11 +25,13 @@ type GraphTextLinkageControllerDeps = {
   getNodeDataMap: () => Map<number, GraphNode>;
   getNodeBoxMap: () => Map<number, LeaferBox>;
   getCellBoxByPathMap: () => Map<string, CellBoxEntry>;
+  getTableCellAnchorMap?: () => Map<string, TableCellAnchor>;
   getPathKeyToRenderHandleMap: () => Map<string, number>;
   getClickTargetProbes: () => GraphViewerClickTarget[];
   setGraphHighlightTestState: (path: PathSeg[] | null, target?: GraphHighlightTarget, box?: LeaferBox | null) => void;
   setGraphRevealTestState: (path: PathSeg[] | null, target?: GraphHighlightTarget) => void;
   setGraphRowScrollTestState: (path: PathSeg[] | null, scrollY?: number) => void;
+  scrollTableCellAnchorIntoView?: (anchor: TableCellAnchor) => boolean;
   buildPathSegFromCell: (cell: GraphCell | undefined, rowIndex: number) => PathSeg | null;
   upsertCellEntry: (map: Map<string, CellBoxEntry>, cell: GraphCell, updater: (entry: CellBoxEntry) => void) => void;
   centerOnBox: (box: LeaferBox) => boolean;
@@ -383,6 +386,12 @@ export function createGraphTextLinkageController(deps: GraphTextLinkageControlle
     if (!path || path.length === 0) return;
     const { renderHandle, node } = resolveNodeForPath(path);
     let entry = getCellEntry(cellBoxByPathMap, path);
+    if (options?.navigate && !entry) {
+      const anchor = deps.getTableCellAnchorMap?.().get(buildPathKey(path));
+      if (anchor && deps.scrollTableCellAnchorIntoView?.(anchor)) {
+        entry = getCellEntry(cellBoxByPathMap, path);
+      }
+    }
     const hasRenderableEntry = (candidate: ReturnType<typeof getCellEntry>): boolean =>
       !!(candidate?.row || candidate?.key || candidate?.value);
     let missingRenderableContext = !hasRenderableEntry(entry) && renderHandle == null && !node;

@@ -24,6 +24,8 @@ type GraphSceneControllerDeps = {
   getNodeDataMap: () => Map<number, GraphNode>;
   getNodeBoxMap: () => Map<number, any>;
   getPathKeyToRenderHandleMap: () => Map<string, number>;
+  indexTableCellAnchorsForNode?: (node: GraphNode) => void;
+  removeTableCellAnchorsForNode?: (nodeId: number) => void;
   getClickTargetProbes: () => any[];
   getClickTargetProbeStore: () => GraphViewerClickTargetStore;
   upsertCellEntry: (map: Map<string, any>, cell: any, updater: (entry: any) => void) => void;
@@ -81,6 +83,8 @@ export function createGraphSceneController(deps: GraphSceneControllerDeps) {
     getNodeDataMap: deps.getNodeDataMap,
     getNodeBoxMap: deps.getNodeBoxMap,
     getPathKeyToRenderHandleMap: deps.getPathKeyToRenderHandleMap,
+    indexTableCellAnchorsForNode: deps.indexTableCellAnchorsForNode,
+    removeTableCellAnchorsForNode: deps.removeTableCellAnchorsForNode,
     getClickTargetProbes: deps.getClickTargetProbes,
     getClickTargetProbeStore: deps.getClickTargetProbeStore,
     registerCellBox: deps.registerCellBox,

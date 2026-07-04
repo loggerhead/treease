@@ -192,6 +192,8 @@ type GraphSceneRuntimeDeps = {
   getNodeDataMap: () => Map<number, GraphNode>;
   getNodeBoxMap: () => Map<number, any>;
   getPathKeyToRenderHandleMap: () => Map<string, number>;
+  indexTableCellAnchorsForNode?: (node: GraphNode) => void;
+  removeTableCellAnchorsForNode?: (nodeId: number) => void;
   getClickTargetProbes: () => any[];
   getClickTargetProbeStore: () => GraphViewerClickTargetStore;
   registerCellBox: (cell: any, kind: any, box: any) => void;
@@ -454,6 +456,7 @@ export function createGraphSceneRuntime(deps: GraphSceneRuntimeDeps) {
     removeRenderable(nodeBox);
     nodeBoxMap.delete(nodeId);
     deleteNodePathMapping(nodeId);
+    deps.removeTableCellAnchorsForNode?.(nodeId);
     deps.getNodeDataMap().delete(nodeId);
   }
 
@@ -572,6 +575,8 @@ export function createGraphSceneRuntime(deps: GraphSceneRuntimeDeps) {
     if (!drawContext) return;
     deps.getNodeDataMap().set(nodeHandle, node);
     setNodePathMapping(node);
+    deps.removeTableCellAnchorsForNode?.(nodeHandle);
+    deps.indexTableCellAnchorsForNode?.(node);
     const clickTargets = nodeClickTargetsById.get(nodeHandle) ?? new Set<string>();
     nodeClickTargetsById.set(nodeHandle, clickTargets);
     const result = renderGraphNode({
@@ -608,6 +613,8 @@ export function createGraphSceneRuntime(deps: GraphSceneRuntimeDeps) {
 
     deps.getNodeDataMap().set(nodeHandle, node);
     setNodePathMapping(node);
+    deps.removeTableCellAnchorsForNode?.(nodeHandle);
+    deps.indexTableCellAnchorsForNode?.(node);
     existingNodeBox.x = node.boxArgs.x;
     existingNodeBox.y = node.boxArgs.y;
     existingNodeBox.width = node.boxArgs.width;
@@ -904,13 +911,26 @@ export function createGraphSceneRuntime(deps: GraphSceneRuntimeDeps) {
     cancelActiveRenderWork();
   }
 
-  function scrollTableToRow(rowIndex: number): void {
-    for (const [, runtime] of tableRuntimeByNodeId) {
-      const vl = (runtime as InternalTableRuntime).virtualList;
-      if (vl) {
-        vl.scrollToIndex(rowIndex);
+  function scrollTableToRow(nodeIdOrRowIndex: number, rowIndex?: number): boolean {
+    if (rowIndex == null) {
+      let scrolled = false;
+      for (const [, runtime] of tableRuntimeByNodeId) {
+        const virtualList = (runtime as InternalTableRuntime).virtualList;
+        if (!virtualList) continue;
+        virtualList.scrollToIndex(nodeIdOrRowIndex);
+        runtime.updateWindow?.({ forceRebindVisibleRows: true });
+        scrolled = true;
       }
+      if (scrolled) deps.updateLeafer();
+      return scrolled;
     }
+    const runtime = tableRuntimeByNodeId.get(nodeIdOrRowIndex) as InternalTableRuntime | undefined;
+    const virtualList = runtime?.virtualList;
+    if (!virtualList) return false;
+    virtualList.scrollToIndex(rowIndex);
+    runtime.updateWindow?.({ forceRebindVisibleRows: true });
+    deps.updateLeafer();
+    return true;
   }
 
 

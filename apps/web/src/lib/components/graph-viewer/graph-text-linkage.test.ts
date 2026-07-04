@@ -17,9 +17,102 @@ class MockBox {
   }
 }
 
+function createBaseDeps(overrides: Record<string, any> = {}) {
+  return {
+    getDocumentKey: () => 'cache',
+    getSourceText: () => '',
+    getLanguageId: () => 'json' as const,
+    getActiveSnapshotId: () => 7,
+    getEnableNest: () => true,
+    getRenderConfig: () =>
+      ({
+        colors: {
+          table: {
+            rowBackground: '#fff',
+            rowBorder: '#ddd',
+            hoverRowBackground: '#eee',
+            hoverCellBackground: '#ff0',
+          },
+        },
+      }) as any,
+    getNodeDataMap: () => new Map(),
+    getNodeBoxMap: () => new Map(),
+    getCellBoxByPathMap: () => new Map(),
+    getTableCellAnchorMap: () => new Map(),
+    getPathKeyToRenderHandleMap: () => new Map(),
+    getClickTargetProbes: () => [],
+    setGraphHighlightTestState: vi.fn(),
+    setGraphRevealTestState: vi.fn(),
+    setGraphRowScrollTestState: vi.fn(),
+    scrollTableCellAnchorIntoView: vi.fn(),
+    buildPathSegFromCell: () => null,
+    upsertCellEntry: vi.fn(),
+    centerOnBox: () => false,
+    centerOnNode: vi.fn(),
+    updateLeafer: vi.fn(),
+    updateActiveTempModel: vi.fn(),
+    getEditorRevision: () => 0,
+    getGraphAppliedRevision: () => 0,
+    dispatchReveal: vi.fn(),
+    handleError: vi.fn(),
+    ...overrides,
+  };
+}
+
 describe('graph-text-linkage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  it('uses table anchor index to materialize an offscreen search cell before highlight', async () => {
+    const path = [
+      { tag: 0, key: 'rows', index: 0 },
+      { tag: 1, key: '', index: 42 },
+      { tag: 0, key: 'name', index: 0 },
+    ] as any[];
+    const pathKey = buildPathKey(path);
+    const highlightedBox = new MockBox();
+    const cellMap = new Map<string, any>();
+    const scrollTableCellAnchorIntoView = vi.fn(() => {
+      cellMap.set(pathKey, {
+        value: highlightedBox,
+        row: new MockBox('#fff'),
+      });
+      return true;
+    });
+    const setGraphHighlightTestState = vi.fn();
+
+    const controller = createGraphTextLinkageController(
+      createBaseDeps({
+        getCellBoxByPathMap: () => cellMap,
+        getTableCellAnchorMap: () =>
+          new Map([
+            [
+              pathKey,
+              {
+                nodeId: 9,
+                rowIndex: 42,
+                cellIndex: 1,
+                target: 'value',
+              },
+            ],
+          ]),
+        scrollTableCellAnchorIntoView,
+        setGraphHighlightTestState,
+      }),
+    );
+
+    controller.revealSearchResult({ path, target: 'value' });
+    await Promise.resolve();
+
+    expect(scrollTableCellAnchorIntoView).toHaveBeenCalledWith({
+      nodeId: 9,
+      rowIndex: 42,
+      cellIndex: 1,
+      target: 'value',
+    });
+    expect(highlightedBox.fill).toBe('#ff0');
+    expect(setGraphHighlightTestState).toHaveBeenCalledWith(path, 'value', highlightedBox);
   });
 
   it('scrolls the table row into view when revealPath navigates', async () => {

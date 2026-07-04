@@ -56,6 +56,12 @@
   } from './graph-viewer/graph-subgraph-workspace';
   import { shouldResetSubgraphWorkspaceForFullEdit } from './graph-viewer/graph-subgraph-workspace-lifecycle';
   import {
+    indexTableCellAnchorsForNode,
+    rebuildTableCellAnchorIndex,
+    removeTableCellAnchorsForNode,
+    type TableCellAnchor,
+  } from './graph-viewer/graph-table-anchor-index';
+  import {
     getCellEntry,
     registerCellBox as registerCellBoxEntry,
     registerRowBox as registerRowBoxEntry,
@@ -189,6 +195,7 @@
   let nodeBoxMap = new Map<number, LeaferBox>();
   let pathKeyToRenderHandleMap = new Map<string, number>();
   let cellBoxByPathMap = new Map<string, CellBoxEntry>();
+  let tableCellAnchorMap = new Map<string, TableCellAnchor>();
   let lastAppliedGraphHighlightSignature = '';
   let lastAppliedGraphHighlightRevision = -1;
   let treeStateToken = 0;
@@ -444,11 +451,13 @@
     getNodeDataMap: () => nodeDataMap,
     getNodeBoxMap: () => nodeBoxMap,
     getCellBoxByPathMap: () => cellBoxByPathMap,
+    getTableCellAnchorMap: () => tableCellAnchorMap,
     getPathKeyToRenderHandleMap: () => pathKeyToRenderHandleMap,
     getClickTargetProbes: () => listClickTargetProbes(),
     setGraphHighlightTestState,
     setGraphRevealTestState,
     setGraphRowScrollTestState,
+    scrollTableCellAnchorIntoView: (anchor) => graphSceneController.scrollTableToRow(anchor.nodeId, anchor.rowIndex),
     buildPathSegFromCell,
     upsertCellEntry,
     centerOnBox,
@@ -717,6 +726,7 @@
       nodeBoxMap = new Map();
       pathKeyToRenderHandleMap = new Map();
       cellBoxByPathMap = new Map();
+      tableCellAnchorMap = rebuildTableCellAnchorIndex(nodes);
       graphRuntimeProbeController?.resetRootClickTargets();
       nodes.forEach((node) => {
         const pathKey = buildPathKey(node.path ?? []);
@@ -729,6 +739,8 @@
     getNodeDataMap: () => nodeDataMap,
     getNodeBoxMap: () => nodeBoxMap,
     getPathKeyToRenderHandleMap: () => pathKeyToRenderHandleMap,
+    indexTableCellAnchorsForNode: (node) => indexTableCellAnchorsForNode(tableCellAnchorMap, node),
+    removeTableCellAnchorsForNode: (nodeId) => removeTableCellAnchorsForNode(tableCellAnchorMap, nodeId),
     getClickTargetProbes: () => listClickTargetProbes(),
     getClickTargetProbeStore: () => graphRuntimeProbeController?.getRootStore() ?? (Object.create(null) as any),
     upsertCellEntry,
