@@ -72,12 +72,8 @@ fn build_scalar_rows(builder: &GraphBuilder, node: &TreeNode, path: &[PathSeg]) 
 
 /// Build rows for an object (mapping) node: one row per key-value pair.
 /// Uses `append_path` to create a child path with the key segment.
-/// Empty objects produce a single "(empty)" label row.
 fn build_object_rows(builder: &GraphBuilder, node: &TreeNode, path: &[PathSeg]) -> Vec<GraphRow> {
     let pair_count = node.content.len() / 2;
-    if pair_count == 0 {
-        return build_empty_label_row(path);
-    }
     let mut rows = Vec::with_capacity(pair_count);
     let mut i = 0;
     while i + 1 < node.content.len() {
@@ -96,19 +92,6 @@ fn build_object_rows(builder: &GraphBuilder, node: &TreeNode, path: &[PathSeg]) 
         i += 2;
     }
     rows
-}
-
-/// Build a single row for an empty object: empty cell + "(empty)" label.
-fn build_empty_label_row(path: &[PathSeg]) -> Vec<GraphRow> {
-    let empty = empty_cell(path);
-    let label = label_cell(path, "(empty)", false);
-    vec![GraphRow {
-        index: 0,
-        key: empty.clone(),
-        value: label.clone(),
-        cells: vec![empty, label],
-        ..GraphRow::default()
-    }]
 }
 
 // ── cell constructors ────────────────────────────────────────────

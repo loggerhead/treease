@@ -51,6 +51,7 @@
     formatSubgraphWorkspacePath,
     rebaseSubgraphWorkspacePath,
     renderSubgraphWorkspaceGraph,
+    shouldOpenSubgraphWorkspaceContent,
     shouldIgnoreSubgraphOpenCell,
   } from './graph-viewer/graph-subgraph-workspace';
   import {
@@ -1108,7 +1109,7 @@
     const pathValue = await queryPathValue({ documentKey: documentKeyValue, snapshotId, path });
     if (pathValue.status !== 'ready' || !pathValue.data) return null;
     const valueType = pathValue.data.valueType as ValueType;
-    if (valueType === 'object' || valueType === 'array') return null;
+    if (!shouldOpenSubgraphWorkspaceContent(pathValue.data)) return null;
     return {
       tabId: `subgraph-content:${buildPathKey(path)}`,
       tabName: formatSubgraphWorkspacePath(path, renderConfig),

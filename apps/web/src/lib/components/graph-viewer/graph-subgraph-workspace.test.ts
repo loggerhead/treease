@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   normalizeWorkspaceGraphEdgeRows,
   rebaseSubgraphWorkspacePath,
+  shouldOpenSubgraphWorkspaceContent,
   shouldIgnoreSubgraphOpenCell,
 } from './graph-subgraph-workspace';
 import type { GraphEdge, GraphNode } from '../../graph/graph-viewer-render';
@@ -177,5 +178,22 @@ describe('shouldIgnoreSubgraphOpenCell', () => {
         textArgs: { x: 0, y: 0, width: 0, height: 0, text: 'miss', textAlign: 'left', verticalAlign: 'middle', editable: true },
       }),
     ).toBe(false);
+  });
+});
+
+describe('shouldOpenSubgraphWorkspaceContent', () => {
+  it('keeps scalar values on the content-pane path', () => {
+    expect(shouldOpenSubgraphWorkspaceContent({ valueType: 'number', displayText: '123' })).toBe(true);
+    expect(shouldOpenSubgraphWorkspaceContent({ valueType: 'string', displayText: '"Alice"' })).toBe(true);
+  });
+
+  it('keeps non-empty containers on the graph-pane path', () => {
+    expect(shouldOpenSubgraphWorkspaceContent({ valueType: 'object', displayText: '{2}' })).toBe(false);
+    expect(shouldOpenSubgraphWorkspaceContent({ valueType: 'array', displayText: '[3]' })).toBe(false);
+  });
+
+  it('treats empty containers as single-cell content panes', () => {
+    expect(shouldOpenSubgraphWorkspaceContent({ valueType: 'object', displayText: '{}' })).toBe(true);
+    expect(shouldOpenSubgraphWorkspaceContent({ valueType: 'array', displayText: '[]' })).toBe(true);
   });
 });

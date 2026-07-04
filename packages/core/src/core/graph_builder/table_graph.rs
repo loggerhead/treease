@@ -230,16 +230,6 @@ pub(super) fn build_table_rows(
         columns.len()
     };
 
-    if node.content.is_empty() {
-        let mut cells: Vec<GraphCell> = columns.iter().map(|_| empty_cell(path)).collect();
-        if cells.len() > 1 {
-            cells[1].text = "(empty)".to_string();
-        } else if !cells.is_empty() {
-            cells[0].text = "(empty)".to_string();
-        }
-        return vec![graph_table_row(0, cells)];
-    }
-
     let mut rows: Vec<GraphRow> = Vec::with_capacity(node.content.len());
     for (idx, item) in node.content.iter().enumerate() {
         let item_path = append_path(path, PathSeg::Index(idx));
@@ -370,27 +360,6 @@ fn build_indexed_sequence_rows(
     node: &TreeNode,
     path: &[PathSeg],
 ) -> Vec<GraphRow> {
-    if node.content.is_empty() {
-        let key = GraphCell {
-            text: String::new(),
-            path: path.to_vec(),
-            editable: false,
-            ..GraphCell::default()
-        };
-        let value = GraphCell {
-            text: "(empty)".to_string(),
-            path: path.to_vec(),
-            editable: false,
-            ..GraphCell::default()
-        };
-        return vec![GraphRow {
-            key: key.clone(),
-            value: value.clone(),
-            cells: vec![key, value],
-            ..GraphRow::default()
-        }];
-    }
-
     let mut rows: Vec<GraphRow> = Vec::with_capacity(node.content.len());
     for (idx, item) in node.content.iter().enumerate() {
         let item_path = append_path(path, PathSeg::Index(idx));

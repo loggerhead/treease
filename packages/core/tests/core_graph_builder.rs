@@ -928,37 +928,36 @@ fn graph_builder_scalar_rows_render_without_value_label() {
 }
 
 // ---------------------------------------------------------------------------
-// graph_builder keeps empty placeholder rows read-only
+// graph_builder renders empty containers as scalar summary cells
 // ---------------------------------------------------------------------------
 #[test]
-fn graph_builder_keeps_empty_placeholder_rows_read_only() {
+fn graph_builder_renders_empty_containers_as_scalar_summary_cells() {
     let config = default_config();
     let builder = GraphBuilder::new(config, GraphLanguage::Json);
 
     // Empty object
     let empty_object = mapping_node_with_values(&[]);
     let empty_object_view = builder.build_node_only(&empty_object, 0, &[], 0);
-    assert_eq!(empty_object_view.kind, GraphKind::Object);
+    assert_eq!(empty_object_view.kind, GraphKind::Scalar);
     assert_eq!(empty_object_view.rows.len(), 1);
     assert_eq!(empty_object_view.rows[0].key.text, "");
-    assert_eq!(empty_object_view.rows[0].value.text, "(empty)");
+    assert_eq!(empty_object_view.rows[0].value.text, "{}");
     assert!(!empty_object_view.rows[0].key.editable);
-    assert!(!empty_object_view.rows[0].value.editable);
+    assert!(empty_object_view.rows[0].value.editable);
+    assert_eq!(empty_object_view.rows[0].key.box_args.width, 0);
+    assert_eq!(empty_object_view.rows[0].value.box_args.x, 0);
 
     // Empty sequence
     let empty_sequence = sequence_node(&[]);
-    let empty_sequence_graph = builder.build_node_only(&empty_sequence, 0, &[], 0);
-    let empty_sequence_table = empty_sequence_graph
-        .table
-        .as_ref()
-        .expect("should have table");
-    assert_eq!(empty_sequence_graph.kind, GraphKind::Table);
-    assert_eq!(empty_sequence_table.header_height, 0);
-    assert_eq!(empty_sequence_table.rows.len(), 1);
-    assert_eq!(empty_sequence_table.rows[0][0].text, "");
-    assert_eq!(empty_sequence_table.rows[0][1].text, "(empty)");
-    assert!(!empty_sequence_table.rows[0][0].editable);
-    assert!(!empty_sequence_table.rows[0][1].editable);
+    let empty_sequence_view = builder.build_node_only(&empty_sequence, 0, &[], 0);
+    assert_eq!(empty_sequence_view.kind, GraphKind::Scalar);
+    assert_eq!(empty_sequence_view.rows.len(), 1);
+    assert_eq!(empty_sequence_view.rows[0].key.text, "");
+    assert_eq!(empty_sequence_view.rows[0].value.text, "[]");
+    assert!(!empty_sequence_view.rows[0].key.editable);
+    assert!(empty_sequence_view.rows[0].value.editable);
+    assert_eq!(empty_sequence_view.rows[0].key.box_args.width, 0);
+    assert_eq!(empty_sequence_view.rows[0].value.box_args.x, 0);
 }
 
 // ---------------------------------------------------------------------------

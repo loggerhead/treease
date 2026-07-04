@@ -730,7 +730,9 @@ impl GraphBuilder {
 
 pub(crate) fn graph_kind_for_node(node: &TreeNode) -> GraphKind {
     match node.kind {
+        NodeKind::Mapping if node.content.is_empty() => GraphKind::Scalar,
         NodeKind::Mapping => GraphKind::Object,
+        NodeKind::Sequence if node.content.is_empty() => GraphKind::Scalar,
         NodeKind::Sequence => GraphKind::Table,
         _ => GraphKind::Scalar,
     }

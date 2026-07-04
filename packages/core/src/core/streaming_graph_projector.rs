@@ -2938,50 +2938,10 @@ mod tests {
                  streamed paths = {streamed_paths:?}"
             );
         }
-        // The streamed model must contain every baseline node.
-        assert!(
-            baseline_paths.is_subset(&streamed_paths),
-            "streamed model is missing baseline nodes: {:?}",
-            baseline_paths
-                .difference(&streamed_paths)
-                .collect::<Vec<_>>(),
+        assert_eq!(
+            streamed_paths, baseline_paths,
+            "streamed model must exactly match baseline; baseline={baseline_paths:?} streamed={streamed_paths:?}",
         );
-        // Any node the streamed model has beyond baseline must be an empty
-        // container (baseline inlines those; the incremental path keeps an
-        // empty placeholder). It must never be a scalar/value leaf — those are
-        // the floating-node bug.
-        for extra in streamed_paths.difference(&baseline_paths) {
-            let node = streamed_model
-                .nodes
-                .iter()
-                .find(|n| {
-                    n.path
-                        .iter()
-                        .map(|seg| match seg {
-                            PathSeg::Key(k) => k.clone(),
-                            PathSeg::Index(i) => format!("[{i}]"),
-                        })
-                        .collect::<Vec<_>>()
-                        .join(".")
-                        == *extra
-                })
-                .expect("extra path must resolve to a node");
-            let is_empty_container = match node.kind {
-                crate::core::graph_builder::GraphKind::Table => {
-                    // Empty Sequence renders a single "(empty)" placeholder row
-                    // but its real element count is zero.
-                    node.table.as_ref().map(|t| t.count).unwrap_or(0) == 0
-                }
-                crate::core::graph_builder::GraphKind::Object => node.rows.len() <= 1,
-                crate::core::graph_builder::GraphKind::Scalar => false,
-            };
-            assert!(
-                is_empty_container,
-                "streamed model has an unexpected extra node {extra:?} (kind={:?}) \
-                 that is not an empty container — likely a floating scalar bug",
-                node.kind
-            );
-        }
 
         // Root `$` keeps one row per key (7 keys).
         let baseline_root_rows = baseline_model

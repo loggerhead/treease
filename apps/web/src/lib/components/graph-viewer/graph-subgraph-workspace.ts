@@ -110,6 +110,14 @@ export function shouldIgnoreSubgraphOpenCell(cell: GraphCell | null | undefined)
   return cell?.isMissing === true;
 }
 
+export function shouldOpenSubgraphWorkspaceContent(value: {
+  valueType?: string | null;
+  displayText?: string | null;
+}): boolean {
+  if (value.valueType !== 'object' && value.valueType !== 'array') return true;
+  return value.displayText === '{}' || value.displayText === '[]';
+}
+
 function buildWorkspacePathKey(path: PathSeg[]): string {
   if (!path.length) return '';
   return path.map((segment) => (isPathSegKey(segment) ? `k:${pathSegKeyValue(segment)}` : `i:${segment.index}`)).join('|');
