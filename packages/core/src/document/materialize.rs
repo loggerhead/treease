@@ -154,6 +154,10 @@ pub fn materialize_with_base_context(
         }
     }
 
+    if is_blank_source(&source_text) {
+        return materialize_blank_document(document_key, language, &source_text, output_plan);
+    }
+
     // Try incremental path: when we have a prepared tree-sitter tree,
     // apply tree edits and re-parse incrementally.
     if let Some(tree) = incremental_tree {
@@ -225,6 +229,40 @@ pub fn materialize_with_base_context(
                 terminal: None,
             }
         }
+    }
+}
+
+pub(crate) fn is_blank_source(source: &str) -> bool {
+    source.trim().is_empty()
+}
+
+fn materialize_blank_document(
+    document_key: &str,
+    language: &str,
+    source: &str,
+    output_plan: &OutputPlan,
+) -> MaterializeResult {
+    MaterializeResult {
+        analysis: AnalysisBundle {
+            key: document_key.to_owned(),
+            language: language.to_owned(),
+            source: source.to_owned(),
+            source_byte_length: source.len() as u32,
+            document: None,
+            ts_tree: None,
+            token_spans: Vec::new(),
+            diagnostics: Vec::new(),
+            semantic_tokens: Vec::new(),
+            value_json: String::new(),
+            line_index: LineIndex::build(source),
+        },
+        graph: output_plan.graph.then(|| GraphProjection {
+            ready: true,
+            clear: true,
+            graph_data: None,
+        }),
+        incremental: None,
+        terminal: None,
     }
 }
 

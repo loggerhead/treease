@@ -2,7 +2,7 @@ use crate::document::runtime::commit_snapshot;
 use crate::document::snapshot;
 use crate::document::stream_state::StreamState;
 
-use super::super::materialize::{materialize, materialize_with_base_context};
+use super::super::materialize::{is_blank_source, materialize, materialize_with_base_context};
 use super::super::protocol::{CommitMode, DocumentInputPlan, DocumentJobKind};
 use super::super::snapshot::DocumentSnapshot;
 use super::{
@@ -237,6 +237,32 @@ pub(super) fn advance_close(
 
         if let Some(detail) = format_error_detail {
             return rejected_batch(request_seq, "json_close_format_failed", detail);
+        }
+
+        if is_blank_source(&source) {
+            let result = materialize(
+                &DocumentInputPlan::SourceText,
+                &document_key,
+                &language,
+                &source,
+                false,
+                &output_plan,
+                &[],
+                None,
+            );
+            if let Err(detail) =
+                super::validate_snapshot_ready_outputs(result.graph.as_ref(), &output_plan)
+            {
+                return rejected_batch(request_seq, "missing_requested_main_graph", detail);
+            }
+            let mut snapshot =
+                DocumentSnapshot::with_analysis(document_key.clone(), result.analysis);
+            snapshot.graph = result.graph;
+            snapshot.incremental = result.incremental;
+            let terminal = commit_snapshot(runtime, handle, snapshot, CommitMode::Authoritative);
+            let events =
+                snapshot_events_for_terminal(runtime, handle, &terminal, &output_plan, None);
+            return terminal_batch(request_seq, events, terminal);
         }
 
         if diagnostics_only {

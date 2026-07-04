@@ -62,7 +62,7 @@ fn validate_snapshot_ready_outputs(
         return Ok(());
     }
     let projection = graph.ok_or_else(|| "requested main graph was not produced".to_owned())?;
-    if projection.graph_data.is_none() {
+    if projection.graph_data.is_none() && !projection.clear {
         return Err("requested main graph was empty".to_owned());
     }
     Ok(())
@@ -398,10 +398,25 @@ mod tests {
     }
 
     #[test]
-    fn validate_snapshot_ready_outputs_rejects_requested_empty_graph() {
+    fn validate_snapshot_ready_outputs_accepts_requested_clear_only_graph() {
         let graph = super::super::snapshot::GraphProjection {
             ready: true,
             clear: true,
+            graph_data: None,
+        };
+        let output = OutputPlan {
+            analysis: false,
+            graph: true,
+        };
+
+        assert!(validate_snapshot_ready_outputs(Some(&graph), &output).is_ok());
+    }
+
+    #[test]
+    fn validate_snapshot_ready_outputs_rejects_requested_non_clear_empty_graph() {
+        let graph = super::super::snapshot::GraphProjection {
+            ready: true,
+            clear: false,
             graph_data: None,
         };
         let output = OutputPlan {
@@ -1527,6 +1542,95 @@ mod tests {
             snapshot.graph.is_none(),
             "diagnostics snapshot should clear graph"
         );
+    }
+
+    fn blank_source_spec(key: &str, language: &str) -> DocumentJobSpec {
+        DocumentJobSpec {
+            kind: DocumentJobKind::AnalyzeSource,
+            document_key: key.to_owned(),
+            language: language.to_owned(),
+            input: DocumentInputPlan::SourceText,
+            settings: crate::document::protocol::DocumentJobSettings::default(),
+            output: OutputPlan {
+                analysis: true,
+                graph: true,
+            },
+            base_snapshot_id: None,
+            edits: vec![],
+        }
+    }
+
+    fn assert_blank_source_clear_snapshot(
+        rt: &DocumentRuntime,
+        batch: &EventBatch,
+        document_key: &str,
+    ) -> SnapshotId {
+        assert!(matches!(batch.terminal, Some(JobTerminal::Completed)));
+        let (snapshot_id, analysis, main_graph) = batch
+            .events
+            .iter()
+            .find_map(|event| match event {
+                DocumentEvent::SnapshotReady {
+                    snapshot_id,
+                    analysis,
+                    main_graph,
+                    ..
+                } => Some((*snapshot_id, analysis.as_ref(), main_graph.as_ref())),
+                _ => None,
+            })
+            .expect("blank source close should emit SnapshotReady");
+        let analysis = analysis.expect("blank source SnapshotReady should carry analysis");
+        assert!(analysis.tree.is_none());
+        assert!(analysis.value_json.is_none());
+        assert!(analysis.diagnostics.is_empty());
+        let main_graph = main_graph.expect("blank source SnapshotReady should carry mainGraph");
+        assert!(main_graph.clear);
+        assert!(main_graph.graph_data.is_none());
+        let snapshot = rt
+            .snapshots
+            .get(&snapshot_id.0)
+            .expect("empty snapshot should be stored");
+        let stored = snapshot
+            .analysis
+            .as_ref()
+            .expect("empty snapshot should keep analysis");
+        assert!(stored.document.is_none());
+        assert!(stored.diagnostics.is_empty());
+        assert_eq!(stored.source, "");
+        assert_eq!(
+            rt.latest_snapshot_by_document.get(document_key),
+            Some(&snapshot_id),
+            "blank source should become the authoritative latest snapshot",
+        );
+        snapshot_id
+    }
+
+    #[test]
+    fn blank_non_streaming_source_close_commits_authoritative_clear_snapshot() {
+        let mut rt = DocumentRuntime::default();
+        let mut m = DocumentEngineMetrics::default();
+        let h = start_job(
+            &mut rt,
+            &mut m,
+            blank_source_spec("blank-yaml-close", "yaml"),
+        );
+
+        let batch = advance_job(&mut rt, &mut m, h, AdvanceInput::Close);
+
+        assert_blank_source_clear_snapshot(&rt, &batch, "blank-yaml-close");
+    }
+
+    #[test]
+    fn blank_streaming_source_close_commits_authoritative_clear_snapshot() {
+        let mut rt = DocumentRuntime::default();
+        let mut m = DocumentEngineMetrics::default();
+        let h = add_streaming_job(&mut rt, "stream-blank-json");
+
+        let first = advance_job(&mut rt, &mut m, h, AdvanceInput::TextChunk(String::new()));
+        assert!(first.terminal.is_none());
+        let close = advance_job(&mut rt, &mut m, h, AdvanceInput::Close);
+
+        assert_blank_source_clear_snapshot(&rt, &close, "stream-blank-json");
     }
 
     #[test]
