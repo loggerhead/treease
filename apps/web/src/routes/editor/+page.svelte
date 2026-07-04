@@ -20,6 +20,7 @@
     type TreeSelectionSource,
   } from '../../lib/store/editor-store';
   import { toast } from 'svelte-sonner';
+  import { fetchUrlPresetSource } from './fetch-url-preset-source';
   import { readImportSourceSample, resolveImportSourceFormat } from '../../lib/import/resolve-import-source';
   import { callSharedWasmWorker, getSharedWasmWorkerClient } from '../../lib/wasm/wasm-worker-singleton';
   import { getDefaultWasmURL } from '../../lib/wasm/wasm-worker-singleton';
@@ -165,9 +166,17 @@
     await tick();
     await editorRef?.ensureReady?.();
 
-    if (nextPreset.text.present) {
-      const nextLanguage = nextPreset.language ?? (editorRef?.getActiveLanguage() ?? $languageIdStore);
-      await editorRef?.importAs(nextLanguage, nextPreset.text.value, nextLanguage);
+    let presetText = nextPreset.text.present ? nextPreset.text.value : null;
+    let presetTextLanguage = nextPreset.language;
+    if (presetText === null && nextPreset.textUrl.effective) {
+      const resolved = await fetchUrlPresetSource(nextPreset.textUrl.value);
+      presetText = resolved.text;
+      presetTextLanguage = presetTextLanguage ?? resolved.inferredLanguage;
+    }
+
+    if (presetText !== null) {
+      const nextLanguage = presetTextLanguage ?? (editorRef?.getActiveLanguage() ?? $languageIdStore);
+      await editorRef?.importAs(nextLanguage, presetText, nextLanguage);
     } else if (nextPreset.language) {
       languageIdStore.set(nextPreset.language);
       await tick();
@@ -176,6 +185,10 @@
     if (nextPreset.rightText.effective) {
       const nextLanguage = nextPreset.language ?? (editorRef?.getActiveLanguage() ?? $languageIdStore);
       await viewerRef?.showTextPreview(nextPreset.rightText.value, nextLanguage);
+    } else if (nextPreset.rightTextUrl.effective) {
+      const resolved = await fetchUrlPresetSource(nextPreset.rightTextUrl.value);
+      const nextLanguage = nextPreset.language ?? resolved.inferredLanguage ?? (editorRef?.getActiveLanguage() ?? $languageIdStore);
+      await viewerRef?.showTextPreview(resolved.text, nextLanguage);
     }
 
     if (nextPreset.yq.effective) {
@@ -536,7 +549,11 @@
 
   onMount(() => {
     urlPreset ??= resolveEditorUrlPreset(window.location.search);
-    void applyEditorUrlPreset(urlPreset);
+    void applyEditorUrlPreset(urlPreset).catch((error) => {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error('[editor] failed to apply url preset', { error: message });
+      toast.error(`Editor URL preset failed: ${message}`);
+    });
     const handleResize = () => {
       syncSplitLayoutState(syncSplitRatio(splitLayoutState, getContainerWidth(), splitLayoutConfig));
     };

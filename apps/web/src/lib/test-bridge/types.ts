@@ -206,8 +206,12 @@ export type TreeaseUrlPresetState = {
     ui: string[];
     lang: SupportedEditorLanguageId | null;
     textPresent: boolean;
+    textUrlPresent: boolean;
+    textUrlEffective: boolean;
     rightTextPresent: boolean;
+    rightTextUrlPresent: boolean;
     rightTextEffective: boolean;
+    rightTextUrlEffective: boolean;
     command: string | null;
     yqPresent: boolean;
     yqEffective: boolean;

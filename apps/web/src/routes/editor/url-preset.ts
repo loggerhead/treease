@@ -8,8 +8,12 @@ export type EditorUrlPresetTelemetry = {
     ui: EditorUrlUiToken[];
     lang: SupportedEditorLanguageId | null;
     textPresent: boolean;
+    textUrlPresent: boolean;
+    textUrlEffective: boolean;
     rightTextPresent: boolean;
+    rightTextUrlPresent: boolean;
     rightTextEffective: boolean;
+    rightTextUrlEffective: boolean;
     command: EditorUrlActionCommandId | null;
     yqPresent: boolean;
     yqEffective: boolean;
@@ -36,7 +40,9 @@ export type ResolvedEditorUrlPreset = {
   initialViewerMode: 'graph' | 'text';
   language: SupportedEditorLanguageId | null;
   text: { present: boolean; value: string };
+  textUrl: { present: boolean; value: string; effective: boolean };
   rightText: { present: boolean; value: string; effective: boolean };
+  rightTextUrl: { present: boolean; value: string; effective: boolean };
   yq: { present: boolean; value: string; effective: boolean };
   command: EditorUrlActionCommandId | null;
   nest: boolean | null;
@@ -119,7 +125,9 @@ export function resolveEditorUrlPreset(search: string): ResolvedEditorUrlPreset 
   const rawUi = readLastQueryValue(searchParams, 'ui');
   const rawLang = readLastQueryValue(searchParams, 'lang');
   const rawText = readLastQueryValue(searchParams, 'text');
+  const rawTextUrl = readLastQueryValue(searchParams, 'textUrl');
   const rawRightText = readLastQueryValue(searchParams, 'rightText');
+  const rawRightTextUrl = readLastQueryValue(searchParams, 'rightTextUrl');
   const rawCommand = readLastQueryValue(searchParams, 'command');
   const rawNest = readLastQueryValue(searchParams, 'nest');
   const rawAutoFormat = readLastQueryValue(searchParams, 'autoFormat');
@@ -133,13 +141,29 @@ export function resolveEditorUrlPreset(search: string): ResolvedEditorUrlPreset 
 
   const textPresent = rawText.present;
   const textValue = rawText.value ?? '';
+  const textUrlPresent = rawTextUrl.present && rawTextUrl.value != null && rawTextUrl.value !== '';
+  const textUrlValue = rawTextUrl.value ?? '';
   const rightTextPresent = rawRightText.present;
   const rightTextValue = rawRightText.value ?? '';
+  const rightTextUrlPresent = rawRightTextUrl.present && rawRightTextUrl.value != null && rawRightTextUrl.value !== '';
+  const rightTextUrlValue = rawRightTextUrl.value ?? '';
   const yqPresent = rawYq.present && rawYq.value != null && rawYq.value !== '';
   const yqValue = rawYq.value ?? '';
 
+  let textUrlEffective = textUrlPresent;
   let yqEffective = yqPresent;
   let rightTextEffective = rightTextPresent;
+  let rightTextUrlEffective = rightTextUrlPresent;
+
+  if (textPresent && textUrlPresent) {
+    textUrlEffective = false;
+    notes.push('Ignored textUrl because text takes precedence.');
+  }
+
+  if (rightTextPresent && rightTextUrlPresent) {
+    rightTextUrlEffective = false;
+    notes.push('Ignored rightTextUrl because rightText takes precedence.');
+  }
 
   if (command && yqPresent) {
     yqEffective = false;
@@ -151,6 +175,11 @@ export function resolveEditorUrlPreset(search: string): ResolvedEditorUrlPreset 
     notes.push('Ignored rightText because yq takes precedence.');
   }
 
+  if (yqEffective && rightTextUrlEffective) {
+    rightTextUrlEffective = false;
+    notes.push('Ignored rightTextUrl because yq takes precedence.');
+  }
+
   const baseUi = {
     editor: uiTokens.includes('editor'),
     viewer: uiTokens.includes('viewer'),
@@ -158,7 +187,7 @@ export function resolveEditorUrlPreset(search: string): ResolvedEditorUrlPreset 
     bottombar: uiTokens.includes('bottombar'),
   };
 
-  const shouldForceViewer = rightTextEffective || command === 'compare' || yqEffective;
+  const shouldForceViewer = rightTextEffective || rightTextUrlEffective || command === 'compare' || yqEffective;
   const finalUi = {
     editor: baseUi.editor,
     viewer: baseUi.viewer || shouldForceViewer,
@@ -173,7 +202,9 @@ export function resolveEditorUrlPreset(search: string): ResolvedEditorUrlPreset 
     initialViewerMode,
     language,
     text: { present: textPresent, value: textValue },
+    textUrl: { present: textUrlPresent, value: textUrlValue, effective: textUrlEffective },
     rightText: { present: rightTextPresent, value: rightTextValue, effective: rightTextEffective },
+    rightTextUrl: { present: rightTextUrlPresent, value: rightTextUrlValue, effective: rightTextUrlEffective },
     yq: { present: yqPresent, value: yqValue, effective: yqEffective },
     command,
     nest,
@@ -185,8 +216,12 @@ export function resolveEditorUrlPreset(search: string): ResolvedEditorUrlPreset 
         ui: uiTokens,
         lang: language,
         textPresent,
+        textUrlPresent,
+        textUrlEffective,
         rightTextPresent,
+        rightTextUrlPresent,
         rightTextEffective,
+        rightTextUrlEffective,
         command,
         yqPresent,
         yqEffective,

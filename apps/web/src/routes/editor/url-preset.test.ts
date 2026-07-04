@@ -45,6 +45,27 @@ describe('editor url preset', () => {
     expect(preset.initialViewerMode).toBe('text');
   });
 
+  it('lets inline text and rightText take precedence over url-backed variants', () => {
+    const preset = resolveEditorUrlPreset(
+      '?text=%7B%22inline%22%3Atrue%7D&textUrl=%2Ffixtures%2Fleft.json&rightText=%7B%22right%22%3A1%7D&rightTextUrl=%2Ffixtures%2Fright.json',
+    );
+
+    expect(preset.textUrl.effective).toBe(false);
+    expect(preset.rightTextUrl.effective).toBe(false);
+    expect(preset.notes).toContain('Ignored textUrl because text takes precedence.');
+    expect(preset.notes).toContain('Ignored rightTextUrl because rightText takes precedence.');
+  });
+
+  it('lets yq suppress rightTextUrl and still force viewer text mode', () => {
+    const preset = resolveEditorUrlPreset('?rightTextUrl=%2Ffixtures%2Fright.json&yq=to_yaml');
+
+    expect(preset.rightTextUrl.effective).toBe(false);
+    expect(preset.yq.effective).toBe(true);
+    expect(preset.ui.viewer).toBe(true);
+    expect(preset.initialViewerMode).toBe('text');
+    expect(preset.notes).toContain('Ignored rightTextUrl because yq takes precedence.');
+  });
+
   it('summarizes warnings from ignored values and precedence notes', () => {
     const preset = resolveEditorUrlPreset('?ui=editor,unknown&command=compare&yq=to_yaml');
 
