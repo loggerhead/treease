@@ -54,6 +54,7 @@
     shouldOpenSubgraphWorkspaceContent,
     shouldIgnoreSubgraphOpenCell,
   } from './graph-viewer/graph-subgraph-workspace';
+  import { shouldResetSubgraphWorkspaceForFullEdit } from './graph-viewer/graph-subgraph-workspace-lifecycle';
   import {
     getCellEntry,
     registerCellBox as registerCellBoxEntry,
@@ -101,6 +102,7 @@
   import { buildPathKey } from '../graph/graph-viewer-path';
   import type { SubgraphWorkspaceGraphData } from './graph-viewer/graph-subgraph-workspace-types';
   import { isDocumentRevisionGuardCurrent } from '../guards/document-revision-guard';
+  import { clearGraphSelectionForFullEdit } from './GraphViewer.graph-highlight';
   import {
     clearGraphBridge,
     installGraphBridge,
@@ -258,6 +260,7 @@
     'language-switch',
     'whole-document-replacement',
   ]);
+  let lastSubgraphWorkspaceResetSessionId = '';
   const measureTextSample = GRAPH_CONFIG.measureTextSample;
   let measureRoot: HTMLDivElement;
   let measureRow: HTMLDivElement;
@@ -1162,6 +1165,16 @@
     disposeSubgraphWorkspaceRuntimes(normalizedChain.map((pane) => pane.pathKey));
   }
 
+  function resetSubgraphWorkspace(): void {
+    subgraphWorkspaceRefreshToken += 1;
+    subgraphWorkspaceRequestId += 1;
+    subgraphWorkspaceRenderSignature = '';
+    clearSearchHighlight();
+    activeTempModel.update((current) => clearGraphSelectionForFullEdit(current));
+    setSubgraphWorkspaceChain([]);
+    subgraphWorkspaceGraphCache.clear();
+  }
+
   async function prepareSubgraphWorkspacePane(path: PathSeg[]): Promise<SubgraphWorkspacePaneState | null> {
     const pathKey = buildPathKey(path);
     if (!pathKey) return null;
@@ -1233,6 +1246,7 @@
     setSubgraphWorkspaceChain([...base, loadingPane]);
     const pane = await prepareSubgraphWorkspacePane(path);
     if (!pane) return;
+    if (requestId !== subgraphWorkspaceRequestId) return;
     const latestBase = parentAbsoluteIndex >= 0 ? subgraphWorkspaceChain.slice(0, parentAbsoluteIndex + 1) : [];
     if (latestBase.some((entry, index) => base[index]?.pathKey !== entry.pathKey)) return;
     const nextPane = { ...pane, requestId };
@@ -1539,6 +1553,17 @@
     subgraphWorkspaceGraphCache.clear();
     subgraphWorkspaceRenderSignature = '';
     void refreshSubgraphWorkspacePanes();
+  }
+
+  $: {
+    const shouldResetWorkspace = shouldResetSubgraphWorkspaceForFullEdit($fullEditUiState);
+    const sessionId = $fullEditUiState?.sessionId ?? '';
+    if (!shouldResetWorkspace) {
+      lastSubgraphWorkspaceResetSessionId = '';
+    } else if (sessionId && sessionId !== lastSubgraphWorkspaceResetSessionId) {
+      lastSubgraphWorkspaceResetSessionId = sessionId;
+      resetSubgraphWorkspace();
+    }
   }
 
   $: {

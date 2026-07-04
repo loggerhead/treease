@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { TempModel } from '../store/editor-store';
-import { clearGraphSelectionAfterEdit } from './GraphViewer.graph-highlight';
+import { clearGraphSelectionAfterEdit, clearGraphSelectionForFullEdit } from './GraphViewer.graph-highlight';
 
 function createTempModel(): TempModel {
   return {
@@ -70,6 +70,25 @@ describe('GraphViewer graph highlight', () => {
     };
 
     const next = clearGraphSelectionAfterEdit(current, editPath);
+
+    expect(next.treePath).toEqual([]);
+    expect(next.graphHighlight).toBeNull();
+  });
+
+  it('clears any persisted tree selection before full edit replaces the document', () => {
+    const path = [{ tag: 0, key: 'user', index: 0 }, { tag: 0, key: 'name', index: 0 }] as any[];
+    const current: TempModel = {
+      ...createTempModel(),
+      treePath: path,
+      graphHighlight: {
+        path,
+        target: 'value',
+        revision: 6,
+        source: 'search',
+      },
+    };
+
+    const next = clearGraphSelectionForFullEdit(current);
 
     expect(next.treePath).toEqual([]);
     expect(next.graphHighlight).toBeNull();

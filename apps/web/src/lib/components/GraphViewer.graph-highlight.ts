@@ -12,3 +12,12 @@ export function clearGraphSelectionAfterEdit(current: TempModel, editPath: PathS
     graphHighlight: null,
   };
 }
+
+export function clearGraphSelectionForFullEdit(current: TempModel): TempModel {
+  if (!current.treePath.length && !current.graphHighlight) return current;
+  return {
+    ...current,
+    treePath: [],
+    graphHighlight: null,
+  };
+}
