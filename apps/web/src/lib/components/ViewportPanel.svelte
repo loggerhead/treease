@@ -415,8 +415,13 @@
     </div>
   {/if}
 
-  {#if !graphOnly && effectiveViewMode === 'text'}
-    <div class="flex h-full min-h-0 min-w-0 flex-col bg-[var(--panel-bg)]">
+  {#if !graphOnly}
+    <div
+      class="absolute inset-0 flex h-full min-h-0 min-w-0 flex-col bg-[var(--panel-bg)]"
+      class:invisible={effectiveViewMode !== 'text'}
+      class:pointer-events-none={effectiveViewMode !== 'text'}
+      aria-hidden={effectiveViewMode !== 'text'}
+    >
       {#if diffError}
         <div class="border-b border-[var(--border-muted)] px-3 py-2 text-[12px] text-[#f87171]">
           {diffError}
@@ -429,16 +434,21 @@
         onContentChange={clearCompareHighlights}
       />
     </div>
-  {:else}
-    <div class="h-full min-h-0 min-w-0 w-full">
-      <GraphViewer
-        bind:this={graphViewer}
-        {enableRevealSync}
-        {synchronizedRuntimeLoading}
-        readonly={readonlyGraph}
-        on:reveal={handleGraphReveal}
-        on:runtime-state={handleGraphViewerRuntimeState}
-      />
-    </div>
   {/if}
+
+  <div
+    class="absolute inset-0 h-full min-h-0 min-w-0 w-full"
+    class:invisible={!graphOnly && effectiveViewMode !== 'graph'}
+    class:pointer-events-none={!graphOnly && effectiveViewMode !== 'graph'}
+    aria-hidden={!graphOnly && effectiveViewMode !== 'graph'}
+  >
+    <GraphViewer
+      bind:this={graphViewer}
+      {enableRevealSync}
+      {synchronizedRuntimeLoading}
+      readonly={readonlyGraph}
+      on:reveal={handleGraphReveal}
+      on:runtime-state={handleGraphViewerRuntimeState}
+    />
+  </div>
 </div>
