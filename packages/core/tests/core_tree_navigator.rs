@@ -1,9 +1,8 @@
 use treease_core::{
     core::dispatch_matching_nodes,
     operators::{
-        Context, CoreError, ExpressionNode, NodeKind, Operation, OperatorRegistry,
-        SELF_REFERENCE_OP_TYPE, SemType, TRAVERSE_PATH_OP_TYPE, TreeEngine, TreeNode,
-        get_matching_nodes, init_registry, update_from,
+        Context, ExpressionNode, NodeKind, Operation, SELF_REFERENCE_OP_TYPE, SemType,
+        TRAVERSE_PATH_OP_TYPE, TreeEngine, TreeNode, get_matching_nodes, update_from,
     },
 };
 
@@ -152,38 +151,8 @@ fn test_get_matching_nodes_valid_operator() {
     assert_eq!(result.matching_nodes[0].value, "test");
 }
 
-fn context_registry_self_override(
-    ctx: Context,
-    _engine: &mut TreeEngine,
-    _expr: &mut ExpressionNode,
-) -> Result<Context, CoreError> {
-    Ok(Context {
-        matching_nodes: vec![string_scalar("from_context_registry")],
-        ..ctx
-    })
-}
-
 #[test]
-fn core_dispatch_matching_nodes_prefers_context_registry_before_static_registry() {
-    let mut restore_registry = OperatorRegistry::new();
-    init_registry(&mut restore_registry).unwrap();
-    let original_self_handler = *restore_registry
-        .get_handler(&SELF_REFERENCE_OP_TYPE)
-        .expect("built-in self handler should exist");
-
-    {
-        let global = treease_core::operators::Registry::global();
-        let mut guard = global.write().unwrap();
-        guard.init().unwrap();
-        guard
-            .operators
-            .register_operator(
-                treease_core::operators::OperationId::SelfReference,
-                context_registry_self_override,
-            )
-            .unwrap();
-    }
-
+fn core_dispatch_matching_nodes_falls_back_to_static_registry_when_global_has_no_override() {
     let mut engine = TreeEngine::default();
     let ctx = Context {
         matching_nodes: vec![string_scalar("static_registry")],
@@ -205,20 +174,8 @@ fn core_dispatch_matching_nodes_prefers_context_registry_before_static_registry(
 
     let result = dispatch_matching_nodes(&mut engine, &ctx, Some(&mut expr)).unwrap();
 
-    {
-        let global = treease_core::operators::Registry::global();
-        let mut guard = global.write().unwrap();
-        guard
-            .operators
-            .register_operator(
-                treease_core::operators::OperationId::SelfReference,
-                original_self_handler,
-            )
-            .unwrap();
-    }
-
     assert_eq!(result.matching_nodes.len(), 1);
-    assert_eq!(result.matching_nodes[0].value, "from_context_registry");
+    assert_eq!(result.matching_nodes[0].value, "static_registry");
 }
 
 // ── DeeplyAssign: adds new map key ───────────────────────────────

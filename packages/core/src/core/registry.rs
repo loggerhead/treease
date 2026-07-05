@@ -1,4 +1,5 @@
-use std::sync::{Arc, OnceLock, RwLock};
+use std::cell::{OnceCell, RefCell};
+use std::rc::Rc;
 
 use super::codec_service::CodecService;
 use super::format_registry::{FormatPreferences, FormatRegistry};
@@ -31,8 +32,10 @@ impl Registry {
     /// Returns a RegistryHandle that can be used in Context.
     /// The registry is populated lazily on first access.
     pub fn ensure_global() -> RegistryHandle {
-        static GLOBAL: OnceLock<RegistryHandle> = OnceLock::new();
-        GLOBAL.get_or_init(|| to_handle(Registry::init())).clone()
+        thread_local! {
+            static GLOBAL: OnceCell<RegistryHandle> = const { OnceCell::new() };
+        }
+        GLOBAL.with(|global| global.get_or_init(|| to_handle(Registry::init())).clone())
     }
 
     pub fn get_encoder(&self, format: &str, prefs: &FormatPreferences) -> Option<&str> {
@@ -46,7 +49,7 @@ impl Registry {
 
 #[derive(Debug, Clone)]
 pub struct RegistryHandle {
-    pub inner: Arc<RwLock<Registry>>,
+    pub inner: Rc<RefCell<Registry>>,
 }
 
 impl Default for RegistryHandle {
@@ -92,10 +95,10 @@ impl RegistryOwner {
 
 pub fn to_handle(registry: Registry) -> RegistryHandle {
     RegistryHandle {
-        inner: Arc::new(RwLock::new(registry)),
+        inner: Rc::new(RefCell::new(registry)),
     }
 }
 
-pub fn from_handle(handle: &RegistryHandle) -> Arc<RwLock<Registry>> {
+pub fn from_handle(handle: &RegistryHandle) -> Rc<RefCell<Registry>> {
     handle.inner.clone()
 }

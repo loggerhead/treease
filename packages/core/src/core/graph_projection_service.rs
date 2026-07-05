@@ -1,5 +1,5 @@
+use std::cell::RefCell;
 use std::collections::HashMap;
-use std::sync::{LazyLock, Mutex};
 
 use crate::document::protocol::{
     GraphBoxArgs, GraphCellData, GraphDelta, GraphEdgeData, GraphEdgeRemoved, GraphNodeData,
@@ -20,10 +20,12 @@ pub(crate) struct CachedProjectionModel {
     pub(crate) layout_state: Option<LayoutState>,
 }
 
-static PROJECTION_MODEL_CACHE: LazyLock<Mutex<HashMap<String, CachedProjectionModel>>> =
-    LazyLock::new(|| Mutex::new(HashMap::new()));
-static PROJECTION_BUILDER_CONFIG: LazyLock<Mutex<BuilderConfigState>> =
-    LazyLock::new(|| Mutex::new(BuilderConfigState::default()));
+thread_local! {
+    static PROJECTION_MODEL_CACHE: RefCell<HashMap<String, CachedProjectionModel>> =
+        RefCell::new(HashMap::new());
+    static PROJECTION_BUILDER_CONFIG: RefCell<BuilderConfigState> =
+        RefCell::new(BuilderConfigState::default());
+}
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct BuilderConfigState {
@@ -100,22 +102,15 @@ impl BuilderConfigState {
 }
 
 pub(crate) fn reset_builder_config() {
-    if let Ok(mut config) = PROJECTION_BUILDER_CONFIG.lock() {
-        *config = BuilderConfigState::default();
-    }
+    PROJECTION_BUILDER_CONFIG.with(|config| *config.borrow_mut() = BuilderConfigState::default());
 }
 
 pub(crate) fn set_builder_config(state: BuilderConfigState) {
-    if let Ok(mut config) = PROJECTION_BUILDER_CONFIG.lock() {
-        *config = state;
-    }
+    PROJECTION_BUILDER_CONFIG.with(|config| *config.borrow_mut() = state);
 }
 
 pub(crate) fn projection_builder_config() -> BuilderConfigState {
-    PROJECTION_BUILDER_CONFIG
-        .lock()
-        .map(|config| *config)
-        .unwrap_or_default()
+    PROJECTION_BUILDER_CONFIG.with(|config| *config.borrow())
 }
 
 pub(crate) fn store_projection_model_cache(
@@ -137,7 +132,8 @@ pub(crate) fn store_projection_model_cache_with_runtime_state(
     layout_state: LayoutState,
 ) {
     let index = GraphModelIndex::build(&model);
-    if let Ok(mut cache) = PROJECTION_MODEL_CACHE.lock() {
+    PROJECTION_MODEL_CACHE.with(|cache| {
+        let mut cache = cache.borrow_mut();
         cache.insert(
             document_key.to_owned(),
             CachedProjectionModel {
@@ -147,7 +143,7 @@ pub(crate) fn store_projection_model_cache_with_runtime_state(
                 layout_state: Some(layout_state),
             },
         );
-    }
+    });
 }
 
 pub(crate) fn store_projection_model_snapshot_cache_with_index(
@@ -155,7 +151,8 @@ pub(crate) fn store_projection_model_snapshot_cache_with_index(
     model_snapshot: crate::core::GraphModelSnapshot,
     index: GraphModelIndex,
 ) {
-    if let Ok(mut cache) = PROJECTION_MODEL_CACHE.lock() {
+    PROJECTION_MODEL_CACHE.with(|cache| {
+        let mut cache = cache.borrow_mut();
         cache.insert(
             document_key.to_owned(),
             CachedProjectionModel {
@@ -165,16 +162,13 @@ pub(crate) fn store_projection_model_snapshot_cache_with_index(
                 layout_state: None,
             },
         );
-    }
+    });
 }
 
 pub(crate) fn get_projection_model_cache_entry(
     document_key: &str,
 ) -> Option<CachedProjectionModel> {
-    PROJECTION_MODEL_CACHE
-        .lock()
-        .ok()
-        .and_then(|cache| cache.get(document_key).cloned())
+    PROJECTION_MODEL_CACHE.with(|cache| cache.borrow().get(document_key).cloned())
 }
 
 pub(crate) fn str_sem_type_to_u32(sem: Option<&str>) -> u32 {

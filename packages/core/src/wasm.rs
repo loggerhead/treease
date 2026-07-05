@@ -1,7 +1,4 @@
-use std::{
-    collections::HashMap,
-    sync::{LazyLock, Mutex},
-};
+use std::{cell::RefCell, collections::HashMap};
 
 use crate::core::{NodeId, SemType, TreeNodeKind, TreeStore, graph_projection_service};
 #[cfg(not(feature = "lite"))]
@@ -62,33 +59,32 @@ impl RustWasmBuffer {
 
 pub type WasmResult<T> = Result<T, String>;
 
-static STORED_ANALYSES: LazyLock<Mutex<HashMap<String, StoredAnalysis>>> =
-    LazyLock::new(|| Mutex::new(HashMap::new()));
+thread_local! {
+    static STORED_ANALYSES: RefCell<HashMap<String, StoredAnalysis>> =
+        RefCell::new(HashMap::new());
+}
 
 // ── Initialization ────────────────────────────────────────────────────────
 
 #[wasm_bindgen]
 pub fn init_wasm() {
     allocator::install_tree_sitter_allocator();
-    if let Ok(mut owner) = runtime::REGISTRY_OWNER.lock() {
+    runtime::REGISTRY_OWNER.with(|owner| {
+        let mut owner = owner.borrow_mut();
         if owner.is_none() {
             if let Ok(registry_owner) = crate::init() {
                 *owner = Some(registry_owner);
             }
         }
-    }
+    });
     ensure_formats();
-    drop(runtime::GLOBAL_STORE.lock());
+    runtime::GLOBAL_STORE.with(|_| {});
 }
 
 pub fn reset_test_runtime() {
     init_wasm();
-    if let Ok(mut stored) = STORED_ANALYSES.lock() {
-        stored.clear();
-    }
-    if let Ok(mut store) = runtime::GLOBAL_STORE.lock() {
-        store.clear();
-    }
+    STORED_ANALYSES.with(|stored| stored.borrow_mut().clear());
+    runtime::GLOBAL_STORE.with(|store| store.borrow_mut().clear());
     graph_projection_service::reset_builder_config();
     clear_graph_arena();
     clear_tree_arena();

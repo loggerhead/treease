@@ -24,7 +24,7 @@ pub struct Meta {
     pub line: i32,
     pub column: i32,
     pub path: String,
-    pub path_supplier: Option<Box<dyn PathSupplier + Send + Sync>>,
+    pub path_supplier: Option<Box<dyn PathSupplier>>,
     pub document: u32,
     pub filename: String,
     pub file_index: i32,

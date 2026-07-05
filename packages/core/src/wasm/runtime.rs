@@ -1,4 +1,4 @@
-use std::sync::{LazyLock, Mutex};
+use std::cell::RefCell;
 
 use crate::core::registry::RegistryOwner;
 use crate::core::{LineIndex, TokenSpan, TreeStore};
@@ -29,46 +29,28 @@ pub(crate) struct StoredAnalysis {
 // ---------------------------------------------------------------------------
 // ---------------------------------------------------------------------------
 
-pub(crate) static GRAPH_ARENA: LazyLock<Mutex<Option<Vec<u8>>>> =
-    LazyLock::new(|| Mutex::new(None));
-
-pub(crate) static TREE_ARENA: LazyLock<Mutex<Option<Vec<u8>>>> = LazyLock::new(|| Mutex::new(None));
-
-pub(crate) static COMPARE_ARENA: LazyLock<Mutex<Option<Vec<u8>>>> =
-    LazyLock::new(|| Mutex::new(None));
+thread_local! {
+    pub(crate) static GRAPH_ARENA: RefCell<Option<Vec<u8>>> = const { RefCell::new(None) };
+    pub(crate) static TREE_ARENA: RefCell<Option<Vec<u8>>> = const { RefCell::new(None) };
+    pub(crate) static COMPARE_ARENA: RefCell<Option<Vec<u8>>> = const { RefCell::new(None) };
+    pub(crate) static GLOBAL_STORE: RefCell<TreeStore> = RefCell::new(TreeStore::new());
+    pub(crate) static REGISTRY_OWNER: RefCell<Option<RegistryOwner>> = const { RefCell::new(None) };
+}
 
 // ---------------------------------------------------------------------------
 // ---------------------------------------------------------------------------
 
 /// Deinitialize the graph arena, freeing all temporary graph data.
 pub(crate) fn clear_graph_arena() {
-    if let Ok(mut arena) = GRAPH_ARENA.lock() {
-        *arena = None;
-    }
+    GRAPH_ARENA.with(|arena| *arena.borrow_mut() = None);
 }
 
 /// Deinitialize the tree arena, freeing all temporary tree data.
 pub(crate) fn clear_tree_arena() {
-    if let Ok(mut arena) = TREE_ARENA.lock() {
-        *arena = None;
-    }
+    TREE_ARENA.with(|arena| *arena.borrow_mut() = None);
 }
 
 /// Deinitialize the compare arena, freeing all temporary diff data.
 pub(crate) fn clear_compare_arena() {
-    if let Ok(mut arena) = COMPARE_ARENA.lock() {
-        *arena = None;
-    }
+    COMPARE_ARENA.with(|arena| *arena.borrow_mut() = None);
 }
-
-// ---------------------------------------------------------------------------
-
-/// Global tree store for cached document analyses.
-pub(crate) static GLOBAL_STORE: LazyLock<Mutex<TreeStore>> =
-    LazyLock::new(|| Mutex::new(TreeStore::new()));
-
-// ---------------------------------------------------------------------------
-
-/// Global registry owner, initialized once during `init()`.
-pub(crate) static REGISTRY_OWNER: LazyLock<Mutex<Option<RegistryOwner>>> =
-    LazyLock::new(|| Mutex::new(None));

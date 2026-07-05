@@ -1,4 +1,4 @@
-use std::sync::OnceLock;
+use std::cell::OnceCell;
 
 use crate::operators::{
     ASSIGN_OP_TYPE, AssignPreferences, Context, CoreError, EvalError, ExpressionNode,
@@ -81,12 +81,17 @@ impl Default for TreeEngine {
     }
 }
 
-fn operator_registry() -> &'static OperatorRegistry {
-    static REGISTRY: OnceLock<OperatorRegistry> = OnceLock::new();
-    REGISTRY.get_or_init(|| {
-        let mut registry = OperatorRegistry::new();
-        init_registry(&mut registry).expect("compat operator registry should initialize");
-        registry
+fn with_operator_registry<R>(f: impl FnOnce(&OperatorRegistry) -> R) -> R {
+    thread_local! {
+        static REGISTRY: OnceCell<OperatorRegistry> = const { OnceCell::new() };
+    }
+    REGISTRY.with(|registry| {
+        let registry = registry.get_or_init(|| {
+            let mut registry = OperatorRegistry::new();
+            init_registry(&mut registry).expect("compat operator registry should initialize");
+            registry
+        });
+        f(registry)
     })
 }
 
@@ -99,13 +104,14 @@ pub fn get_matching_nodes(
     match expression_node {
         None => Ok(ctx.clone()),
         Some(node) => {
-            let handler = operator_registry()
-                .get_handler(node.operation.operation_type)
-                .ok_or_else(|| {
-                    CoreError::Eval(EvalError::UnknownOperator {
-                        op: format!("{:?}", node.operation.operation_type),
-                    })
-                })?;
+            let handler = with_operator_registry(|registry| {
+                registry.get_handler(node.operation.operation_type).copied()
+            })
+            .ok_or_else(|| {
+                CoreError::Eval(EvalError::UnknownOperator {
+                    op: format!("{:?}", node.operation.operation_type),
+                })
+            })?;
             handler(ctx.clone(), d, node)
         }
     }

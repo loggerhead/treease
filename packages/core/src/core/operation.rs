@@ -1,4 +1,4 @@
-use std::sync::OnceLock;
+use std::cell::OnceCell;
 
 use super::sem_type::SemType;
 use super::tree_node::{TreeNode as CoreTreeNode, infer_scalar_tag};
@@ -21,12 +21,17 @@ pub type OperationName = OperationId;
 
 // ── Static operator registry (compat) ────────────────────────────
 
-fn operator_registry() -> &'static OperatorRegistry {
-    static REGISTRY: OnceLock<OperatorRegistry> = OnceLock::new();
-    REGISTRY.get_or_init(|| {
-        let mut registry = OperatorRegistry::new();
-        init_registry(&mut registry).expect("operator registry should initialize");
-        registry
+fn with_operator_registry<R>(f: impl FnOnce(&OperatorRegistry) -> R) -> R {
+    thread_local! {
+        static REGISTRY: OnceCell<OperatorRegistry> = const { OnceCell::new() };
+    }
+    REGISTRY.with(|registry| {
+        let registry = registry.get_or_init(|| {
+            let mut registry = OperatorRegistry::new();
+            init_registry(&mut registry).expect("operator registry should initialize");
+            registry
+        });
+        f(registry)
     })
 }
 
@@ -47,24 +52,25 @@ pub fn get_matching_nodes(
         None => Ok(ctx.clone()),
         Some(node) => {
             let handler = if ctx.codec_registry != 0 {
-                crate::operators::Registry::global()
-                    .read()
-                    .ok()
-                    .and_then(|registry| {
+                crate::operators::Registry::with_global(|registry| {
+                    registry
+                        .operators
+                        .get_handler(&node.operation.operation_type)
+                        .copied()
+                })
+                .or_else(|| {
+                    with_operator_registry(|registry| {
                         registry
-                            .operators
                             .get_handler(&node.operation.operation_type)
                             .copied()
                     })
-                    .or_else(|| {
-                        operator_registry()
-                            .get_handler(&node.operation.operation_type)
-                            .copied()
-                    })
+                })
             } else {
-                operator_registry()
-                    .get_handler(&node.operation.operation_type)
-                    .copied()
+                with_operator_registry(|registry| {
+                    registry
+                        .get_handler(&node.operation.operation_type)
+                        .copied()
+                })
             }
             .ok_or(CoreError::Eval(
                 crate::operators::EvalError::UnknownOperator {

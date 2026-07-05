@@ -1,5 +1,5 @@
+use std::cell::RefCell;
 use std::collections::BTreeMap;
-use std::sync::{LazyLock, Mutex};
 
 use super::job_entry::{DocumentJobHandle, JobEntry};
 use super::protocol::{
@@ -18,14 +18,18 @@ pub struct DocumentRuntime {
     pub latest_snapshot_by_document: BTreeMap<String, SnapshotId>,
 }
 
-static GLOBAL_DOCUMENT_RUNTIME: LazyLock<Mutex<DocumentRuntime>> =
-    LazyLock::new(|| Mutex::new(DocumentRuntime::default()));
+thread_local! {
+    static GLOBAL_DOCUMENT_RUNTIME: RefCell<DocumentRuntime> =
+        RefCell::new(DocumentRuntime::default());
+}
 
 pub(crate) fn with_global_document_runtime<R>(
     f: impl FnOnce(&mut DocumentRuntime) -> R,
 ) -> Option<R> {
-    let mut runtime = GLOBAL_DOCUMENT_RUNTIME.lock().ok()?;
-    Some(f(&mut runtime))
+    GLOBAL_DOCUMENT_RUNTIME.with(|runtime| {
+        let mut runtime = runtime.try_borrow_mut().ok()?;
+        Some(f(&mut runtime))
+    })
 }
 
 impl DocumentRuntime {
@@ -197,70 +201,83 @@ pub fn store_snapshot_for_document(
     snapshot: DocumentSnapshot,
     authoritative: bool,
 ) -> Option<SnapshotId> {
-    let mut runtime = GLOBAL_DOCUMENT_RUNTIME.lock().ok()?;
-    Some(runtime.store_snapshot_for_document(document_key, snapshot, authoritative))
+    GLOBAL_DOCUMENT_RUNTIME.with(|runtime| {
+        let mut runtime = runtime.try_borrow_mut().ok()?;
+        Some(runtime.store_snapshot_for_document(document_key, snapshot, authoritative))
+    })
 }
 
 pub fn stored_snapshot_for_document(document_key: &str) -> Option<DocumentSnapshot> {
-    let runtime = GLOBAL_DOCUMENT_RUNTIME.lock().ok()?;
-    runtime
-        .snapshots
-        .values()
-        .filter(|snapshot| snapshot.document_key == document_key)
-        .max_by_key(|snapshot| snapshot.snapshot_id.0)
-        .cloned()
+    GLOBAL_DOCUMENT_RUNTIME.with(|runtime| {
+        let runtime = runtime.try_borrow().ok()?;
+        runtime
+            .snapshots
+            .values()
+            .filter(|snapshot| snapshot.document_key == document_key)
+            .max_by_key(|snapshot| snapshot.snapshot_id.0)
+            .cloned()
+    })
 }
 
 pub fn reset_runtime_for_tests() {
-    if let Ok(mut runtime) = GLOBAL_DOCUMENT_RUNTIME.lock() {
-        *runtime = DocumentRuntime::default();
-    }
+    GLOBAL_DOCUMENT_RUNTIME.with(|runtime| {
+        if let Ok(mut runtime) = runtime.try_borrow_mut() {
+            *runtime = DocumentRuntime::default();
+        }
+    });
 }
 
 pub fn document_runtime_job_count_for_tests() -> usize {
-    GLOBAL_DOCUMENT_RUNTIME
-        .lock()
-        .map(|runtime| {
-            runtime
-                .jobs
-                .values()
-                .filter(|entry| entry.terminal.is_none())
-                .count()
-        })
-        .unwrap_or_default()
+    GLOBAL_DOCUMENT_RUNTIME.with(|runtime| {
+        runtime
+            .try_borrow()
+            .map(|runtime| {
+                runtime
+                    .jobs
+                    .values()
+                    .filter(|entry| entry.terminal.is_none())
+                    .count()
+            })
+            .unwrap_or_default()
+    })
 }
 
 pub fn document_runtime_contains_document_for_tests(document_key: &str) -> bool {
-    GLOBAL_DOCUMENT_RUNTIME
-        .lock()
-        .map(|runtime| {
-            runtime
-                .jobs
-                .values()
-                .any(|entry| entry.terminal.is_none() && entry.spec.document_key == document_key)
-        })
-        .unwrap_or(false)
+    GLOBAL_DOCUMENT_RUNTIME.with(|runtime| {
+        runtime
+            .try_borrow()
+            .map(|runtime| {
+                runtime.jobs.values().any(|entry| {
+                    entry.terminal.is_none() && entry.spec.document_key == document_key
+                })
+            })
+            .unwrap_or(false)
+    })
 }
 
 pub fn document_runtime_terminal_for_document_for_tests(document_key: &str) -> Option<JobTerminal> {
-    GLOBAL_DOCUMENT_RUNTIME.lock().ok().and_then(|runtime| {
-        runtime
-            .jobs
-            .iter()
-            .rev()
-            .find_map(|(_, entry)| {
-                (entry.spec.document_key == document_key).then(|| entry.terminal.clone())
-            })
-            .flatten()
+    GLOBAL_DOCUMENT_RUNTIME.with(|runtime| {
+        runtime.try_borrow().ok().and_then(|runtime| {
+            runtime
+                .jobs
+                .iter()
+                .rev()
+                .find_map(|(_, entry)| {
+                    (entry.spec.document_key == document_key).then(|| entry.terminal.clone())
+                })
+                .flatten()
+        })
     })
 }
 
 pub fn document_runtime_latest_job_spec_for_document_for_tests(
     document_key: &str,
 ) -> Option<DocumentJobSpec> {
-    GLOBAL_DOCUMENT_RUNTIME.lock().ok().and_then(|runtime| {
-        runtime.jobs.iter().rev().find_map(|(_, entry)| {
-            (entry.spec.document_key == document_key).then(|| entry.spec.clone())
+    GLOBAL_DOCUMENT_RUNTIME.with(|runtime| {
+        runtime.try_borrow().ok().and_then(|runtime| {
+            runtime.jobs.iter().rev().find_map(|(_, entry)| {
+                (entry.spec.document_key == document_key).then(|| entry.spec.clone())
+            })
         })
     })
 }

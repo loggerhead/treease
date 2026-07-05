@@ -12,15 +12,29 @@ use crate::document::runtime::{
 };
 use crate::wasm::reset_test_runtime;
 use serde_json::json;
-use std::sync::{LazyLock, Mutex};
+use std::cell::RefCell;
 
-static TEST_MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 const NESTED_JSON_INPUT: &str = r#"{"nested":"{\"inner\":42}"}"#;
 
-fn lock_test_mutex() -> std::sync::MutexGuard<'static, ()> {
-    TEST_MUTEX
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
+thread_local! {
+    static TEST_RUNNING: RefCell<bool> = const { RefCell::new(false) };
+}
+
+struct TestGuard;
+
+impl Drop for TestGuard {
+    fn drop(&mut self) {
+        TEST_RUNNING.with(|running| *running.borrow_mut() = false);
+    }
+}
+
+fn lock_test_mutex() -> TestGuard {
+    TEST_RUNNING.with(|running| {
+        let mut running = running.borrow_mut();
+        assert!(!*running, "test mutex re-entered");
+        *running = true;
+    });
+    TestGuard
 }
 
 fn reset_test_state() {

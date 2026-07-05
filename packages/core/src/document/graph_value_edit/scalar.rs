@@ -8,7 +8,7 @@ use super::{
 };
 use crate::document::protocol::{GraphValueEditFallbackReason, GraphValueEditPlan};
 
-pub(super) trait ScalarGraphValueEditRules: Sync {
+pub(super) trait ScalarGraphValueEditRules {
     fn supports_key_edit(&self) -> bool {
         true
     }

@@ -1,9 +1,11 @@
-use std::sync::{LazyLock, Mutex};
+use std::cell::RefCell;
 
 use super::protocol::EventBatch;
 
-static GLOBAL_DOCUMENT_ENGINE_METRICS: LazyLock<Mutex<DocumentEngineMetrics>> =
-    LazyLock::new(|| Mutex::new(DocumentEngineMetrics::default()));
+thread_local! {
+    static GLOBAL_DOCUMENT_ENGINE_METRICS: RefCell<DocumentEngineMetrics> =
+        RefCell::new(DocumentEngineMetrics::default());
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct DocumentEngineMetrics {
@@ -49,19 +51,25 @@ impl DocumentEngineMetrics {
 pub(crate) fn with_global_document_engine_metrics<R>(
     f: impl FnOnce(&mut DocumentEngineMetrics) -> R,
 ) -> Option<R> {
-    let mut metrics = GLOBAL_DOCUMENT_ENGINE_METRICS.lock().ok()?;
-    Some(f(&mut metrics))
+    GLOBAL_DOCUMENT_ENGINE_METRICS.with(|metrics| {
+        let mut metrics = metrics.try_borrow_mut().ok()?;
+        Some(f(&mut metrics))
+    })
 }
 
 pub fn global_document_engine_metrics_snapshot_for_tests() -> DocumentEngineMetrics {
-    GLOBAL_DOCUMENT_ENGINE_METRICS
-        .lock()
-        .map(|metrics| *metrics)
-        .unwrap_or_default()
+    GLOBAL_DOCUMENT_ENGINE_METRICS.with(|metrics| {
+        metrics
+            .try_borrow()
+            .map(|metrics| *metrics)
+            .unwrap_or_default()
+    })
 }
 
 pub fn reset_global_document_engine_metrics_for_tests() {
-    if let Ok(mut metrics) = GLOBAL_DOCUMENT_ENGINE_METRICS.lock() {
-        *metrics = DocumentEngineMetrics::default();
-    }
+    GLOBAL_DOCUMENT_ENGINE_METRICS.with(|metrics| {
+        if let Ok(mut metrics) = metrics.try_borrow_mut() {
+            *metrics = DocumentEngineMetrics::default();
+        }
+    });
 }

@@ -218,10 +218,10 @@ fn collect_token_spans_by_query(
     source: &str,
 ) -> Vec<TokenSpan> {
     // Static cache: key = hash of (language name, source).
-    use std::sync::LazyLock;
-    use std::sync::Mutex;
-    static QUERY_CACHE: LazyLock<Mutex<HashMap<u64, Vec<TokenSpan>>>> =
-        LazyLock::new(|| Mutex::new(HashMap::new()));
+    use std::cell::RefCell;
+    thread_local! {
+        static QUERY_CACHE: RefCell<HashMap<u64, Vec<TokenSpan>>> = RefCell::new(HashMap::new());
+    }
 
     let cache_key = {
         use std::hash::{Hash, Hasher};
@@ -231,19 +231,15 @@ fn collect_token_spans_by_query(
         hasher.finish()
     };
 
-    {
-        let cache = QUERY_CACHE.lock().unwrap();
-        if let Some(cached) = cache.get(&cache_key) {
-            return cached.clone();
-        }
+    if let Some(cached) = QUERY_CACHE.with(|cache| cache.borrow().get(&cache_key).cloned()) {
+        return cached;
     }
 
     let spans = collect_query_token_spans_uncached(spec, query_src, source);
 
-    {
-        let mut cache = QUERY_CACHE.lock().unwrap();
-        cache.insert(cache_key, spans.clone());
-    }
+    QUERY_CACHE.with(|cache| {
+        cache.borrow_mut().insert(cache_key, spans.clone());
+    });
 
     spans
 }

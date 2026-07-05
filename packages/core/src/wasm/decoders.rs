@@ -1,5 +1,5 @@
+use std::cell::RefCell;
 use std::collections::HashMap;
-use std::sync::{LazyLock, Mutex, MutexGuard};
 
 #[cfg(not(feature = "lite"))]
 use crate::formats::{
@@ -19,13 +19,13 @@ struct FormatEntry {
     decode: DecoderFn,
 }
 
-static FORMAT_REGISTRY: LazyLock<Mutex<HashMap<&'static str, FormatEntry>>> =
-    LazyLock::new(|| Mutex::new(HashMap::new()));
+thread_local! {
+    static FORMAT_REGISTRY: RefCell<HashMap<&'static str, FormatEntry>> =
+        RefCell::new(HashMap::new());
+}
 
-fn lock_format_registry() -> MutexGuard<'static, HashMap<&'static str, FormatEntry>> {
-    FORMAT_REGISTRY
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
+fn with_format_registry<R>(f: impl FnOnce(&mut HashMap<&'static str, FormatEntry>) -> R) -> R {
+    FORMAT_REGISTRY.with(|registry| f(&mut registry.borrow_mut()))
 }
 
 /// Populate the format registry with all enabled decoders.
@@ -33,45 +33,46 @@ fn lock_format_registry() -> MutexGuard<'static, HashMap<&'static str, FormatEnt
 /// checks `enabled && is_format`, and registers each decoder factory into
 /// the registry.  Idempotent — subsequent calls are no-ops.
 pub(crate) fn ensure_formats() {
-    let mut registry = lock_format_registry();
-    if !registry.is_empty() {
-        return;
-    }
-    register_format(&mut registry, "json", |source| {
-        JsonDecoder
-            .decode_str(source)
-            .map_err(|_| RustWasmStatus::CoreError)
-    });
-    #[cfg(not(feature = "lite"))]
-    register_format(&mut registry, "yaml", |source| {
-        YamlDecoder
-            .decode_str(source)
-            .map_err(|_| RustWasmStatus::CoreError)
-    });
-    #[cfg(not(feature = "lite"))]
-    register_format(&mut registry, "toml", |source| {
-        TomlDecoder
-            .decode_str(source)
-            .map_err(|_| RustWasmStatus::CoreError)
-    });
-    #[cfg(not(feature = "lite"))]
-    register_format(&mut registry, "python", |source| {
-        crate::formats::PythonObjectDecoder
-            .decode_str(source)
-            .map_err(|_| RustWasmStatus::CoreError)
-    });
-    #[cfg(not(feature = "lite"))]
-    register_format(&mut registry, "javascript", |source| {
-        JavascriptObjectDecoder
-            .decode_str(source)
-            .map_err(|_| RustWasmStatus::CoreError)
-    });
-    #[cfg(not(feature = "lite"))]
-    register_format(&mut registry, "csv", |source| {
-        CsvObjectDecoder::default()
-            .decode_str(source)
-            .or_else(|_| CsvDecoder.decode_str(source))
-            .map_err(|_| RustWasmStatus::CoreError)
+    with_format_registry(|registry| {
+        if !registry.is_empty() {
+            return;
+        }
+        register_format(registry, "json", |source| {
+            JsonDecoder
+                .decode_str(source)
+                .map_err(|_| RustWasmStatus::CoreError)
+        });
+        #[cfg(not(feature = "lite"))]
+        register_format(registry, "yaml", |source| {
+            YamlDecoder
+                .decode_str(source)
+                .map_err(|_| RustWasmStatus::CoreError)
+        });
+        #[cfg(not(feature = "lite"))]
+        register_format(registry, "toml", |source| {
+            TomlDecoder
+                .decode_str(source)
+                .map_err(|_| RustWasmStatus::CoreError)
+        });
+        #[cfg(not(feature = "lite"))]
+        register_format(registry, "python", |source| {
+            crate::formats::PythonObjectDecoder
+                .decode_str(source)
+                .map_err(|_| RustWasmStatus::CoreError)
+        });
+        #[cfg(not(feature = "lite"))]
+        register_format(registry, "javascript", |source| {
+            JavascriptObjectDecoder
+                .decode_str(source)
+                .map_err(|_| RustWasmStatus::CoreError)
+        });
+        #[cfg(not(feature = "lite"))]
+        register_format(registry, "csv", |source| {
+            CsvObjectDecoder::default()
+                .decode_str(source)
+                .or_else(|_| CsvDecoder.decode_str(source))
+                .map_err(|_| RustWasmStatus::CoreError)
+        });
     });
 }
 
@@ -99,13 +100,13 @@ pub(crate) fn decode_document(
     let protocol = WasmProtocol::from_name(language).ok_or(RustWasmStatus::UnsupportedLanguage)?;
     let canonical = protocol.canonical_name();
 
-    let decode = {
-        let registry = lock_format_registry();
-        let entry = registry
+    let decode = FORMAT_REGISTRY.with(|registry| {
+        let registry = registry.borrow();
+        registry
             .get(canonical)
-            .ok_or(RustWasmStatus::UnsupportedLanguage)?;
-        entry.decode
-    };
+            .map(|entry| entry.decode)
+            .ok_or(RustWasmStatus::UnsupportedLanguage)
+    })?;
     decode(source)
 }
 

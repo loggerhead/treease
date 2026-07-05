@@ -1,9 +1,9 @@
 #[cfg(target_arch = "wasm32")]
 use std::{
     alloc::{Layout, alloc, dealloc},
+    cell::Cell,
     ffi::c_void,
     ptr,
-    sync::Once,
 };
 
 #[cfg(target_arch = "wasm32")]
@@ -15,14 +15,22 @@ const HEADER_LEN: usize = ((HEADER_SIZE + ALIGN - 1) / ALIGN) * ALIGN;
 
 #[cfg(target_arch = "wasm32")]
 pub(crate) fn install_tree_sitter_allocator() {
-    static INSTALL: Once = Once::new();
-    INSTALL.call_once(|| unsafe {
-        tree_sitter::set_allocator(
-            Some(ts_malloc),
-            Some(ts_calloc),
-            Some(ts_realloc),
-            Some(ts_free),
-        );
+    thread_local! {
+        static INSTALL: Cell<bool> = const { Cell::new(false) };
+    }
+    INSTALL.with(|installed| {
+        if installed.get() {
+            return;
+        }
+        unsafe {
+            tree_sitter::set_allocator(
+                Some(ts_malloc),
+                Some(ts_calloc),
+                Some(ts_realloc),
+                Some(ts_free),
+            );
+        }
+        installed.set(true);
     });
 }
 

@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::rc::Rc;
 
 use crate::core::{NodeId, ParsedKey, TreeStore};
 use crate::wasm_types::{PathSeg, PathSegTag};
@@ -41,11 +42,9 @@ impl<'a> PathLookup<'a> {
         Self::Index(index)
     }
 }
-use std::sync::Arc;
-
 #[derive(Debug, Clone)]
 pub struct TreePathIndex {
-    layer: Arc<TreePathIndexLayer>,
+    layer: Rc<TreePathIndexLayer>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -83,7 +82,7 @@ pub struct TreePathIndexStructuralUpdate<'a> {
 impl Default for TreePathIndex {
     fn default() -> Self {
         Self {
-            layer: Arc::new(TreePathIndexLayer::Owned(TreePathIndexOwned::default())),
+            layer: Rc::new(TreePathIndexLayer::Owned(TreePathIndexOwned::default())),
         }
     }
 }
@@ -106,7 +105,7 @@ impl TreePathIndex {
         let mut current = Vec::new();
         populate_tree_path_index_owned(store, root, &mut current, &mut owned);
         Self {
-            layer: Arc::new(TreePathIndexLayer::Owned(owned)),
+            layer: Rc::new(TreePathIndexLayer::Owned(owned)),
         }
     }
 
@@ -210,7 +209,7 @@ impl TreePathIndex {
         }
         populate_tree_path_index_patch(store, update.changed_root, &mut changed_prefix, &mut patch);
         Self {
-            layer: Arc::new(TreePathIndexLayer::Overlay(TreePathIndexOverlay {
+            layer: Rc::new(TreePathIndexLayer::Overlay(TreePathIndexOverlay {
                 base: self.clone(),
                 patch,
             })),

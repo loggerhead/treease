@@ -41,7 +41,6 @@ import {
 
 const ctx = self as unknown as WorkerContext;
 
-
 let initialized = false;
 let initError: string | null = null;
 let initInProgress: Promise<void> | null = null;
@@ -55,15 +54,6 @@ const {
 } = workerRuntimeState;
 
 let messageQueue: Promise<void> = Promise.resolve();
-
-ctx.addEventListener?.('error', (_event: ErrorEvent) => {
-});
-
-ctx.addEventListener?.('unhandledrejection', (_event: PromiseRejectionEvent) => {
-});
-
-ctx.addEventListener?.('messageerror', (_event: MessageEvent) => {
-});
 
 function ensureReady(message: WorkerRequest): boolean {
   if (initError) {

@@ -24,7 +24,7 @@ pub(crate) struct GraphValueEditContext<'a> {
     pub path_index: Option<&'a crate::core::TreePathIndex>,
 }
 
-pub(crate) trait GraphValueEditPlanner: Sync {
+pub(crate) trait GraphValueEditPlanner {
     fn plan(&self, ctx: GraphValueEditContext<'_>) -> GraphValueEditPlan;
 }
 

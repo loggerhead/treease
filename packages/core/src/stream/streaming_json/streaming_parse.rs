@@ -196,11 +196,6 @@ enum Recovery {
 // StreamingParser – incremental, feed-driven JSON parser
 // ---------------------------------------------------------------------------
 
-// SAFETY: CallbackSink holds a raw pointer to a sink and a function pointer.
-// The pointer is only used within the lifetime of the borrow that created it,
-// and is never sent across threads independently.
-unsafe impl Send for CallbackSink {}
-
 #[derive(Debug, Clone, Copy)]
 struct CallbackSink {
     ctx: *mut (),

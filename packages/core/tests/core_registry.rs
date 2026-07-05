@@ -16,7 +16,7 @@ fn registry_handle_roundtrip_and_format_lookup_work() {
 
     let handle = to_handle(registry);
     let shared = treease_core::core::registry::from_handle(&handle);
-    let guard = shared.read().unwrap();
+    let guard = shared.borrow();
     let prefs = RegistryFormatPreferences::default();
 
     assert_eq!(guard.get_encoder("yaml", &prefs), Some("encode_yaml"));
@@ -41,14 +41,14 @@ fn registry_owner_supports_owned_and_borrowed_handles() {
     assert!(!borrowed.owns);
 
     let shared = treease_core::core::registry::from_handle(&borrowed.ptr());
-    assert!(shared.read().is_ok());
+    assert!(shared.try_borrow().is_ok());
 }
 
 #[test]
 fn operator_registry_registers_builtin_and_custom_handlers() {
     let owner = RegistryOwner::init_owned();
     let shared = treease_core::core::registry::from_handle(&owner.ptr());
-    let mut guard = shared.write().unwrap();
+    let mut guard = shared.borrow_mut();
 
     let length = OperationType::new(OperationId::Length, 0, 0);
     guard
@@ -73,7 +73,7 @@ fn operator_registry_registers_builtin_and_custom_handlers() {
 fn operator_registry_returns_null_for_empty_custom_name() {
     let owner = RegistryOwner::init_owned();
     let shared = treease_core::core::registry::from_handle(&owner.ptr());
-    let guard = shared.read().unwrap();
+    let guard = shared.borrow();
 
     let custom = OperationType::custom("", 0, 0);
     assert!(guard.operators.get_handler(&custom).is_none());
@@ -83,7 +83,7 @@ fn operator_registry_returns_null_for_empty_custom_name() {
 fn operator_registry_allows_handler_override() {
     let owner = RegistryOwner::init_owned();
     let shared = treease_core::core::registry::from_handle(&owner.ptr());
-    let mut guard = shared.write().unwrap();
+    let mut guard = shared.borrow_mut();
 
     let length = OperationType::new(OperationId::Length, 0, 0);
     guard

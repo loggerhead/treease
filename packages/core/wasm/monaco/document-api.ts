@@ -138,8 +138,6 @@ export async function advanceDocumentJob(input: AdvanceDocumentJobInput): Promis
   );
 }
 
-
-
 export async function querySnapshot(input: QuerySnapshotInput): Promise<SnapshotReadResult<QueryResult>> {
   return callWasm((mod) =>
     mod.query_snapshot({
@@ -192,5 +190,4 @@ export async function planGraphValueEdit(
       reason: result.data.reason ?? null,
     },
   };
-
 }

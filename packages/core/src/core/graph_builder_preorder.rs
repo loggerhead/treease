@@ -86,12 +86,6 @@ pub struct Builder {
     pub release_view_data_on_cleanup: bool,
 }
 
-// SAFETY: Builder contains `*const TreeNode` raw pointers used only within
-// `&mut self` methods for temporary tree traversal. They are never sent across
-// threads or shared. The `Fn(u64)` callback issue comes from the `view`
-// field's internal state which is also only accessed via `&mut self`.
-unsafe impl Send for Builder {}
-
 impl EventSink for Builder {
     type Error = CoreError;
 

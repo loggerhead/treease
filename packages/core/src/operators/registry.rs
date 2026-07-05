@@ -1,6 +1,6 @@
 use std::{
+    cell::{OnceCell, RefCell},
     collections::HashMap,
-    sync::{OnceLock, RwLock},
 };
 
 use crate::{
@@ -23,9 +23,14 @@ impl Registry {
 
     /// Returns the global singleton Registry, initializing it on first access.
     /// rather than separate global tables for operators and formats.
-    pub fn global() -> &'static RwLock<Registry> {
-        static REGISTRY: OnceLock<RwLock<Registry>> = OnceLock::new();
-        REGISTRY.get_or_init(|| RwLock::new(Registry::new()))
+    pub fn with_global<R>(f: impl FnOnce(&Registry) -> R) -> R {
+        thread_local! {
+            static REGISTRY: OnceCell<RefCell<Registry>> = const { OnceCell::new() };
+        }
+        REGISTRY.with(|registry| {
+            let registry = registry.get_or_init(|| RefCell::new(Registry::new()));
+            f(&registry.borrow())
+        })
     }
 
     /// Initialize both operator and format registries from the built-in tables.
@@ -49,16 +54,15 @@ impl Default for Registry {
 
 // ── Internal format registry (global singleton) ──────────────────
 
-fn formats_registry() -> &'static RwLock<HashMap<String, FormatEntry>> {
-    static FORMATS: OnceLock<RwLock<HashMap<String, FormatEntry>>> = OnceLock::new();
-    FORMATS.get_or_init(|| RwLock::new(HashMap::new()))
+fn with_formats_registry<R>(f: impl FnOnce(&RefCell<HashMap<String, FormatEntry>>) -> R) -> R {
+    thread_local! {
+        static FORMATS: OnceCell<RefCell<HashMap<String, FormatEntry>>> = const { OnceCell::new() };
+    }
+    FORMATS.with(|formats| f(formats.get_or_init(|| RefCell::new(HashMap::new()))))
 }
 
 fn ensure_default_formats_registered() {
-    let is_empty = formats_registry()
-        .read()
-        .map(|formats| formats.is_empty())
-        .unwrap_or(false);
+    let is_empty = with_formats_registry(|formats| formats.borrow().is_empty());
     if !is_empty {
         return;
     }
@@ -66,13 +70,14 @@ fn ensure_default_formats_registered() {
     let mut defaults = Vec::new();
     append_formats(&mut defaults, &FormatFlags::default());
 
-    if let Ok(mut formats) = formats_registry().write() {
+    with_formats_registry(|formats| {
+        let mut formats = formats.borrow_mut();
         if formats.is_empty() {
             for entry in defaults {
                 formats.insert(entry.name.to_string(), entry);
             }
         }
-    }
+    });
 }
 
 /// Initialize the operator and format registries.
@@ -114,9 +119,9 @@ pub fn register_op_list(reg: &mut OperatorRegistry, ops: &[OpEntry]) -> Result<(
 
 /// Register a format into the registry.
 pub fn register_format(_reg: &mut OperatorRegistry, entry: &FormatEntry) {
-    if let Ok(mut formats) = formats_registry().write() {
-        formats.insert(entry.name.to_string(), *entry);
-    }
+    with_formats_registry(|formats| {
+        formats.borrow_mut().insert(entry.name.to_string(), *entry);
+    });
 }
 
 /// Register a list of formats into the registry.
@@ -130,7 +135,8 @@ pub fn get_registered_format(name: &str) -> Option<FormatEntry> {
     ensure_default_formats_registered();
 
     let canonical = canonical_format_name(name).ok().unwrap_or(name);
-    formats_registry().read().ok().and_then(|formats| {
+    with_formats_registry(|formats| {
+        let formats = formats.borrow();
         formats
             .get(canonical)
             .copied()
