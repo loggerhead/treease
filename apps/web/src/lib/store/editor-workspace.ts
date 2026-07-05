@@ -215,6 +215,46 @@ export function createEditorWorkspaceState(primaryTab: EditorWorkspaceTab): Edit
   };
 }
 
+export function reinitializeWorkspaceFromPrimaryTab(
+  workspace: EditorWorkspaceState,
+  primaryTab: EditorWorkspaceTab,
+): EditorWorkspaceState {
+  const nextWorkspace = createEditorWorkspaceState(primaryTab);
+  const keptTabs = Object.values(workspace.tabsById)
+    .filter((tab): tab is EditorWorkspaceTab => tab.role === 'sidecar')
+    .map((tab) => cloneTab(tab));
+
+  if (keptTabs.length === 0) {
+    return nextWorkspace;
+  }
+
+  const tabsById = { ...nextWorkspace.tabsById };
+  for (const sidecarTab of keptTabs) {
+    tabsById[sidecarTab.id] = sidecarTab;
+  }
+
+  const retainedDocumentKeys = new Set([
+    nextWorkspace.tabsById[nextWorkspace.primaryTabId]?.documentKey,
+    ...keptTabs.map((tab) => tab.documentKey),
+  ]);
+  const snapshotBindingsByDocumentKey = Object.fromEntries(
+    Object.entries(workspace.snapshotBindingsByDocumentKey).filter(([documentKey]) => retainedDocumentKeys.has(documentKey)),
+  );
+
+  return {
+    ...nextWorkspace,
+    tabsById,
+    paneTabIds: {
+      ...nextWorkspace.paneTabIds,
+      right:
+        workspace.paneTabIds.right && tabsById[workspace.paneTabIds.right]?.role === 'sidecar'
+          ? workspace.paneTabIds.right
+          : null,
+    },
+    snapshotBindingsByDocumentKey,
+  };
+}
+
 export function syncWorkspaceEditorTab(
   workspace: EditorWorkspaceState,
   input: WorkspaceEditorTabInput,

@@ -412,6 +412,22 @@ export async function dropFile(
 
 export async function waitForEditorReady(page: Page, timeout = DEFAULT_UI_TIMEOUT) {
   await waitForMonacoHook(page, 'source-editor', timeout);
+  await expect
+    .poll(
+      async () => {
+        const workspace = await readEditorWorkspace(page);
+        const activeTab = workspace.tabsById[workspace.activeTabId];
+        const binding = activeTab
+          ? workspace.snapshotBindingsByDocumentKey[activeTab.documentKey]
+          : null;
+        return {
+          hasActiveSnapshot: activeTab?.snapshotId != null,
+          hasBoundSnapshot: binding?.snapshotId != null,
+        };
+      },
+      { timeout },
+    )
+    .toEqual({ hasActiveSnapshot: true, hasBoundSnapshot: true });
   await expect(
     page
       .getByRole('button', { name: 'Graph mode', exact: true })
@@ -1155,7 +1171,10 @@ async function commitGraphValueLikeViaProbes(
       .toBe(true)
       .then(() => true)
       .catch(() => false);
-    if (committed) return true;
+    if (committed) {
+      await waitForGraphRendered(page);
+      return true;
+    }
     await setEditorContent(page, { sourceText: options.sourceText });
     await clearGraphEditEvents(page);
     await options.restoreAfterReset?.();
@@ -1231,7 +1250,10 @@ async function commitGraphValueLikeViaProbes(
       committed = false;
     }
 
-    if (committed) return true;
+    if (committed) {
+      await waitForGraphRendered(page);
+      return true;
+    }
   }
 
   return false;

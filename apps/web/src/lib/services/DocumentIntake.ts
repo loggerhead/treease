@@ -3,7 +3,7 @@ import type { DocumentAnalysisResult } from '../../shared/worker-protocol/protoc
 import { runTextDocumentJobForGraph } from '../graph-stream/document-job-runner';
 import type { DocumentJobResultStatus } from '../../shared/document-job-result';
 
-export type IntakeResultStatus = 'completed' | 'failed';
+export type IntakeResultStatus = 'completed' | 'diagnosticsOnly' | 'failed';
 
 export type IntakeResult = {
   status: IntakeResultStatus;
@@ -43,6 +43,23 @@ function createFailedIntakeResult(params: {
     analysis: params.analysis ?? null,
     sourceText: params.sourceText ?? null,
     error: params.error,
+  };
+}
+
+function createDiagnosticsOnlyIntakeResult(params: {
+  documentKey: string;
+  revision: number;
+  analysis?: DocumentAnalysisResult | null;
+  sourceText?: string | null;
+}): IntakeResult {
+  return {
+    status: 'diagnosticsOnly',
+    resultStatus: 'parseFailed',
+    documentKey: params.documentKey,
+    revision: params.revision,
+    snapshotId: null,
+    analysis: params.analysis ?? null,
+    sourceText: params.sourceText ?? null,
   };
 }
 
@@ -96,6 +113,15 @@ export async function runIntakeJob(params: RunIntakeJobParams): Promise<IntakeRe
     });
   }
 
+  if (result.status === 'parseFailed') {
+    return createDiagnosticsOnlyIntakeResult({
+      documentKey,
+      revision,
+      analysis: result.analysis,
+      sourceText: result.sourceText,
+    });
+  }
+
   if (result.status !== 'snapshotReady') {
     return createFailedIntakeResult({
       documentKey,
@@ -103,7 +129,7 @@ export async function runIntakeJob(params: RunIntakeJobParams): Promise<IntakeRe
       resultStatus: result.status,
       analysis: result.analysis,
       sourceText: result.sourceText,
-      error: result.status === 'parseFailed' ? 'parse failed' : 'no snapshot produced',
+      error: 'no snapshot produced',
     });
   }
 

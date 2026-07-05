@@ -3,6 +3,7 @@
 
   export let onDrop: (event: DragEvent) => void = () => {};
   export let onDragOver: (event: DragEvent) => void = () => {};
+  export let onPointerDownCapture: (event: PointerEvent) => void = () => {};
   export let loading = false;
   export let loadingPhase = 'Loading editor runtime...';
 
@@ -18,6 +19,7 @@
   data-testid="source-editor-region"
   role="region"
   aria-label="Source editor"
+  on:pointerdown|capture={onPointerDownCapture}
   on:drop={onDrop}
   on:dragover={onDragOver}
 >

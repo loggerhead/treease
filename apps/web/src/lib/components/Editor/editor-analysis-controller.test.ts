@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createEditorAnalysisController } from './editor-analysis-controller';
 import type { JsonBlockSelection } from '../../store/editor-store';
+import { getWorkspaceSnapshotId } from '../../store/workspace-snapshot-bindings';
 
 type ControllerOptions = Parameters<typeof createEditorAnalysisController>[0];
 type CursorPathRequestMarker = NonNullable<ControllerOptions['markCursorPathRequested']>;
@@ -12,6 +13,8 @@ const mocked = vi.hoisted(() => ({
   resolveEditorPositionTargetResult: vi.fn(async () => ({ status: 'ready', data: null })),
   callSharedWasmWorker: vi.fn(),
   readStoredDiagnosticsResult: vi.fn(),
+  runTextDocumentJobForGraph: vi.fn(),
+  buildDocumentJobSettings: vi.fn((input: unknown) => input),
 }));
 
 vi.mock('../../services/DocumentAnalysisResolver', () => ({
@@ -33,6 +36,10 @@ vi.mock('./editor-position-target', () => ({
 
 vi.mock('../../services/EditorDiagnostics', () => ({
   readStoredDiagnosticsResult: mocked.readStoredDiagnosticsResult,
+}));
+vi.mock('../../graph-stream/document-job-runner', () => ({
+  runTextDocumentJobForGraph: mocked.runTextDocumentJobForGraph,
+  buildDocumentJobSettings: mocked.buildDocumentJobSettings,
 }));
 vi.mock('../../store/workspace-snapshot-bindings', () => ({
   getWorkspaceSnapshotId: vi.fn(() => 7),
@@ -139,6 +146,16 @@ describe('editor analysis controller json block selection', () => {
       endLineNumber: 1,
       endColumn: 1,
     });
+    mocked.runTextDocumentJobForGraph.mockResolvedValue({
+      status: 'snapshotReady',
+      snapshotId: 9,
+      analysis: {
+        semanticTokens: new Uint32Array([0, 0, 6, 2, 0]).buffer,
+      },
+      sourceText: null,
+      batch: { requestSeq: 1, events: [], terminal: null },
+      jobHandle: 1,
+    });
   });
 
   it('clears JSON block selection for valid whole-document JSON', async () => {
@@ -228,8 +245,38 @@ describe('editor analysis controller json block selection', () => {
       endLineNumber: 2,
       endColumn: 8,
     });
-    expect(primeSemanticTokensForDocument).not.toHaveBeenCalled();
-    expect(refreshSemanticTokensForLanguage).not.toHaveBeenCalledWith('json');
+    expect(primeSemanticTokensForDocument).toHaveBeenCalledWith('doc-json', expect.any(ArrayBuffer));
+    expect(refreshSemanticTokensForLanguage).toHaveBeenCalledWith('json');
+  });
+
+  it('sets JSON block selection without graph sync when no snapshot is available', async () => {
+    vi.mocked(getWorkspaceSnapshotId).mockReturnValueOnce(null).mockReturnValueOnce(null);
+    const { controller, getSelection, primeSemanticTokensForDocument, refreshSemanticTokensForLanguage } = createController();
+    mocked.resolveTreePathResult.mockResolvedValueOnce({ status: 'snapshotNotReady', data: [] });
+    mocked.callSharedWasmWorker.mockResolvedValueOnce({
+      found: true,
+      text: '{"a":1}',
+      startByte: 7,
+      endByte: 14,
+      startLineNumber: 2,
+      startColumn: 1,
+      endLineNumber: 2,
+      endColumn: 8,
+    });
+
+    await controller.updateTreePath({ lineNumber: 2, column: 3 }, { syncGraphHighlight: false });
+
+    expect(getSelection()?.blockDocumentKey).toBe('doc-json:json-block:3:7:14');
+    expect(primeSemanticTokensForDocument).toHaveBeenCalledWith('doc-json', expect.any(ArrayBuffer));
+    expect(refreshSemanticTokensForLanguage).toHaveBeenCalledWith('json');
+    expect(mocked.resolveTreePathResult).toHaveBeenCalledWith(
+      expect.anything(),
+      { lineNumber: 2, column: 3 },
+      'doc-json',
+      'json',
+      false,
+      null,
+    );
   });
 
   it('clears JSON block selection when the cursor moves outside blocks', async () => {

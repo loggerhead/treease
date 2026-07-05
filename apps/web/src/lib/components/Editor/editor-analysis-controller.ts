@@ -12,6 +12,8 @@ import type { DocumentAnalysisResult, JsonBlockAtPositionResult } from '../../..
 import { getWorkspaceSnapshotId } from '../../store/workspace-snapshot-bindings';
 import type { JsonBlockSelection } from '../../store/editor-store';
 import { applyDocumentAnalysisToEditor, type EditorAnalysisLike } from './editor-analysis-apply';
+import { offsetSemanticTokens } from '../../monaco/semantic-token-offset';
+import { buildDocumentJobSettings, runTextDocumentJobForGraph } from '../../graph-stream/document-job-runner';
 
 type EditorFreshnessScope = ReturnType<typeof createFreshnessScope>;
 type CachedAuthoritativeAnalysis = {
@@ -19,6 +21,15 @@ type CachedAuthoritativeAnalysis = {
   language: SupportedEditorLanguageId;
   revision: number;
   analysis: EditorAnalysisLike;
+};
+
+const jsonBlockTokenFormatting = {
+  indent: 2,
+  smart: true,
+  maxLineLength: 100,
+  maxInlineComplexity: 1,
+  maxArrayInlineItems: 6,
+  alignObjectArrays: true,
 };
 
 type CursorPathRequestPayload = {
@@ -203,6 +214,28 @@ export function createEditorAnalysisController(options: CreateEditorAnalysisCont
       endColumn: block.endColumn,
     };
     options.setJsonBlockSelection(selection);
+    const blockAnalysis = await freshness.step(() =>
+      runTextDocumentJobForGraph({
+        documentKey: selection.blockDocumentKey,
+        language: selection.language,
+        text: selection.text,
+        settings: buildDocumentJobSettings({
+          enableNest: options.getNestEnabled(),
+          formatting: jsonBlockTokenFormatting,
+          formatSourceOnClose: false,
+        }),
+        outputAnalysis: true,
+        outputGraph: false,
+      }),
+    );
+    if (!blockAnalysis || !freshness.isCurrent()) return;
+    if (blockAnalysis.analysis?.semanticTokens instanceof ArrayBuffer) {
+      options.primeSemanticTokensForDocument(
+        requestDocumentKey,
+        offsetSemanticTokens(blockAnalysis.analysis.semanticTokens, selection.startLineNumber, selection.startColumn),
+      );
+    }
+    options.refreshSemanticTokensForLanguage('json');
   }
 
   function prepareLanguageSwitchAnalysisReset(): void {
@@ -261,6 +294,19 @@ export function createEditorAnalysisController(options: CreateEditorAnalysisCont
         token: treePathToken,
       }),
     );
+    const requestSnapshotId = getWorkspaceSnapshotId(requestDocumentKey);
+    const shouldUpdateJsonBlockSelection =
+      requestLanguage === 'json' && (syncGraphHighlight || requestSnapshotId == null);
+    if (shouldUpdateJsonBlockSelection) {
+      await updateJsonBlockSelection(
+        requestModel,
+        position,
+        requestDocumentKey,
+        requestLanguage,
+        freshness,
+      );
+      if (!freshness.isCurrent()) return;
+    }
     const treePathResult = await freshness.step(() =>
       resolveTreePathResult(
         requestModel,
@@ -268,7 +314,7 @@ export function createEditorAnalysisController(options: CreateEditorAnalysisCont
         requestDocumentKey,
         requestLanguage,
         options.getNestEnabled(),
-        getWorkspaceSnapshotId(requestDocumentKey),
+        requestSnapshotId,
       ),
     );
     if (!treePathResult || treePathResult.status !== 'ready') return;
@@ -297,7 +343,7 @@ export function createEditorAnalysisController(options: CreateEditorAnalysisCont
       }),
     }));
     options.markCursorPathSettled?.(cursorPathPayload);
-    if (syncGraphHighlight) {
+    if (syncGraphHighlight && !shouldUpdateJsonBlockSelection) {
       await updateJsonBlockSelection(
         requestModel,
         position,

@@ -3,12 +3,32 @@ import {
   chooseFile,
   dropFile,
   evaluateTreease,
+  getMonacoRenderedTokenColor,
   getMonacoValue,
   readEditorState,
   setEditorContent,
   setMonacoValue,
   waitForEditorReady,
 } from './utils';
+
+test('renders the initial JSON example with syntax highlighting through the real full-edit chain', async ({ page }) => {
+  await page.goto('/editor');
+  await waitForEditorReady(page);
+
+  await expect.poll(async () => (await readEditorState(page)).languageId, { timeout: 5_000 }).toBe('json');
+  await expect
+    .poll(
+      async () => ({
+        keyColor: await getMonacoRenderedTokenColor(page, 'source-editor', '"object"', 2),
+        numberColor: await getMonacoRenderedTokenColor(page, 'source-editor', '42', 3),
+      }),
+      { timeout: 5_000 },
+    )
+    .toEqual({
+      keyColor: expect.not.stringMatching(/^rgb\(15,\s*23,\s*42\)$/),
+      numberColor: expect.not.stringMatching(/^rgb\(15,\s*23,\s*42\)$/),
+    });
+});
 
 test('imports and exports through TopBar using the real EditorCore chain', async ({ page }) => {
   await page.goto('/editor');

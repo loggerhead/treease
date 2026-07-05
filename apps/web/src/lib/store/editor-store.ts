@@ -11,6 +11,7 @@ import {
   createEditorWorkspaceState,
   ensureSidecarTab,
   ensureDetachedSidecarTab,
+  reinitializeWorkspaceFromPrimaryTab,
   removeDetachedSidecarTab,
   summarizeWorkspaceTabs,
   syncWorkspaceEditorTab,
@@ -791,7 +792,7 @@ function createEditorStore() {
       initWorkspaceFromPrimaryTab: (payload: { id: string; name: string }) =>
         updateState((s) => ({
           ...s,
-          workspace: createEditorWorkspaceState(createWorkspacePrimaryTab(s, payload)),
+          workspace: reinitializeWorkspaceFromPrimaryTab(s.workspace, createWorkspacePrimaryTab(s, payload)),
         })),
       addWorkspaceTabFromEditor: (payload: WorkspaceEditorTabInput) =>
         updateState((s) => ({

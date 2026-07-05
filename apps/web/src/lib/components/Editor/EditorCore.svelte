@@ -66,6 +66,7 @@
   import type { EditorModelWithDocumentKey, EditorTab, TabSummary } from './types';
   import { EDITOR_CONFIG } from '../../config/constants';
   import { monacoChangesToDocumentTextEdits, type MonacoTextChange } from '../../../shared/document-text-edits';
+  import { serializePath } from '../../../shared/document-anchor-utils';
 
   export let tabSummaries: TabSummary[] = [];
   export let activeTabId = '';
@@ -99,13 +100,14 @@
   let languageIdValue: SupportedEditorLanguageId = editorLanguageFallback;
   let shouldSuppressLanguageExample = false;
   let lastMutationId = 0;
-  let lastExternalTreeSelection: { path: PathSeg[]; target?: GraphHighlightTarget; source: string } | null = null;
+  let lastExternalTreeSelectionSignature = '';
   let diffDecorations: Monaco.editor.IEditorDecorationsCollection | null = null;
   let jsonBlockDecorations: Monaco.editor.IEditorDecorationsCollection | null = null;
   let rootScalarDecorations: Monaco.editor.IEditorDecorationsCollection | null = null;
   let diffBlankZoneIds: string[] = [];
   let suppressGraphHighlightSync = 0;
   let suppressTreePathUpdate = 0;
+  let unfocusedExternalRevealSelection = false;
   let rootScalarHighlightToken = 0;
   let wholeDocumentReplacementToken = 0;
   let formattingOptionsValue;
@@ -210,6 +212,25 @@
     queueMicrotask(() => {
       suppressTreePathUpdate = Math.max(0, suppressTreePathUpdate - 1);
     });
+  }
+
+  function isRangeSelection(range: { start: Monaco.IPosition; end: Monaco.IPosition }): boolean {
+    return range.start.lineNumber !== range.end.lineNumber || range.start.column !== range.end.column;
+  }
+
+  function handleEditorPointerDownCapture(): void {
+    if (!unfocusedExternalRevealSelection || !editor) return;
+    if (editor.hasTextFocus()) return;
+    editor.focus();
+  }
+
+  function buildExternalTreeSelectionSignature(graphHighlight: {
+    path: PathSeg[];
+    target?: GraphHighlightTarget;
+    revision: number;
+    source: string;
+  }): string {
+    return `${graphHighlight.source}|${graphHighlight.target ?? 'auto'}|${graphHighlight.revision}|${serializePath(graphHighlight.path)}`;
   }
 
   const getNestEnabled = () => $settings.parser.enableNest;
@@ -395,15 +416,18 @@
     const graphRevealSyncBlocked =
       !enableRevealSync && (graphHighlight?.source === 'graph' || graphHighlight?.source === 'search');
     if (!graphHighlight?.path?.length || graphHighlight.source === 'editor' || graphRevealSyncBlocked) {
-      lastExternalTreeSelection = null;
-    } else if (graphHighlight !== lastExternalTreeSelection && editor && model) {
-      lastExternalTreeSelection = graphHighlight;
-      void revealPath(graphHighlight.path, {
-        target: graphHighlight.target,
-        focus: false,
-      }).catch(() => {
-        // revealPath already reports the failure via toast + temp model state.
-      });
+      lastExternalTreeSelectionSignature = '';
+    } else if (editor && model) {
+      const signature = buildExternalTreeSelectionSignature(graphHighlight);
+      if (signature !== lastExternalTreeSelectionSignature) {
+        lastExternalTreeSelectionSignature = signature;
+        void revealPath(graphHighlight.path, {
+          target: graphHighlight.target,
+          focus: false,
+        }).catch(() => {
+          // revealPath already reports the failure via toast + temp model state.
+        });
+      }
     }
   }
 
@@ -492,6 +516,7 @@
       colorDecorators: true,
       colorDecoratorsActivatedOn: 'clickAndHover',
       'semanticHighlighting.enabled': true,
+      readOnly: true,
     });
     cleanupSourceEditorTestHook = attachMonacoTestHook(
       {
@@ -526,8 +551,8 @@
     ensureLanguageRegistered(languageIdValue);
     monaco.editor.setModelLanguage(model, languageIdValue);
     editorStore.actions.initWorkspaceFromPrimaryTab({ id: firstTab.id, name: firstTab.name });
-    setActiveTab(firstTab, 'initial-example');
     syncColorViewportState('init');
+    return firstTab;
   }
 
   function clearColorViewportRefresh(): void {
@@ -554,6 +579,18 @@
     editor.onDidFocusEditorWidget(() => {
       if (!model) return;
       setActiveEditorIo();
+    });
+
+    editor.onMouseDown((event) => {
+      if (!unfocusedExternalRevealSelection || !editor || !model || !monaco) return;
+      unfocusedExternalRevealSelection = false;
+      const position = event.target.position;
+      if (!position) return;
+      queueMicrotask(() => {
+        if (!editor || !model || !monaco) return;
+        editor.setSelection(new monaco.Selection(position.lineNumber, position.column, position.lineNumber, position.column));
+        editor.setPosition(position);
+      });
     });
 
     editor.onDidChangeModelContent((event) => {
@@ -985,8 +1022,12 @@
     activeTabId = editorStore.get().workspace.activeTabId;
   }
 
-  function setActiveTab(tab: EditorTab, reason: 'initial-example' | 'tab-reactivate' = 'tab-reactivate') {
-    if (!editor) return;
+  async function setActiveTab(
+    tab: EditorTab,
+    reason: 'initial-example' | 'tab-reactivate' = 'tab-reactivate',
+    options: { awaitSnapshotReady?: boolean; editorReadOnly?: boolean } = {},
+  ) {
+    if (!editor) return false;
     tabManager.setActiveTabId(tab.id);
     if (!userInputByTabId.has(tab.id)) {
       userInputByTabId.set(tab.id, false);
@@ -1020,13 +1061,27 @@
     isStoreUpdateSuppressed = true;
     const nextText = tab.model.getValue();
     const requestModel = tab.model;
-    void editorFullEditController.startFullEditSession({
+    const fullEditRequest = {
       language: tab.languageId,
       text: nextText,
       reason,
+      editorReadOnly: options.editorReadOnly ?? false,
       isFresh: () => model === requestModel && requestModel.getValue() === nextText,
-    });
-    releaseStoreUpdateSuppression();
+    };
+    try {
+      if (options.awaitSnapshotReady) {
+        const outcome = await editorFullEditController.runFullEditSessionToTerminal(fullEditRequest);
+        if (outcome.status !== 'completed' || outcome.snapshotId == null) {
+          editor.updateOptions({ readOnly: true });
+          throw new Error(`Initial document did not produce SnapshotReady: ${outcome.status}`);
+        }
+      } else {
+        void editorFullEditController.startFullEditSession(fullEditRequest);
+      }
+      return true;
+    } finally {
+      releaseStoreUpdateSuppression();
+    }
   }
 
   export function addTab() {
@@ -1036,7 +1091,7 @@
     if (tab) {
       userInputByTabId.set(tab.id, false);
       editorStore.actions.addWorkspaceTabFromEditor(workspacePayloadForTab(tab));
-      setActiveTab(tab);
+      void setActiveTab(tab);
       return;
     }
     syncTabBindings();
@@ -1051,7 +1106,7 @@
     }
     if (nextTab) {
       editorStore.actions.closeWorkspaceTabFromEditor(id, workspacePayloadForTab(nextTab));
-      setActiveTab(nextTab);
+      void setActiveTab(nextTab);
       return;
     }
     editorStore.actions.closeWorkspaceTabFromEditor(id);
@@ -1061,7 +1116,7 @@
   export function activateTab(id: string) {
     if (guardImportInProgress()) return;
     const tab = tabManager.activateTab(id);
-    if (tab) setActiveTab(tab);
+    if (tab) void setActiveTab(tab);
   }
 
   export function formatActive() {
@@ -1225,6 +1280,7 @@
     }
     suppressNextGraphHighlightSync();
     suppressNextTreePathUpdate();
+    const shouldFocusEditor = options?.focus !== false;
     editor.setSelection(
       new monaco.Selection(
         selectionRange.start.lineNumber,
@@ -1234,7 +1290,12 @@
       ),
     );
     editor.revealPositionInCenter(selectionRange.start);
-    if (options?.focus !== false) editor.focus();
+    if (shouldFocusEditor) {
+      unfocusedExternalRevealSelection = false;
+      editor.focus();
+    } else {
+      unfocusedExternalRevealSelection = isRangeSelection(selectionRange);
+    }
   }
 
   export function getScrollPosition() {
@@ -1330,15 +1391,8 @@
       editorRuntimeController.applyTheme(shell.monaco);
       editorRuntimeController.scheduleWorkerWarmup();
 
-      editorRuntimePhase = 'Preparing sample document...';
-      initFirstTab();
+      const firstTab = initFirstTab();
       bindEditorEvents();
-      await awaitEditorRuntimeStartupDelay();
-
-      if (freshness.isCurrent()) {
-        editorRuntimeReady = true;
-        editorRuntimePhase = '';
-      }
 
       // ── Phase 2: Language services — async, after WASM loads ──
       const langServices = await editorRuntimeController.initLanguageServices();
@@ -1357,6 +1411,12 @@
       ensureDocumentColorProvider(languageIdValue);
       setupLanguageSubscription(ensureSemanticTokensProvider, ensureDocumentColorProvider);
 
+      editorRuntimePhase = 'Preparing sample document...';
+      await setActiveTab(firstTab, 'initial-example', {
+        awaitSnapshotReady: true,
+        editorReadOnly: true,
+      });
+
       if (editor && monaco) {
         hoverPreviewDisposable = registerEditorHoverPreview({
           monaco,
@@ -1370,6 +1430,12 @@
         });
       }
       bindStoreSubscriptions();
+      await awaitEditorRuntimeStartupDelay();
+
+      if (freshness.isCurrent()) {
+        editorRuntimeReady = true;
+        editorRuntimePhase = '';
+      }
     } catch (error) {
       if (freshness.isCurrent()) {
         editorRuntimeError = true;
@@ -1454,6 +1520,7 @@
     bind:this={dropZone}
     onDrop={handleDrop}
     onDragOver={handleDragOver}
+    onPointerDownCapture={handleEditorPointerDownCapture}
     loading={editorRuntimeOverlay.loading}
     loadingPhase={editorRuntimeOverlay.phase}
   />

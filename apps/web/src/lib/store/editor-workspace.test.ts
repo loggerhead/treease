@@ -5,6 +5,7 @@ import {
   closeWorkspaceTab,
   createEditorWorkspaceState,
   ensureSidecarTab,
+  reinitializeWorkspaceFromPrimaryTab,
   summarizeWorkspaceTabs,
   syncSidecarLanguageFromPrimary,
   syncWorkspaceEditorTab,
@@ -447,6 +448,54 @@ describe('editor-workspace', () => {
       revision: 0,
       graphAppliedRevision: 0,
       snapshotId: null,
+    });
+  });
+
+  it('reinitializes the primary workspace without dropping sidecar tabs or their bindings', () => {
+    const workspace = ensureSidecarTab(createEditorWorkspaceState(tab()), {
+      id: 'tab-sidecar',
+      name: 'Right Editor',
+      languageId: 'yaml' as any,
+      sourceText: 'a: 1\n',
+    });
+    const withBinding = {
+      ...updateWorkspaceTab(workspace, 'tab-sidecar', {
+        revision: 3,
+        snapshotId: 12,
+      }),
+      snapshotBindingsByDocumentKey: {
+        'tab-primary:0': { documentKey: 'tab-primary:0', revision: 1, snapshotId: 7 },
+        'sidecar:tab-sidecar:0': { documentKey: 'sidecar:tab-sidecar:0', revision: 3, snapshotId: 12 },
+        stale: { documentKey: 'stale', revision: 9, snapshotId: 99 },
+      },
+    };
+
+    const next = reinitializeWorkspaceFromPrimaryTab(
+      withBinding,
+      tab({
+        id: 'tab-bootstrap',
+        name: 'Untitled bootstrap',
+        documentKey: 'tab-bootstrap:0',
+        sourceText: '{"boot":true}',
+        revision: 2,
+        snapshotId: 20,
+      }),
+    );
+
+    expect(next.primaryTabId).toBe('tab-bootstrap');
+    expect(next.activeTabId).toBe('tab-bootstrap');
+    expect(next.paneTabIds.left).toBe('tab-bootstrap');
+    expect(next.paneTabIds.right).toBe('tab-sidecar');
+    expect(next.tabOrder).toEqual(['tab-bootstrap']);
+    expect(next.tabsById['tab-sidecar']).toMatchObject({
+      role: 'sidecar',
+      languageId: 'yaml',
+      sourceText: 'a: 1\n',
+      revision: 3,
+      snapshotId: 12,
+    });
+    expect(next.snapshotBindingsByDocumentKey).toEqual({
+      'sidecar:tab-sidecar:0': { documentKey: 'sidecar:tab-sidecar:0', revision: 3, snapshotId: 12 },
     });
   });
 

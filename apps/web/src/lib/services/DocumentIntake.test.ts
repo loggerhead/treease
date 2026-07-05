@@ -84,7 +84,7 @@ describe('runIntakeJob', () => {
     expect(result.snapshotId).toBeNull();
   });
 
-  it('does not expose parseFailed snapshot as a completed semantic snapshot', async () => {
+  it('returns diagnostics-only when parseFailed carries diagnostics', async () => {
     vi.mocked(runTextDocumentJobForGraph).mockResolvedValue({
       status: 'parseFailed',
       batch: { requestSeq: 0, events: [], terminal: null },
@@ -102,10 +102,11 @@ describe('runIntakeJob', () => {
       revision: 0,
     });
 
-    expect(result.status).toBe('failed');
+    expect(result.status).toBe('diagnosticsOnly');
     expect(result.resultStatus).toBe('parseFailed');
     expect(result.snapshotId).toBeNull();
     expect(result.analysis).toBe(mockAnalysis);
+    expect(result.error).toBeUndefined();
   });
 
   it('cancels early when isFresh returns false before job', async () => {

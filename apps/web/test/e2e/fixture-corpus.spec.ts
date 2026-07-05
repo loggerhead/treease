@@ -66,6 +66,14 @@ function sampleFixtures(
   return sorted.slice(0, limit);
 }
 
+function isBlankLikeContent(content: string): boolean {
+  return content.trim().length === 0;
+}
+
+function expectBlankLikeYqGraph(nodes: NodeSummary[]): void {
+  expect(nodes).toEqual([{ path: '', kind: 'scalar', depth: 0 }]);
+}
+
 function collectFixtures(): FixtureCase[] {
   const cases: FixtureCase[] = [];
 
@@ -208,6 +216,11 @@ test.describe('fixture corpus sampling', () => {
           language: LANGUAGE_MAP[kind],
         });
 
+        if (isBlankLikeContent(fixture.content)) {
+          expect(nodes).toEqual([]);
+          return;
+        }
+
         expect(nodes.length).toBeGreaterThan(0);
       });
     }
@@ -227,6 +240,13 @@ test.describe('fixture corpus sampling', () => {
           await graphModeButton.click();
           await expect(page.getByRole('button', { name: 'Text mode', exact: true })).toBeVisible({ timeout: 5_000 });
         }
+
+        if (isBlankLikeContent(fixture.content)) {
+          await expect(page.getByTestId('graph-diagnostic-syntax-error')).toHaveCount(0);
+          expect(await readGraphNodes(page)).toEqual([]);
+          return;
+        }
+
         await expect(page.getByTestId('graph-diagnostic-syntax-error').first()).toBeVisible({ timeout: 5_000 });
       });
     }
@@ -242,7 +262,9 @@ test.describe('fixture corpus sampling', () => {
             sourceText: fixture.content,
             language: LANGUAGE_MAP[kind],
           });
-          expect(originalNodes.length).toBeGreaterThan(0);
+          if (!isBlankLikeContent(fixture.content)) {
+            expect(originalNodes.length).toBeGreaterThan(0);
+          }
 
           const yqResult = await runYqToJson(page, {
             language: LANGUAGE_MAP[kind],
@@ -257,6 +279,12 @@ test.describe('fixture corpus sampling', () => {
             sourceText: yqResult.result,
             language: 'json',
           });
+
+          if (isBlankLikeContent(fixture.content)) {
+            expect(originalNodes).toEqual([]);
+            expectBlankLikeYqGraph(jsonNodes);
+            return;
+          }
 
           const sliceEnd = 10;
           const sortByPath = (a: NodeSummary, b: NodeSummary) => a.path.localeCompare(b.path);

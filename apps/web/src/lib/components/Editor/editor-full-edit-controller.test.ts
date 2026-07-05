@@ -310,6 +310,136 @@ describe('editor-full-edit-controller', () => {
       expect(mockApplyGraphAnalysis).toHaveBeenCalled();
     });
   });
+
+  it('runFullEditSessionToTerminal resolves after SnapshotReady effects are applied', async () => {
+    const analysis = { documentKey: 'doc-test', language: 'json', tree: {}, value: { a: 1 } };
+    mockStartDocumentJobForGraph.mockResolvedValueOnce({
+      status: 'snapshotReady',
+      snapshotId: 10,
+      analysis,
+      sourceText: '{\n  "a": 1\n}',
+    });
+
+    const options = createOptions();
+    const controller = createEditorFullEditController(options as any);
+
+    const outcome = await controller.runFullEditSessionToTerminal({
+      language: 'json' as any,
+      text: '{"a":1}',
+      reason: 'initial-example',
+      editorReadOnly: true,
+    });
+
+    expect(outcome).toMatchObject({
+      revision: 5,
+      status: 'completed',
+      snapshotId: 10,
+    });
+    expect(getWorkspaceSnapshotId('doc-test')).toBe(10);
+    expect(mockApplyGraphAnalysis).toHaveBeenCalledWith(
+      options.getModel(),
+      'json',
+      'doc-test',
+      5,
+      analysis,
+    );
+  });
+
+  it('applies parseFailed diagnostics without binding a successful snapshot', async () => {
+    const analysis = {
+      documentKey: 'doc-test',
+      language: 'json',
+      tree: null,
+      value: null,
+      diagnostics: [{ message: 'Expected value' }],
+    };
+    const sinkEvents: Array<{ kind: string; payload: unknown }> = [];
+    const sink: FullEditSink = {
+      getState: createIdleFullEditUiState,
+      begin: (payload) => sinkEvents.push({ kind: 'begin', payload }),
+      appendChunkMeta: (payload) => sinkEvents.push({ kind: 'appendChunkMeta', payload }),
+      markFinalizing: (payload) => sinkEvents.push({ kind: 'markFinalizing', payload }),
+      finish: (payload) => sinkEvents.push({ kind: 'finish', payload }),
+      cancel: (payload) => sinkEvents.push({ kind: 'cancel', payload }),
+      bindSnapshot: (payload) => sinkEvents.push({ kind: 'bindSnapshot', payload }),
+    };
+    mockStartDocumentJobForGraph.mockResolvedValueOnce({
+      status: 'parseFailed',
+      snapshotId: 10,
+      analysis,
+      sourceText: '{"a":',
+      batch: { requestSeq: 1, events: [], terminal: null },
+      jobHandle: 1,
+    });
+
+    const options = createOptions({ fullEditSink: sink });
+    const controller = createEditorFullEditController(options as any);
+
+    await controller.startFullEditSession({
+      language: 'json' as any,
+      text: '{"a":',
+      reason: 'whole-document-replacement',
+    });
+
+    await vi.waitFor(() => {
+      expect(mockApplyGraphAnalysis).toHaveBeenCalledWith(
+        options.getModel(),
+        'json',
+        'doc-test',
+        5,
+        analysis,
+      );
+    });
+    expect(sinkEvents.some((event) => event.kind === 'bindSnapshot')).toBe(false);
+    expect(options.updateActiveTempModel).not.toHaveBeenCalled();
+  });
+
+  it('applies streamed parseFailed diagnostics without generic import failure', async () => {
+    const analysis = {
+      documentKey: 'doc-test',
+      language: 'json',
+      tree: null,
+      value: null,
+      diagnostics: [{ message: 'Expected property name' }],
+    };
+    mockStartReadableDocumentJobSessionForGraph.mockImplementationOnce((input: any) => ({
+      sessionId: input.sessionId,
+      documentKey: input.documentKey,
+      language: input.language,
+      revision: input.revision,
+      totalBytes: input.totalBytes ?? 0,
+      chunkSize: input.chunkSize,
+      streamRunId: input.sessionId,
+      jobHandle: 2,
+      result: Promise.resolve({
+        status: 'parseFailed',
+        snapshotId: 10,
+        analysis,
+        sourceText: '{"a":',
+        batch: { requestSeq: 1, events: [], terminal: null },
+        jobHandle: 2,
+      }),
+      batches: async function* () {},
+      cancel: vi.fn(async () => {}),
+    }));
+    const options = createOptions();
+    const controller = createEditorFullEditController(options as any);
+    const file = createReadableFile(['{"a":']);
+
+    await controller.importStream(file as any, 'json' as any, 'drop-file');
+
+    await vi.waitFor(() => {
+      expect(mockApplyGraphAnalysis).toHaveBeenCalledWith(
+        options.getModel(),
+        'json',
+        'doc-test',
+        5,
+        analysis,
+      );
+    });
+    expect(options.updateActiveTempModel).not.toHaveBeenCalled();
+  });
+
   it('applies authoritative source text after whole-document replacement intake by default', async () => {
     mockStartDocumentJobForGraph.mockResolvedValueOnce({
       status: 'snapshotReady',

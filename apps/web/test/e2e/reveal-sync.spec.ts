@@ -521,6 +521,36 @@ test('graph search selection reveals the target graph node and editor path state
     );
 });
 
+test('editor first click after graph search reveal moves caret from external range selection', async ({ page }) => {
+  await page.goto('/editor');
+  await waitForEditorReady(page);
+  await waitForGraphRendered(page);
+  await expect.poll(async () => (await readEditorState(page)).sourceText, { timeout: 5_000 }).toContain('"unicode": "你好"');
+  await expect.poll(async () => (await readEditorState(page)).sourceText, { timeout: 5_000 }).toContain('"color": "#4f46e5"');
+
+  await page.getByRole('button', { name: 'Search graph', exact: true }).click();
+  const input = page.getByRole('textbox', { name: 'Search graph', exact: true });
+  await expect(input).toBeVisible();
+  await input.fill('你好');
+
+  const result = page.getByRole('button', { name: 'Graph search result $.preview.unicode', exact: true }).first();
+  await expect(result).toBeVisible({ timeout: 5_000 });
+  await result.click();
+
+  await expect
+    .poll(async () => (await readEditorState(page)).tempModel.treePath, { timeout: 5_000 })
+    .toEqual(['$', 'preview', 'unicode']);
+  await expect.poll(async () => (await readEditorState(page)).tempModel.selectionLength, { timeout: 5_000 }).toBeGreaterThan(0);
+
+  await page.locator('[data-testid="monaco-source-editor"]').getByText('#4f46e5').first().click();
+
+  await expect
+    .poll(async () => (await readEditorState(page)).tempModel.treePath, { timeout: 5_000 })
+    .toEqual(['$', 'preview', 'color']);
+  await expect.poll(async () => (await readEditorState(page)).tempModel.selectionLength, { timeout: 5_000 }).toBe(0);
+  await expect.poll(async () => (await readEditorState(page)).tempModel.cursor, { timeout: 5_000 }).toMatch(/^Ln 16,/);
+});
+
 test('graph search does not expose empty collections as revealable child nodes', async ({ page }) => {
   await page.goto('/editor');
   await waitForEditorReady(page);
