@@ -19,6 +19,7 @@ read_when:
 | --- | --- |
 | docs-only | 对应主题文档（按 `pnpm docs:list` 输出选择） |
 | Web UI / store / Worker / GraphViewer | `../apps/web/AGENTS.md` → `./FRONTEND.md` |
+| Server / auth / billing / share / AI / usage | `../apps/server/AGENTS.md` → `../CONTEXT.md` |
 | Core Rust / WASM / protocol | `../packages/core/AGENTS.md` → `./CORE.md` |
 | runtime / snapshot / protocol / mainGraph | `./CORE.md` 或 `./FRONTEND.md` → `../CONTEXT.md` |
 | editor / workspace / sourceText / snapshot authority | `./editor-data-flow.md` |

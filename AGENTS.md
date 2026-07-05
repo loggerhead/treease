@@ -7,7 +7,7 @@
 - 跑完 `pnpm docs:list` 后，先按输出中的 `Read when` 读取命中的文档；默认先读 `docs/agent-entrypoints.md` 选择最短阅读路径，只有任务直接触及 Document Runtime、snapshot、protocol、mainGraph 语义时再补 `CONTEXT.md`。
 
 ## Project Overview
-- Treease 是一个多格式结构化文档工具链：`packages/core/` 负责 Rust 解析/格式化/算子/评估/建图，`apps/web/` 负责编辑器与图形界面，`apps/cli/` 负责独立 CLI crate、acceptance 测试与文档入口。
+- Treease 是一个多格式结构化文档工具链：`packages/core/` 负责 Rust 解析/格式化/算子/评估/建图，`apps/web/` 负责编辑器与图形界面，`apps/server/` 负责账号 / 计费 / 分享 / AI server 能力，`apps/cli/` 负责独立 CLI crate、acceptance 测试与文档入口。
 - 根文件只保留跨仓约束与稳定入口；细节规则下沉到模块级 `AGENTS.md` 与 `docs/` 主题文档。
 
 ## Stable Entry Points
@@ -20,6 +20,7 @@
 - `apps/web/`：UI、前端状态、Worker、浏览器运行时
 - `apps/web/src/workers/`：transport / correlation / fan-out / 统一错误出口
 - `apps/web/test/`：集成测试与 Playwright E2E
+- `apps/server/`：Fastify server、账号会话、订阅、分享、AI 与 usage 路由
 - `packages/core/`：解析、格式化、算子、评估、snapshot authority、graph build、WASM 导出
 - `packages/core/src/document/`：document runtime、job engine、snapshot、projection、protocol
 - `packages/core/tests/`：Rust 集成、operator、corpus、graph、protocol 回归测试
@@ -48,6 +49,7 @@
 - Core 常用：`cd packages/core && cargo nextest run --locked`
 - CLI 常用：`cd apps/cli && cargo nextest run --locked --lib`；`cd apps/cli && bash tests/acceptance/run.sh`
 - Web 常用：`cd apps/web && pnpm test:unit` / `pnpm test:integration` / `pnpm test:e2e`
+- Server 常用：`cd apps/server && ./node_modules/.bin/tsc -p tsconfig.json --noEmit`；`cd apps/server && node --import tsx --test src/**/*.test.ts`
 - 文档变更：在仓库根目录运行 `node scripts/check-docs.mjs`
 - 改协议或 WASM 后：`cd packages/core && cargo run --locked --bin export_document_protocol`，再在 `apps/web/` 运行 `pnpm wasm:bindgen`；必要时继续 `pnpm wasm:sync`
 
@@ -58,6 +60,5 @@
 - `docs/TESTING.md`：真实覆盖、timeout、mock 与 E2E 规则
 - `scripts/check-docs.mjs`：文档路径、命令、选择器一致性校验
 - `.github/workflows/core.yml`、`.github/workflows/web.yml`：CI 入口
-
 ## Final Reminder
 - 如果这次任务还没有执行 `pnpm docs:list`，立刻先执行它；在此之前，不要进行任何其他仓库相关操作。

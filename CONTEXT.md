@@ -149,3 +149,90 @@ Treease 的主文档链路只有在以下条件同时成立时才算成立：
 4. Worker 不再拥有 authority 二次裁决。
 5. 主图来自 streaming events 与 `SnapshotReady.mainGraph`。
 6. diagnostics-only、clear graph、subgraph projection、planner 都绑定同一份 snapshot 语义。
+
+## Server-facing terms
+
+### Treease Server
+
+面向程序化调用方的公开 API 服务，用于承载账号、计费、分享与 AI 能力。它不承载 `apps/web` 或 `packages/core` 已实现的文档计算能力，也不是 `Document Runtime` 的同义词。
+
+### API Endpoint
+
+`Treease Server` 的公开网络入口。当前约定优先使用独立子域名 `api.treease.com`，而不是挂在产品站点子路由下。
+
+### API Key
+
+程序化调用方访问 `Treease Server` 时可使用的鉴权凭证。该能力不属于第一版范围；第一版不提供 API Key。
+
+### Share Link
+
+指向某个可公开访问资源的链接，用于把内容或结果对外分享。当前语境下的“分享”特指公开链接分享，不指协作授权或团队权限分配。第一版由 server 持久化分享内容并生成短链接，而不是把完整载荷直接编码进 URL。
+
+### User
+
+`Treease Server` 第一版的顶层主体。订阅状态、Share Link 与 AI 用量都归属于 `User`，当前不引入 `Workspace` 或 `Project` 作为独立主体。
+
+### Authentication
+
+`User` 身份建立与登录校验机制。当前约定使用 `Supabase Auth` 作为认证源，并支持 `Google`、`GitHub` OAuth 与邮箱 OTP 登录。
+第一版 `Treease Server` 的受保护接口统一走 `User` 会话鉴权。
+
+### Subscription
+
+`User` 对 `Treease Server` 服务资格的计费状态。第一版订阅归属于 `User`，不归属于 `API Key`。
+
+### Credits
+
+`Treease Server` 用于度量 AI 能力消耗的产品层用量单位。它不是底层模型 token 的直接同义词，而是面向套餐、额度与展示的稳定计量单位。第一版默认在请求完成后按实际消耗结算，而不是在请求发起时预扣。
+
+### Share Link Policy
+
+`Share Link` 第一版不单独计费，但受 `Subscription` 套餐约束，例如数量上限、有效期或访问限制。默认有效期为 7 天；订阅用户可在套餐允许的上限内延长有效期。
+
+### Shareable Resource
+
+`Share Link` 指向的公开资源。当前已确认第一版包含 `Editor Text Snapshot` 与 `Command Run` 两类资源，不包含 AI 结果。
+
+### Editor URL Command
+
+`/editor` URL preset 中的内建动作参数，用于请求编辑器在打开后执行一个预定义动作。当前代码中的已知取值包括 `format`、`minify`、`sort`、`escape`、`unescape` 与 `compare`。
+
+### Editor Text Snapshot
+
+供 `Share Link` 公开访问的不可变编辑器文本快照。它不跟随源内容后续变化。
+
+### Command Run
+
+一次具体的 `Editor URL Command` 运行记录，包含关联的 `Editor Text Snapshot`、命令参数与执行结果。`Share Link` 分享的是这类运行结果，而不只是命令字符串本身。
+
+### Share Page
+
+面向人类访问者的 `Share Link` 展示页面。当前约定分享页运行在 `treease.com`，而不是 `api.treease.com`。
+
+### AI Request
+
+`Treease Server` 的一次单轮 AI 调用。第一版不建模多轮对话状态。
+
+### AI Result
+
+`AI Request` 的结构化输出结果。第一版 AI 能力只返回结构化结果，不以自然语言文本为主输出。
+
+### AI / Share Boundary
+
+AI 能力与分享能力相互独立。第一版 `Share Link` 不承载 AI 结果，第一版 AI 结果也不进入分享资源模型。
+
+### Tree Path Set
+
+某个文档可枚举 `Tree Path` 的集合，可作为 `AI Request` 的输入上下文之一。
+
+### Suggest YQ
+
+第一版 AI 主能力。它根据用户的自然语言 `instruction`，以及 `Editor Text Snapshot` 或 `Tree Path Set` 提供的上下文，生成结构化的 yq 表达式建议。
+
+### Programmatic Caller
+
+第一版 `Treease Server` 面向的程序化调用方。当前语境下它被收窄为已登录 `User` 驱动的程序化调用，而不是第三方公开 API 平台。
+
+### Usage Ledger
+
+记录 `Credits` 消耗与归属的用量账本。第一版与 `Subscription`、`Suggest YQ` 等高成本能力联动，用于实际消耗结算与额度判断。
