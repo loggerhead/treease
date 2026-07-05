@@ -1,121 +1,243 @@
 ---
-summary: "Graph topology、布局 authority 与 changed-region relayout 说明。"
+summary: "布局子域的正确性约束、布局规则与一致性要求。"
 read_when:
-  - 任务涉及 graph layout、topology、dirty region 或 edge 几何
-  - 需要判断 full build 与 streaming 是否共享同一布局语义
+  - 任务涉及 graph layout、topology、dirty region、edge 几何或表格布局规则
+  - 需要判断某个布局结果是否正确，而不是理解前端或主文档数据流
 ---
-# Graph Layout 链路
+# 布局约束
 
-本文覆盖 graph node 如何从结构树生成、如何布局，以及 streaming / full build 如何共享同一套 authority。
+本文用于约束 layout 的正确性。
 
-## 先记住的结论
+本文回答四个问题：
 
-- 坐标 authority 真源是 `core::layout_engine::LayoutEngine`。
-- graph node / dirty authority 真源是 `core::graph_topology::GraphTopology`。
-- full build 与 streaming changed-region layout 不能各自维护一套不同语义。
+1. 哪些结构会生成独立节点
+2. 不同节点类型应该如何表现
+3. 已生成节点如何计算位置与连接
+4. full build、streaming、changed-region 下哪些结果必须一致，以及哪些结果一出现就说明布局错了
 
-## 节点生成规则
+## 输入与输出
 
-### TreeNode → Graph node
+### 输入
 
-| TreeNode | Graph node |
-| --- | --- |
-| `Mapping` | `Object` |
-| `Sequence` | `Table` |
-| 其他（`Scalar`、`Alias` 等） | `Scalar` |
+- topology：父子关系、结构类型、可见性、内联/展开判定
+- node intrinsic size：节点自身宽高与内部行高
+- spacing config：`h_gap`、`v_gap`
+- table row / cell anchor：表格行与结构值的语义锚点
 
-### 主图中哪些节点会真正出现
+### 输出
 
-- 非根空 `Mapping/Sequence`、标量、alias：不生成独立 graph node，值内联在父节点。
-- headerless sequence 中的非空 `Mapping/Sequence` item：生成子 graph node。
-- header-table row：始终 folded 在父 table 内；row 本身不是主图 node。
-- row 内 nested container cell：作为悬停预览入口，而不是主图 row node。
-- empty → non-empty 容器升级：只允许 add/update，不允许先错误发布再 remove 纠正。
+- graph node 的可见集合
+- 每个 node 的几何结果：`x / y / width / height`
+- 每条 edge 的起终点锚定位置
+- table 相关的 row / cell 几何结果
 
-### 节点内部结构
+## 核心实体
 
-- `Object`：每行 `key/value` 两列；空对象显示一行 `(empty)`。
-- `Table(with header)`：第一项是 `Mapping` 时触发；列集合是对象 key 的并集，带索引列。
-- `Table(without header)`：第一项不是 `Mapping` 时触发；每行只有索引和值。
-- `Scalar`：单行，key 为 `"value"`。
+### Topology
 
-## 布局规则
+决定谁是父、谁是子、谁独立可见、谁以内联值存在的结构语义。
 
-### X 坐标
+### Graph Node
 
-- 根节点 `x = 0`。
-- 同一深度所有节点对齐到同一列。
-- 某层列坐标 = 上一层所有节点最右边界最大值 + `h_gap`。
-- 结果上等价于“同层子节点共享一列”，而不是每个父节点独立推导自己的子列。
+布局阶段需要摆放的独立可见节点。
 
-### Y 坐标
+### Graph Edge
 
-- 某深度第一个节点：`y = 父节点 y`。
-- 同层后续节点：`y = max(父节点 y, 该层已放置子树底部 + v_gap)`。
-- streaming 增量路径通过 `layout_changed_region` 复用同一权威规则，不维护第二套近似位移逻辑。
+表达父子结构语义的连接。
 
-### edge 几何
+### Table Presentation
 
-- edge 为贝塞尔曲线。
-- 起点 `x` = 父节点右边界，终点 `x` = 子节点左边界。
-- 起点 `y` = 父节点对应 value 单元格中点。
-- 终点 `y` = 子节点首个 row 中点。
+`Sequence` / `Object` 在表格阅读形态下的内部呈现。
 
-## full / streaming 入口
+### Layout Result
 
-```text
-full build
-  → GraphTopology.build_full
-  → materialize_into_current_model
-  → LayoutEngine.layout_full
+布局阶段输出的节点、边与表格几何结果。
 
-streaming / changed subtree
-  → GraphTopology.apply
-  → materialize_into_current_model
-  → LayoutEngine.layout_changed_region
-  → StreamingDeltaDiffer
+## 核心实体关系
+
+```mermaid
+flowchart LR
+  TP["Topology"]
+  GN["Graph Node"]
+  GE["Graph Edge"]
+  TB["Table Presentation"]
+  LR["Layout Result"]
+
+  TP --> GN
+  TP --> GE
+  TP --> TB
+  GN --> LR
+  GE --> LR
+  TB --> LR
 ```
 
-要点：
+## 一、节点判定
 
-- full build 与 streaming 最终共享 `GraphTopology` + `LayoutEngine` 语义。
-- `finalize_layout()` 在 close 路径收尾；如果没有额外改动，它可以是 no-op。
-- table row/cell bounds 由表格 materialize 的增量路径维护，不应在 growing table 时每个 chunk 全表重排。
+### Tree 结构到图结构的映射
 
-## 链路节点复杂度
+| Tree 结构 | 默认图形语义 |
+| --- | --- |
+| `Mapping` | `Object` |
+| `Sequence` | `Headerless Table` 或 `Header Table` |
+| 其他（`Scalar`、`Alias` 等） | `Scalar` 或父节点内联值 |
 
-符号：`K_total`=当前投影作用域内完整 TreeStore 节点数，`G_total`=当前投影作用域内完整 graph model 节点数，`E_total`=当前投影作用域内完整 graph 边数，`ΔK`=本次增量触达的 TreeStore 节点数，`ΔG`=本次增量新增/更新/删除的 graph 节点数，`ΔE`=本次增量新增/更新/删除的 graph 边数，`D`=深度，`H`=layout checkpoint 后缀长度，`dirty`=dirty handles / rows / edges 集合规模，`incident_edges`=与变更节点相邻且需要刷新 bounds/曲线的边。
+### 独立节点规则
 
-| 节点 | 当前复杂度 | 说明 |
-| --- | --- | --- |
-| `GraphTopology.build_full()` | `O(K_total + G_total + E_total)` 量级 | full DFS 使用 path stack；不再为每个 graph node 递归重建 root→node path |
-| `GraphTopology.apply()` | `O(patches×D + ΔK)`，最坏 `O(K_total)` | 对 patch anchor、祖先、受影响子树做 reconcile |
-| `materialize_into_current_model()` | 首次 `O(G_total + table_rows + E_total)`；增量目标 `O(ΔG + dirty_table_rows + ΔE)` | edge 去重走持久 `GraphModel` edge index，不再每次增量扫描全量 edges |
-| `LayoutEngine.layout_full_with_topology()` | `O(G_total + E_total)` | 使用 `GraphTopology` children adjacency 与持久 edge index；legacy `layout_full()` 仍保留给无 topology 的旧调用方 |
-| `LayoutEngine.layout_changed_region()` | 典型 `O(seed + H + incident_edges)`，最坏 `O(G_total+E_total)` | 只刷新 changed bounds 与 seed/新增边的 incident edge 几何 |
-| `StreamingDeltaDiffer.emit_incremental_delta()` | `O(ΔG + layout_edges)` | 把拓扑 / 布局变化转成协议 delta |
+- `Mapping` 默认生成 `Object` 节点。
+- `Sequence` 默认生成 `Table` 节点，但它有两种表现：`Headerless Table` 和 `Header Table`。
+- 空 `Mapping` 不生成 `Object` 节点，而是退化成 `Scalar` 节点。
+- 空 `Sequence` 不生成 `Table` 节点，而是退化成 `Scalar` 节点。
+- 普通 scalar 默认不单独升级成主图节点，而是作为父节点中的值内联展示。
+- header-table row 永远属于父 `Table` 的内部呈现，不成为独立主图节点。
+- headerless table row 同样不是独立主图节点。
+- row 内 nested container cell 可以成为进一步阅读 / 展开的入口，但它不是主图 row node。
 
-## 产品预期（可直接转成 core test）
+### sequence 分化规则
 
-- 相同结构的 full build 与 streaming build，最终 graph node 类型、父子关系、table 表现必须一致。
-- header-table 与 headerless sequence 的判定必须稳定，不能因增量路径而出现不同呈现。
-- 非根空容器、header-table row、inline scalar 不应错误升级成主图 node。
-- empty → non-empty 容器升级只能 add/update，不能依赖 remove 纠错。
-- changed-region layout 之后，不受影响节点的相对语义不应被破坏。
-- 同深度列对齐：兄弟子树的 `x` 应满足同层对齐规则。
-- `y` 坐标应保持父先子后、层内不重叠。
-- edge 的起终点应绑定正确的父 value row 与子首 row，而不是任意节点中心点。
-- table 增长时允许增量扩展 bounds，但不应因为每个 chunk 重排整个表而造成语义抖动。
+`Sequence` 是否表现成 `Header Table`，按当前规则只看首项：
 
-### 写 core test 时不要断言
+- 空 sequence：不是 `Header Table`，按 `Headerless Table` 处理。
+- 首项是 `Mapping`：整个 sequence 按 `Header Table` 处理。
+- 首项不是 `Mapping`：整个 sequence 按 `Headerless Table` 处理。
 
-- 不要把具体像素值写死成脆弱快照；优先断言相对关系与结构不变量。
-- 不要把“某一步经过 full layout 还是 changed-region layout”当作对外语义。
-- 不要把 row/cell 内部临时 materialize 顺序当作产品契约。
+这意味着：
 
-## 推荐测试切面
+- `Header Table` 的判定不是“多数项是否是 object”，也不是“所有项是否同构”。
+- 一旦首项是 `Mapping`，后续即使混入非 `Mapping` 项，整体仍按 `Header Table` 组织；这些非 `Mapping` 项落到 fallback `value` 列。
+- 一旦首项不是 `Mapping`，后续即使出现 `Mapping` 项，整体仍按 `Headerless Table` 组织，不再升级成带 header 的表。
 
-- 节点类型矩阵：object / table(with header) / table(without header) / scalar。
-- 父子边矩阵：主图 node 是否只出现在允许的位置。
-- 坐标不变量：同层 `x` 对齐、`y` 非重叠、父子边方向正确。
-- full vs streaming 对照：同输入最终 graph / layout 是否等价。
+### 节点判定的一致性要求
+
+- full build、streaming、changed-region 下，对“是否独立成节点”的判断必须一致。
+- 不能因为执行路径不同，把同一结构有时内联、有时升级成独立节点。
+- 不能为了局部 relayout 方便，把 table row 或局部值临时抬升成主图节点。
+
+## 二、节点表现
+
+### `Scalar`
+
+- 单 `Scalar` 节点固定是单行表现，不再拆出额外的 key 列。
+- 它的 key 区为空，value 区承接全部可见文本。
+- 空 `Mapping`、空 `Sequence`、以及普通 scalar 进入该分支后，遵守同一套单行样式。
+- 单 `Scalar` 的宽度由 value 文本决定；高度按单行 row 高度计算。
+
+### `Object`
+
+- `Object` 的基本阅读单元是 `key/value` 行。
+- 每个字段在视觉上至少要保留“字段名区域”和“字段值区域”的区分。
+- object 内若某个值是可继续展开的结构值，它在当前 object 中仍先表现为当前行的 value 语义，再通过 edge 或后续展开进入更深层节点。
+
+### 空容器退化
+
+- 空 `Mapping` 退化成单 `Scalar` 表现，显示空 object 的摘要值，而不是空 `Object` 框。
+- 空 `Sequence` 退化成单 `Scalar` 表现，显示空 sequence 的摘要值，而不是空 `Table` 框。
+- 这条规则对 full build、streaming、changed-region 一致生效；不能在某条路径里把空容器画成 scalar，另一条路径里画成空 object / 空 table。
+
+### `Headerless Table`
+
+- 它用于“首项不是 `Mapping`”的 sequence。
+- 它的阅读语义接近 object node 的 `key/value` 行，但 `key` 区显示的是 sequence index。
+- 每一行固定是两列：index 列 + value 列。
+- 行内值仍可对应结构值；如果某个 item 是可独立展开的 container，它可以通过 edge 连到子节点。
+
+### `Header Table`
+
+- 它用于“首项是 `Mapping`”的 sequence。
+- 它按 header + body 的表格语义展示，而不是 object 式两列行。
+- 列集合来自所有 mapping item 中可见 key 的稳定并集。
+- 第 0 列始终是 index 列。
+- 如果 sequence 中存在非 `Mapping` 项，或所有 mapping 都没有可见 key，则必须追加 fallback `value` 列承接这些值。
+- row 是 table 内部呈现单元，不独立升级成主图节点。
+
+### `Header Table` 的 fallback `value` 列规则
+
+- 只要 sequence 中任一项不是 `Mapping`，就需要 fallback `value` 列。
+- 或者，所有 `Mapping` 项都没有可见 key 时，也需要 fallback `value` 列。
+- fallback `value` 列用于承接不能投影到 header key 集合中的整项值。
+
+### virtual table
+
+`virtual table` 不是新的节点类型，而是 `Table` 节点在 body 高度超过可视高度时的表现方式。
+
+触发条件：
+
+- `table.total_height > table.view_height`
+- 等价地说，table body 的内容高度超过当前允许的 viewport 高度
+- `view_height` 由 `table_max_height` 截断，因此大表会进入这个分支
+
+表现要求：
+
+- 节点语义仍然是同一个 `Table` 节点，不会因为 virtualization 拆成多个节点。
+- header 若存在，保持为 table 头部区域；滚动的是 body，不是整张表的语义身份。
+- body 只渲染当前可见窗口附近的 row，而不是一次性物化全部 row。
+- row 的 index、path、anchor 语义不变；virtualization 只改变“当前哪些 row 被渲染到 viewport 中”。
+- 外部命中测试、reveal、highlight、edge 锚点都必须仍以真实 row 语义为准，不能因为 row 当前未渲染就丢失语义定位。
+
+## 三、几何规则
+
+### X 方向规则
+
+- 根节点从 `x = 0` 开始。
+- 某层列坐标 = 上一层所有节点最右边界最大值 + `h_gap`。
+- 因而同一深度的节点共享同一列坐标，而不是每个父节点单独推导自己的子列。
+- 如果某个增量更新只影响局部子树，它可以只重算受影响区域；但重算结果仍必须满足“同层共享列”语义。
+
+### Y 方向规则
+
+- 某深度第一个节点的 `y` 以其父节点的语义起点为基准。
+- 同层后续节点的 `y` 至少要满足：
+  `max(父节点 y, 该层当前已放置内容的底部 + v_gap)`。
+- 因而同层节点必须既保持阅读顺序，也避免互相覆盖。
+- changed-region relayout 可以移动受影响区域及其必要传播范围，但不能无理由改写稳定区域已有的上下顺序。
+
+### edge 规则
+
+- edge 起点 `x` 取父节点右边界附近的语义出边位置。
+- edge 终点 `x` 取子节点左边界附近的语义入边位置。
+- edge 起点 `y` 绑定父节点中“与该子节点关联的 value 位置”，而不是父节点几何中心。
+- edge 终点 `y` 绑定子节点首个可见语义入口的位置，而不是子节点几何中心。
+- 当父节点是 table 时，edge 的纵向锚点应跟随对应 row 的真实位置变化；table 增长或局部重排后，edge 不能继续挂在旧 row 上。
+
+## 四、一致性约束
+
+### full build / streaming 一致性
+
+- full build 与 streaming 最终必须收敛到同一套节点生成与布局结果。
+- chunk 期间允许只发布局部增量，但 close 后结果不能与 full build 的最终布局语义冲突。
+
+### changed-region 一致性
+
+- changed-region relayout 应尽量只影响必要区域。
+- 局部更新后，未受影响区域不能无理由换列、换序、跳位。
+- table 增长允许局部扩展，但不能每次都把整张图重排成一张“新图”。
+
+### 几何一致性
+
+- 同层节点必须共享同一列语义。
+- 同层节点不能重叠。
+- edge 必须锚定当前真实语义位置，不能滞留在旧几何结果上。
+- virtual table 的可见窗口可以变化，但 table 自身的节点身份、row 索引语义和 reveal / anchor 语义不能变化。
+- 空 `Mapping`、空 `Sequence` 在任何构建路径里都必须保持单 scalar 几何，而不是有时占用 object/table 几何。
+
+## 五、明确错误
+
+以下结果一出现，就说明 layout 错了：
+
+- 同一深度节点出现在不同列，但它们本应共享同层列。
+- 某层列坐标没有遵守“上一层最右边界最大值 + `h_gap`”。
+- 同层节点上下重叠，或后续节点越过前面节点的底部。
+- edge 挂在父节点或子节点的几何中心，而不是对应语义位置。
+- table 增长、row 高度变化或局部重排后，edge 仍挂在旧 row 上。
+- full build 与 streaming 对同一结构给出了不同的节点可见性或最终布局。
+- changed-region relayout 在无必要时改写稳定区域既有顺序或列对齐。
+- 同一个 sequence 在一次构建里表现成 `Headerless Table`，在另一条构建路径里却表现成 `Header Table`。
+- table 已进入 scroll / virtual 分支，但 reveal、hit test 或 row anchor 仍按旧可见窗口中的 row 几何工作。
+- 空 `Mapping` 或空 `Sequence` 被画成空 object / 空 table，而不是单 scalar。
+
+## 检查清单
+
+- 当前改动是否改变了哪些结构会成为独立节点
+- 当前改动是否仍满足同层共享列
+- 当前改动是否仍满足同层不重叠和父先子后
+- 当前改动后的 edge 是否仍锚定真实语义位置
+- full build、streaming、changed-region 的结果是否仍然收敛

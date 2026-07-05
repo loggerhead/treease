@@ -14,6 +14,7 @@ Instead of switching between a plain editor, an isolated viewer, and one-off con
 - Trace a field across graph, tree path, and source text without losing place.
 - Format, minify, sort keys, and edit while keeping visual context attached to the same document.
 - Compare structure before trusting a text diff, and preview converted output before export.
+- Open reproducible editor or viewer states from URL-backed presets when sharing examples, demos, or bug reports.
 - Query, convert, and visualize structured documents from the CLI, including a readonly local web graph view.
 
 ## Quick Start

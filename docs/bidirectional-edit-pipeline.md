@@ -1,176 +1,132 @@
 ---
-summary: "Editor 与 Graph 双向编辑如何收敛到统一 snapshot 主链。"
+summary: "Editor <-> Graph 双向编辑的约束、数据流与核心实体关系。"
 read_when:
-  - 任务涉及图上编辑回写、planner、增量编辑或 fallback
-  - 需要追踪 Editor -> Graph 或 Graph -> Editor 链路
+  - 任务涉及图上编辑、planner、graph value edit、fallback 或双向编辑收敛
+  - 需要只看双向编辑，而不是整个主文档数据流
 ---
-# 双向编辑链路
+# 双向编辑
 
-本文覆盖 Editor → Graph 与 Graph → Editor 两条路径，以及它们如何在 snapshot 语义上重新收敛。
+本文只描述 `Editor <-> Graph` 双向编辑：
 
-## 先记住的结论
+- 双向编辑约束
+- 两个方向的数据流
+- 与双向编辑直接相关的核心实体关系
 
-- Editor → Graph 的增量提交入口是 `commitApplyEdits(...edits...)`，Core 内部统一落到 `ApplyEdits` job。
-- Graph → Editor 不是直接改文档；它先做 snapshot-bound planner，再把结果回送成 `DocumentTextEdit[]` 或显式 fallback `replace`。
-- 支持增量时要说明是哪一层增量：Monaco text edit、tree-sitter syntax incremental、或 structural incremental。
+## 核心实体
 
-## 1. Editor → Graph
+### Editor Model
 
-### 提交链路
+承接文本编辑与 edits 应用的草稿实体。
 
-```text
-Monaco onDidChangeModelContent
-  → monacoChangesToDocumentTextEdits(...)
-  → DocumentTextEdit[]
-  → commitApplyEdits({ edits, baseSnapshotId, ... })
-  → startSharedGraphDocumentJob(... kind = ApplyEdits ...)
-  → Worker startDocumentJob / advanceDocumentJob(close)
-  → Rust materialize_with_base()
+### Graph Interaction
+
+来自主图、子图工作区 graph pane、content pane 的编辑入口。
+
+### Graph Edit Planner
+
+基于 snapshot 和 path 生成 edits 或 replace fallback 的规划实体。
+
+### Commit Transaction
+
+把双向编辑结果重新提交回主文档主链。
+
+### DocumentSnapshot
+
+提供 planner 所依赖的 snapshot identity 和结构语义。
+
+## 核心实体关系
+
+```mermaid
+flowchart LR
+  EM["Editor Model"]
+  GI["Graph Interaction"]
+  GP["Graph Edit Planner"]
+  CT["Commit Transaction"]
+  DS["DocumentSnapshot"]
+
+  EM --> CT
+  GI --> GP
+  DS --> GP
+  GP --> EM
+  GP --> CT
 ```
 
-### Core 内部三层降级
-
-```text
-ApplyEdits
-  → try_structural_materialize
-    │ hit  → structural incremental
-    │ miss ↓
-  → syntax incremental fallback（prepared ts_tree）
-    │ hit  → full decode + prepared tree analysis + full graph
-    │ miss ↓
-  → full rebuild fallback
-```
-
-### 当前已实现范围
-
-| 能力 | 当前状态 |
-| --- | --- |
-| JSON / YAML / TOML / Python / JavaScript 安全单标量 value edit | structural incremental |
-| JSON / YAML / TOML / Python / JavaScript 安全 key edit | structural incremental |
-| JSON 非 root object/array subtree edit | 可局部 decode + graft |
-| CSV 单 cell value edit | structural incremental |
-| CSV header key rename | 显式 fallback |
-| 多 edit / root boundary / span-path 不安全 / 复杂 subtree | full rebuild fallback |
-
-### base snapshot 可复用资产
-
-- `analysis.document`
-- `analysis.line_index`
-- `analysis.ts_tree`
-- 节点 source span
-- `snapshot.incremental.can_resume`
-- `snapshot.incremental.graph_model` / `graph_model_index`
-- `snapshot.incremental.structural_span_index`
-- whole-document replacement / format / minify 的最终写回文本统一取 `SnapshotReady.sourceText`。
-
-## 2. Graph → Editor
-
-### 规划链路
-
-```text
-Graph inline edit
-  → commitTextEdit
-  → Worker handlePlanGraphValueEdit
-  → Core/WASM plan_graph_value_edit(documentKey, snapshotId, language, path, preferKey, value)
-```
-
-子图工作区在 Graph → Editor 方向上有两个入口，但 authority 相同：
-
-```text
-workspace graph pane（Leafer）
-  → 双击 cell / inline edit
-  → GraphValueEditController.activeEditState
-  → commitTextEdit
-  → applyGraphEdit
-
-workspace content pane（Monaco hidden sidecar tab）
-  → Monaco model 本地草稿
-  → onContentChange / onBlur
-  → commitSubgraphWorkspaceValueEdit
-  → applyGraphEdit
-```
-
-两条入口最终都必须收敛到同一个 `applyGraphEdit -> planGraphValueEdit -> DocumentTextEdit[] / replace` 主链；workspace 只是 UI 入口，不是新的 planner authority。
-
-### planner 语义
-
-- planner 必须绑定 `documentKey + snapshotId + path`。
-- `DocumentSnapshot::plan_graph_value_edit()` 负责 snapshot / document identity 校验。
-- 具体语言规则真源是 `LangSpec.graph_value_edit_rule`。
-- planner 返回 `mode: "edits"` 时，UI 直接应用 `DocumentTextEdit[]`，随后这些 edit 重新进入上面的 Editor → Graph `ApplyEdits` 主链。
-
-### 当前覆盖
-
-| 语言 | value edit | key edit |
-| --- | --- | --- |
-| JSON | 支持 | 支持 |
-| YAML | 支持 | 支持 |
-| TOML | 支持 | 支持 |
-| Python | 支持 | 支持 |
-| JavaScript | 支持 | 支持 |
-| CSV | cell value 支持 | key 不支持，fallback |
-
-### fallback
-
-以下场景必须显式回到 compat `replace`：
-
-- snapshot not ready
-- missing analysis / document
-- unsupported language / edit
-- invalid path / replacement
-- unsafe edit
-- CSV key edit
-
-## 3. 子图工作区的编辑所有权
-
-- graph pane 的草稿真源是 Leafer inner editor；`GraphValueEditController.activeEditState` 记录当前正在编辑的 `cell/path/kind/initialText`。
-- content pane 的草稿真源是它自己的 Monaco model；`pane.content.sourceText` 只是最近一次 committed 文本，不是正在编辑时的 authority。
-- content pane 允许外部 committed 文本回灌 Monaco 的条件只有：pane 当前不 dirty 且未 focused。dirty 或 focused 时，外部 refresh 只能作为 pending committed state 存在，不能覆盖本地草稿。
-- 同一路径的 content pane 提交必须串行化：若前一次 `applyGraphEdit` 尚未完成，后续输入只能替换“最新待提交草稿”；当前提交完成后再补交最新草稿，避免 freshness/revision 保护把后续输入静默丢弃。
-- graph pane 与 content pane 都不应该在 `GraphViewer` 再复制一份完整 draft 文本；`GraphViewer` 负责 path、pane 生命周期与提交编排，不负责成为草稿 authority。
-
-## 链路节点复杂度
-
-符号：`N`=源码字节数，`K_total`=当前投影作用域内完整 TreeStore 节点数，`G_total`=当前投影作用域内完整 graph model 节点数，`E_total`=当前投影作用域内完整 graph 边数，`ΔK`=本次增量触达的 TreeStore 节点数，`ΔG`=本次增量新增/更新/删除的 graph 节点数，`ΔE`=本次增量新增/更新/删除的 graph 边数，`L`=行数，`D`=深度，`R`=replacement 长度，`P`=path sibling 扫描量，`incident_edges`=与变更节点相邻且需要刷新 bounds/曲线的边。
+## 双向编辑约束
 
 ### Editor → Graph
 
-| 节点 | 当前复杂度 | 说明 |
-| --- | --- | --- |
-| source apply（单 edit） | `O(N + R)` | 当前连续 `String` 模型复制 prefix/replacement/suffix；本轮 graph 优化不改变 source buffer 下界 |
-| structural incremental（当前最佳路径） | 典型 `O(N + ΔK log L + ΔG + incident_edges)`；最坏仍可 fallback 到 full rebuild | snapshot incremental state 持久保存 graph/layout index；source apply 仍是连续文本复制 |
-| syntax incremental fallback | `O(N + K_total + G_total + E_total)` | prepared tree 只省解析常数，不改全量 decode / graph 渐进量级 |
-| full rebuild fallback | `O(N + K_total + G_total + E_total)` | 最保守路径 |
+- Editor 改动回流 graph 时，提交必须回到主文档提交口
+- 增量编辑需要绑定 base snapshot
+- 不能在图层语义上另起一条“只更新 graph 不更新文档”的成功主链
 
 ### Graph → Editor
 
-| 节点 | 当前复杂度 | 说明 |
-| --- | --- | --- |
-| snapshot-bound planner | 典型 `O(path_key_bytes + R)` | 命中 path/span index 时很快 |
-| planner 最坏情况 | `O(N + K_total + R)` | index 缺失或 span 缺失时退化 |
-| compat replace fallback | `O(2N + 2K_total + P + R)` | 一次 full decode/encode，再附带 parse-to-tree 语义成本 |
+- Graph 不能直接写文档
+- Graph 必须先走 planner
+- planner 必须绑定 `documentKey + snapshotId + path`
+- planner 返回 edits 时，仍要重新流回 `Editor Model`
+- planner 返回 replace 时，也要显式经过整文提交语义
 
-## 产品预期（可直接转成 core test）
+### fallback
 
-- 支持的安全标量 / key edit 应走统一 `ApplyEdits` 语义收敛，结果 graph 正确，且 `mainGraph.clear = false`。
-- structural miss 时可以 fallback，但必须在同一个 `ApplyEdits` job 内显式完成，不能对外伪装成增量成功。
-- Graph → Editor planner 必须校验 snapshot/document identity；旧 snapshot 或错文档不能静默成功。
-- planner 返回 `edits` 时，这些 edit 再进入 Editor → Graph 后，最终结果应与直接全量替换后的文档语义一致。
-- 未覆盖场景必须显式 `mode: "replace"` 或记录 fallback reason，不能 silent no-op。
-- JSON 非 root subtree edit 命中局部 graft 时，最终 graph 应只在受影响子树变化。
-- CSV cell value edit 支持局部回写；CSV key edit 不支持时要稳定 fallback。
-- value edit 与 key edit 的语言矩阵要分别验证，不能只测 JSON happy path。
-- Graph 上编辑某个 path 后，文档文本、snapshot、graph 再次对该 path 查询应保持一致。
+- fallback 必须显式
+- fallback reason 必须可见、可追踪
+- 不能 silent no-op
 
-### 写 core test 时不要断言
+## 数据流
 
-- 不要断言内部一定经过某个 helper 或某级 fallback。
-- 不要把“有增量状态对象”当作用户可见成功条件。
-- 不要只测 planner 返回了 edit；必须继续验证这些 edit 应用后的最终文档 / graph 语义。
+### 1. Editor → Graph
 
-## 推荐测试切面
+```text
+Editor 改动
+  → Editor Model
+  → Commit Transaction
+  → Document Runtime
+  → 新 snapshot / 新 graph
+```
 
-- 语言矩阵：JSON / YAML / TOML / CSV / Python / JavaScript。
-- 类型矩阵：value edit、key edit、subtree edit、unsupported edit。
-- snapshot 矩阵：active snapshot、stale snapshot、wrong documentKey。
-- 收敛矩阵：Graph → Editor 规划出的 edit 重新流入 Editor → Graph 后，结果是否与目标语义一致。
+### 2. Graph → Editor
+
+```text
+Graph interaction
+  → Graph Edit Planner
+  → edits / replace
+  → Editor Model
+  → Commit Transaction
+  → Document Runtime
+  → 新 snapshot / 新 graph
+```
+
+### 3. 子图工作区 graph pane
+
+```text
+graph pane inline edit
+  → Graph Edit Planner
+  → edits / replace
+  → Editor Model
+  → Commit Transaction
+```
+
+### 4. 子图工作区 content pane
+
+```text
+content pane Monaco 草稿
+  → Graph Edit Planner
+  → edits / replace
+  → Editor Model
+  → Commit Transaction
+```
+
+## 子图工作区入口约束
+
+- 子图工作区里的 graph pane 和 content pane 都只是双向编辑入口
+- planner authority 不因入口不同而改变
+- pane 分流、草稿持有方式、工作区生命周期等产品规则以 `subgraph-workspace.md` 为准
+
+## 检查清单
+
+- Graph 是否绕过 planner 直接写文档
+- planner 是否显式绑定 snapshot identity
+- edits / replace 是否都重新流回统一提交口
+- 不同入口是否共享同一套 planner 语义
+- fallback 是否显式可见

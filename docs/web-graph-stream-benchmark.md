@@ -1,3 +1,9 @@
+---
+summary: "Web graph stream benchmark 的冻结口径、运行命令、输出文件与回归阈值。"
+read_when:
+  - 需要评估 graph stream chunk size、throughput 或 smoothness 回归
+  - 需要刷新或解释 Web graph stream benchmark 基线
+---
 # Web Graph Stream Benchmark
 
 ## 目的
@@ -23,7 +29,7 @@
 cd apps/web && pnpm bench:graph-stream
 ```
 
-- 命令会先执行 `pnpm wasm:sync`，再分别以 3 个候选 chunk size 启动 Vite dev server、驱动真实 Chromium 打开 `/editor` 页面并采样。
+- 命令会先执行 `pnpm wasm:sync`，再分别以 5 个候选 chunk size 启动 Vite dev server、驱动真实 Chromium 打开 `/editor` 页面并采样。
 - 命令结束后会把当前结果与冻结基线比较；若超出阈值，会以非零状态退出。
 - 需要显式刷新基线时运行：
 
@@ -97,16 +103,19 @@ cd apps/web && pnpm bench:graph-stream -- --update-baseline
 - <256KB 与 64KB 持平（132.6ms vs 136.2ms）
 - 256KB-1MB 略慢于 64KB（5518.5ms vs 3928.7ms）但仍在可接受范围
 
-## 动态 chunk size
+## 当前运行时 chunk size 策略
 
-Graph stream chunk size 由 `apps/web/src/lib/graph-stream/chunk-size-policy.ts` 统一决定，normal GraphViewer render 与 same-language file import graph job 共用同一口径：
+Graph stream chunk size 由 `apps/web/src/lib/graph-stream/chunk-size-policy.ts` 统一决定，normal GraphViewer render 与 same-language file import graph job 共用同一运行时策略：
 
 | 输入大小 | chunk size | 依据 |
 |---|---|---|
 | < 256KB | 128KB | 吞吐最优（124.2ms），smoothness 接近 |
 | 256KB - 1MB | 64KB | 吞吐+smooth 双胜（4033ms / 1092ms） |
 | 1MB - 4MB | 128KB | 吞吐接近最优（5675ms），smooth 最优（1192ms） |
-| >= 4MB | 256KB | 吞吐显著领先（>=8MB 仅 7499ms），smooth 持平 |
+| 4MB - 10MB | 256KB | 继续沿用冻结 benchmark 覆盖到的大文件区间结论 |
+| > 10MB | 1MB | 当前运行时额外放大的启发式分支；它高于冻结 benchmark 的 5 候选上限，需单独看运行时效果，不应和冻结基线混写 |
+
+冻结 benchmark 仍只比较 `16KB`、`32KB`、`64KB`、`128KB`、`256KB` 这 5 个候选；运行时的 `>10MB → 1MB` 分支是后续策略调整，不代表冻结基线已经覆盖了 `1MB` 候选。
 
 Readable file import graph path 发送 `BinaryChunk`，避免浏览器主线程先 UTF-8 decode 再跨 Worker/WASM 边界传 `TextChunk`。内存全文渲染仍发送 `TextChunk`，因为 source 已经是 JS string。
 
@@ -121,5 +130,5 @@ Readable file import graph path 发送 `BinaryChunk`，避免浏览器主线程�
 ## 仍保留的边界
 
 - `4MB-8MB`：仓库 raw corpus 当前没有样本，这个 bucket 只记录为空，不参与阈值结论。
-- `>=8MB`：当前只有 `jsonexamples__semanticscholar-corpus.1.json` 一个 raw 样本，而且 3 个候选 chunk size 都没有稳定成功结果；该 bucket 继续保留为观察项，不视为“优化已完成”。
+- `>=8MB`：当前只有 `jsonexamples__semanticscholar-corpus.1.json` 一个 raw 样本；冻结 benchmark 虽然覆盖了 5 个候选并产出了结果，但样本仍过少，只能作为观察项，不应外推成“大文件口径已经稳定”。
 - `1MB-4MB`：当前 bucket 只有 2 个样本，且仍存在 50% 成功率现象；winner 已冻结，但只能作为回归监控口径，不能被表述成“所有大文档都已稳定优化”。

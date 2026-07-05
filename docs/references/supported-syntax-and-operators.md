@@ -5,6 +5,12 @@
 - 说明"表达式语法可识别范围"和"已注册算子能力"的关系
 - 给阅读代码、补文档和做能力对比时提供稳定入口
 
+## 先说明边界
+- 本文档覆盖“当前手写总览想让读者先知道的能力分组”。
+- 本文档列出的能力不等于 `docs/operators/` 下都已有独立正文页。
+- 是否存在独立正文页，以 `docs/operators/README.md` 的目录说明和实际文件为准。
+- 是否被当前构建真正注册，以 `../generated/core-registry-capabilities.md` 和实际 registry 为准。
+
 ## 当前代码入口
 - 词法：`packages/core/src/parser/lexer_participle.rs`
 - Token 后处理：`packages/core/src/parser/lexer.rs`

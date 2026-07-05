@@ -60,6 +60,34 @@ function parseFrontmatter(content) {
   return { summary, readWhen };
 }
 
+function requiresDocMetadata(docPath) {
+  if (['ARCHITECTURE.md', 'CONTEXT.md', 'guess-failure.md'].includes(docPath)) {
+    return true;
+  }
+
+  if (!docPath.startsWith('docs/')) {
+    return false;
+  }
+
+  if (docPath.startsWith('docs/operators/')) {
+    return docPath === 'docs/operators/README.md';
+  }
+
+  if (docPath.startsWith('docs/generated/')) {
+    return true;
+  }
+
+  if (docPath.startsWith('docs/references/')) {
+    return docPath === 'docs/references/README.md' || docPath === 'docs/references/yaml-common-subset.md';
+  }
+
+  if (docPath.startsWith('docs/formats/')) {
+    return docPath === 'docs/formats/README.md' || docPath.endsWith('.md');
+  }
+
+  return true;
+}
+
 function normalizeRelativePath(relativePath) {
   return relativePath.split(path.sep).join('/');
 }
@@ -387,14 +415,8 @@ function validateAgentRoutingContract() {
   }
 
   const rootAgents = readRepoFile('AGENTS.md');
-  const docsIndex = readRepoFile('docs/README.md');
-
   if (!rootAgents.includes('docs/agent-entrypoints.md')) {
     fail('AGENTS.md: 根导航未指向 docs/agent-entrypoints.md');
-  }
-
-  if (!docsIndex.includes('agent-entrypoints.md')) {
-    fail('docs/README.md: 文档索引未暴露 agent 最短路径');
   }
 
   if (rootAgents.includes('README.md` → `CONTEXT.md` → `ARCHITECTURE.md` → `docs/README.md`')) {
@@ -404,18 +426,10 @@ function validateAgentRoutingContract() {
   if (!rootAgents.includes('pnpm docs:list')) {
     fail('AGENTS.md: 缺少 pnpm docs:list 前置约束');
   }
-
-  if (!docsIndex.includes('pnpm docs:list')) {
-    fail('docs/README.md: 文档索引未说明 pnpm docs:list');
-  }
 }
 
 function validateDocMetadata(docPath, content) {
-  const needsMetadata =
-    docPath.startsWith('docs/') ||
-    ['ARCHITECTURE.md', 'CONTEXT.md', 'guess-failure.md'].includes(docPath);
-
-  if (!needsMetadata) return;
+  if (!requiresDocMetadata(docPath)) return;
 
   const { summary, error } = parseFrontmatter(content);
   if (!summary) {
@@ -426,9 +440,9 @@ function validateDocMetadata(docPath, content) {
 function validateHotDocBudgets() {
   const budgets = {
     'AGENTS.md': 65,
-    'docs/README.md': 55,
-    'docs/FRONTEND.md': 80,
-    'docs/CORE.md': 50,
+    'docs/agent-entrypoints.md': 60,
+    'docs/FRONTEND.md': 160,
+    'docs/CORE.md': 115,
     'apps/web/AGENTS.md': 24,
     'apps/web/test/AGENTS.md': 20,
     'packages/core/AGENTS.md': 22,

@@ -29,12 +29,12 @@
 - 不要跨层绕行：Web 不直接引用 `packages/core/src`，Core 不承载 Svelte/DOM/浏览器逻辑，CLI 不复制 Core 实现。
 - 稳定入口文件保持薄壳：`apps/web/src/lib/components/GraphViewer.svelte`、`apps/web/src/workers/wasm-runtime.worker.ts`、`packages/core/src/wasm_document.rs`。
 - Web 只负责展示、交互、前端状态；解析、格式化、算子、评估、graph build 必须下沉到 `packages/core/`。
+- 任何逻辑或 bug fix 都禁止通过 fallback、补丁式分支、静默降级、双写语义或“只修当前 case”的特判落地；必须直接修主链、协议真源或真实职责边界。
 - Worker 新能力先改 `apps/web/src/workers/runtime/protocol.ts`，再落 handler；跨边界错误统一走 `ok/error`。
 - snapshot-bound 读取必须显式带 `snapshotId`；不要在读取 API 内偷偷建 snapshot。
 - Web 异步落地遵循现有 `FreshnessScope` / guard 语义；过期结果直接丢弃，不覆盖当前 UI 状态。
 - 跨组件共享状态优先走现有 store；不要直接耦合非父子组件。
 - 不手改生成文件：`packages/core/wasm/document-protocol.generated.ts`。
-- 不从上层“绕修” `deps/` vendor；只在明确任务下修改依赖目录。
 - 修改 `.rs` 文件后运行 `cargo fmt`。
 
 ## Commit Rules

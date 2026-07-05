@@ -14,6 +14,7 @@ Treease 是一个面向结构化文本的工作台，用于检查、追踪、编
 - 在 graph、tree path 和源文本之间追踪字段而不丢失上下文。
 - 在保持可视上下文的同时，对当前文档进行格式化、压缩、键排序和编辑。
 - 在信任文本 diff 之前先做结构化对比，并在导出前预览转换结果。
+- 通过 URL-backed preset 打开可复现的 editor / viewer 状态，便于分享示例、演示和问题复现入口。
 - 通过 CLI 查询、转换并可视化结构化文档，包括只读的本地 web graph 视图。
 
 ## 快速开始
@@ -88,6 +89,25 @@ cd ../../apps/cli
 cargo nextest run --locked --lib
 bash tests/acceptance/run.sh
 ```
+
+### 本地调试 `treease web`
+
+当你需要在仓库里本地调试 CLI / Web 共用的 graph 页面时，先构建 Web 资源，再用仓库里的包装脚本指向本地 `cli-assets`，而不是公共资源地址：
+
+```bash
+pnpm --dir apps/web build
+node ./scripts/treease-web-local.mjs . path/to/file.json
+```
+
+`node ./scripts/treease-web-local.mjs` 会为 `apps/web/build/cli-assets` 启动本地静态服务器，用 `cargo run` 运行当前 checkout 的 CLI，并在 `.tmp/` 下创建隔离的 `TREEASE_WEB_CACHE_DIR`。这样即使 `wasm_release_date` 不变，本地 bundle 更新后也不会命中旧缓存。
+
+如果你只想拿到手动运行所需的环境变量，可以执行：
+
+```bash
+node ./scripts/treease-web-local.mjs serve
+```
+
+它会打印本地 `TREEASE_WEB_ASSET_BASE_URL` 和配套的隔离 cache 路径，同时保持静态服务器以前台方式运行。
 
 ### 协议与 WASM 重新生成
 

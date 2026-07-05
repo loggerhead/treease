@@ -93,10 +93,39 @@ function readFrontmatter(fullPath) {
   return { summary, readWhen };
 }
 
+function requiresDocMetadata(relativePath) {
+  if (['ARCHITECTURE.md', 'CONTEXT.md', 'guess-failure.md'].includes(relativePath)) {
+    return true;
+  }
+
+  if (!relativePath.startsWith('docs/')) {
+    return false;
+  }
+
+  if (relativePath.startsWith('docs/operators/')) {
+    return relativePath === 'docs/operators/README.md';
+  }
+
+  if (relativePath.startsWith('docs/generated/')) {
+    return true;
+  }
+
+  if (relativePath.startsWith('docs/references/')) {
+    return relativePath === 'docs/references/README.md' || relativePath === 'docs/references/yaml-common-subset.md';
+  }
+
+  if (relativePath.startsWith('docs/formats/')) {
+    return relativePath === 'docs/formats/README.md' || relativePath.endsWith('.md');
+  }
+
+  return true;
+}
+
 function printEntry(relativePath, metadata) {
   const { summary, readWhen, error } = metadata;
   if (!summary) {
-    console.log(`${relativePath} - [${error ?? 'missing metadata'}]`);
+    const label = requiresDocMetadata(relativePath) ? error ?? 'missing metadata' : 'leaf reference page';
+    console.log(`${relativePath} - [${label}]`);
     return;
   }
 

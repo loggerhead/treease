@@ -55,7 +55,7 @@ read_when:
 
 ## 文档规则
 - 根目录 `AGENTS.md` 只保留导航与硬约束摘要，不堆细节。
-- 详细说明优先写入 `ARCHITECTURE.md`、`docs/README.md` 或模块级 `AGENTS.md`。
+- 详细说明优先写入 `ARCHITECTURE.md`、`docs/agent-entrypoints.md` 指向的主题文档，或模块级 `AGENTS.md`。
 - 文档内容应可机械验证：目录存在、文件存在、命令可找到、职责与目录一致。
 - 文档引用默认不写行号；能落到稳定 symbol 时，优先写文件路径与函数名、类型名或 struct 名。
 - 测试证据默认写测试文件与用例名；若没有稳定 symbol，再退回到文件路径加职责短句，不使用易漂移的行号区间。

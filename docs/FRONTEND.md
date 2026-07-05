@@ -1,79 +1,156 @@
 ---
-summary: "Web 前端、Worker、GraphViewer 与 freshness 约束。"
+summary: "Web 多层架构、单向依赖与前端架构约束。"
 read_when:
-  - 任务涉及 apps/web、Svelte、store、Worker 或 GraphViewer
-  - 需要确认前端 authority、协议边界或 freshness 规则
+  - 任务涉及 apps/web、Worker、GraphViewer、store 或前端架构边界
+  - 需要判断前端改动应落在哪一层
 ---
-# Treease 前端约束
+# Frontend 约束
 
-## 适用范围
-- 本文件只约束 `apps/web/`；默认前置导航：`../apps/web/AGENTS.md`、`./agent-entrypoints.md`。
+本文只回答两个问题：
 
-## Web 主链
-- `apps/web/src/lib/components/Editor.svelte`（核心在 `apps/web/src/lib/components/Editor/EditorCore.svelte`）→ `apps/web/src/workers/wasm-runtime.worker.ts` → `packages/core/wasm/index.ts` → `packages/core/src/wasm_document.rs` → `packages/core/src/document/`
-- `GraphViewer.svelte` / `ViewportPanel.svelte` → Worker → `packages/core/wasm/index.ts` → `packages/core/src/wasm_document.rs` → `DocumentJob` 事件 / `SnapshotReady.mainGraph` / snapshot-bound 查询
-- 协议链路：`packages/core/src/document/protocol.rs` → `cargo run --locked --bin export_document_protocol` → `packages/core/wasm/document-protocol.generated.ts`
+1. 前端多层架构如何分层
+2. 前端各层之间必须遵守什么单向依赖约束
 
-## 目录职责
-- `apps/web/src/lib/components/`：编辑器、图形视图与其他 UI 组件
-- `apps/web/src/lib/components/graph-viewer/`：GraphViewer 领域实现
-- `apps/web/src/lib/graph-stream/`：document job / active snapshot 主链上的统一图流执行域
-- `apps/web/src/lib/import/`：导入源解析与导入配置；不承担 Core 编解码实现
-- `apps/web/src/lib/graph/`：共享渲染模型、路径工具、视图状态与视口辅助
-- `apps/web/src/shared/`：Worker / UI 共享的纯辅助函数，不承载状态或 authority
-- `apps/web/src/workers/`：WASM Worker、请求协议、错误封装与运行时桥接
-- `apps/web/test/`：集成与 E2E 测试辅助文件
+## 总体依赖方向
 
-## 必守规则
-- Web 不得直接访问 `packages/core/src/`；所有核心能力必须走 `apps/web/src/workers` 与 `packages/core/wasm`。
-- 文档协议唯一来源是 `packages/core/src/document/protocol.rs`；禁止手改 `packages/core/wasm/document-protocol.generated.ts`。
-- Worker 统一返回 `ok/error`；跨边界错误必须序列化回传。
-- 主文档 graph 只消费 `DocumentJob` 事件与 `SnapshotReady.mainGraph`；不要回到 `buildProjection('mainGraph')` 或其他 read API 补主图。
-- snapshot-bound read API 必须显式带 `snapshotId`；缺少时返回 `SnapshotNotReady`，不得在读取 API 内偷偷建 snapshot。
-- Editor / GraphViewer 不得依赖 `SnapshotReady.analysis` 下发 full `tree` / full `valueJson`；hover、YQ completion、root scalar highlight、subgraph scalar content 与 graph edit 必须通过 snapshot-bound 局部 projection/query。
-- Graph hover 不再承担任何预览职责；局部阅读与展开统一改为 click 打开底部工作区。
-- `SnapshotReady.sourceText` 是 editor/store 的 authoritative 写回文本；`parseFailed` 不提供替换用 `sourceText`。
-- 当前文本读取统一经 `ActiveDocumentContext`：优先 `Monaco model`，其次 `editorIO.getText()`，最后才回退到 active workspace tab / store 镜像文本。
-- `getDiagnostics`、`parseToTree`、`parseValueToTree` 只做瞬时探测或非主文档缓存，不得回流成主文档 authority。
-- JSON block 容错渲染只是光标派生 UI 状态；整文 invalid JSON 仍走 diagnostics-only 主链，不替代主文档 authoritative analysis。
-- Monaco 语言高亮必须来自 Core/WASM 主链；禁止引入 `monaco-editor/esm/vs/basic-languages/*/*.contribution`，唯一例外是 settings 的 JSON 配置编辑。
-- 跨组件共享状态优先走现有 store；不要直接耦合非父子组件。
-- `apps/web/src/lib/components/ui/` 视为基础组件目录；新增通用组件前先确认 shadcn-svelte 是否已有现成实现。
-- `workspace-snapshot-bindings.ts` 只是 `editorStore.actions` 的薄适配层；前端可见 `snapshotId` authority 仍在 `Workspace Store`，不要把这个 helper 当成独立 session/service。
+前端主链必须保持单向依赖：
 
-## GraphViewer 边界
-- `apps/web/src/lib/components/GraphViewer.svelte` 是稳定入口，只负责生命周期、controller 组装、test runtime 暴露与跨域编排。
-- 主流程逻辑下沉到 `apps/web/src/lib/components/graph-viewer/`：scene runtime、render kernel、anchor、图文联动、value edit、progress、dirty region、geometry、pointer、viewport、benchmark 与 probe。
-- `apps/web/src/lib/components/graph-viewer/runtime/` 承载 table runtime 与虚拟窗口等子域基础设施。
-- `apps/web/src/lib/leafer-minimap/`、`apps/web/src/lib/leafer-virtual-list/` 只处理 Leafer 相关渲染/滚动基础设施，不承载 graph 构建、tree 语义或 session 生命周期。
-- 子图工作区是 GraphViewer 底部的持久工作区。主图与工作区内的 graph pane 都通过 click 直接打开下一层 pane，不依赖 hover 生命周期。
-- 子图工作区唯一 authority 仍是 snapshot-bound `buildHoverSubgraphProjection({ snapshotId, path })`。主图或子图 pane 的点击只负责提供 `path` 与交互意图；workspace 不得自己构建主图，也不得绕过 active snapshot 读临时 projection。
-- 子图工作区的渲染逻辑必须复用 graph 组件语义：每个 pane 是一个独立 DOM host，内部挂同样的 Leafer canvas / node / edge 渲染链路，并保留与主图一致的默认缩放、拖动和平移边界约束。
-- 子图工作区链路遵循“最多保留 3 个 pane”的列栈规则。打开某个 pane 内的新子图时，只保留它的祖先链和新子图，丢弃右侧旧分支；不维护无限深历史。
-- 子图工作区 path 轨默认不单独展示为 UI 轨道；pane 标题沿用 graph meta path 的截断口径，完整 path 只放在 header `title` / 调试信息里。
-- 子图工作区点击 cell 时，业务语义分两段：一是继续走现有 reveal / editor 联动；二是在同一次点击里展开或替换底部 pane。`value` 打开对应 path，`key` 打开对应 key-value pair，`index/row` 打开对应 row；object/array 落 graph pane，scalar 落 content pane。主图与子图统一使用现有 cell 黄色高亮，不为 workspace 额外引入第二套高亮体系。
-- 子图工作区编辑逻辑复用当前 graph cell 编辑链路；workspace 自己不实现独立的 value edit authority。是否可编辑、如何提交、提交后如何回流，仍由现有 GraphViewer value-edit controller 和 Core/WASM edit plan 决定。
-- content pane 使用 Monaco hidden workspace tab 承载编辑器运行时，复用与右侧 sidecar editor 相同的 Monaco/runtime/full-edit 基础设施，但业务提交仍必须回到 `applyGraphEdit -> planGraphValueEdit -> Editor ApplyEdits` 主链，不能把 hidden tab 当成新的文档 authority。
-- content pane 的本地草稿 authority 是它自己的 Monaco model，不是 `GraphViewer` 的 `pane.content.sourceText`。外部 `sourceText` / snapshot refresh 只在 pane 处于 clean 且未聚焦时允许回灌；dirty 或 focused 时必须保留本地草稿，等 commit ack 对齐当前 model 后再清掉 dirty。
-- 子图 content pane 对同一路径的连续提交必须串行化。前一次 `applyGraphEdit` 尚未完成时，后续输入只能覆盖该路径的“最新待提交草稿”，待当前提交完成后继续补交，避免旧 revision/freshness 把新输入静默丢弃。
-- graph pane 内的双击编辑仍以 Leafer inner editor 为草稿 authority。`GraphValueEditController.activeEditState` 负责保护正在编辑的 cell，不把 graph 编辑过程复制成第二份 workspace 草稿 store。
-- content pane 不再单独展示 key 输入框；path 继续沿用子图 pane 的 header 风格展示，局部编辑默认只对 value 生效。
-- 子图工作区 graph cache 只缓存同一 documentKey / snapshotId / renderConfig 组合下的 projection 结果。renderConfig、revision、snapshot 或 enableNest 变化时必须整体失效并重建 pane 内容。
-- 子图工作区允许对平移做边界限制，但不要限制缩放、点击命中或编辑行为。限制口径是 graph world bounds 外扩 500px，主图和 workspace pane 统一使用同一套几何规则。
+```text
+UI
+  → Web 状态 / 服务编排
+  → Web Worker
+  → WASM 绑定
+  → Core
+```
 
-## Worker runtime 边界
-- `apps/web/src/workers/wasm-runtime.worker.ts` 是稳定入口，只负责初始化、message dispatch、统一错误出口与 runtime 组装。
-- `apps/web/src/workers/runtime/protocol.ts` 是 worker 请求 / 响应协议边界；新增能力先扩协议，再落 handler。
-- `apps/web/src/workers/runtime/` 按领域拆分 parse、value edit、tree path、graph search、transform、compare、graph transport、state、logging 与 request utils。
-- Worker 只负责 transport / correlation / UI fan-out；active snapshot、authoritative analysis 与 freshness owner 由 document runtime / snapshot contract 收敛。
-- `document-value-edit.ts` 负责 `planGraphValueEdit`；格式感知局部 edit 规划必须由 Core/WASM 提供，Web 只转发 `DocumentTextEdit` 结果。
+禁止逆流：
 
-## 新鲜度、错误与性能
-- 异步结果会写回 UI、store、editor model、graph scene、diagnostics 或 tree state 时，先建立 `FreshnessScope`。
-- 新异步链路禁止手写多段 `token` / `revision` / `model` / `sessionId` 组合判断；统一使用 `freshness.step()` 或 `freshness.isCurrent()`。
-- 增量更新以 `GraphDelta` 为准；无法保证 `treePath` / `pathSpan` / `reveal` 位置语义时，必须 fallback 到统一的 document job → snapshot → projection 主链。
-- `fullEditUiState` 是 full-edit 可见层唯一控制面；GraphViewer、Editor 与进度浮层都基于它决定 attach / 只读 / overlay 收口。
-- graph stream 与 build-graph progress / delta 事件统一使用 `streamRunId` 和 `eventSeq`；不要重新引入 `streamToken`、事件级 `seq` 或 `streamId`。
-- `formatSourceOnClose` 规则：format / minify 写回、增量编辑、GraphViewer full-edit / incremental render、JSON block transient render 一律传 `false`；import、tab-reactivate、language-switch 才跟随用户 `formatting.smart`。
-- Editor 多 tab 边界：`editorWorkspace.tabOrder` 只表示左侧用户 tab；`TabManager.svelte` 只持有 Monaco model 生命周期；当前激活左侧 tab 才能成为 `primary` 并镜像到 legacy `editorStore` 字段供 GraphViewer 消费。
-- 右侧 editor 是固定 `sidecar` workspace tab，不出现在左侧 tab strip，不替换 GraphViewer authority；右侧语法高亮、semantic tokens 与 auto-format 必须继续走共享 Monaco runtime、Core/WASM formatting 和 `createWorkspaceTabFullEditSink`。
+- UI 不能直接访问 Core Rust 实现
+- Web 状态层不能绕过 Worker 调 WASM 内部细节
+- Worker 不能承担 Core 语义 authority
+
+## 前端分层
+
+### 1. UI 层
+
+包括：
+
+- routes
+- Svelte 组件
+- 编辑器与图形视图容器
+- 可见交互、输入、展示
+
+职责：
+
+- 接住用户交互
+- 绑定状态
+- 渲染结果
+- 维护局部视图生命周期
+
+不负责：
+
+- 文档语义计算
+- 结构化读取真源
+- 协议语义裁决
+
+### 2. Web 状态 / 服务编排层
+
+包括：
+
+- store
+- service
+- controller
+- 组件间共享状态编排
+
+职责：
+
+- 协调 UI 与 Worker
+- 维护前端可见状态
+- 组合业务场景
+- 应用 freshness guard
+
+不负责：
+
+- 重新解析文档
+- 重建 Core 应给出的 snapshot / graph / planner 语义
+
+### 3. Worker 层
+
+包括：
+
+- `apps/web/src/workers/`
+- runtime handler
+- 请求 / 响应协议适配
+
+职责：
+
+- transport
+- request correlation
+- UI fan-out
+- 错误序列化
+
+不负责：
+
+- authoritative / stale / diagnostics-only 语义判定
+- 主图语义裁决
+- snapshot identity 回退策略
+
+### 4. WASM 绑定层
+
+包括：
+
+- `packages/core/wasm/index.ts`
+- protocol 生成物
+- TS 侧 WASM 适配
+
+职责：
+
+- 把 Core 暴露的协议和函数安全地接进 Web / Worker
+
+不负责：
+
+- 增加新的业务语义
+- 代替 protocol 真源
+
+## 前端内部架构约束
+
+### UI 与状态
+
+- UI 组件优先依赖 store / service / controller，不直接耦合远处组件内部实现
+- 跨组件共享状态优先进入既有 store
+- 局部渲染现场优先留在局部 runtime，不无故提升到全局 store
+
+### GraphViewer
+
+- `GraphViewer.svelte` 是稳定入口和组装层，不应继续膨胀成业务实现中心
+- GraphViewer 具体能力应下沉到 `graph-viewer/` 子域
+- Graph search、subgraph workspace、viewport、scene runtime 等都应有清晰子域
+
+### Editor
+
+- Editor 容器负责承接 Monaco 运行时与业务控制面
+- 与文档语义直接相关的约束要通过数据流文档和双向编辑文档定义，不在 UI 层重新发明
+
+### Workspace
+
+- Workspace 是前端的工作区协调层
+- 它可以保存可见状态和绑定关系
+- 它不应重新成为文档语义 authority
+
+## 单向依赖检查清单
+
+- UI 是否直接读取了 Core 不该暴露的内部信息
+- service / controller 是否绕过 Worker 直接依赖 WASM 细节
+- Worker 是否在二次定义 snapshot / graph / stale 语义
+- 某个状态是否本应是局部运行时状态，却被提升成全局状态
+- 某个逻辑是否本应下沉到 Core，却在前端复制了一份格式或结构语义
+
+## 设计目标
+
+这套前端架构的目标不是“层数越多越好”，而是：
+
+- UI 层只关心交互与呈现
+- 前端状态层只关心编排与共享状态
+- Worker 只关心跨边界 transport
+- WASM 只关心绑定
+- Core 才是文档语义真源

@@ -17,7 +17,7 @@ read_when:
 - 测试策略：`docs/TESTING.md`
 - Web 约束：`docs/FRONTEND.md`
 - Core 约束：`docs/CORE.md`
-- 完整文档索引：`docs/README.md`
+- 文档入口：先运行 `pnpm docs:list`，再按 `docs/agent-entrypoints.md` 选择主题文档
 
 ## 顶层依赖图
 
@@ -83,7 +83,7 @@ flowchart LR
 
 ```mermaid
 flowchart TD
-  Human["人类入口\nREADME.md"] --> Docs["文档索引\ndocs/README.md"]
+  Human["人类入口\nREADME.md"] --> Docs["文档入口\npnpm docs:list + docs/agent-entrypoints.md"]
   Agent["Agent 全局语境\nCONTEXT.md"] --> Architecture["架构图\nARCHITECTURE.md"]
   Docs --> Architecture
   Docs --> Rules["规则文档\ndocs/CODING.md / docs/TESTING.md"]

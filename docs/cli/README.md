@@ -44,7 +44,7 @@ The graph page uses the same Web `ViewportPanel` / `GraphViewer` stack as the ed
 
 Supported web options are format/display options: `--input-format`, `--output-format`, `--prettyPrint`, `--indent`, `--unwrapScalar`, and `--no-doc`. `treease web` rejects `--inplace`, `--exit-status`, multiple input files, and `--null-input`.
 
-Expression evaluation failures are reported in the terminal and do not start a server. Graph parsing failures for the frozen result are shown in the Web page using the normal diagnostics view. On first launch, `treease web` downloads the matching Web asset bundle from the configured asset origin, caches it locally, and then serves the cached files on `127.0.0.1`. Subsequent launches reuse the local cache until the CLI version changes.
+Expression evaluation failures are reported in the terminal and do not start a server. Graph parsing failures for the frozen result are shown in the Web page using the normal diagnostics view. On first launch, `treease web` downloads the matching Web asset bundle from the configured asset origin, prints download progress to stderr, caches the graph-page assets locally, and then serves the cached files on `127.0.0.1`. Subsequent launches reuse the local cache until the CLI version changes.
 
 For local shared-page debugging inside this repository, prefer the repo wrapper instead of the public asset origin:
 
