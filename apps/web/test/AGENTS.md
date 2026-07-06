@@ -4,9 +4,9 @@
 - 本目录承载 Web 集成测试、E2E 测试与测试辅助工具。
 
 ## 最短路径
-- 先读：`../../../docs/agent-entrypoints.md`
+- 先读：`../../../docs/index.md`
 - 测试规则：`../../../docs/TESTING.md`
-- Web 规则：`../../../docs/FRONTEND.md`
+- Web 规则：`../../../docs/WEB.md`
 
 ## 本地规则
 - 集成测试放在 `integration/**/*.test.ts`。

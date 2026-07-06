@@ -11,12 +11,17 @@
     "server:deploy:check": "node ./scripts/server-deploy-check.mjs",
     "cli:web:local": "node ./scripts/treease-web-local.mjs",
     "core:test": "cd packages/core && cargo nextest run --locked",
+    "test:e2e:core": "pnpm --dir apps/web test:e2e:core",
+    "test:core:all": "cd packages/core && ./test.sh all",
     "test:full": "pnpm run core:test && cd apps/cli && cargo nextest run --locked --lib && bash tests/acceptance/run.sh && cd ../web && pnpm test",
     "web:test": "pnpm --dir apps/web test",
     "web:cli-assets:serve": "node ./scripts/treease-web-local.mjs serve",
     "web:assets:deploy": "pnpm --dir apps/web assets:r2:upload",
     "web:pages:deploy": "pnpm --dir apps/web deploy:pages",
     "cli:build:release": "cd apps/cli && cargo build --locked --release",
-    "cli:publish": "cd apps/cli && cargo publish --locked"
+    "cli:publish": "cd apps/cli && cargo publish --locked",
+    "check:docs": "node ./scripts/check-docs.mjs && pnpm docs:map:check",
+    "docs:map:gen": "node ./scripts/generate-docs-map.mjs",
+    "docs:map:check": "node ./scripts/generate-docs-map.mjs --check"
   }
 }

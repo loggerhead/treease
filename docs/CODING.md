@@ -8,7 +8,7 @@ read_when:
 
 ## 适用范围
 - 适用于仓库内所有手写代码与与其配套的文档、测试、生成流程。
-- 详细的 Web 和 Core 规则分别下沉到 `FRONTEND.md`、`CORE.md` 与模块级 `AGENTS.md`。
+- 详细的 Web 和 Core 规则分别下沉到 `WEB.md`、`CORE.md` 与模块级 `AGENTS.md`。
 
 ## 目录边界
 - `apps/web/` 只承载 UI、交互、Worker、前端状态与浏览器运行时逻辑。
@@ -30,7 +30,7 @@ read_when:
 - 先更新真实协议源，再生成对应绑定文件。
 - 先补测试，再扩大实现范围。
 - 先写局部文档入口，再扩展全局索引。
-- Web 异步结果落地必须遵循 `FRONTEND.md` 的 `FreshnessScope` 约束，避免分散手写过期判断。
+- Web 异步结果落地必须遵循 `WEB.md` 的 `FreshnessScope` 约束，避免分散手写过期判断。
 
 ## 禁止补丁式处理
 - 禁止通过启发式重试、多套解释、随机 fallback、静默降级、局部特例或“只为当前样例服务”的字面量分支去修补主链路缺口。
@@ -55,7 +55,7 @@ read_when:
 
 ## 文档规则
 - 根目录 `AGENTS.md` 只保留导航与硬约束摘要，不堆细节。
-- 详细说明优先写入 `ARCHITECTURE.md`、`docs/agent-entrypoints.md` 指向的主题文档，或模块级 `AGENTS.md`。
+- 详细说明优先写入 `ARCHITECTURE.md`、`docs/index.md` 指向的主题文档，或模块级 `AGENTS.md`。
 - 文档内容应可机械验证：目录存在、文件存在、命令可找到、职责与目录一致。
 - 文档引用默认不写行号；能落到稳定 symbol 时，优先写文件路径与函数名、类型名或 struct 名。
 - 测试证据默认写测试文件与用例名；若没有稳定 symbol，再退回到文件路径加职责短句，不使用易漂移的行号区间。

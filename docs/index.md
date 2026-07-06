@@ -13,19 +13,24 @@ read_when:
 - 先读局部 `AGENTS.md`，再回这里选主题文档。
 - 搜索前先判断自己要找的是“结构语义”还是“文本字面量”；结构语义优先走项目提供的结构化索引工具，文本字面量再用搜索。
 
+- 全局硬约束：
+  - `apps/` 不得重复实现 Core 的文档语义链路。
+  - Core 引入生产环境新依赖前必须先征得用户明确同意。
+  - 实现优先采用语言无关逻辑，语言特异化需先征得用户明确同意后才能执行。
+
 ## 任务路由
 
 | 任务类型 | 最短路径 |
 | --- | --- |
 | docs-only | 对应主题文档（按 `pnpm docs:list` 输出选择） |
-| Web UI / store / Worker / GraphViewer | `../apps/web/AGENTS.md` → `./FRONTEND.md` |
+| Web UI / store / Worker / GraphViewer | `../apps/web/AGENTS.md` → `./WEB.md` |
 | Server / auth / billing / share / AI / usage | `../apps/server/AGENTS.md` → `../CONTEXT.md` |
 | Core Rust / WASM / protocol | `../packages/core/AGENTS.md` → `./CORE.md` |
-| runtime / snapshot / protocol / mainGraph | `./CORE.md` 或 `./FRONTEND.md` → `../CONTEXT.md` |
-| WASM language pack / YAML 按需加载 | `./CORE.md` → `./FRONTEND.md` → `./wasm-language-packs.md` |
+| runtime / snapshot / protocol / mainGraph | `./CORE.md` 或 `./WEB.md` → `../CONTEXT.md` |
+| WASM language pack / YAML 按需加载 | `./CORE.md` → `./WEB.md` → `./wasm-language-packs.md` |
 | editor / workspace / sourceText / snapshot authority | `./editor-data-flow.md` |
 | graph edit / planner / fallback / workspace content pane | `./bidirectional-edit-pipeline.md` |
-| subgraph workspace / pane chain / content pane / workspace graph pane | `./FRONTEND.md` → `./subgraph-workspace.md` |
+| subgraph workspace / pane chain / content pane / workspace graph pane | `./WEB.md` → `./subgraph-workspace.md` |
 | JSON streaming / import / chunk / close | `./stream-pipeline.md` |
 | layout / topology / dirty region / edge geometry | `./layout-pipeline.md` |
 | 测试策略 / 验证命令 | `./TESTING.md` |
@@ -50,7 +55,7 @@ read_when:
 
 - 打开 `../CONTEXT.md`
   当任务直接涉及 `Document Runtime`、`DocumentSnapshot`、`DocumentJob`、`SnapshotReady`、`ParseFailed`、snapshot-bound read。
-- 打开 `./FRONTEND.md`
+- 打开 `./WEB.md`
   当任务涉及 `FreshnessScope`、GraphViewer/Worker、Workspace、subgraph workspace、Monaco/Leafer 交互边界。
 - 打开 `./CORE.md`
   当任务涉及 protocol 真源、WASM 导出、query_snapshot、graph build、blank clear snapshot。

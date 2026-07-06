@@ -184,17 +184,6 @@ Monaco local draft
 - 默认缩放、拖动和平移边界应保持一致语义
 - 工作区阅读不应切断 editor reveal / graph highlight 的联动
 
-## 和其他文档的关系
-
-- `FRONTEND.md`
-  说明工作区在前端多层架构里的位置和边界
-- `editor-data-flow.md`
-  说明工作区如何挂接主文档主链
-- `bidirectional-edit-pipeline.md`
-  说明工作区编辑如何复用统一双向编辑主链
-- `layout-pipeline.md`
-  说明 graph pane 使用的图形与布局语义
-
 ## 检查清单
 
 - 工作区是否被错误地实现成新的文档 authority

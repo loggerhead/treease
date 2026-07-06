@@ -409,14 +409,14 @@ function validateCommandToken(docPath, token) {
 }
 
 function validateAgentRoutingContract() {
-  const compactGuide = path.join(repoRoot, 'docs/agent-entrypoints.md');
+  const compactGuide = path.join(repoRoot, 'docs/index.md');
   if (!existsSync(compactGuide)) {
-    fail('docs/agent-entrypoints.md: 缺少 agent 最短路径文档');
+    fail('docs/index.md: 缺少 agent 最短路径文档');
   }
 
   const rootAgents = readRepoFile('AGENTS.md');
-  if (!rootAgents.includes('docs/agent-entrypoints.md')) {
-    fail('AGENTS.md: 根导航未指向 docs/agent-entrypoints.md');
+  if (!rootAgents.includes('docs/index.md')) {
+    fail('AGENTS.md: 根导航未指向 docs/index.md');
   }
 
   if (rootAgents.includes('README.md` → `CONTEXT.md` → `ARCHITECTURE.md` → `docs/README.md`')) {
@@ -440,8 +440,8 @@ function validateDocMetadata(docPath, content) {
 function validateHotDocBudgets() {
   const budgets = {
     'AGENTS.md': 65,
-    'docs/agent-entrypoints.md': 60,
-    'docs/FRONTEND.md': 160,
+    'docs/index.md': 60,
+    'docs/WEB.md': 160,
     'docs/CORE.md': 115,
     'apps/web/AGENTS.md': 24,
     'apps/web/test/AGENTS.md': 20,

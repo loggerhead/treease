@@ -4,7 +4,7 @@
 - 这是本仓库的硬性前置规则。
 - 进入仓库后的第一条工作命令必须是 `pnpm docs:list`。
 - 在执行 `pnpm docs:list` 之前，不要搜索、读业务文件、改代码、跑测试、执行其他命令，或基于仓库内容回答问题。
-- 跑完 `pnpm docs:list` 后，先按输出中的 `Read when` 读取命中的文档；默认先读 `docs/agent-entrypoints.md` 选择最短阅读路径，只有任务直接触及 Document Runtime、snapshot、protocol、mainGraph 语义时再补 `CONTEXT.md`。
+- 跑完 `pnpm docs:list` 后，先按输出中的 `Read when` 读取命中的文档；默认先读 `docs/index.md` 选择最短阅读路径，只有任务直接触及 Document Runtime、snapshot、protocol、mainGraph 语义时再补 `CONTEXT.md`。
 
 ## Project Overview
 - Treease 是一个多格式结构化文档工具链：`packages/core/` 负责 Rust 解析/格式化/算子/评估/建图，`apps/web/` 负责编辑器与图形界面，`apps/server/` 负责账号 / 计费 / 分享 / AI server 能力，`apps/cli/` 负责独立 CLI crate、acceptance 测试与文档入口。
@@ -54,8 +54,8 @@
 - 改协议或 WASM 后：`cd packages/core && cargo run --locked --bin export_document_protocol`，再在 `apps/web/` 运行 `pnpm wasm:bindgen`；必要时继续 `pnpm wasm:sync`
 
 ## Key References
-- `docs/agent-entrypoints.md`：按任务路由的最短路径
-- `docs/FRONTEND.md`：Web 规则、职责边界、freshness / graph / worker 约束
+- `docs/index.md`：按任务路由的最短路径
+- `docs/WEB.md`：Web 规则、职责边界、freshness / graph / worker 约束
 - `docs/CORE.md`：Core 规则、协议边界、WASM / runtime 约束
 - `docs/TESTING.md`：真实覆盖、timeout、mock 与 E2E 规则
 - `scripts/check-docs.mjs`：文档路径、命令、选择器一致性校验
