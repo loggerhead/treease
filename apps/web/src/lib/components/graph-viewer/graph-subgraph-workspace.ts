@@ -364,6 +364,48 @@ function clampWorkspaceViewportPan(app: LeaferAppLike, mount: HTMLDivElement, gr
   layer.y = clamped.y;
 }
 
+function resizeWorkspaceViewport(
+  app: LeaferAppLike,
+  mount: HTMLDivElement,
+  graph: SubgraphWorkspaceGraphData,
+  contentWidth: number,
+  contentHeight: number,
+  options?: { resetTransform?: boolean },
+): void {
+  const viewportWidth = Math.max(1, Math.floor(mount.clientWidth));
+  const viewportHeight = Math.max(1, Math.floor(mount.clientHeight));
+  app.resize?.({ width: viewportWidth, height: viewportHeight });
+
+  const rootViewport = getLeaferContentRoot(app) as
+    | (LeaferBox & {
+        x?: number;
+        y?: number;
+        scaleX?: number;
+        scaleY?: number;
+      })
+    | null;
+  if (rootViewport) {
+    if (options?.resetTransform) {
+      rootViewport.scaleX = 1;
+      rootViewport.scaleY = 1;
+      rootViewport.x = contentWidth < viewportWidth ? Math.max(0, (viewportWidth - contentWidth) / 2) : 0;
+      rootViewport.y = contentHeight < viewportHeight ? Math.max(0, (viewportHeight - contentHeight) / 2) : 0;
+      mount.dataset.viewportScale = '1';
+    } else {
+      clampWorkspaceViewportPan(app, mount, graph);
+      if (contentWidth < viewportWidth) {
+        rootViewport.x = Math.max(0, (viewportWidth - contentWidth) / 2);
+      }
+      if (contentHeight < viewportHeight) {
+        rootViewport.y = Math.max(0, (viewportHeight - contentHeight) / 2);
+      }
+    }
+  }
+
+  app.updateClientBounds?.();
+  app.update?.();
+}
+
 export async function renderSubgraphWorkspaceGraph(
   mount: HTMLDivElement,
   graph: SubgraphWorkspaceGraphData,
@@ -461,8 +503,6 @@ export async function renderSubgraphWorkspaceGraph(
   const padding = 16;
   const contentWidth = Math.max(1, graph.width + padding * 2);
   const contentHeight = Math.max(1, graph.height + padding * 2);
-  const viewportWidth = Math.max(1, Math.floor(mount.clientWidth));
-  const viewportHeight = Math.max(1, Math.floor(mount.clientHeight));
   runtime.edgeLayer.x = padding - graph.minX;
   runtime.edgeLayer.y = padding - graph.minY;
   runtime.nodeLayer.x = padding - graph.minX;
@@ -487,19 +527,18 @@ export async function renderSubgraphWorkspaceGraph(
     renderConfig: deps.getRenderConfig(),
     maxPerSource: null,
   });
-  app.resize?.({ width: viewportWidth, height: viewportHeight });
-  await tick();
-  const rootViewport = root as LeaferBox & {
-    x?: number;
-    y?: number;
-    scaleX?: number;
-    scaleY?: number;
+  const resizeObserver =
+    typeof ResizeObserver === 'undefined'
+      ? null
+      : new ResizeObserver(() => {
+          resizeWorkspaceViewport(app, mount, graph, contentWidth, contentHeight);
+        });
+  resizeObserver?.observe(mount);
+  runtime.dispose = () => {
+    resizeObserver?.disconnect();
   };
-  rootViewport.scaleX = 1;
-  rootViewport.scaleY = 1;
-  rootViewport.x = contentWidth < viewportWidth ? Math.max(0, (viewportWidth - contentWidth) / 2) : 0;
-  rootViewport.y = contentHeight < viewportHeight ? Math.max(0, (viewportHeight - contentHeight) / 2) : 0;
-  mount.dataset.viewportScale = '1';
+  resizeWorkspaceViewport(app, mount, graph, contentWidth, contentHeight, { resetTransform: true });
+  await tick();
   const moveEventName = deps.getMoveEventName?.();
   if (moveEventName && typeof app.on === 'function') {
     app.on(moveEventName, () => {
@@ -507,7 +546,5 @@ export async function renderSubgraphWorkspaceGraph(
       app.update?.();
     });
   }
-  app.updateClientBounds?.();
-  app.update?.();
   return runtime;
 }

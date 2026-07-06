@@ -52,43 +52,48 @@ function isSupportedLanguage(languageId: string): languageId is SupportedEditorL
   return colorActivationLanguageSet.has(languageId as SupportedEditorLanguageId);
 }
 
-function byteOffsetToPosition(text: string, byteOffset: number): { lineNumber: number; column: number } {
-  const target = Math.max(0, byteOffset);
-  const lines = text.split('\n');
-  let consumedBytes = 0;
+function utf8ByteLengthForCodePoint(codePoint: number): number {
+  if (codePoint <= 0x7f) return 1;
+  if (codePoint <= 0x7ff) return 2;
+  if (codePoint <= 0xffff) return 3;
+  return 4;
+}
 
-  for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
-    const line = lines[lineIndex] ?? '';
-    const lineBytes = new TextEncoder().encode(line).length;
-    const newlineBytes = lineIndex < lines.length - 1 ? 1 : 0;
-    const lineStart = consumedBytes;
-    const lineEnd = lineStart + lineBytes;
-
-    if (target <= lineEnd) {
-      let charIndex = 0;
-      while (charIndex < line.length) {
-        const nextBytes = lineStart + new TextEncoder().encode(line.slice(0, charIndex + 1)).length;
-        if (target < nextBytes) break;
-        charIndex += 1;
-      }
-      return { lineNumber: lineIndex + 1, column: charIndex + 1 };
-    }
-
-    consumedBytes = lineEnd + newlineBytes;
+function utf16OffsetForUtf8ByteOffset(text: string, byteOffset: number): number {
+  if (byteOffset <= 0) return 0;
+  let bytes = 0;
+  let offset = 0;
+  while (offset < text.length) {
+    if (bytes >= byteOffset) return offset;
+    const codePoint = text.codePointAt(offset);
+    if (codePoint == null) return offset;
+    const codeUnitLength = codePoint > 0xffff ? 2 : 1;
+    const nextBytes = bytes + utf8ByteLengthForCodePoint(codePoint);
+    if (nextBytes > byteOffset) return offset;
+    bytes = nextBytes;
+    offset += codeUnitLength;
   }
+  return text.length;
+}
 
-  const lastLine = lines[lines.length - 1] ?? '';
-  return { lineNumber: lines.length, column: lastLine.length + 1 };
+function byteOffsetToPosition(
+  monaco: MonacoApi,
+  model: Monaco.editor.ITextModel,
+  text: string,
+  byteOffset: number,
+): Monaco.Position {
+  return getCandidatePosition(monaco, model, utf16OffsetForUtf8ByteOffset(text, byteOffset));
 }
 
 function buildRangeFromByteOffsets(
   monaco: MonacoApi,
+  model: Monaco.editor.ITextModel,
   text: string,
   startByte: number,
   endByte: number,
 ): Monaco.Range {
-  const start = byteOffsetToPosition(text, startByte);
-  const end = byteOffsetToPosition(text, endByte);
+  const start = byteOffsetToPosition(monaco, model, text, startByte);
+  const end = byteOffsetToPosition(monaco, model, text, endByte);
   return new monaco.Range(start.lineNumber, start.column, end.lineNumber, end.column);
 }
 
@@ -258,7 +263,7 @@ async function findValueConstrainedColors(
         if (tokenEndByte <= candidateByteStart || tokenStartByte >= candidateByteEnd) continue;
         const parsed = parseCssColor(spanMatch.text);
         if (!parsed) continue;
-        const range = buildRangeFromByteOffsets(monaco, fullText, tokenStartByte, tokenEndByte);
+        const range = buildRangeFromByteOffsets(monaco, model, fullText, tokenStartByte, tokenEndByte);
         const rangeKey = `${range.startLineNumber}:${range.startColumn}:${range.endLineNumber}:${range.endColumn}`;
         if (seenRanges.has(rangeKey)) continue;
         seenRanges.add(rangeKey);

@@ -329,4 +329,46 @@ describe('createDocumentColorRegistrar', () => {
     expect(resolveEditorPositionTargetResult).not.toHaveBeenCalled();
     expect(resolvePathSpanResult).not.toHaveBeenCalled();
   });
+
+  it('does not perform quadratic TextEncoder work for large single-line color values', async () => {
+    const { monaco, providers } = createMonacoStub();
+    const ensure = createDocumentColorRegistrar({ monaco });
+    ensure('json');
+
+    const provider = providers.get('json');
+    const filler = 'a'.repeat(50_000);
+    const text = `{\"color\":\"${filler}#4f46e5\"}`;
+    const colorStart = text.indexOf('#4f46e5');
+    const colorEnd = colorStart + '#4f46e5'.length;
+    const valueStart = text.indexOf('"', text.indexOf(':') + 1);
+    const valueEnd = text.lastIndexOf('"');
+
+    vi.mocked(resolveTreePathResult).mockResolvedValue({ status: 'ready', data: [{ tag: 0, key: 'color', index: 0 }] } as any);
+    vi.mocked(resolveEditorPositionTargetResult).mockResolvedValue({ status: 'ready', data: 'value' });
+    vi.mocked(resolvePathSpanResult).mockResolvedValue({
+      status: 'ready',
+      data: { startByte: valueStart, endByte: valueEnd, row: 0, column: valueStart },
+    } as any);
+
+    const originalEncode = TextEncoder.prototype.encode;
+    let encodeCalls = 0;
+    TextEncoder.prototype.encode = function (...args: Parameters<TextEncoder['encode']>) {
+      encodeCalls += 1;
+      return originalEncode.apply(this, args);
+    };
+
+    try {
+      const colors = await provider.provideDocumentColors(createModel(text), { isCancellationRequested: false });
+      expect(colors).toHaveLength(1);
+      expect(colors[0].range).toMatchObject({
+        startLineNumber: 1,
+        startColumn: colorStart + 1,
+        endLineNumber: 1,
+        endColumn: colorEnd + 1,
+      });
+      expect(encodeCalls).toBeLessThan(32);
+    } finally {
+      TextEncoder.prototype.encode = originalEncode;
+    }
+  });
 });

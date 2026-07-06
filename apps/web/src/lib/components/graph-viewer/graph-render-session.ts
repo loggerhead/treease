@@ -299,11 +299,8 @@ export function createGraphRenderSession(deps: GraphRenderSessionDeps) {
     version?: { baseGraphVersion: number; graphVersion: number },
   ): Promise<void> {
     const startedAtMs = performance.now();
-    performance.mark('pipeline:apply-graph-delta:start');
     await getSceneBridge().applyGraphDelta(delta, version);
     markGraphApplied(readiness);
-    performance.mark('pipeline:apply-graph-delta:end');
-    performance.measure('pipeline:apply-graph-delta', 'pipeline:apply-graph-delta:start', 'pipeline:apply-graph-delta:end');
     const finishedAtMs = performance.now();
     const durationMs = finishedAtMs - startedAtMs;
 
@@ -467,10 +464,8 @@ export function createGraphRenderSession(deps: GraphRenderSessionDeps) {
           revision: params.revision,
           mode: params.redrawMode,
         },
-        params.freshness,
+      params.freshness,
       );
-      performance.mark('pipeline:render-document-graph:end');
-      performance.measure('pipeline:render-document-graph', 'pipeline:render-document-graph:start', 'pipeline:render-document-graph:end');
       markGraphStreamDone();
 
       return getSceneBridge().getLastRenderedGraph() ?? emptyRenderResult();
@@ -565,8 +560,6 @@ export function createGraphRenderSession(deps: GraphRenderSessionDeps) {
     if (!ensureDocumentKey()) return null;
 
     deps.clearErrorMessage();
-    performance.mark('pipeline:render-document-graph:start');
-
     if (
       renderedDocumentKey === request.documentKey &&
       renderedRevision === request.revision &&
@@ -610,7 +603,6 @@ export function createGraphRenderSession(deps: GraphRenderSessionDeps) {
       });
 
       const builderConfig = getBuilderConfig();
-      performance.mark('pipeline:wasm-start-job:start');
       const { started, advance } = await startSharedGraphDocumentJob({
         documentKey: request.documentKey,
         language: request.language,
@@ -623,8 +615,6 @@ export function createGraphRenderSession(deps: GraphRenderSessionDeps) {
         outputGraph: true,
         builderConfig,
       });
-      performance.mark('pipeline:wasm-start-job:end');
-      performance.measure('pipeline:wasm-start-job', 'pipeline:wasm-start-job:start', 'pipeline:wasm-start-job:end');
       if (!freshness.isCurrent()) return cancelStartedJob(started.jobHandle);
       activeJobHandle = started.jobHandle;
 
@@ -634,19 +624,7 @@ export function createGraphRenderSession(deps: GraphRenderSessionDeps) {
         chunkSize,
         advance: async (input) => {
           recordAdvanceRequest(input.kind);
-          if (input.kind === 'close') {
-            performance.mark('pipeline:close-advance:start');
-          } else {
-            performance.mark('pipeline:wasm-advance:start');
-          }
           const batch = await advance(input);
-          if (input.kind === 'close') {
-            performance.mark('pipeline:close-advance:end');
-            performance.measure('pipeline:close-advance', 'pipeline:close-advance:start', 'pipeline:close-advance:end');
-          } else {
-            performance.mark('pipeline:wasm-advance:end');
-            performance.measure('pipeline:wasm-advance', 'pipeline:wasm-advance:start', 'pipeline:wasm-advance:end');
-          }
           recordAdvanceBatch(batch);
           return batch;
         },
@@ -711,7 +689,6 @@ export function createGraphRenderSession(deps: GraphRenderSessionDeps) {
     activeExternalSessionId = session.sessionId;
     deps.resetStreamProgress();
     deps.clearErrorMessage();
-    performance.mark('pipeline:render-document-graph:start');
 
     const freshness = createFreshnessScope(
       {

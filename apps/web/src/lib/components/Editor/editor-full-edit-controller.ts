@@ -583,13 +583,13 @@ export function createEditorFullEditController(options: CreateEditorFullEditCont
   ): Promise<FullEditTerminalOutcome> {
     try {
       const intakeResult = await runIntakeJob({
-      documentKey: session.documentKey,
-      language: session.language,
-      text: session.visibleText,
-      settings: documentJobSettingsFor(session.formatSourceOnClose),
-      revision: session.revision,
-      builderConfig: options.getGraphBuilderConfig(),
-      isFresh: isSessionCurrent,
+        documentKey: session.documentKey,
+        language: session.language,
+        text: session.visibleText,
+        settings: documentJobSettingsFor(session.formatSourceOnClose),
+        revision: session.revision,
+        builderConfig: options.getGraphBuilderConfig(),
+        isFresh: isSessionCurrent,
       });
       if (!isSessionCurrent()) {
         return {
