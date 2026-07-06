@@ -184,14 +184,14 @@ fn tree_store_uses_node_ids_for_parent_and_sequence_paths() {
     root.kind = TreeNodeKind::Sequence;
     root.set_sem_type(SemType::Seq);
     root.set_document(3);
-    root.set_filename("input.json");
     let root_id = store.add(root);
+    store.set_document_meta(3, "input.json", 0);
 
     let child_id = ensure_seq_index(&mut store, root_id, 0).unwrap();
 
     let child = store.get(child_id).unwrap();
     assert_eq!(child.parent, Some(root_id));
-    assert_eq!(child.sequence_index, Some(0));
+    assert_eq!(child.sequence_index(), Some(0));
     assert_eq!(store.document_for(child_id).unwrap(), 3);
     assert_eq!(store.filename_for(child_id).unwrap(), "input.json");
     assert_eq!(store.nice_path_for(child_id).unwrap(), "[0]");
@@ -237,8 +237,8 @@ fn tree_ops_ensure_map_and_sequence_clear_scalar_value() {
 
     assert_eq!(store.get(map_id).unwrap().kind, TreeNodeKind::Mapping);
     assert_eq!(store.get(seq_id).unwrap().kind, TreeNodeKind::Sequence);
-    assert_eq!(store.get(map_id).unwrap().value, "");
-    assert_eq!(store.get(seq_id).unwrap().value, "");
+    assert_eq!(store.value_for(map_id).unwrap(), "");
+    assert_eq!(store.value_for(seq_id).unwrap(), "");
 }
 
 #[test]
@@ -252,9 +252,9 @@ fn tree_ops_create_map_value_with_key_node_id() {
     let value_id = get_or_create_map_value(&mut store, root_id, "name").unwrap();
 
     let value = store.get(value_id).unwrap();
-    let key_id = value.key.unwrap();
+    let key_id = value.key().unwrap();
     assert_eq!(value.parent, Some(root_id));
-    assert_eq!(store.get(key_id).unwrap().value, "name");
+    assert_eq!(store.value_for(key_id).unwrap(), "name");
     assert_eq!(
         store.path_for(value_id).unwrap(),
         vec![treease_core::core::ParsedKey::Str("name".to_string())]

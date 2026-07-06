@@ -235,10 +235,7 @@ fn sort_mapping_keys(store: &mut TreeStore, id: NodeId) {
         .content
         .chunks_exact(2)
         .map(|pair| {
-            let key = store
-                .get(pair[0])
-                .map(|node| node.value.clone())
-                .unwrap_or_default();
+            let key = store.value_string_for(pair[0]).unwrap_or_default();
             (key, pair[0], pair[1])
         })
         .collect::<Vec<_>>();
@@ -260,29 +257,72 @@ fn clone_tree_into_store(
     let source = source_store
         .get(source_id)
         .ok_or_else(|| "missing node".to_string())?;
-    let id = target_store.add(crate::core::TreeNode {
+    let mut out = crate::core::TreeNode {
         kind: source.kind,
         sem_type: source.sem_type,
         tag: source.tag.clone(),
-        value: source.value.clone(),
-        anchor: source.anchor.clone(),
-        head_comment: source.head_comment.clone(),
-        line_comment: source.line_comment.clone(),
-        foot_comment: source.foot_comment.clone(),
+        value: crate::core::NodeValueRef::Missing,
         start_byte: source.start_byte,
         end_byte: source.end_byte,
         document: source.document,
-        filename: source.filename.clone(),
         line: source.line,
         column: source.column,
-        file_index: source.file_index,
-        leading_content: source.leading_content.clone(),
         is_map_key: source.is_map_key,
         sequence_index: source.sequence_index,
-        encode_separate: source.encode_separate,
-        evaluate_together: source.evaluate_together,
         ..crate::core::TreeNode::default()
-    });
+    };
+    out.set_encode_separate(source.encode_separate());
+    out.set_evaluate_together(source.evaluate_together());
+    let id = target_store.add(out);
+    if source_store
+        .value_ref_for(source_id)
+        .map_err(to_error)?
+        .is_some()
+    {
+        target_store
+            .set_value(
+                id,
+                source_store.value_string_for(source_id).map_err(to_error)?,
+            )
+            .map_err(to_error)?;
+    }
+    target_store.set_document_meta(
+        source.document,
+        source_store
+            .filename_for(source_id)
+            .unwrap_or_default()
+            .to_owned(),
+        source_store.file_index_for(source_id).unwrap_or_default(),
+    );
+    let _ = target_store.set_anchor(
+        id,
+        source_store
+            .anchor_for(source_id)
+            .unwrap_or_default()
+            .to_owned(),
+    );
+    let _ = target_store.set_comments(
+        id,
+        source_store
+            .head_comment_for(source_id)
+            .unwrap_or_default()
+            .to_owned(),
+        source_store
+            .line_comment_for(source_id)
+            .unwrap_or_default()
+            .to_owned(),
+        source_store
+            .foot_comment_for(source_id)
+            .unwrap_or_default()
+            .to_owned(),
+    );
+    let _ = target_store.set_leading_content(
+        id,
+        source_store
+            .leading_content_for(source_id)
+            .unwrap_or_default()
+            .to_owned(),
+    );
 
     for child in &source.content {
         let child_id = clone_tree_into_store(source_store, *child, target_store)?;

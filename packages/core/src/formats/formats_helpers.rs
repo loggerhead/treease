@@ -1,7 +1,8 @@
 use std::io::Write;
 
 use crate::core::{
-    CoreError, EvalError, NodeId, ParseError, SemType, TreeNode, TreeNodeKind, TreeStore,
+    CompactTag, CoreError, EvalError, NodeId, ParseError, SemType, TreeNode, TreeNodeKind,
+    TreeStore,
 };
 
 use super::node;
@@ -18,7 +19,7 @@ pub(crate) fn resolve_alias_for_encode(
         if slow_node.kind != crate::core::TreeNodeKind::Alias {
             return Ok(Some(slow));
         }
-        let Some(next_slow) = slow_node.alias else {
+        let Some(next_slow) = slow_node.alias() else {
             return Ok(None);
         };
         slow = next_slow;
@@ -27,7 +28,7 @@ pub(crate) fn resolve_alias_for_encode(
         if fast_node.kind != crate::core::TreeNodeKind::Alias {
             return Ok(Some(fast));
         }
-        let Some(next_fast) = fast_node.alias else {
+        let Some(next_fast) = fast_node.alias() else {
             return Ok(None);
         };
         fast = next_fast;
@@ -36,7 +37,7 @@ pub(crate) fn resolve_alias_for_encode(
         if fast_node.kind != crate::core::TreeNodeKind::Alias {
             return Ok(Some(fast));
         }
-        let Some(next_fast) = fast_node.alias else {
+        let Some(next_fast) = fast_node.alias() else {
             return Ok(None);
         };
         fast = next_fast;
@@ -44,12 +45,6 @@ pub(crate) fn resolve_alias_for_encode(
         if fast == slow {
             return Ok(None);
         }
-    }
-}
-
-pub(crate) fn write_indent(out: &mut String, depth: usize, indent: i32) {
-    for _ in 0..depth * indent.max(0) as usize {
-        out.push(' ');
     }
 }
 
@@ -228,7 +223,7 @@ pub fn new_node(kind: TreeNodeKind, tag: SemType) -> TreeNode {
     TreeNode {
         kind,
         sem_type: Some(tag),
-        tag: tag.to_string(),
+        tag: CompactTag::from_sem_type(tag),
         ..TreeNode::default()
     }
 }
@@ -238,8 +233,8 @@ pub fn new_scalar(tag: SemType, value: impl Into<String>) -> TreeNode {
     TreeNode {
         kind: TreeNodeKind::Scalar,
         sem_type: Some(tag),
-        tag: tag.to_string(),
-        value: value.into(),
+        tag: CompactTag::from_sem_type(tag),
+        value: value.into().into(),
         ..TreeNode::default()
     }
 }
@@ -276,7 +271,7 @@ pub fn append_map_entry(
 
     // Set the back-link from value to its key.
     if let Some(v) = store.get_mut(value_id) {
-        v.key = Some(key_id);
+        v.set_key(Some(key_id));
     }
 
     let map = store.get_mut(map_id).ok_or_else(missing_tree_node_error)?;
@@ -301,8 +296,8 @@ pub fn append_seq_item_with_index_key(
     let mut item = item_node;
     item.parent = Some(seq_id);
     item.is_map_key = false;
-    item.sequence_index = Some(index);
-    item.key = None;
+    item.set_sequence_index(Some(index as u32));
+    item.set_key(None);
 
     let item_id = store.add(item);
     let seq = store.get_mut(seq_id).ok_or_else(missing_tree_node_error)?;

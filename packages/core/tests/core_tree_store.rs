@@ -7,7 +7,7 @@ use treease_core::core::graph_builder::{
     GraphEdge, GraphKind, GraphModel as BuilderGraphModel, GraphNode, GraphNodeKey,
 };
 use treease_core::core::{
-    DocumentAnalysisDemand, GraphFragmentIndex, LineIndex, NodeId, SemType,
+    CompactTag, DocumentAnalysisDemand, GraphFragmentIndex, LineIndex, NodeId, SemType,
     StoredDocumentAnalysisOwned, TreeNode, TreeNodeKind, TreeStore, analyze_document_internal,
     analyze_document_internal_with_demand, store_transient_document_analysis,
 };
@@ -26,7 +26,7 @@ fn tree_store_add_and_get_nodes_preserve_kind_and_value() {
     assert_eq!(map_id, NodeId(1));
     assert_eq!(store.len(), 2);
     assert_eq!(store.get(scalar_id).unwrap().kind, TreeNodeKind::Scalar);
-    assert_eq!(store.get(scalar_id).unwrap().value, "value");
+    assert_eq!(store.value_for(scalar_id).unwrap(), "value");
     assert_eq!(store.get(map_id).unwrap().kind, TreeNodeKind::Mapping);
 }
 
@@ -35,12 +35,11 @@ fn tree_store_get_mut_updates_existing_node_in_place() {
     let mut store = TreeStore::new();
     let id = store.add(TreeNode::scalar(SemType::Int, "1"));
 
-    let node = store.get_mut(id).unwrap();
-    node.tag = "!!custom".to_string();
-    node.value = "42".to_string();
+    store.get_mut(id).unwrap().tag = CompactTag::from_text("!!custom");
+    store.set_value(id, "42").unwrap();
 
-    assert_eq!(store.get(id).unwrap().tag, "!!custom");
-    assert_eq!(store.get(id).unwrap().value, "42");
+    assert_eq!(store.get(id).unwrap().tag.as_str(), Some("!!custom"));
+    assert_eq!(store.value_for(id).unwrap(), "42");
 }
 
 #[test]
@@ -51,8 +50,28 @@ fn tree_store_indices_remain_stable_as_nodes_are_appended() {
 
     assert_eq!(first, NodeId(0));
     assert_eq!(second, NodeId(1));
-    assert_eq!(store.get(first).unwrap().value, "1");
-    assert_eq!(store.get(second).unwrap().value, "2");
+    assert_eq!(store.value_for(first).unwrap(), "1");
+    assert_eq!(store.value_for(second).unwrap(), "2");
+}
+
+#[test]
+fn tree_store_rebuilds_value_index_after_discard_without_changing_dedup_semantics() {
+    let mut store = TreeStore::new();
+    let first = store.add(TreeNode::scalar(SemType::Str, "shared"));
+
+    store.discard_value_index();
+
+    let second = store.add(TreeNode::scalar(SemType::Str, "shared"));
+    let third = store.add(TreeNode::scalar(SemType::Str, "other"));
+    store.set_value(third, "shared").unwrap();
+
+    let first_value = store.value_ref_for(first).unwrap();
+    let second_value = store.value_ref_for(second).unwrap();
+    let third_value = store.value_ref_for(third).unwrap();
+
+    assert_eq!(first_value, second_value);
+    assert_eq!(first_value, third_value);
+    assert_eq!(store.value_for(second).unwrap(), "shared");
 }
 
 #[test]
@@ -72,8 +91,8 @@ fn tree_store_add_child_sets_parent_and_sequence_index_for_sequences() {
 
     assert_eq!(store.get(parent).unwrap().content, vec![first, second]);
     assert_eq!(store.get(first).unwrap().parent, Some(parent));
-    assert_eq!(store.get(first).unwrap().sequence_index, Some(0));
-    assert_eq!(store.get(second).unwrap().sequence_index, Some(1));
+    assert_eq!(store.get(first).unwrap().sequence_index(), Some(0));
+    assert_eq!(store.get(second).unwrap().sequence_index(), Some(1));
 }
 
 #[test]
@@ -95,7 +114,7 @@ fn tree_store_add_key_value_child_marks_key_and_links_value_back_to_key() {
     assert_eq!(store.get(parent).unwrap().content, vec![key, value]);
     assert!(store.get(key).unwrap().is_map_key);
     assert_eq!(store.get(key).unwrap().parent, Some(parent));
-    assert_eq!(store.get(value).unwrap().key, Some(key));
+    assert_eq!(store.get(value).unwrap().key(), Some(key));
     assert_eq!(store.get(value).unwrap().parent, Some(parent));
 }
 

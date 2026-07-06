@@ -4,7 +4,7 @@ use crate::core::semantic_tokens::{
     collect_token_spans_with_tree, encode_and_cache_semantic_tokens,
 };
 use crate::core::tree_sitter_support::tree_sitter_language_for_spec;
-use crate::core::{SemType, TreeNode, TreeNodeKind};
+use crate::core::{NodeId, SemType, TreeNodeKind};
 use crate::formats::DecodedDocument;
 use crate::stream::streaming_json;
 
@@ -832,42 +832,60 @@ fn encode_analysis_node(
             out.push('{');
             let mut first = true;
             for pair in node.content.chunks_exact(2) {
-                let key_node = document.store.get(pair[0])?;
+                let _key_node = document.store.get(pair[0])?;
                 if !first {
                     out.push(',');
                 }
                 first = false;
-                out.push_str(&crate::formats::escape_json_string(&key_node.value));
+                out.push_str(&crate::formats::escape_json_string(
+                    document.store.value_for(pair[0]).ok()?,
+                ));
                 out.push(':');
                 encode_analysis_node(document, pair[1], out)?;
             }
             out.push('}');
         }
         TreeNodeKind::Alias | TreeNodeKind::Scalar | TreeNodeKind::Unknown => {
-            encode_scalar(node, out)?;
+            encode_scalar(&document.store, node_id, out)?;
         }
     }
     Some(())
 }
 
-fn encode_scalar(node: &TreeNode, out: &mut String) -> Option<()> {
-    match node.resolved_sem_type().unwrap_or(SemType::Str) {
+fn encode_scalar(store: &TreeStore, id: NodeId, out: &mut String) -> Option<()> {
+    store.get(id)?;
+    match store
+        .resolved_sem_type_for(id)
+        .ok()
+        .flatten()
+        .unwrap_or(SemType::Str)
+    {
         SemType::Nil => out.push_str("null"),
-        SemType::Boolean => match crate::core::core_helpers::parse_bool(&node.value) {
-            Some(true) => out.push_str("true"),
-            Some(false) => out.push_str("false"),
-            None => out.push_str(&crate::formats::escape_json_string(&node.value)),
-        },
-        SemType::Int => match node.value.parse::<i64>() {
+        SemType::Boolean => {
+            match crate::core::core_helpers::parse_bool(store.value_for(id).ok()?) {
+                Some(true) => out.push_str("true"),
+                Some(false) => out.push_str("false"),
+                None => out.push_str(&crate::formats::escape_json_string(
+                    store.value_for(id).ok()?,
+                )),
+            }
+        }
+        SemType::Int => match store.value_for(id).ok()?.parse::<i64>() {
             Ok(value) => out.push_str(&value.to_string()),
-            Err(_) => out.push_str(&crate::formats::escape_json_string(&node.value)),
+            Err(_) => out.push_str(&crate::formats::escape_json_string(
+                store.value_for(id).ok()?,
+            )),
         },
-        SemType::Float => match node.value.parse::<f64>() {
+        SemType::Float => match store.value_for(id).ok()?.parse::<f64>() {
             Ok(value) => out.push_str(&value.to_string()),
-            Err(_) => out.push_str(&crate::formats::escape_json_string(&node.value)),
+            Err(_) => out.push_str(&crate::formats::escape_json_string(
+                store.value_for(id).ok()?,
+            )),
         },
         SemType::Map | SemType::Seq | SemType::Str => {
-            out.push_str(&crate::formats::escape_json_string(&node.value));
+            out.push_str(&crate::formats::escape_json_string(
+                store.value_for(id).ok()?,
+            ));
         }
     }
     Some(())

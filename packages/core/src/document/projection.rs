@@ -68,7 +68,8 @@ fn resolve_node_for_path(
                 }
                 node.content.chunks_exact(2).find_map(|pair| {
                     let key_node = store.get(pair[0])?;
-                    (key_node.value == *key).then_some(pair[1])
+                    (store.value_for(pair[0]).ok()? == key && key_node.is_map_key)
+                        .then_some(pair[1])
                 })?
             }
             SnapshotPathSeg::Index(index) => {

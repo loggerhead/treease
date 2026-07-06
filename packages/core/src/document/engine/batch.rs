@@ -1,6 +1,6 @@
 use crate::document::runtime::commit_snapshot;
 use crate::document::snapshot;
-use crate::document::stream_state::StreamState;
+use crate::document::stream_state::{CommitEventsError, StreamState};
 
 use super::super::materialize::{is_blank_source, materialize, materialize_with_base_context};
 use super::super::protocol::{CommitMode, DocumentInputPlan, DocumentJobKind};
@@ -118,21 +118,21 @@ pub(super) fn advance_close(
             let finish_result = match decoder.finish_events() {
                 Ok(events) => {
                     let rewrites = decoder.take_source_rewrites();
-                    match source_doc.commit_events(events, rewrites) {
-                        Ok((events, update)) => {
+                    match source_doc
+                        .commit_events_with(events, rewrites, |event| builder.push(&event))
+                    {
+                        Ok(update) => {
                             record_streaming_source_update(entry, update);
-                            for event in &events {
-                                if let Err(error) = builder.push(event) {
-                                    return rejected_batch(
-                                        request_seq,
-                                        "builder_push_error",
-                                        format!("{error:?}"),
-                                    );
-                                }
-                            }
                             Ok(())
                         }
-                        Err(error) => Err(error.to_string()),
+                        Err(CommitEventsError::Source(error)) => Err(error.to_string()),
+                        Err(CommitEventsError::Callback(error)) => {
+                            return rejected_batch(
+                                request_seq,
+                                "builder_push_error",
+                                format!("{error:?}"),
+                            );
+                        }
                     }
                 }
                 Err(error) => Err(format!("{error:?}")),
@@ -169,33 +169,41 @@ pub(super) fn advance_close(
                 source = source_doc.source_text().to_owned();
 
                 let patches = builder.take_patches();
-                if let Some((store, root)) = builder.tree_ref() {
+                if let (Some(projector), Some((store, root))) =
+                    (projector.as_mut(), builder.tree_ref())
+                {
                     if let Some(upd) = projector.update(store, root, &patches) {
                         close_update = Some(upd);
                     }
                 }
-                if let Some(relayout) = projector.finalize_layout() {
-                    match close_update.as_mut() {
-                        Some(update) => update.delta.nodes_updated.extend(relayout.nodes_updated),
-                        None => {
-                            close_update =
-                                Some(crate::core::streaming_graph_projector::ProjectionUpdate {
-                                    delta: relayout,
-                                    patch_seq: 0,
-                                    base_graph_version: 0,
-                                    graph_version: 0,
-                                    new_nodes: 0,
-                                    updated_nodes: 0,
-                                    new_edges: 0,
-                                    removed_edges: 0,
-                                    rows_appended: 0,
-                                    cells_updated: 0,
-                                    layout_summaries: 0,
-                                })
+                if let Some(projector) = projector.as_mut() {
+                    if let Some(relayout) = projector.finalize_layout() {
+                        match close_update.as_mut() {
+                            Some(update) => {
+                                update.delta.nodes_updated.extend(relayout.nodes_updated)
+                            }
+                            None => {
+                                close_update =
+                                    Some(crate::core::streaming_graph_projector::ProjectionUpdate {
+                                        delta: relayout,
+                                        patch_seq: 0,
+                                        base_graph_version: 0,
+                                        graph_version: 0,
+                                        new_nodes: 0,
+                                        updated_nodes: 0,
+                                        new_edges: 0,
+                                        removed_edges: 0,
+                                        rows_appended: 0,
+                                        cells_updated: 0,
+                                        layout_summaries: 0,
+                                    })
+                            }
                         }
                     }
                 }
-                streaming_incremental_state = projector.take_incremental_state();
+                streaming_incremental_state = projector
+                    .as_mut()
+                    .and_then(|projector| projector.take_incremental_state());
 
                 match builder.take_document() {
                     Ok(mut document) => {
@@ -315,8 +323,9 @@ pub(super) fn advance_close(
                         clear: update.base_graph_version == 0,
                         graph_data: Some(update.delta),
                     });
-                    incremental = streaming_incremental_state
-                        .or_else(|| Some(crate::document::snapshot::IncrementalState::resumable()));
+                    incremental = streaming_incremental_state.or(Some(
+                        crate::document::snapshot::IncrementalState::resumable(),
+                    ));
                 }
 
                 if let Err(detail) =

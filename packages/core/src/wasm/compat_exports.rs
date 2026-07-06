@@ -185,8 +185,8 @@ fn json_tree_node_from_store(store: &TreeStore, id: NodeId) -> Option<JsonTreeNo
     Some(JsonTreeNode {
         kind: tree_kind_code(node.kind),
         sem_type: crate::wasm::sem_type_code(node.resolved_sem_type()),
-        tag: node.tag.clone(),
-        value: node.value.clone(),
+        tag: node.tag.to_string_value(),
+        value: store.value_string_for(id).ok()?,
         children: node
             .content
             .iter()
@@ -664,6 +664,17 @@ mod tests {
             })
             .expect("convert text should succeed"),
             "a: 1\n",
+        );
+        #[cfg(not(feature = "lite"))]
+        assert_eq!(
+            convert_text_impl(&ConvertTextInput {
+                source_language: "csv".into(),
+                target_format: "json".into(),
+                text: "name,age\nAlice,18\nBob,20\n".into(),
+                indent: Some(2),
+            })
+            .expect("csv to json convert should succeed"),
+            "[\n  {\"name\": \"Alice\", \"age\": 18},\n  {\"name\": \"Bob\", \"age\": 20}\n]\n",
         );
     }
 

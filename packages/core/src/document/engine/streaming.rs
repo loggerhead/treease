@@ -1,6 +1,6 @@
 use crate::core::streaming_graph_projector::{ProjectionUpdate, StreamingGraphProjector};
 use crate::document::protocol::DocumentAnalysisPayload;
-use crate::document::stream_state::StreamState;
+use crate::document::stream_state::{CommitEventsError, StreamState};
 
 use super::{DocumentEvent, EventBatch, JobEntry, open_batch, rejected_batch};
 
@@ -31,6 +31,7 @@ fn advance_streaming_chunk(
             &entry.spec.language,
             &entry.spec.document_key,
             entry.spec.settings,
+            entry.spec.output.graph,
         );
     }
 
@@ -112,7 +113,7 @@ fn feed_stream_state(
 fn feed_json_chunk(
     decoder: &mut crate::stream::streaming_json::StreamDecoder,
     builder: &mut crate::stream::tree_builder::Builder,
-    projector: &mut StreamingGraphProjector,
+    projector: &mut Option<Box<StreamingGraphProjector>>,
     first_chunk: &mut bool,
     source_doc: &mut crate::document::stream_state::StreamingSourceDoc,
     token_spans: &mut Vec<crate::core::TokenSpan>,
@@ -153,39 +154,45 @@ fn feed_json_chunk(
                 token_type: span.token_type,
             }),
     );
-    let (events, source_update) = match source_doc.commit_events(events, rewrites) {
-        Ok(result) => result,
-        Err(error) => {
-            if text.is_none() && std::str::from_utf8(bytes).is_err() {
-                return Ok(crate::document::stream_state::SourceDocUpdate {
-                    appended_line_count: 0,
-                    processed_bytes: source_doc.processed_bytes(),
-                });
+    let source_update =
+        match source_doc.commit_events_with(events, rewrites, |event| builder.push(&event)) {
+            Ok(update) => update,
+            Err(CommitEventsError::Source(error)) => {
+                if text.is_none() && std::str::from_utf8(bytes).is_err() {
+                    return Ok(crate::document::stream_state::SourceDocUpdate {
+                        appended_line_count: 0,
+                        processed_bytes: source_doc.processed_bytes(),
+                    });
+                }
+                return Err(rejected_batch(
+                    request_seq,
+                    "stream_source_error",
+                    error.to_string(),
+                ));
             }
-            return Err(rejected_batch(
-                request_seq,
-                "stream_source_error",
-                error.to_string(),
-            ));
-        }
-    };
-    for event in &events {
-        builder
-            .push(event)
-            .map_err(|e| rejected_batch(request_seq, "builder_push_error", format!("{e:?}")))?;
-    }
+            Err(CommitEventsError::Callback(error)) => {
+                return Err(rejected_batch(
+                    request_seq,
+                    "builder_push_error",
+                    format!("{error:?}"),
+                ));
+            }
+        };
     update_from_projector(builder, projector, first_chunk, projection_update);
     Ok(source_update)
 }
 
 fn update_from_projector(
     builder: &mut crate::stream::tree_builder::Builder,
-    projector: &mut StreamingGraphProjector,
+    projector: &mut Option<Box<StreamingGraphProjector>>,
     first_chunk: &mut bool,
     projection_update: &mut Option<ProjectionUpdate>,
 ) -> usize {
     let patches = builder.take_patches();
     let patch_count = patches.len();
+    let Some(projector) = projector.as_mut() else {
+        return patch_count;
+    };
     let Some((store, root)) = builder.tree_ref() else {
         return patch_count;
     };

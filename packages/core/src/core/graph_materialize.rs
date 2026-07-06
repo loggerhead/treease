@@ -256,7 +256,7 @@ fn table_row_update_context(
         parent_columns: table.columns.clone(),
         column_widths: table.column_widths.clone(),
         is_header_table: super::graph_topology::is_header_table_sequence(store, row.table_node_id),
-        table_is_open: !table_node.sequence_closed,
+        table_is_open: !table_node.sequence_closed(),
         table_node_kind: table_node.kind,
     })
 }

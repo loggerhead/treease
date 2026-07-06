@@ -85,7 +85,7 @@ fn core_utils_map_lookup_and_seq_growth_match_zig_helpers() {
     let _value = treease_core::core::get_or_create_map_value(&mut store, root, "b").unwrap();
     let entry = get_map_entry(&store, root, "b").unwrap().unwrap();
 
-    assert_eq!(store.get(entry.key).unwrap().value, "b");
+    assert_eq!(store.value_for(entry.key).unwrap(), "b");
 
     let seq_root = store.add(CoreTreeNode::scalar(CoreSemType::Str, "root"));
     let index = ensure_seq_index(&mut store, seq_root, 2).unwrap();

@@ -120,7 +120,10 @@ fn create_value_operation_builds_inferred_scalar_node() {
         .tree_node
         .expect("value operation should carry a tree node");
     assert_eq!(node.sem_type, Some(SemType::Int));
-    assert_eq!(node.value, "42");
+    assert_eq!(
+        node.get_value_rep_with("42").unwrap(),
+        treease_core::core::ValueRep::Int(42)
+    );
 }
 
 #[test]
@@ -132,5 +135,8 @@ fn create_value_operation_infers_null_literal_like_zig_typed_values() {
         .tree_node
         .expect("value operation should carry a tree node");
     assert_eq!(node.sem_type, Some(SemType::Nil));
-    assert_eq!(node.value, "null");
+    assert_eq!(
+        node.get_value_rep_with("null").unwrap(),
+        treease_core::core::ValueRep::Nil
+    );
 }

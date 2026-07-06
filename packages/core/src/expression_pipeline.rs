@@ -75,20 +75,30 @@ pub fn execute_many(
     inputs: &[Value],
     node: Option<&ExpressionNode>,
 ) -> Result<Vec<Value>, EvaluationError> {
-    inputs
-        .iter()
-        .map(|input| {
-            execute(input, node).map_err(|err| match err {
-                PipelineError::Evaluate(eval) => eval,
-                PipelineError::Parse(parse) => {
-                    EvaluationError::UnsupportedOperation(format!("{:?}", parse))
-                }
-                PipelineError::Compat(core) => {
-                    EvaluationError::Core(map_compat_error_to_core(core))
-                }
-            })
-        })
-        .collect()
+    let mut results = Vec::new();
+    execute_many_into(inputs, node, |value| {
+        results.push(value);
+        Ok(())
+    })?;
+    Ok(results)
+}
+
+pub fn execute_many_into(
+    inputs: &[Value],
+    node: Option<&ExpressionNode>,
+    mut on_value: impl FnMut(Value) -> Result<(), EvaluationError>,
+) -> Result<(), EvaluationError> {
+    for input in inputs {
+        let value = execute(input, node).map_err(|err| match err {
+            PipelineError::Evaluate(eval) => eval,
+            PipelineError::Parse(parse) => {
+                EvaluationError::UnsupportedOperation(format!("{:?}", parse))
+            }
+            PipelineError::Compat(core) => EvaluationError::Core(map_compat_error_to_core(core)),
+        })?;
+        on_value(value)?;
+    }
+    Ok(())
 }
 
 pub fn evaluate(input: &Value, expression: &str) -> Result<Value, PipelineError> {

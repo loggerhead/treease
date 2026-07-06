@@ -555,7 +555,7 @@ impl StreamingGraphProjector {
         sealed_nodes.contains(&slot.node_id)
             && store
                 .get(slot.node_id)
-                .is_some_and(|node| node.sequence_closed)
+                .is_some_and(|node| node.sequence_closed())
     }
 
     fn split_patches(

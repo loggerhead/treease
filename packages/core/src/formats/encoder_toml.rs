@@ -27,7 +27,7 @@ impl Encode for TomlEncoder {
     ) -> Result<(), CoreError> {
         let root = node(store, node_id)?;
         if root.kind == TreeNodeKind::Scalar {
-            writer.write_all(format_scalar(root)?.as_bytes())?;
+            writer.write_all(format_scalar(store, node_id)?.as_bytes())?;
             if self.prefs.indent > 0 {
                 writer.write_all(b"\n")?;
             }
@@ -67,11 +67,10 @@ impl TomlEncoder {
         let root = node(store, node_id)?;
         for pair in root.content.chunks_exact(2) {
             let value = node(store, pair[1])?;
-            if is_root_attribute_value(store, value)? {
-                let key = node(store, pair[0])?;
+            if is_root_attribute_value(store, pair[1], value)? {
                 self.encode_top_level_entry(
                     store,
-                    &[key.value.as_str()],
+                    &[store.value_for(pair[0])?],
                     pair[1],
                     out,
                     wrote_root_attr,
@@ -79,12 +78,11 @@ impl TomlEncoder {
             }
         }
         for pair in root.content.chunks_exact(2) {
-            let key = node(store, pair[0])?;
             let value = node(store, pair[1])?;
             if value.kind == TreeNodeKind::Mapping && !value.content.is_empty() {
                 self.encode_separate_mapping(
                     store,
-                    &[key.value.as_str()],
+                    &[store.value_for(pair[0])?],
                     pair[1],
                     out,
                     wrote_root_attr,
@@ -92,12 +90,13 @@ impl TomlEncoder {
             }
         }
         for pair in root.content.chunks_exact(2) {
-            let key = node(store, pair[0])?;
             let value = node(store, pair[1])?;
-            if value.kind == TreeNodeKind::Sequence && is_root_structural_value(store, value)? {
+            if value.kind == TreeNodeKind::Sequence
+                && is_root_structural_value(store, pair[1], value)?
+            {
                 self.encode_top_level_entry(
                     store,
-                    &[key.value.as_str()],
+                    &[store.value_for(pair[0])?],
                     pair[1],
                     out,
                     wrote_root_attr,
@@ -121,7 +120,7 @@ impl TomlEncoder {
         let current = node(store, node_id)?;
         match current.kind {
             TreeNodeKind::Scalar => {
-                if is_nil_scalar(current)? {
+                if is_nil_scalar(store, node_id)? {
                     return Err(CoreError::Parse(ParseError::UnsupportedTomlValue));
                 }
                 self.write_attribute(store, key, node_id, out, wrote_root_attr)
@@ -185,14 +184,14 @@ impl TomlEncoder {
         }
 
         for pair in map.content.chunks_exact(2) {
-            let key = node(store, pair[0])?;
             let value = node(store, pair[1])?;
+            let key = store.value_for(pair[0])?;
             match value.kind {
                 TreeNodeKind::Mapping => {
                     if !should_encode_as_separate_mapping(store, value)? {
                         self.write_inline_table_attribute(
                             store,
-                            &key.value,
+                            key,
                             pair[1],
                             out,
                             wrote_root_attr,
@@ -200,7 +199,7 @@ impl TomlEncoder {
                         continue;
                     }
                     let mut child_path = path.to_vec();
-                    child_path.push(&key.value);
+                    child_path.push(key);
                     self.write_table_header(&child_path, out, wrote_root_attr);
                     self.encode_mapping_body_with_path(
                         store,
@@ -213,23 +212,17 @@ impl TomlEncoder {
                 TreeNodeKind::Sequence => {
                     if !value.content.is_empty() && all_maps(store, value)? {
                         let mut child_path = path.to_vec();
-                        child_path.push(&key.value);
+                        child_path.push(key);
                         self.write_array_tables(store, &child_path, pair[1], out, false)?;
                     } else {
-                        self.write_array_attribute(
-                            store,
-                            &key.value,
-                            pair[1],
-                            out,
-                            wrote_root_attr,
-                        )?;
+                        self.write_array_attribute(store, key, pair[1], out, wrote_root_attr)?;
                     }
                 }
                 TreeNodeKind::Scalar => {
-                    if is_nil_scalar(value)? {
+                    if is_nil_scalar(store, pair[1])? {
                         continue;
                     }
-                    self.write_attribute(store, &key.value, pair[1], out, wrote_root_attr)?;
+                    self.write_attribute(store, key, pair[1], out, wrote_root_attr)?;
                 }
                 TreeNodeKind::Alias | TreeNodeKind::Unknown => {}
             }
@@ -249,23 +242,17 @@ impl TomlEncoder {
         let map = node(store, node_id)?;
         for pair in map.content.chunks_exact(2) {
             let value = node(store, pair[1])?;
-            let key = node(store, pair[0])?;
+            let key = store.value_for(pair[0])?;
             match value.kind {
                 TreeNodeKind::Scalar => {
-                    if is_nil_scalar(value)? {
+                    if is_nil_scalar(store, pair[1])? {
                         continue;
                     }
-                    self.write_attribute(store, &key.value, pair[1], out, wrote_root_attr)?;
+                    self.write_attribute(store, key, pair[1], out, wrote_root_attr)?;
                 }
                 TreeNodeKind::Sequence => {
                     if !all_maps(store, value)? {
-                        self.write_array_attribute(
-                            store,
-                            &key.value,
-                            pair[1],
-                            out,
-                            wrote_root_attr,
-                        )?;
+                        self.write_array_attribute(store, key, pair[1], out, wrote_root_attr)?;
                     }
                 }
                 TreeNodeKind::Mapping | TreeNodeKind::Alias | TreeNodeKind::Unknown => {}
@@ -275,14 +262,14 @@ impl TomlEncoder {
         let mut need_blank_before_first_array_table =
             !self.is_minify() && has_attributes(store, map)?;
         for pair in map.content.chunks_exact(2) {
-            let key = node(store, pair[0])?;
+            let key = store.value_for(pair[0])?;
             let value = node(store, pair[1])?;
             if value.kind == TreeNodeKind::Sequence
                 && !value.content.is_empty()
                 && all_maps(store, value)?
             {
                 let mut child_path = path.to_vec();
-                child_path.push(&key.value);
+                child_path.push(key);
                 self.write_array_tables(
                     store,
                     &child_path,
@@ -295,29 +282,23 @@ impl TomlEncoder {
         }
 
         for pair in map.content.chunks_exact(2) {
-            let key = node(store, pair[0])?;
+            let key = store.value_for(pair[0])?;
             let value = node(store, pair[1])?;
             if value.kind == TreeNodeKind::Mapping
                 && !should_encode_as_separate_mapping(store, value)?
             {
-                self.write_inline_table_attribute(
-                    store,
-                    &key.value,
-                    pair[1],
-                    out,
-                    wrote_root_attr,
-                )?;
+                self.write_inline_table_attribute(store, key, pair[1], out, wrote_root_attr)?;
             }
         }
 
         for pair in map.content.chunks_exact(2) {
-            let key = node(store, pair[0])?;
+            let key = store.value_for(pair[0])?;
             let value = node(store, pair[1])?;
             if value.kind == TreeNodeKind::Mapping
                 && should_encode_as_separate_mapping(store, value)?
             {
                 let mut child_path = path.to_vec();
-                child_path.push(&key.value);
+                child_path.push(key);
                 self.write_table_header(&child_path, out, wrote_root_attr);
                 self.encode_mapping_body_with_path(
                     store,
@@ -373,7 +354,7 @@ impl TomlEncoder {
         *wrote_root_attr = true;
         write_key(key, out);
         out.push_str(self.eq_token());
-        out.push_str(&format_scalar(node(store, value_id)?)?);
+        out.push_str(&format_scalar(store, value_id)?);
         out.push('\n');
         if self.is_minify() {
             *wrote_root_attr = false;
@@ -471,10 +452,10 @@ impl TomlEncoder {
         let current = node(store, node_id)?;
         match current.kind {
             TreeNodeKind::Scalar => {
-                if is_nil_scalar(current)? {
+                if is_nil_scalar(store, node_id)? {
                     return Err(CoreError::Parse(ParseError::UnsupportedTomlValue));
                 }
-                format_scalar(current)
+                format_scalar(store, node_id)
             }
             TreeNodeKind::Sequence => self.sequence_to_inline_array(store, node_id),
             TreeNodeKind::Mapping => self.mapping_to_inline_table(store, node_id),
@@ -509,14 +490,14 @@ impl TomlEncoder {
         let current = node(store, node_id)?;
         let mut fields = Vec::new();
         for pair in current.content.chunks_exact(2) {
-            let key = node(store, pair[0])?;
+            let key = store.value_for(pair[0])?;
             let value = node(store, pair[1])?;
             let rhs = match value.kind {
                 TreeNodeKind::Scalar => {
-                    if is_nil_scalar(value)? {
+                    if is_nil_scalar(store, pair[1])? {
                         continue;
                     }
-                    format_scalar(value)?
+                    format_scalar(store, pair[1])?
                 }
                 TreeNodeKind::Sequence => self.sequence_to_inline_array(store, pair[1])?,
                 TreeNodeKind::Mapping => {
@@ -530,9 +511,9 @@ impl TomlEncoder {
                 }
             };
             if self.is_minify() {
-                fields.push(format!("{}={}", format_key(&key.value), rhs));
+                fields.push(format!("{}={}", format_key(key), rhs));
             } else {
-                fields.push(format!("{} = {}", format_key(&key.value), rhs));
+                fields.push(format!("{} = {}", format_key(key), rhs));
             }
         }
         if fields.is_empty() {
@@ -546,18 +527,20 @@ impl TomlEncoder {
     }
 }
 
-fn is_nil_scalar(node: &crate::core::TreeNode) -> Result<bool, CoreError> {
+fn is_nil_scalar(store: &TreeStore, node_id: NodeId) -> Result<bool, CoreError> {
+    let node = node(store, node_id)?;
     if node.kind != TreeNodeKind::Scalar {
         return Ok(false);
     }
-    Ok(node.get_value_rep()? == ValueRep::Nil)
+    let raw = store.value_for(node_id)?;
+    Ok(node.get_value_rep_with(raw)? == ValueRep::Nil)
 }
 
 fn should_encode_as_separate_mapping(
     store: &TreeStore,
     mapping: &crate::core::TreeNode,
 ) -> Result<bool, CoreError> {
-    Ok(mapping.encode_separate
+    Ok(mapping.encode_separate()
         || has_encode_separate_child(store, mapping)?
         || has_structural_children(store, mapping)?)
 }
@@ -568,7 +551,7 @@ fn has_encode_separate_child(
 ) -> Result<bool, CoreError> {
     for pair in mapping.content.chunks_exact(2) {
         let value = node(store, pair[1])?;
-        if value.kind == TreeNodeKind::Mapping && value.encode_separate {
+        if value.kind == TreeNodeKind::Mapping && value.encode_separate() {
             return Ok(true);
         }
     }
@@ -581,7 +564,7 @@ fn has_structural_children(
 ) -> Result<bool, CoreError> {
     for pair in mapping.content.chunks_exact(2) {
         let value = node(store, pair[1])?;
-        if value.kind == TreeNodeKind::Mapping && value.encode_separate {
+        if value.kind == TreeNodeKind::Mapping && value.encode_separate() {
             return Ok(true);
         }
         if value.kind == TreeNodeKind::Sequence && all_maps(store, value)? {
@@ -593,16 +576,20 @@ fn has_structural_children(
 
 fn has_attributes(store: &TreeStore, mapping: &crate::core::TreeNode) -> Result<bool, CoreError> {
     for pair in mapping.content.chunks_exact(2) {
-        if is_attribute_value(store, node(store, pair[1])?)? {
+        if is_attribute_value(store, pair[1], node(store, pair[1])?)? {
             return Ok(true);
         }
     }
     Ok(false)
 }
 
-fn is_attribute_value(store: &TreeStore, value: &crate::core::TreeNode) -> Result<bool, CoreError> {
+fn is_attribute_value(
+    store: &TreeStore,
+    node_id: NodeId,
+    value: &crate::core::TreeNode,
+) -> Result<bool, CoreError> {
     match value.kind {
-        TreeNodeKind::Scalar if is_nil_scalar(value)? => Ok(false),
+        TreeNodeKind::Scalar if is_nil_scalar(store, node_id)? => Ok(false),
         TreeNodeKind::Scalar => Ok(true),
         TreeNodeKind::Sequence => Ok(value.content.is_empty() || !all_maps(store, value)?),
         TreeNodeKind::Mapping => Ok(!should_encode_as_separate_mapping(store, value)?),
@@ -625,20 +612,25 @@ fn is_structural_value(
 
 fn is_root_attribute_value(
     store: &TreeStore,
+    node_id: NodeId,
     value: &crate::core::TreeNode,
 ) -> Result<bool, CoreError> {
     if value.kind == TreeNodeKind::Mapping && !value.content.is_empty() {
         return Ok(false);
     }
-    is_attribute_value(store, value)
+    is_attribute_value(store, node_id, value)
 }
 
 fn is_root_structural_value(
     store: &TreeStore,
+    node_id: NodeId,
     value: &crate::core::TreeNode,
 ) -> Result<bool, CoreError> {
     if value.kind == TreeNodeKind::Mapping && !value.content.is_empty() {
         return Ok(true);
+    }
+    if is_attribute_value(store, node_id, value)? {
+        return Ok(false);
     }
     is_structural_value(store, value)
 }
@@ -656,15 +648,17 @@ fn node_kind(store: &TreeStore, node_id: NodeId) -> Result<TreeNodeKind, CoreErr
     Ok(node(store, node_id)?.kind)
 }
 
-fn format_scalar(node: &crate::core::TreeNode) -> Result<String, CoreError> {
-    if node.tag == TIMESTAMP_TAG {
-        return Ok(node.value.clone());
+fn format_scalar(store: &TreeStore, node_id: NodeId) -> Result<String, CoreError> {
+    let node = node(store, node_id)?;
+    let raw = store.value_for(node_id)?;
+    if node.tag_str() == TIMESTAMP_TAG {
+        return Ok(raw.to_owned());
     }
-    match node.get_value_rep()? {
+    match node.get_value_rep_with(raw)? {
         ValueRep::Nil => Err(CoreError::Parse(ParseError::UnsupportedTomlValue)),
         ValueRep::Boolean(value) => Ok(value.to_string()),
         ValueRep::Int(value) => Ok(value.to_string()),
-        ValueRep::Float(_) => Ok(node.value.clone()),
+        ValueRep::Float(_) => Ok(raw.to_owned()),
         ValueRep::Str(value) => Ok(quote_toml_string(&value)),
     }
 }
@@ -717,7 +711,9 @@ pub fn encode_toml(store: &TreeStore, node: NodeId) -> Result<String, CoreError>
 #[cfg(test)]
 mod tests {
     use super::{TomlEncoder, encode_toml};
-    use crate::core::{CoreError, NodeId, ParseError, SemType, TreeNode, TreeNodeKind, TreeStore};
+    use crate::core::{
+        CompactTag, CoreError, NodeId, ParseError, SemType, TreeNode, TreeNodeKind, TreeStore,
+    };
     use crate::formats::{Encode, FormatPreferences};
 
     fn scalar(sem_type: SemType, value: &str) -> TreeNode {
@@ -728,7 +724,7 @@ mod tests {
         TreeNode {
             kind: TreeNodeKind::Mapping,
             sem_type: Some(SemType::Map),
-            tag: SemType::Map.tag().to_owned(),
+            tag: CompactTag::from_sem_type(SemType::Map),
             ..TreeNode::default()
         }
     }
@@ -737,7 +733,7 @@ mod tests {
         TreeNode {
             kind: TreeNodeKind::Sequence,
             sem_type: Some(SemType::Seq),
-            tag: SemType::Seq.tag().to_owned(),
+            tag: CompactTag::from_sem_type(SemType::Seq),
             ..TreeNode::default()
         }
     }
@@ -869,7 +865,7 @@ mod tests {
     fn toml_encoder_preserves_timestamp_scalars_without_quoting() {
         let mut store = TreeStore::new();
         let mut timestamp = scalar(SemType::Str, "1979-05-27T07:32:00Z");
-        timestamp.tag = "!!timestamp".to_owned();
+        timestamp.tag = CompactTag::from_text("!!timestamp");
         let root = store.add(timestamp);
 
         let out = encode_toml(&store, root).expect("timestamp toml encoding should succeed");

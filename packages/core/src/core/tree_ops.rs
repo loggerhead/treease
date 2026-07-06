@@ -31,7 +31,7 @@ pub fn get_map_entry(
     for (key_index, pair) in map_node.content.chunks_exact(2).enumerate() {
         let key_id = pair[0];
         let value_id = pair[1];
-        if store.get(key_id).is_some_and(|key| key.value == wanted_key) {
+        if store.value_for(key_id).is_ok_and(|key| key == wanted_key) {
             return Ok(Some(MapEntry {
                 key: key_id,
                 value: value_id,
@@ -51,8 +51,8 @@ pub fn ensure_map(store: &mut TreeStore, node: NodeId) -> Result<(), CoreError> 
     }
     node.kind = TreeNodeKind::Mapping;
     node.set_sem_type(SemType::Map);
-    node.value.clear();
     node.content.clear();
+    node.value = Default::default();
     Ok(())
 }
 
@@ -65,8 +65,8 @@ pub fn ensure_seq(store: &mut TreeStore, node: NodeId) -> Result<(), CoreError> 
     }
     node.kind = TreeNodeKind::Sequence;
     node.set_sem_type(SemType::Seq);
-    node.value.clear();
     node.content.clear();
+    node.value = Default::default();
     Ok(())
 }
 

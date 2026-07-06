@@ -67,15 +67,12 @@ pub fn apply_value_edit_text(
     if prefer_key {
         let target = node_for_path_with_prefer_key(&decoded.store, decoded.root, path, true)
             .ok_or(ValueEditError::PathNotFound)?;
-        let new_value = value_decoded
-            .store
-            .get(value_decoded.root)
-            .ok_or(ValueEditError::PathNotFound)?;
-        decoded
-            .store
-            .get_mut(target)
-            .ok_or(ValueEditError::PathNotFound)?
-            .value = new_value.value.clone();
+        sync_value_between_stores(
+            &value_decoded.store,
+            value_decoded.root,
+            &mut decoded.store,
+            target,
+        )?;
     } else if path.is_empty() {
         let new_root = clone_subtree(
             &value_decoded.store,
@@ -130,9 +127,11 @@ fn clone_subtree(
     let mut cloned = src.clone();
     cloned.parent = parent;
     cloned.is_map_key = false;
-    cloned.sequence_index = None;
+    cloned.set_sequence_index(None);
+    cloned.value = crate::core::NodeValueRef::Missing;
     let old_content = std::mem::take(&mut cloned.content);
     let new_id = dst_store.add(cloned);
+    sync_value_between_stores(src_store, src_id, dst_store, new_id)?;
     for child_id in old_content {
         let child_new = clone_subtree(src_store, child_id, dst_store, Some(new_id))?;
         dst_store
@@ -162,9 +161,10 @@ fn overwrite_node(
         target_node.kind = src.kind;
         target_node.sem_type = src.sem_type;
         target_node.tag = src.tag.clone();
-        target_node.value = src.value.clone();
+        target_node.value = crate::core::NodeValueRef::Missing;
         target_node.content.clear();
     }
+    sync_value_between_stores(src_store, src_id, dst_store, target)?;
     for child_id in &src_store
         .get(src_id)
         .ok_or_else(|| {
@@ -186,6 +186,31 @@ fn overwrite_node(
     Ok(())
 }
 
+fn sync_value_between_stores(
+    src_store: &TreeStore,
+    src_id: NodeId,
+    dst_store: &mut TreeStore,
+    dst_id: NodeId,
+) -> Result<(), ValueEditError> {
+    match src_store
+        .value_ref_for(src_id)
+        .map_err(ValueEditError::Core)?
+    {
+        Some(_) => {
+            let value = src_store.value_for(src_id).map_err(ValueEditError::Core)?;
+            dst_store
+                .set_value(dst_id, value)
+                .map_err(ValueEditError::Core)?;
+        }
+        None => {
+            dst_store
+                .remove_value(dst_id)
+                .map_err(ValueEditError::Core)?;
+        }
+    }
+    Ok(())
+}
+
 fn node_for_path_with_prefer_key(
     store: &TreeStore,
     root: NodeId,
@@ -201,7 +226,11 @@ fn node_for_path_with_prefer_key(
         } else {
             node.content.chunks_exact(2).find_map(|pair| {
                 let key = store.get(pair[0])?;
-                if key.value == segment.key {
+                if key.is_map_key
+                    && store
+                        .value_for(pair[0])
+                        .is_ok_and(|value| value == segment.key)
+                {
                     if prefer_key && index + 1 == path.len() {
                         Some(pair[0])
                     } else {

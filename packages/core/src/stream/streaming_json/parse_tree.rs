@@ -237,7 +237,7 @@ mod tests {
         let root = doc.store.get(doc.root).unwrap();
         assert_eq!(root.kind, TreeNodeKind::Mapping);
         let entry = get_map_entry(&doc.store, doc.root, "key").unwrap().unwrap();
-        assert_eq!(doc.store.get(entry.value).unwrap().value, "value");
+        assert_eq!(doc.store.value_for(entry.value).unwrap(), "value");
     }
 
     #[test]

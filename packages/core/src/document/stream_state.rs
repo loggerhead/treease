@@ -30,6 +30,12 @@ pub(crate) struct SourceDocUpdate {
     pub processed_bytes: u32,
 }
 
+#[derive(Debug)]
+pub(crate) enum CommitEventsError<E> {
+    Source(std::str::Utf8Error),
+    Callback(E),
+}
+
 impl StreamingSourceDoc {
     pub(crate) fn new() -> Self {
         Self {
@@ -42,33 +48,49 @@ impl StreamingSourceDoc {
         self.raw.extend_from_slice(bytes);
     }
 
+    #[allow(dead_code)]
     pub(crate) fn commit_events(
         &mut self,
         events: Vec<StreamingEvent>,
         rewrites: Vec<SourceRewrite>,
     ) -> Result<(Vec<StreamingEvent>, SourceDocUpdate), std::str::Utf8Error> {
+        let mut rebased_events = Vec::new();
+        let source_update = match self.commit_events_with(events, rewrites, |event| {
+            rebased_events.push(event);
+            Ok::<(), std::convert::Infallible>(())
+        }) {
+            Ok(update) => update,
+            Err(CommitEventsError::Source(error)) => return Err(error),
+            Err(CommitEventsError::Callback(error)) => match error {},
+        };
+        Ok((rebased_events, source_update))
+    }
+
+    pub(crate) fn commit_events_with<E>(
+        &mut self,
+        events: Vec<StreamingEvent>,
+        rewrites: Vec<SourceRewrite>,
+        mut on_event: impl FnMut(StreamingEvent) -> Result<(), E>,
+    ) -> Result<SourceDocUpdate, CommitEventsError<E>> {
         let line_count_before = self.line_starts.len();
         for rewrite in rewrites {
-            self.apply_rewrite(rewrite)?;
+            self.apply_rewrite(rewrite)
+                .map_err(CommitEventsError::Source)?;
         }
         let max_event_end = events
             .iter()
             .filter_map(event_commit_end)
             .max()
             .unwrap_or(self.raw_cursor as u32) as usize;
-        self.commit_raw_until(max_event_end)?;
-        let rebased_events = events
-            .into_iter()
-            .map(|event| self.rebase_event(event))
-            .collect();
-        Ok((
-            rebased_events,
-            SourceDocUpdate {
-                appended_line_count: self.line_starts.len().saturating_sub(line_count_before)
-                    as u32,
-                processed_bytes: self.processed_bytes(),
-            },
-        ))
+        self.commit_raw_until(max_event_end)
+            .map_err(CommitEventsError::Source)?;
+        for event in events {
+            on_event(self.rebase_event(event)).map_err(CommitEventsError::Callback)?;
+        }
+        Ok(SourceDocUpdate {
+            appended_line_count: self.line_starts.len().saturating_sub(line_count_before) as u32,
+            processed_bytes: self.processed_bytes(),
+        })
     }
 
     pub(crate) fn finish(&mut self) -> Result<SourceDocUpdate, std::str::Utf8Error> {
@@ -311,7 +333,7 @@ pub(crate) enum StreamState {
         decoder: crate::stream::streaming_json::StreamDecoder,
         builder: Builder,
         first_chunk: bool,
-        projector: Box<StreamingGraphProjector>,
+        projector: Option<Box<StreamingGraphProjector>>,
         source_doc: StreamingSourceDoc,
         token_spans: Vec<crate::core::TokenSpan>,
     },
@@ -326,6 +348,7 @@ impl StreamState {
         language: &str,
         document_key: &str,
         settings: crate::document::protocol::DocumentJobSettings,
+        graph_output: bool,
     ) -> Option<Self> {
         let mut builder = Builder::new();
         builder.enable_patches();
@@ -337,7 +360,8 @@ impl StreamState {
                     decoder,
                     builder,
                     first_chunk: true,
-                    projector: Box::new(StreamingGraphProjector::new(language, document_key)),
+                    projector: graph_output
+                        .then(|| Box::new(StreamingGraphProjector::new(language, document_key))),
                     source_doc: StreamingSourceDoc::new(),
                     token_spans: Vec::new(),
                 })

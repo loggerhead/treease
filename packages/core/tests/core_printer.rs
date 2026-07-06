@@ -198,9 +198,10 @@ fn build_store(meta: &[(u32, i32, &str)]) -> (TreeStore, Vec<NodeId>) {
     for (document, file_index, leading_content) in meta {
         let mut node = TreeNode::scalar(SemType::Str, "value");
         node.document = *document;
-        node.file_index = *file_index;
-        node.leading_content = (*leading_content).to_string();
-        ids.push(store.add(node));
+        let id = store.add(node);
+        store.set_document_meta(*document, "", *file_index);
+        let _ = store.set_leading_content(id, (*leading_content).to_string());
+        ids.push(id);
     }
     (store, ids)
 }

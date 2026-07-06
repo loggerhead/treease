@@ -26,19 +26,20 @@ impl Encode for YamlEncoder {
     ) -> Result<(), CoreError> {
         let root = node(store, node_id)?;
         let mut out = String::new();
+        let root_leading_content = store.leading_content_for(node_id).unwrap_or_default();
         if root.kind == TreeNodeKind::Scalar && self.prefs.unwrap_scalar {
             write_yaml_scalar(store, node_id, &mut out)?;
             out.push('\n');
             writer.write_all(out.as_bytes())?;
             return Ok(());
         }
-        if self.prefs.print_doc_separators && root.document > 0 && root.leading_content.is_empty() {
+        if self.prefs.print_doc_separators && root.document > 0 && root_leading_content.is_empty() {
             print_yaml_document_separator(&mut out, "\n", true);
         }
-        if !root.leading_content.is_empty() {
+        if !root_leading_content.is_empty() {
             print_yaml_leading_content(
                 &mut out,
-                &root.leading_content,
+                root_leading_content,
                 self.prefs.print_doc_separators,
             );
         }
@@ -173,32 +174,40 @@ fn quoted_yaml_key(value: &str) -> String {
     }
 }
 
-fn yaml_scalar_value_text(node: &TreeNode) -> String {
-    if node.tag == TIMESTAMP_TAG {
-        return node.value.clone();
+fn node_tag(node: &TreeNode) -> &str {
+    node.tag_str()
+}
+
+fn yaml_scalar_value_text(store: &TreeStore, node_id: NodeId) -> Result<String, CoreError> {
+    let node = node(store, node_id)?;
+    if node_tag(node) == TIMESTAMP_TAG {
+        return Ok(store.value_string_for(node_id)?);
     }
 
-    match SemType::from_string(&node.tag) {
+    Ok(match SemType::from_string(node_tag(node)) {
         Some(SemType::Nil) => {
-            if node.value.is_empty() {
+            if store.value_for(node_id)?.is_empty() {
                 "null".to_string()
             } else {
-                node.value.clone()
+                store.value_string_for(node_id)?
             }
         }
-        Some(SemType::Boolean | SemType::Int | SemType::Float) => node.value.clone(),
+        Some(SemType::Boolean | SemType::Int | SemType::Float) => {
+            store.value_string_for(node_id)?
+        }
         _ => {
-            if (node.tag.is_empty() || SemType::from_string(&node.tag) == Some(SemType::Str))
-                && is_ambiguous_plain_scalar(&node.value)
+            if (node_tag(node).is_empty()
+                || SemType::from_string(node_tag(node)) == Some(SemType::Str))
+                && is_ambiguous_plain_scalar(store.value_for(node_id)?)
             {
-                return single_quote_yaml(&node.value);
+                return Ok(single_quote_yaml(store.value_for(node_id)?));
             }
-            if needs_double_quotes(&node.value) {
-                return double_quote_yaml(&node.value);
+            if needs_double_quotes(store.value_for(node_id)?) {
+                return Ok(double_quote_yaml(store.value_for(node_id)?));
             }
-            node.value.clone()
+            store.value_string_for(node_id)?
         }
-    }
+    })
 }
 
 fn write_yaml_scalar(
@@ -208,31 +217,33 @@ fn write_yaml_scalar(
 ) -> Result<(), CoreError> {
     let current = node(store, node_id)?;
     if current.kind == TreeNodeKind::Alias {
-        if !current.value.is_empty() {
+        let current_value = store.value_for(node_id)?;
+        if !current_value.is_empty() {
             out.push('*');
-            out.push_str(&current.value);
+            out.push_str(current_value);
             return Ok(());
         }
-        if let Some(alias_id) = current.alias {
-            let alias = node(store, alias_id)?;
-            if !alias.anchor.is_empty() {
+        if let Some(alias_id) = current.alias() {
+            let alias_anchor = store.anchor_for(alias_id).unwrap_or_default();
+            if !alias_anchor.is_empty() {
                 out.push('*');
-                out.push_str(&alias.anchor);
+                out.push_str(alias_anchor);
                 return Ok(());
             }
         }
     }
 
-    if !current.anchor.is_empty() {
+    let current_anchor = store.anchor_for(node_id).unwrap_or_default();
+    if !current_anchor.is_empty() {
         out.push('&');
-        out.push_str(&current.anchor);
+        out.push_str(current_anchor);
         out.push(' ');
     }
-    if should_emit_tag(&current.tag) {
-        out.push_str(&current.tag);
+    if should_emit_tag(node_tag(current)) {
+        out.push_str(node_tag(current));
         out.push(' ');
     }
-    out.push_str(&yaml_scalar_value_text(current));
+    out.push_str(&yaml_scalar_value_text(store, node_id)?);
     Ok(())
 }
 
@@ -256,13 +267,14 @@ fn write_yaml_flow_node(
     out: &mut String,
 ) -> Result<(), CoreError> {
     let current = node(store, node_id)?;
-    if !current.anchor.is_empty() {
+    let current_anchor = store.anchor_for(node_id).unwrap_or_default();
+    if !current_anchor.is_empty() {
         out.push('&');
-        out.push_str(&current.anchor);
+        out.push_str(current_anchor);
         out.push(' ');
     }
-    if should_emit_tag(&current.tag) {
-        out.push_str(&current.tag);
+    if should_emit_tag(node_tag(current)) {
+        out.push_str(node_tag(current));
         out.push(' ');
     }
 
@@ -273,14 +285,13 @@ fn write_yaml_flow_node(
                 if index != 0 {
                     out.push_str(", ");
                 }
-                let key = node(store, pair[0])?;
-                out.push_str(&yaml_scalar_value_text(key));
+                out.push_str(&yaml_scalar_value_text(store, pair[0])?);
                 out.push_str(": ");
                 let value = node(store, pair[1])?;
                 if matches!(value.kind, TreeNodeKind::Mapping | TreeNodeKind::Sequence) {
                     write_yaml_flow_node(store, pair[1], out)?;
                 } else {
-                    out.push_str(&yaml_scalar_value_text(value));
+                    out.push_str(&yaml_scalar_value_text(store, pair[1])?);
                 }
             }
             out.push('}');
@@ -298,7 +309,7 @@ fn write_yaml_flow_node(
                 ) {
                     write_yaml_flow_node(store, *child, out)?;
                 } else {
-                    out.push_str(&yaml_scalar_value_text(child_node));
+                    out.push_str(&yaml_scalar_value_text(store, *child)?);
                 }
             }
             out.push(']');
@@ -318,19 +329,23 @@ fn write_yaml_node(
     out: &mut String,
 ) -> Result<(), CoreError> {
     let current = node(store, node_id)?;
-    if !current.head_comment.is_empty() {
-        push_comment_block(out, indent, &current.head_comment);
+    let current_head_comment = store.head_comment_for(node_id).unwrap_or_default();
+    let current_foot_comment = store.foot_comment_for(node_id).unwrap_or_default();
+    let current_line_comment = store.line_comment_for(node_id).unwrap_or_default();
+    let current_anchor = store.anchor_for(node_id).unwrap_or_default();
+    if !current_head_comment.is_empty() {
+        push_comment_block(out, indent, current_head_comment);
     }
 
     if emit_anchor
-        && !current.anchor.is_empty()
+        && !current_anchor.is_empty()
         && matches!(current.kind, TreeNodeKind::Mapping | TreeNodeKind::Sequence)
     {
         push_indent(out, indent);
         write_yaml_flow_node(store, node_id, out)?;
         out.push('\n');
-        if !current.foot_comment.is_empty() {
-            push_comment_block(out, indent, &current.foot_comment);
+        if !current_foot_comment.is_empty() {
+            push_comment_block(out, indent, current_foot_comment);
         }
         return Ok(());
     }
@@ -340,51 +355,57 @@ fn write_yaml_node(
             if current.content.is_empty() {
                 push_indent(out, indent);
                 out.push_str("{}\n");
-                if !current.foot_comment.is_empty() {
-                    push_comment_block(out, indent, &current.foot_comment);
+                if !current_foot_comment.is_empty() {
+                    push_comment_block(out, indent, current_foot_comment);
                 }
                 return Ok(());
             }
 
             let mut wrote_tag = false;
             for pair in current.content.chunks_exact(2) {
-                let key = node(store, pair[0])?;
+                let _key = node(store, pair[0])?;
                 let value = node(store, pair[1])?;
+                let key_head_comment = store.head_comment_for(pair[0]).unwrap_or_default();
+                let value_anchor = store.anchor_for(pair[1]).unwrap_or_default();
+                let value_line_comment = store.line_comment_for(pair[1]).unwrap_or_default();
 
-                if !key.head_comment.is_empty() {
-                    push_comment_block(out, indent, &key.head_comment);
+                if !key_head_comment.is_empty() {
+                    push_comment_block(out, indent, key_head_comment);
                 }
 
                 push_indent(out, indent);
-                if !wrote_tag && !current.tag.is_empty() && !SemType::has_tag_prefix(&current.tag) {
-                    out.push_str(&current.tag);
+                if !wrote_tag
+                    && !node_tag(current).is_empty()
+                    && !SemType::has_tag_prefix(node_tag(current))
+                {
+                    out.push_str(node_tag(current));
                     out.push(' ');
                     wrote_tag = true;
                 }
-                out.push_str(&quoted_yaml_key(&key.value));
+                out.push_str(&quoted_yaml_key(store.value_for(pair[0])?));
                 out.push(':');
 
                 if value.kind == TreeNodeKind::Mapping && value.content.is_empty() {
-                    if !value.anchor.is_empty() {
+                    if !value_anchor.is_empty() {
                         out.push_str(" &");
-                        out.push_str(&value.anchor);
+                        out.push_str(value_anchor);
                     }
                     out.push_str(" {}\n");
                     continue;
                 }
                 if value.kind == TreeNodeKind::Sequence && value.content.is_empty() {
-                    if !value.anchor.is_empty() {
+                    if !value_anchor.is_empty() {
                         out.push_str(" &");
-                        out.push_str(&value.anchor);
+                        out.push_str(value_anchor);
                     }
                     out.push_str(" []\n");
                     continue;
                 }
 
                 if matches!(value.kind, TreeNodeKind::Mapping | TreeNodeKind::Sequence) {
-                    if !value.anchor.is_empty() {
+                    if !value_anchor.is_empty() {
                         out.push_str(" &");
-                        out.push_str(&value.anchor);
+                        out.push_str(value_anchor);
                     }
                     out.push('\n');
                     write_yaml_node(
@@ -392,49 +413,52 @@ fn write_yaml_node(
                         pair[1],
                         indent_step,
                         indent + indent_step,
-                        value.anchor.is_empty(),
+                        value_anchor.is_empty(),
                         out,
                     )?;
                 } else {
                     out.push(' ');
                     write_yaml_scalar(store, pair[1], out)?;
-                    if !value.line_comment.trim().is_empty() {
+                    if !value_line_comment.trim().is_empty() {
                         out.push(' ');
-                        out.push_str(value.line_comment.trim());
+                        out.push_str(value_line_comment.trim());
                     }
                     out.push('\n');
                 }
             }
 
-            if !current.foot_comment.is_empty() {
-                push_comment_block(out, indent, &current.foot_comment);
+            if !current_foot_comment.is_empty() {
+                push_comment_block(out, indent, current_foot_comment);
             }
         }
         TreeNodeKind::Sequence => {
-            if !current.tag.is_empty() && !SemType::has_tag_prefix(&current.tag) {
+            if !node_tag(current).is_empty() && !SemType::has_tag_prefix(node_tag(current)) {
                 push_indent(out, indent);
-                out.push_str(&current.tag);
+                out.push_str(node_tag(current));
                 out.push('\n');
             }
 
             if current.content.is_empty() {
                 push_indent(out, indent);
                 out.push_str("[]\n");
-                if !current.foot_comment.is_empty() {
-                    push_comment_block(out, indent, &current.foot_comment);
+                if !current_foot_comment.is_empty() {
+                    push_comment_block(out, indent, current_foot_comment);
                 }
                 return Ok(());
             }
 
             for child in &current.content {
                 let child_node = node(store, *child)?;
-                if !child_node.head_comment.is_empty() {
-                    push_comment_block(out, indent, &child_node.head_comment);
+                let child_head_comment = store.head_comment_for(*child).unwrap_or_default();
+                let child_anchor = store.anchor_for(*child).unwrap_or_default();
+                let child_line_comment = store.line_comment_for(*child).unwrap_or_default();
+                if !child_head_comment.is_empty() {
+                    push_comment_block(out, indent, child_head_comment);
                 }
 
                 push_indent(out, indent);
                 if child_node.kind == TreeNodeKind::Mapping && map_is_all_scalar(store, *child)? {
-                    if !child_node.anchor.is_empty() || should_emit_tag(&child_node.tag) {
+                    if !child_anchor.is_empty() || should_emit_tag(node_tag(child_node)) {
                         out.push_str("- ");
                         write_yaml_flow_node(store, *child, out)?;
                         out.push('\n');
@@ -447,8 +471,8 @@ fn write_yaml_node(
                             out.push('\n');
                             push_indent(out, indent + 2);
                         }
-                        let key = node(store, pair[0])?;
-                        out.push_str(&quoted_yaml_key(&key.value));
+                        let _key = node(store, pair[0])?;
+                        out.push_str(&quoted_yaml_key(store.value_for(pair[0])?));
                         out.push_str(": ");
                         write_yaml_scalar(store, pair[1], out)?;
                     }
@@ -456,7 +480,7 @@ fn write_yaml_node(
                     continue;
                 }
 
-                if !child_node.anchor.is_empty() || should_emit_tag(&child_node.tag) {
+                if !child_anchor.is_empty() || should_emit_tag(node_tag(child_node)) {
                     out.push_str("- ");
                     write_yaml_flow_node(store, *child, out)?;
                     out.push('\n');
@@ -474,27 +498,27 @@ fn write_yaml_node(
 
                 out.push_str("- ");
                 write_yaml_scalar(store, *child, out)?;
-                if !child_node.line_comment.trim().is_empty() {
+                if !child_line_comment.trim().is_empty() {
                     out.push(' ');
-                    out.push_str(child_node.line_comment.trim());
+                    out.push_str(child_line_comment.trim());
                 }
                 out.push('\n');
             }
 
-            if !current.foot_comment.is_empty() {
-                push_comment_block(out, indent, &current.foot_comment);
+            if !current_foot_comment.is_empty() {
+                push_comment_block(out, indent, current_foot_comment);
             }
         }
         _ => {
             push_indent(out, indent);
             write_yaml_scalar(store, node_id, out)?;
-            if !current.line_comment.trim().is_empty() {
+            if !current_line_comment.trim().is_empty() {
                 out.push(' ');
-                out.push_str(current.line_comment.trim());
+                out.push_str(current_line_comment.trim());
             }
-            if !current.foot_comment.is_empty() {
+            if !current_foot_comment.is_empty() {
                 out.push('\n');
-                push_comment_block(out, indent, &current.foot_comment);
+                push_comment_block(out, indent, current_foot_comment);
             } else {
                 out.push('\n');
             }

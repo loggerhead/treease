@@ -69,6 +69,16 @@ impl<'a> AnyReader<'a> {
     }
 }
 
+impl Read for AnyReader<'_> {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        self.inner.read(buf)
+    }
+
+    fn read_vectored(&mut self, bufs: &mut [IoSliceMut<'_>]) -> std::io::Result<usize> {
+        self.inner.read_vectored(bufs)
+    }
+}
+
 pub struct VecWriter<'a> {
     bytes: &'a mut Vec<u8>,
 }

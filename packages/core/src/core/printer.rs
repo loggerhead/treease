@@ -15,6 +15,14 @@ pub trait Encoder {
         writer: &mut dyn Write,
     ) -> Result<(), CoreError>;
 
+    fn encode_evaluated_value(
+        &self,
+        _value: &crate::evaluator::Value,
+        _writer: &mut dyn Write,
+    ) -> Result<bool, CoreError> {
+        Ok(false)
+    }
+
     fn print_document_separator(&self, writer: &mut dyn Write) -> Result<(), CoreError> {
         writer.write_all(b"\n---\n")?;
         Ok(())
@@ -60,6 +68,28 @@ struct PrintStoreGuard<'a> {
     ctx: *mut Context,
     previous: Option<NonNull<TreeStore>>,
     _marker: std::marker::PhantomData<&'a mut Context>,
+}
+
+struct PrinterWriteAdapter<'a, W> {
+    ctx: *mut Context,
+    writer: &'a mut W,
+    node_id: Option<NodeId>,
+}
+
+impl<W: PrinterWriter> Write for PrinterWriteAdapter<'_, W> {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        // SAFETY: `ctx` originates from the live `&mut Context` passed into
+        // `print_results`, and this adapter never outlives that call.
+        let ctx = unsafe { &mut *self.ctx };
+        self.writer
+            .write_for_node(ctx, self.node_id, buf)
+            .map_err(std::io::Error::other)?;
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
 }
 
 impl Drop for PrintStoreGuard<'_> {
@@ -138,7 +168,7 @@ where
             if let Some(&first_id) = matching_nodes.first() {
                 if let Some(node) = store.get(first_id) {
                     self.previous_doc_index = node.document;
-                    self.previous_file_index = node.file_index;
+                    self.previous_file_index = store.file_index_for(first_id).unwrap_or_default();
                 }
             }
             self.first_time_printing = false;
@@ -147,12 +177,10 @@ where
         for &node_id in matching_nodes {
             let node = store.get(node_id);
 
-            let mut encoded = Vec::new();
-
             // Alias handling: if node is an alias and encoder can't handle it, resolve alias
             let target_id = if let Some(node_ref) = node {
                 if node_ref.kind == TreeNodeKind::Alias && !self.encoder.can_handle_aliases() {
-                    node_ref.alias.unwrap_or(node_id)
+                    node_ref.alias().unwrap_or(node_id)
                 } else {
                     node_id
                 }
@@ -160,13 +188,13 @@ where
                 node_id
             };
 
-            self.encoder.encode(ctx, target_id, &mut encoded)?;
-
             // printed_matches: mark true unless the value is nil or boolean false
             if let Some(node_ref) = node {
                 let is_nil = node_ref.sem_type == Some(super::sem_type::SemType::Nil);
                 let is_false = node_ref.sem_type == Some(super::sem_type::SemType::Boolean)
-                    && node_ref.value.eq_ignore_ascii_case("false");
+                    && store
+                        .value_for(node_id)
+                        .is_ok_and(|value| value.eq_ignore_ascii_case("false"));
                 if !is_nil && !is_false {
                     self.printed_matches = true;
                 }
@@ -175,21 +203,77 @@ where
             }
 
             if self.nul_sep_output {
+                let mut encoded = Vec::new();
+                self.encoder.encode(ctx, target_id, &mut encoded)?;
                 Self::remove_last_eol(&mut encoded);
                 if encoded.contains(&0) {
                     return Err(SystemError::NulInNulSeparatedOutput.into());
                 }
                 encoded.push(0);
+                self.writer.write_for_node(ctx, Some(node_id), &encoded)?;
+            } else {
+                let mut writer = PrinterWriteAdapter {
+                    ctx,
+                    writer: &mut self.writer,
+                    node_id: Some(node_id),
+                };
+                self.encoder.encode(ctx, target_id, &mut writer)?;
             }
-
-            self.writer.write_for_node(ctx, Some(node_id), &encoded)?;
 
             if let Some(node_ref) = node {
                 self.previous_doc_index = node_ref.document;
-                self.previous_file_index = node_ref.file_index;
+                self.previous_file_index = store.file_index_for(node_id).unwrap_or_default();
             }
         }
 
+        if let Some(appendix) = self.appendix.clone() {
+            self.writer.write_for_node(ctx, None, &appendix)?;
+        }
+        Ok(())
+    }
+
+    pub fn can_print_evaluated_value(&self) -> bool {
+        self.encoder
+            .encode_evaluated_value(&crate::evaluator::Value::Null, &mut std::io::sink())
+            .is_ok_and(|handled| handled)
+    }
+
+    pub fn print_evaluated_value(
+        &mut self,
+        ctx: &mut Context,
+        value: &crate::evaluator::Value,
+    ) -> Result<(), CoreError> {
+        self.first_time_printing = false;
+        match value {
+            crate::evaluator::Value::Null | crate::evaluator::Value::Bool(false) => {}
+            _ => self.printed_matches = true,
+        }
+
+        if self.nul_sep_output {
+            let mut encoded = Vec::new();
+            if !self.encoder.encode_evaluated_value(value, &mut encoded)? {
+                return Err(SystemError::Error.into());
+            }
+            Self::remove_last_eol(&mut encoded);
+            if encoded.contains(&0) {
+                return Err(SystemError::NulInNulSeparatedOutput.into());
+            }
+            encoded.push(0);
+            self.writer.write_for_node(ctx, None, &encoded)?;
+            if let Some(appendix) = self.appendix.clone() {
+                self.writer.write_for_node(ctx, None, &appendix)?;
+            }
+            return Ok(());
+        }
+
+        let mut writer = PrinterWriteAdapter {
+            ctx,
+            writer: &mut self.writer,
+            node_id: None,
+        };
+        if !self.encoder.encode_evaluated_value(value, &mut writer)? {
+            return Err(SystemError::Error.into());
+        }
         if let Some(appendix) = self.appendix.clone() {
             self.writer.write_for_node(ctx, None, &appendix)?;
         }

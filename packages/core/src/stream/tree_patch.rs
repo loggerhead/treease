@@ -129,10 +129,11 @@ pub fn check_patch_sequence(patches: &[TreePatch]) -> Result<(), String> {
                 ..
             } => {
                 // NodeId must be monotonically increasing
-                if node_id.0 != next_id {
+                if node_id.index() != next_id {
                     return Err(format!(
                         "non-monotonic NodeId: expected {}, got {}",
-                        next_id, node_id.0
+                        next_id,
+                        node_id.index()
                     ));
                 }
                 next_id += 1;
@@ -183,10 +184,11 @@ pub fn check_patch_sequence(patches: &[TreePatch]) -> Result<(), String> {
                 key_text: _,
                 ..
             } => {
-                if key_id.0 != next_id {
+                if key_id.index() != next_id {
                     return Err(format!(
                         "non-monotonic KeyInserted id: expected {}, got {}",
-                        next_id, key_id.0
+                        next_id,
+                        key_id.index()
                     ));
                 }
                 next_id += 1;
@@ -258,7 +260,7 @@ mod tests {
     use super::*;
 
     fn nid(id: usize) -> NodeId {
-        NodeId(id)
+        NodeId::from_index(id)
     }
 
     #[test]

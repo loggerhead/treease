@@ -7,6 +7,8 @@ pub mod formats;
 pub mod operators;
 pub mod parser;
 pub mod stream;
+#[cfg(test)]
+pub mod test_timing;
 pub mod wasm;
 pub mod wasm_document;
 pub mod wasm_types;

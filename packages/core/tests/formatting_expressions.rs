@@ -1,8 +1,8 @@
 use std::io::Cursor;
 
 use treease_core::core::{
-    CodecService, CoreError, EvalError, NodeId, SemType, TreeNode, TreeNodeKind, TreeStore,
-    io_adapters::reader_from_pointer,
+    CodecService, CompactTag, CoreError, EvalError, NodeId, SemType, TreeNode, TreeNodeKind,
+    TreeStore, io_adapters::reader_from_pointer,
 };
 use treease_core::evaluator::{AllAtOnceEvaluator, ReaderInput, Value};
 use treease_core::parser::parse_expression;
@@ -24,7 +24,7 @@ fn attach_child(store: &mut TreeStore, parent: NodeId, child: NodeId) -> Result<
     let child_node = store.get_mut(child).ok_or_else(missing_tree_node)?;
     child_node.parent = Some(parent);
     child_node.is_map_key = false;
-    child_node.sequence_index = sequence_index;
+    child_node.set_sequence_index(sequence_index.map(|index| index as u32));
 
     store
         .get_mut(parent)
@@ -43,13 +43,13 @@ fn attach_map_entry(
     let key_node = store.get_mut(key).ok_or_else(missing_tree_node)?;
     key_node.parent = Some(parent);
     key_node.is_map_key = true;
-    key_node.sequence_index = None;
+    key_node.set_sequence_index(None);
 
     let value_node = store.get_mut(value).ok_or_else(missing_tree_node)?;
     value_node.parent = Some(parent);
     value_node.is_map_key = false;
-    value_node.key = Some(key);
-    value_node.sequence_index = None;
+    value_node.set_key(Some(key));
+    value_node.set_sequence_index(None);
 
     let parent_node = store.get_mut(parent).ok_or_else(missing_tree_node)?;
     parent_node.content.push(key);
@@ -67,14 +67,14 @@ fn add_value(store: &mut TreeStore, value: &Value) -> Result<NodeId, CoreError> 
         Value::Number(value) => Ok(store.add(TreeNode::scalar(SemType::Float, value.to_string()))),
         Value::String(value) => Ok(store.add(TreeNode {
             kind: TreeNodeKind::Scalar,
-            value: value.clone(),
+            value: value.clone().into(),
             ..TreeNode::default()
         })),
         Value::Array(values) => {
             let parent = store.add(TreeNode {
                 kind: TreeNodeKind::Sequence,
                 sem_type: Some(SemType::Seq),
-                tag: SemType::Seq.tag().to_owned(),
+                tag: CompactTag::from_sem_type(SemType::Seq),
                 ..TreeNode::default()
             });
             for value in values {
@@ -87,7 +87,7 @@ fn add_value(store: &mut TreeStore, value: &Value) -> Result<NodeId, CoreError> 
             let parent = store.add(TreeNode {
                 kind: TreeNodeKind::Mapping,
                 sem_type: Some(SemType::Map),
-                tag: SemType::Map.tag().to_owned(),
+                tag: CompactTag::from_sem_type(SemType::Map),
                 ..TreeNode::default()
             });
             for (key, value) in values {

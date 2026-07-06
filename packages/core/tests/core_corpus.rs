@@ -112,6 +112,10 @@ fn compat_sem_type(sem_type: Option<SemType>) -> Option<CompatSemType> {
     })
 }
 
+fn value_text(store: &treease_core::core::TreeStore, id: treease_core::core::NodeId) -> String {
+    store.value_string_for(id).unwrap_or_default()
+}
+
 fn compat_tree_from_core(
     store: &treease_core::core::TreeStore,
     node_id: treease_core::core::NodeId,
@@ -119,29 +123,41 @@ fn compat_tree_from_core(
     let source = store.get(node_id).unwrap();
     let mut out = CompatTreeNode {
         kind: compat_kind(source.kind),
-        sequence_closed: source.sequence_closed,
+        sequence_closed: source.sequence_closed(),
         sem_type: compat_sem_type(source.sem_type),
-        tag: source.tag.clone(),
-        value: source.value.clone(),
+        tag: source.tag.to_string_value(),
+        value: value_text(store, node_id),
         start_byte: source.start_byte,
         end_byte: source.end_byte,
-        anchor: source.anchor.clone(),
-        alias: source.alias.map(|id| CompatNodeId(id.0)),
-        head_comment: source.head_comment.clone(),
-        line_comment: source.line_comment.clone(),
-        foot_comment: source.foot_comment.clone(),
-        parent: source.parent.map(|id| CompatNodeId(id.0)),
-        key: source.key.map(|id| CompatNodeId(id.0)),
-        sequence_index: source.sequence_index,
-        leading_content: source.leading_content.clone(),
+        anchor: store.anchor_for(node_id).unwrap_or_default().to_owned(),
+        alias: source.alias().map(|id| CompatNodeId(id.index())),
+        head_comment: store
+            .head_comment_for(node_id)
+            .unwrap_or_default()
+            .to_owned(),
+        line_comment: store
+            .line_comment_for(node_id)
+            .unwrap_or_default()
+            .to_owned(),
+        foot_comment: store
+            .foot_comment_for(node_id)
+            .unwrap_or_default()
+            .to_owned(),
+        parent: source.parent.map(|id| CompatNodeId(id.index())),
+        key: source.key().map(|id| CompatNodeId(id.index())),
+        sequence_index: source.sequence_index().map(|index| index as i64),
+        leading_content: store
+            .leading_content_for(node_id)
+            .unwrap_or_default()
+            .to_owned(),
         document: source.document,
-        filename: source.filename.clone(),
+        filename: store.filename_for(node_id).unwrap_or_default().to_owned(),
         line: source.line,
         column: source.column,
-        file_index: source.file_index,
+        file_index: store.file_index_for(node_id).unwrap_or_default(),
         is_map_key: source.is_map_key,
-        encode_separate: source.encode_separate,
-        evaluate_together: source.evaluate_together,
+        encode_separate: source.encode_separate(),
+        evaluate_together: source.evaluate_together(),
         ..CompatTreeNode::default()
     };
     out.content = source
@@ -180,7 +196,7 @@ fn json_decode_encode_round_trip() {
         decoded.store.get(name).unwrap().sem_type,
         Some(SemType::Str)
     );
-    assert_eq!(decoded.store.get(name).unwrap().value, "Ada");
+    assert_eq!(value_text(&decoded.store, name), "Ada");
 
     // Verify array entry
     let values = get_map_entry(&decoded.store, decoded.root, "values")
@@ -432,7 +448,7 @@ fn corpus_toml_dotted_key_fixture_matches_zig_regression_subset() {
         .unwrap()
         .value;
 
-    assert_eq!(decoded.store.get(first).unwrap().value, "Arthur");
+    assert_eq!(value_text(&decoded.store, first), "Arthur");
     assert_eq!(decoded.store.get(dots).unwrap().kind, TreeNodeKind::Mapping);
 }
 
@@ -475,8 +491,8 @@ fn corpus_toml_implicit_and_explicit_after_fixture_matches_zig_regression_subset
         .unwrap()
         .value;
 
-    assert_eq!(decoded.store.get(answer).unwrap().value, "42");
-    assert_eq!(decoded.store.get(better).unwrap().value, "43");
+    assert_eq!(value_text(&decoded.store, answer), "42");
+    assert_eq!(value_text(&decoded.store, better), "43");
 }
 
 #[test]
@@ -490,7 +506,7 @@ fn corpus_toml_multiline_empty_fixture_matches_zig_regression_subset() {
             .unwrap()
             .unwrap()
             .value;
-        assert_eq!(decoded.store.get(value).unwrap().value, "", "key={key}");
+        assert_eq!(value_text(&decoded.store, value), "", "key={key}");
     }
 }
 
@@ -511,7 +527,7 @@ fn corpus_toml_multiline_quotes_fixture_matches_zig_regression_subset() {
             .unwrap()
             .value;
         assert!(
-            decoded.store.get(value).unwrap().value.contains(expected),
+            value_text(&decoded.store, value).contains(expected),
             "key={key}"
         );
     }
@@ -548,7 +564,7 @@ fn corpus_toml_inline_table_newline_fixture_matches_zig_regression_subset() {
         decoded.store.get(nested_tbl).unwrap().kind,
         TreeNodeKind::Mapping
     );
-    assert_eq!(decoded.store.get(nested_key).unwrap().value, "1");
+    assert_eq!(value_text(&decoded.store, nested_key), "1");
 }
 
 #[test]
@@ -568,16 +584,9 @@ fn corpus_toml_hex_escape_fixture_matches_zig_regression_subset() {
         .unwrap()
         .value;
 
-    assert_eq!(decoded.store.get(hello).unwrap().value, "hello\n");
-    assert_eq!(decoded.store.get(higher).unwrap().value, "Sørmirbæren");
-    assert!(
-        decoded
-            .store
-            .get(multiline)
-            .unwrap()
-            .value
-            .contains("Sørmirbæren")
-    );
+    assert_eq!(value_text(&decoded.store, hello), "hello\n");
+    assert_eq!(value_text(&decoded.store, higher), "Sørmirbæren");
+    assert!(value_text(&decoded.store, multiline).contains("Sørmirbæren"));
 }
 
 #[test]
@@ -617,7 +626,7 @@ fn corpus_toml_datetime_no_seconds_fixture_matches_zig_regression_subset() {
             .unwrap()
             .unwrap()
             .value;
-        assert_eq!(decoded.store.get(value).unwrap().value, expected);
+        assert_eq!(value_text(&decoded.store, value), expected);
     }
 }
 
@@ -657,8 +666,8 @@ fn corpus_toml_inline_table_common_47_fixture_matches_zig_regression_subset() {
         .unwrap()
         .value;
 
-    assert_eq!(decoded.store.get(first).unwrap().value, "Tom");
-    assert_eq!(decoded.store.get(type_name).unwrap().value, "pug");
+    assert_eq!(value_text(&decoded.store, first), "Tom");
+    assert_eq!(value_text(&decoded.store, type_name), "pug");
 }
 
 #[test]
@@ -711,11 +720,8 @@ fn corpus_toml_long_integer_fixture_matches_zig_regression_subset() {
         .unwrap()
         .value;
 
-    assert_eq!(decoded.store.get(max).unwrap().value, "9223372036854775807");
-    assert_eq!(
-        decoded.store.get(min).unwrap().value,
-        "-9223372036854775808"
-    );
+    assert_eq!(value_text(&decoded.store, max), "9223372036854775807");
+    assert_eq!(value_text(&decoded.store, min), "-9223372036854775808");
 }
 
 #[test]
@@ -760,7 +766,7 @@ fn corpus_yaml_verbatim_tag_example_fixture_matches_zig_regression_subset() {
         decoded.store.get(decoded.root).unwrap().kind,
         TreeNodeKind::Mapping
     );
-    assert_eq!(decoded.store.get(foo).unwrap().value, "baz");
+    assert_eq!(value_text(&decoded.store, foo), "baz");
 }
 
 #[test]
@@ -781,10 +787,7 @@ fn corpus_yaml_bare_documents_fixture_matches_zig_regression_subset() {
         decoded.store.get(decoded.root).unwrap().kind,
         TreeNodeKind::Scalar
     );
-    assert_eq!(
-        decoded.store.get(decoded.root).unwrap().value,
-        "Bare document"
-    );
+    assert_eq!(value_text(&decoded.store, decoded.root), "Bare document");
 }
 
 #[test]
@@ -797,7 +800,7 @@ fn corpus_yaml_directive_boundary_valid_fixture_matches_zig_regression_subset() 
         decoded.store.get(decoded.root).unwrap().kind,
         TreeNodeKind::Scalar
     );
-    assert_eq!(decoded.store.get(decoded.root).unwrap().value, "scalar1");
+    assert_eq!(value_text(&decoded.store, decoded.root), "scalar1");
 }
 
 #[test]

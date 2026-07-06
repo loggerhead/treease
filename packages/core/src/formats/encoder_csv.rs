@@ -28,13 +28,13 @@ impl Encode for CsvEncoder {
     fn encode(
         &self,
         store: &TreeStore,
-        node: NodeId,
+        node_id: NodeId,
         writer: &mut dyn Write,
     ) -> Result<(), CoreError> {
-        let node = store.get(node).ok_or_else(missing_tree_node)?;
+        let node = store.get(node_id).ok_or_else(missing_tree_node)?;
         match node.kind {
             TreeNodeKind::Scalar => {
-                writer.write_all(node.value.as_bytes())?;
+                writer.write_all(store.value_for(node_id)?.as_bytes())?;
                 writer.write_all(b"\n")?;
             }
             TreeNodeKind::Sequence => {
@@ -80,10 +80,7 @@ fn write_sequence_row(
 ) -> Result<(), CoreError> {
     let values = nodes
         .iter()
-        .map(|id| {
-            let node = store.get(*id).ok_or_else(missing_tree_node)?;
-            scalar_text(node)
-        })
+        .map(|id| scalar_text(store, *id))
         .collect::<Result<Vec<_>, _>>()?;
     write_row(writer, separator, &values)
 }
@@ -103,7 +100,7 @@ fn write_mapping_row(
         .iter()
         .map(|header| {
             let value = match crate::core::get_map_entry(store, row, header)? {
-                Some(entry) => scalar_text(store.get(entry.value).ok_or_else(missing_tree_node)?)?,
+                Some(entry) => scalar_text(store, entry.value)?,
                 None => String::new(),
             };
             Ok(value)
@@ -120,21 +117,16 @@ fn extract_headers(store: &TreeStore, row: NodeId) -> Result<Vec<String>, CoreEr
     row_node
         .content
         .chunks_exact(2)
-        .map(|pair| {
-            store
-                .get(pair[0])
-                .map(scalar_text)
-                .transpose()?
-                .ok_or_else(missing_tree_node)
-        })
+        .map(|pair| scalar_text(store, pair[0]))
         .collect()
 }
 
-fn scalar_text(node: &crate::core::TreeNode) -> Result<String, CoreError> {
+fn scalar_text(store: &TreeStore, node_id: NodeId) -> Result<String, CoreError> {
+    let node = store.get(node_id).ok_or_else(missing_tree_node)?;
     if node.kind != TreeNodeKind::Scalar {
         return Err(CoreError::Parse(crate::core::ParseError::BadCsv));
     }
-    Ok(node.value.clone())
+    Ok(store.value_string_for(node_id)?)
 }
 
 fn write_row(writer: &mut dyn Write, separator: char, values: &[String]) -> Result<(), CoreError> {

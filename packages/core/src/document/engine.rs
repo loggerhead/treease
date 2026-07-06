@@ -1241,6 +1241,56 @@ mod tests {
     }
 
     #[test]
+    fn streaming_json_without_graph_output_skips_projection_events_and_snapshot_graph() {
+        let mut rt = DocumentRuntime::default();
+        let mut m = DocumentEngineMetrics::default();
+        let h = start_job(
+            &mut rt,
+            &mut m,
+            DocumentJobSpec {
+                kind: DocumentJobKind::AnalyzeSource,
+                document_key: "stream-no-graph".into(),
+                language: "json".into(),
+                input: DocumentInputPlan::SourceText,
+                settings: crate::document::protocol::DocumentJobSettings::default(),
+                output: OutputPlan {
+                    analysis: true,
+                    graph: false,
+                },
+                base_snapshot_id: None,
+                edits: vec![],
+            },
+        );
+
+        let chunk = advance_job(
+            &mut rt,
+            &mut m,
+            h,
+            AdvanceInput::TextChunk(r#"{"k":1}"#.into()),
+        );
+        assert!(chunk.terminal.is_none());
+        assert!(
+            !chunk
+                .events
+                .iter()
+                .any(|event| matches!(event, DocumentEvent::ProjectionDelta { .. })),
+            "graph-disabled streaming chunk should not emit ProjectionDelta"
+        );
+
+        let close = advance_job(&mut rt, &mut m, h, AdvanceInput::Close);
+        assert!(matches!(close.terminal, Some(JobTerminal::Completed)));
+        let snapshot_ready = close.events.iter().find_map(|event| match event {
+            DocumentEvent::SnapshotReady { main_graph, .. } => Some(main_graph),
+            _ => None,
+        });
+        assert_eq!(
+            snapshot_ready,
+            Some(&None),
+            "graph-disabled SnapshotReady should not carry mainGraph"
+        );
+    }
+
+    #[test]
     fn streaming_csv_chunk_still_accumulates_no_events() {
         let mut rt = DocumentRuntime::default();
         let mut m = DocumentEngineMetrics::default();
@@ -2052,8 +2102,8 @@ mod tests {
                 .and_then(|state| state.tree_path_index.as_ref()),
         )
         .expect("replacement subtree should contain $.root.b");
+        assert_eq!(document.store.value_for(node_id).unwrap(), "22");
         let node = document.store.get(node_id).expect("b node stored");
-        assert_eq!(node.value, "22");
         assert!(node.start_byte > start);
         assert!(
             node.line >= 3,

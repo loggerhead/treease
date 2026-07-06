@@ -24,7 +24,7 @@ fn core_node_to_graph_tree(
             CoreTreeNodeKind::Scalar | CoreTreeNodeKind::Unknown => NodeKind::Scalar,
             CoreTreeNodeKind::Alias => NodeKind::Alias,
         },
-        sequence_closed: source.sequence_closed,
+        sequence_closed: source.sequence_closed(),
         sem_type: source.sem_type.map(|sem_type| match sem_type {
             treease_core::core::SemType::Nil => SemType::Nil,
             treease_core::core::SemType::Str => SemType::Str,
@@ -34,8 +34,8 @@ fn core_node_to_graph_tree(
             treease_core::core::SemType::Map => SemType::Map,
             treease_core::core::SemType::Seq => SemType::Seq,
         }),
-        tag: source.tag.clone(),
-        value: source.value.clone(),
+        tag: source.tag.to_string_value(),
+        value: store.value_string_for(id).unwrap_or_default(),
         start_byte: source.start_byte,
         end_byte: source.end_byte,
         content: source
@@ -43,20 +43,20 @@ fn core_node_to_graph_tree(
             .iter()
             .map(|child| core_node_to_graph_tree(store, *child))
             .collect(),
-        leading_content: source.leading_content.clone(),
+        leading_content: store.leading_content_for(id).unwrap_or_default().to_owned(),
         is_map_key: source.is_map_key,
-        sequence_index: source.sequence_index,
-        anchor: source.anchor.clone(),
-        head_comment: source.head_comment.clone(),
-        line_comment: source.line_comment.clone(),
-        foot_comment: source.foot_comment.clone(),
+        sequence_index: source.sequence_index().map(|index| index as i64),
+        anchor: store.anchor_for(id).unwrap_or_default().to_owned(),
+        head_comment: store.head_comment_for(id).unwrap_or_default().to_owned(),
+        line_comment: store.line_comment_for(id).unwrap_or_default().to_owned(),
+        foot_comment: store.foot_comment_for(id).unwrap_or_default().to_owned(),
         document: source.document,
-        filename: source.filename.clone(),
+        filename: store.filename_for(id).unwrap_or_default().to_owned(),
         line: source.line,
         column: source.column,
-        file_index: source.file_index,
-        encode_separate: source.encode_separate,
-        evaluate_together: source.evaluate_together,
+        file_index: store.file_index_for(id).unwrap_or_default(),
+        encode_separate: source.encode_separate(),
+        evaluate_together: source.evaluate_together(),
         ..TreeNode::default()
     }
 }

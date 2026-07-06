@@ -237,9 +237,8 @@ fn streaming_json_decode_slice_to_tree_builds_mapping_document() {
 
     assert_eq!(root.kind, treease_core::core::TreeNodeKind::Mapping);
     assert_eq!(root.content.len(), 2);
-    let outer_key = decoded.store.get(root.content[0]).unwrap();
     let outer_value = decoded.store.get(root.content[1]).unwrap();
-    assert_eq!(outer_key.value, "outer");
+    assert_eq!(decoded.store.value_for(root.content[0]).unwrap(), "outer");
     assert_eq!(outer_value.kind, treease_core::core::TreeNodeKind::Mapping);
 }
 
@@ -551,9 +550,11 @@ fn streaming_json_accepts_escape_and_unicode_sequences_split_across_chunks() {
     let root = doc.store.get(doc.root).unwrap();
     assert_eq!(root.kind, treease_core::core::TreeNodeKind::Mapping);
     assert_eq!(root.content.len(), 2);
-    let value_node = doc.store.get(root.content[1]).unwrap();
-    assert_eq!(value_node.kind, treease_core::core::TreeNodeKind::Scalar);
-    assert!(!value_node.value.is_empty());
+    assert_eq!(
+        doc.store.get(root.content[1]).unwrap().kind,
+        treease_core::core::TreeNodeKind::Scalar
+    );
+    assert!(!doc.store.value_for(root.content[1]).unwrap().is_empty());
 }
 
 #[test]
@@ -568,9 +569,11 @@ fn streaming_json_accepts_surrogate_pair_escapes() {
     let root = doc.store.get(doc.root).unwrap();
     assert_eq!(root.kind, treease_core::core::TreeNodeKind::Mapping);
     assert_eq!(root.content.len(), 2);
-    let value_node = doc.store.get(root.content[1]).unwrap();
-    assert_eq!(value_node.kind, treease_core::core::TreeNodeKind::Scalar);
-    assert!(!value_node.value.is_empty());
+    assert_eq!(
+        doc.store.get(root.content[1]).unwrap().kind,
+        treease_core::core::TreeNodeKind::Scalar
+    );
+    assert!(!doc.store.value_for(root.content[1]).unwrap().is_empty());
 }
 
 #[test]
@@ -586,9 +589,11 @@ fn streaming_json_accepts_number_token_split_at_exponent_boundary() {
     let root = doc.store.get(doc.root).unwrap();
     assert_eq!(root.kind, treease_core::core::TreeNodeKind::Mapping);
     assert_eq!(root.content.len(), 2);
-    let value_node = doc.store.get(root.content[1]).unwrap();
-    assert_eq!(value_node.kind, treease_core::core::TreeNodeKind::Scalar);
-    assert!(!value_node.value.is_empty());
+    assert_eq!(
+        doc.store.get(root.content[1]).unwrap().kind,
+        treease_core::core::TreeNodeKind::Scalar
+    );
+    assert!(!doc.store.value_for(root.content[1]).unwrap().is_empty());
 }
 
 #[test]

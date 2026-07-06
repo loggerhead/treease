@@ -685,17 +685,20 @@ fn update_scalar_node(
     target: crate::core::NodeId,
     edit: &DocumentTextEdit,
 ) -> Option<ScalarSemanticChange> {
-    let node = decoded.store.get_mut(target)?;
-    if node.kind != TreeNodeKind::Scalar {
-        return None;
+    let (old_sem_type, is_map_key) = {
+        let node = decoded.store.get(target)?;
+        if node.kind != TreeNodeKind::Scalar {
+            return None;
+        }
+        (node.resolved_sem_type(), node.is_map_key)
+    };
+    let (sem_type, value) = parse_scalar_edit_replacement(language, &edit.replacement, is_map_key)?;
+    {
+        let node = decoded.store.get_mut(target)?;
+        node.set_sem_type(sem_type);
+        node.end_byte = edit.new_end_byte;
     }
-    let old_sem_type = node.resolved_sem_type();
-    let (sem_type, value) =
-        parse_scalar_edit_replacement(language, &edit.replacement, node.is_map_key)?;
-    node.sem_type = Some(sem_type);
-    node.tag = sem_type.to_string();
-    node.value = value;
-    node.end_byte = edit.new_end_byte;
+    decoded.store.set_value(target, value).ok()?;
     Some(ScalarSemanticChange {
         old_sem_type,
         new_sem_type: sem_type,
@@ -780,7 +783,12 @@ fn subtree_has_alias_or_anchor(store: &TreeStore, root: NodeId) -> bool {
         let Some(node) = store.get(id) else {
             return true;
         };
-        if node.kind == TreeNodeKind::Alias || node.alias.is_some() || !node.anchor.is_empty() {
+        if node.kind == TreeNodeKind::Alias
+            || node.alias().is_some()
+            || store
+                .anchor_for(id)
+                .is_some_and(|anchor| !anchor.is_empty())
+        {
             return true;
         }
         stack.extend(node.content.iter().copied());
@@ -794,7 +802,9 @@ fn replacement_value_root(
     old_store: &TreeStore,
     old_boundary: &TreeNode,
 ) -> Option<NodeId> {
-    let old_key = old_boundary.key.and_then(|id| old_store.get(id))?;
+    let old_key = old_boundary
+        .key()
+        .and_then(|id| old_store.value_for(id).ok())?;
     let root = replacement_store.get(replacement_root)?;
     if root.kind != TreeNodeKind::Mapping || root.content.len() != 2 {
         return None;
@@ -803,7 +813,9 @@ fn replacement_value_root(
     let value_id = root.content[1];
     let key = replacement_store.get(key_id)?;
     let value = replacement_store.get(value_id)?;
-    (key.is_map_key && key.value == old_key.value && value.kind == old_boundary.kind)
+    (key.is_map_key
+        && replacement_store.value_for(key_id).ok() == Some(old_key)
+        && value.kind == old_boundary.kind)
         .then_some(value_id)
 }
 
@@ -821,20 +833,21 @@ fn overwrite_subtree_from_decoded(
     replacement.content.clear();
     rebase_node_bytes(&mut replacement, byte_base)?;
     replacement.parent = old_target.parent;
-    replacement.key = old_target.key;
+    replacement.set_key(old_target.key());
     replacement.sequence_index = old_target.sequence_index;
     replacement.is_map_key = old_target.is_map_key;
     replacement.document = old_target.document;
-    replacement.filename.clone_from(&old_target.filename);
-    replacement.file_index = old_target.file_index;
+    replacement.value = crate::core::NodeValueRef::Missing;
 
     let document = old_target.document;
-    let filename = old_target.filename.as_str();
-    let file_index = old_target.file_index;
+    let filename = dst_store.filename_for(target).ok()?.to_owned();
+    let file_index = dst_store.file_index_for(target).ok()?;
+    dst_store.set_document_meta(document, filename.clone(), file_index);
     {
         let target_node = dst_store.get_mut(target)?;
         *target_node = replacement;
     }
+    sync_node_value_between_stores(src_store, src_root, dst_store, target)?;
 
     let cloned_children = clone_children_rebased(
         src_store,
@@ -843,7 +856,7 @@ fn overwrite_subtree_from_decoded(
         target,
         byte_base,
         document,
-        filename,
+        &filename,
         file_index,
     )?;
     dst_store.get_mut(target)?.content = cloned_children;
@@ -878,8 +891,8 @@ fn clone_children_rebased(
             {
                 let key = dst_store.get_mut(key_id)?;
                 key.is_map_key = true;
-                key.key = None;
-                key.sequence_index = None;
+                key.set_key(None);
+                key.set_sequence_index(None);
             }
             cloned.push(key_id);
 
@@ -897,8 +910,8 @@ fn clone_children_rebased(
                 {
                     let value = dst_store.get_mut(value_id)?;
                     value.is_map_key = false;
-                    value.key = Some(key_id);
-                    value.sequence_index = None;
+                    value.set_key(Some(key_id));
+                    value.set_sequence_index(None);
                 }
                 cloned.push(value_id);
             }
@@ -919,8 +932,8 @@ fn clone_children_rebased(
             if parent_kind == TreeNodeKind::Sequence {
                 let child = dst_store.get_mut(child_id)?;
                 child.is_map_key = false;
-                child.key = None;
-                child.sequence_index = Some(index as i64);
+                child.set_key(None);
+                child.set_sequence_index(Some(index as u32));
             }
             cloned.push(child_id);
         }
@@ -945,9 +958,10 @@ fn clone_subtree_rebased(
     rebase_node_bytes(&mut node, byte_base)?;
     node.parent = parent;
     node.document = document;
-    node.filename = filename.to_owned();
-    node.file_index = file_index;
+    node.value = crate::core::NodeValueRef::Missing;
+    dst_store.set_document_meta(document, filename.to_owned(), file_index);
     let new_id = dst_store.add(node);
+    sync_node_value_between_stores(src_store, src_id, dst_store, new_id)?;
     let cloned_children = clone_children_rebased(
         src_store,
         &src_children,
@@ -965,6 +979,21 @@ fn clone_subtree_rebased(
 fn rebase_node_bytes(node: &mut TreeNode, byte_base: u32) -> Option<()> {
     node.start_byte = node.start_byte.checked_add(byte_base)?;
     node.end_byte = node.end_byte.checked_add(byte_base)?;
+    Some(())
+}
+
+fn sync_node_value_between_stores(
+    src_store: &TreeStore,
+    src_id: NodeId,
+    dst_store: &mut TreeStore,
+    dst_id: NodeId,
+) -> Option<()> {
+    match src_store.value_ref_for(src_id).ok()? {
+        Some(_) => dst_store
+            .set_value(dst_id, src_store.value_for(src_id).ok()?)
+            .ok()?,
+        None => dst_store.remove_value(dst_id).ok()?,
+    }
     Some(())
 }
 
@@ -1325,11 +1354,11 @@ mod tests {
         let node_id = span_index
             .find_exact_scalar(updated_start, updated_start + 1)
             .expect("new snapshot span index should locate edited scalar");
-        let node = updated_document
+        updated_document
             .store
             .get(node_id)
             .expect("indexed node should exist");
-        assert_eq!(node.value, "2");
+        assert_eq!(updated_document.store.value_for(node_id).unwrap(), "2");
         assert_eq!(
             updated.graph.as_ref().map(|projection| projection.clear),
             Some(false)
@@ -1447,11 +1476,11 @@ mod tests {
         let node_id = second_span_index
             .find_exact_scalar(second_value_start, second_value_start + 1)
             .expect("reused span index should locate edited scalar");
-        let node = second_document
+        second_document
             .store
             .get(node_id)
             .expect("indexed node should exist");
-        assert_eq!(node.value, "3");
+        assert_eq!(second_document.store.value_for(node_id).unwrap(), "3");
         assert_eq!(
             second.graph.as_ref().map(|projection| projection.clear),
             Some(false)
@@ -1704,8 +1733,7 @@ mod tests {
             Some(tree_path_index),
         )
         .expect("updated tree path index should locate newly inserted $.root.c");
-        let c_node = updated_document.store.get(c_id).unwrap();
-        assert_eq!(c_node.value, "30");
+        assert_eq!(updated_document.store.value_for(c_id).unwrap(), "30");
         assert!(
             crate::core::find_node_by_path_with_index(
                 updated_document.root,
@@ -1814,9 +1842,16 @@ mod tests {
             .store
             .nodes()
             .iter()
-            .find(|node| {
-                node.kind == TreeNodeKind::Scalar && node.is_map_key && node.value == "Region"
+            .enumerate()
+            .find(|(index, node)| {
+                node.kind == TreeNodeKind::Scalar
+                    && node.is_map_key
+                    && base_document
+                        .store
+                        .value_for(crate::core::NodeId::from_index(*index))
+                        .is_ok_and(|value| value == "Region")
             })
+            .map(|(_, node)| node)
             .expect("base csv should expose header key node");
         let start = header_node.start_byte as usize;
         let end = header_node.end_byte as usize;
@@ -1855,9 +1890,21 @@ mod tests {
             .document
             .as_ref()
             .expect("csv header edit should still decode after fallback");
-        assert!(updated_document.store.nodes().iter().any(|node| {
-            node.kind == TreeNodeKind::Scalar && node.is_map_key && node.value == "Area"
-        }));
+        assert!(
+            updated_document
+                .store
+                .nodes()
+                .iter()
+                .enumerate()
+                .any(|(index, node)| {
+                    node.kind == TreeNodeKind::Scalar
+                        && node.is_map_key
+                        && updated_document
+                            .store
+                            .value_for(crate::core::NodeId::from_index(index))
+                            .is_ok_and(|value| value == "Area")
+                })
+        );
     }
 
     #[test]

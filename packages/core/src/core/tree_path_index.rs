@@ -182,9 +182,9 @@ impl TreePathIndex {
 
     pub fn owned_path_for_node(&self, node_id: NodeId) -> Option<&[OwnedPathSeg]> {
         match self.layer.as_ref() {
-            TreePathIndexLayer::Owned(owned) => owned.node_paths.get(node_id.0)?.as_deref(),
+            TreePathIndexLayer::Owned(owned) => owned.node_paths.get(node_id.index())?.as_deref(),
             TreePathIndexLayer::Overlay(overlay) => {
-                match overlay.patch.node_paths.get(&node_id.0) {
+                match overlay.patch.node_paths.get(&node_id.index()) {
                     Some(Some(path)) => Some(path.as_slice()),
                     Some(None) => None,
                     None => overlay.base.owned_path_for_node(node_id),
@@ -218,10 +218,10 @@ impl TreePathIndex {
 
     fn remove_node_into_patch(&self, node_id: NodeId, patch: &mut TreePathIndexPatch) {
         let Some(path) = self.owned_path_for_node(node_id).map(|path| path.to_vec()) else {
-            patch.node_paths.insert(node_id.0, None);
+            patch.node_paths.insert(node_id.index(), None);
             return;
         };
-        patch.node_paths.insert(node_id.0, None);
+        patch.node_paths.insert(node_id.index(), None);
         if self.value_node(&path) == Some(node_id) {
             patch.value_nodes_by_path.insert(path.clone(), None);
         }
@@ -305,7 +305,9 @@ fn populate_tree_path_index_patch(
     current: &mut Vec<OwnedPathSeg>,
     patch: &mut TreePathIndexPatch,
 ) {
-    patch.node_paths.insert(node_id.0, Some(current.clone()));
+    patch
+        .node_paths
+        .insert(node_id.index(), Some(current.clone()));
     patch
         .value_nodes_by_path
         .insert(current.clone(), Some(node_id));
@@ -336,10 +338,10 @@ fn populate_tree_path_index_patch(
 }
 
 fn set_owned_node_path(index: &mut TreePathIndexOwned, node_id: NodeId, path: &[OwnedPathSeg]) {
-    if node_id.0 >= index.node_paths.len() {
-        index.node_paths.resize(node_id.0 + 1, None);
+    if node_id.index() >= index.node_paths.len() {
+        index.node_paths.resize(node_id.index() + 1, None);
     }
-    index.node_paths[node_id.0] = Some(path.to_vec());
+    index.node_paths[node_id.index()] = Some(path.to_vec());
 }
 
 fn node_path_segment_for(store: &TreeStore, node_id: NodeId) -> Option<OwnedPathSeg> {

@@ -280,7 +280,7 @@ fn build_candidate_from_ts_node(
                 {
                     let val = store.get_mut(val_id).ok_or_else(missing_tree_node_error)?;
                     val.parent = Some(map_id);
-                    val.key = Some(key_id);
+                    val.set_key(Some(key_id));
                 }
 
                 let map = store.get_mut(map_id).ok_or_else(missing_tree_node_error)?;
@@ -313,8 +313,8 @@ fn build_candidate_from_ts_node(
                 {
                     let item = store.get_mut(item_id).ok_or_else(missing_tree_node_error)?;
                     item.parent = Some(seq_id);
-                    item.key = Some(key_id);
-                    item.sequence_index = Some(i as i64);
+                    item.set_key(Some(key_id));
+                    item.set_sequence_index(Some(i as u32));
                 }
 
                 let seq = store.get_mut(seq_id).ok_or_else(missing_tree_node_error)?;

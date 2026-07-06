@@ -195,33 +195,36 @@ fn append_compat_node(
     node: &TreeNode,
     parent: Option<core::NodeId>,
 ) -> Result<core::NodeId, CoreError> {
-    let id = store.add(core::TreeNode {
+    let mut out = core::TreeNode {
         kind: to_core_kind(node.kind),
-        sequence_closed: node.sequence_closed,
         sem_type: to_core_sem_type(node.sem_type),
-        tag: node.tag.clone(),
-        value: node.value.clone(),
+        tag: core::CompactTag::from_text(node.tag.clone()),
+        value: node.value.clone().into(),
         start_byte: node.start_byte,
         end_byte: node.end_byte,
-        anchor: node.anchor.clone(),
-        alias: node.alias.map(|id| core::NodeId(id.0)),
-        head_comment: node.head_comment.clone(),
-        line_comment: node.line_comment.clone(),
-        foot_comment: node.foot_comment.clone(),
         parent,
-        key: node.key.map(|id| core::NodeId(id.0)),
-        sequence_index: node.sequence_index,
-        leading_content: node.leading_content.clone(),
         document: node.document,
-        filename: node.filename.clone(),
         line: node.line,
         column: node.column,
-        file_index: node.file_index,
         is_map_key: node.is_map_key,
-        encode_separate: node.encode_separate,
-        evaluate_together: node.evaluate_together,
         ..core::TreeNode::default()
-    });
+    };
+    out.set_alias(node.alias.map(|id| core::NodeId(id.0 as u32)));
+    out.set_key(node.key.map(|id| core::NodeId(id.0 as u32)));
+    out.set_sequence_index(node.sequence_index.map(|index| index as u32));
+    out.set_sequence_closed(node.sequence_closed);
+    out.set_encode_separate(node.encode_separate);
+    out.set_evaluate_together(node.evaluate_together);
+    let id = store.add(out);
+    store.set_document_meta(node.document, node.filename.clone(), node.file_index);
+    let _ = store.set_anchor(id, node.anchor.clone());
+    let _ = store.set_comments(
+        id,
+        node.head_comment.clone(),
+        node.line_comment.clone(),
+        node.foot_comment.clone(),
+    );
+    let _ = store.set_leading_content(id, node.leading_content.clone());
 
     let child_ids = node
         .content
@@ -238,7 +241,7 @@ fn append_compat_node(
         Some(CoreTreeNodeKind::Sequence) => {
             for (index, child_id) in child_ids.iter().enumerate() {
                 if let Some(child) = store.get_mut(*child_id) {
-                    child.sequence_index = Some(index as i64);
+                    child.set_sequence_index(Some(index as u32));
                 }
             }
         }
@@ -248,8 +251,8 @@ fn append_compat_node(
                     key.is_map_key = true;
                 }
                 if let Some(value) = store.get_mut(pair[1]) {
-                    value.key = Some(pair[0]);
-                    value.sequence_index = None;
+                    value.set_key(Some(pair[0]));
+                    value.set_sequence_index(None);
                 }
             }
         }
@@ -268,29 +271,32 @@ pub(crate) fn core_tree_to_compat(
         .ok_or(CoreError::Eval(EvalError::MissingTreeNode))?;
     let mut out = TreeNode {
         kind: from_core_kind(source.kind),
-        sequence_closed: source.sequence_closed,
+        sequence_closed: source.sequence_closed(),
         sem_type: from_core_sem_type(source.sem_type),
-        tag: source.tag.clone(),
-        value: source.value.clone(),
+        tag: source.tag.to_string_value(),
+        value: store.value_string_for(root).unwrap_or_default(),
         start_byte: source.start_byte,
         end_byte: source.end_byte,
-        anchor: source.anchor.clone(),
-        alias: source.alias.map(|id| NodeId(id.0)),
-        head_comment: source.head_comment.clone(),
-        line_comment: source.line_comment.clone(),
-        foot_comment: source.foot_comment.clone(),
-        parent: source.parent.map(|id| NodeId(id.0)),
-        key: source.key.map(|id| NodeId(id.0)),
-        sequence_index: source.sequence_index,
-        leading_content: source.leading_content.clone(),
+        anchor: store.anchor_for(root).unwrap_or_default().to_owned(),
+        alias: source.alias().map(|id| NodeId(id.index())),
+        head_comment: store.head_comment_for(root).unwrap_or_default().to_owned(),
+        line_comment: store.line_comment_for(root).unwrap_or_default().to_owned(),
+        foot_comment: store.foot_comment_for(root).unwrap_or_default().to_owned(),
+        parent: source.parent.map(|id| NodeId(id.index())),
+        key: source.key().map(|id| NodeId(id.index())),
+        sequence_index: source.sequence_index().map(|index| index as i64),
+        leading_content: store
+            .leading_content_for(root)
+            .unwrap_or_default()
+            .to_owned(),
         document: source.document,
-        filename: source.filename.clone(),
+        filename: store.filename_for(root).unwrap_or_default().to_owned(),
         line: source.line,
         column: source.column,
-        file_index: source.file_index,
+        file_index: store.file_index_for(root).unwrap_or_default(),
         is_map_key: source.is_map_key,
-        encode_separate: source.encode_separate,
-        evaluate_together: source.evaluate_together,
+        encode_separate: source.encode_separate(),
+        evaluate_together: source.evaluate_together(),
         ..TreeNode::default()
     };
 

@@ -30,7 +30,6 @@ pub use encoder::Encode;
 pub(crate) use encoder::{
     add_mapping, add_scalar, add_sequence, append_child, append_existing_key_value,
     append_key_value, escape_json_string, is_truthy_literal, missing_tree_node, node,
-    scalar_json_text, write_indent,
 };
 pub use encoder_csv::CsvEncoder;
 pub use encoder_javascript::JavascriptEncoder;

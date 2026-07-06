@@ -356,8 +356,11 @@ fn parser_literal_value_operation_keeps_typed_tree_node_like_zig() {
         .as_ref()
         .expect("value operation should keep parsed scalar node");
     assert_eq!(node.sem_type, Some(SemType::Int));
-    assert_eq!(node.tag, "!!int");
-    assert_eq!(node.value, "41");
+    assert_eq!(node.tag.as_str(), Some("!!int"));
+    assert_eq!(
+        node.get_value_rep_with("41").unwrap(),
+        treease_core::core::ValueRep::Int(41)
+    );
 }
 
 #[test]

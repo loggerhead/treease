@@ -2,7 +2,9 @@ use std::io::Write;
 
 use crate::core::{CoreError, NodeId, TreeNodeKind, TreeStore};
 
-use super::encoder_json::{self, LanguageStyle};
+use super::encoder_json::{
+    self, LanguageStyle, eval_scalar_unquoted_text, write_eval_value_into, write_eval_value_smart,
+};
 use super::formats_helpers::resolve_alias_for_encode;
 use super::preferences::FormatPreferences;
 use super::smart_layout::encode_javascript_node_smart;
@@ -174,6 +176,42 @@ impl Encode for JavascriptEncoder {
         writer.write_all(out.as_bytes())?;
         Ok(())
     }
+
+    fn encode_evaluated_value(
+        &self,
+        value: &crate::evaluator::Value,
+        writer: &mut dyn Write,
+    ) -> Result<bool, CoreError> {
+        if self.prefs.unwrap_scalar {
+            if let Some(text) = eval_scalar_unquoted_text(value) {
+                writer.write_all(text.as_bytes())?;
+                return Ok(true);
+            }
+        }
+
+        let wrap_root_mapping = matches!(value, crate::evaluator::Value::Object(values) if values.keys().any(|key| !is_js_identifier(key)));
+        let mut out = String::new();
+        if wrap_root_mapping {
+            out.push('(');
+        }
+        if self.prefs.smart && self.prefs.indent > 0 {
+            write_eval_value_smart(value, &self.prefs, 0, LanguageStyle::Javascript, &mut out)?;
+        } else {
+            write_eval_value_into(
+                value,
+                self.prefs.indent,
+                0,
+                LanguageStyle::Javascript,
+                &mut out,
+            )?;
+        }
+        if wrap_root_mapping {
+            out.push(')');
+        }
+        out.push('\n');
+        writer.write_all(out.as_bytes())?;
+        Ok(true)
+    }
 }
 
 fn root_mapping_needs_wrap(store: &TreeStore, node: NodeId) -> Result<bool, CoreError> {
@@ -186,8 +224,7 @@ fn root_mapping_needs_wrap(store: &TreeStore, node: NodeId) -> Result<bool, Core
     }
 
     for pair in node.content.chunks_exact(2) {
-        let key = store.get(pair[0]).ok_or_else(missing_tree_node)?;
-        if !is_js_identifier(&key.value) {
+        if !is_js_identifier(store.value_for(pair[0])?) {
             return Ok(true);
         }
     }
@@ -197,6 +234,7 @@ fn root_mapping_needs_wrap(store: &TreeStore, node: NodeId) -> Result<bool, Core
 
 #[cfg(test)]
 mod tests {
+    use crate::evaluator::Value;
     use crate::formats::{Decode, Encode, JavascriptObjectDecoder, PythonObjectDecoder};
 
     use super::JavascriptEncoder;
@@ -223,5 +261,29 @@ mod tests {
             .encode_to_string(&decoded.store, decoded.root)
             .unwrap();
         assert!(encoded.contains("'bad-key': 'Ada'"));
+    }
+
+    #[test]
+    fn encode_evaluated_value_matches_store_backed_output() {
+        let value = Value::Object(std::collections::BTreeMap::from([
+            ("safeKey".to_string(), Value::Bool(true)),
+            (
+                "bad-key".to_string(),
+                Value::Array(vec![Value::Number(1.0), Value::Null]),
+            ),
+        ]));
+        let mut direct = Vec::new();
+        JavascriptEncoder::default()
+            .encode_evaluated_value(&value, &mut direct)
+            .expect("direct encode should succeed");
+
+        let decoded = JavascriptObjectDecoder
+            .decode_str("({'bad-key': [1, null], safeKey: true})")
+            .unwrap();
+        let store_backed = JavascriptEncoder::default()
+            .encode_to_string(&decoded.store, decoded.root)
+            .unwrap();
+
+        assert_eq!(String::from_utf8(direct).unwrap(), store_backed);
     }
 }

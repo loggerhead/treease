@@ -222,8 +222,8 @@ fn document_tree_node_from_store(
     Some(DocumentTreeNode {
         kind: tree_kind_code(node.kind),
         sem_type: sem_type_code(node.resolved_sem_type()),
-        tag: node.tag.clone(),
-        value: node.value.clone(),
+        tag: node.tag.to_string_value(),
+        value: store.value_string_for(id).ok()?,
         children: node
             .content
             .iter()
@@ -559,13 +559,17 @@ fn node_value_type(node: &crate::core::tree_node::TreeNode) -> String {
     }
 }
 
-fn node_preview_from_node(node: &crate::core::tree_node::TreeNode) -> DocumentNodePreview {
+fn node_preview_from_node(
+    store: &crate::core::TreeStore,
+    node_id: NodeId,
+    node: &crate::core::tree_node::TreeNode,
+) -> DocumentNodePreview {
     let value_type = node_value_type(node);
     DocumentNodePreview {
         kind: tree_kind_code(node.kind),
         sem_type: sem_type_code(node.resolved_sem_type()),
-        tag: node.tag.clone(),
-        value: node.value.clone(),
+        tag: node.tag.to_string_value(),
+        value: store.value_string_for(node_id).unwrap_or_default(),
         value_type,
         is_scalar: matches!(node.kind, TreeNodeKind::Scalar),
     }
@@ -576,7 +580,10 @@ fn node_preview_for_path(
     path_pattern: &str,
 ) -> Option<DocumentNodePreview> {
     let node_id = node_id_for_path(document, path_pattern, false)?;
-    document.store.get(node_id).map(node_preview_from_node)
+    document
+        .store
+        .get(node_id)
+        .map(|node| node_preview_from_node(&document.store, node_id, node))
 }
 
 fn source_slice_by_bytes(source: &str, start: u32, end: u32) -> String {
@@ -597,15 +604,16 @@ fn path_value_for_path(
 ) -> Option<DocumentPathValue> {
     let node_id = node_id_for_path(document, path_pattern, false)?;
     let node = document.store.get(node_id)?;
+    let value = document.store.value_string_for(node_id).ok()?;
     let source_text = source_slice_by_bytes(&analysis.source, node.start_byte, node.end_byte);
     let display_text = if source_text.is_empty() {
-        node.value.clone()
+        value.clone()
     } else {
         source_text.clone()
     };
     Some(DocumentPathValue {
         value_type: node_value_type(node),
-        value: node.value.clone(),
+        value,
         source_text,
         display_text,
     })
@@ -624,8 +632,11 @@ fn collect_field_labels(document: &DecodedDocument) -> Vec<String> {
             let mut index = 0usize;
             while index + 1 < node.content.len() {
                 if let Some(key_node) = store.get(node.content[index]) {
-                    if key_node.is_map_key && !key_node.value.is_empty() {
-                        labels.insert(key_node.value.clone());
+                    if key_node.is_map_key {
+                        let key = store.value_for(node.content[index]).unwrap_or_default();
+                        if !key.is_empty() {
+                            labels.insert(key.to_owned());
+                        }
                     }
                 }
                 visit(store, node.content[index + 1], labels);
@@ -656,8 +667,12 @@ fn format_parsed_path(path: &[ParsedKey]) -> String {
     crate::core::format_tree_path(&segments)
 }
 
-fn scalar_search_text(node: &crate::core::tree_node::TreeNode) -> String {
-    node.value.trim().to_owned()
+fn scalar_search_text(store: &crate::core::TreeStore, node_id: NodeId) -> String {
+    store
+        .value_for(node_id)
+        .unwrap_or_default()
+        .trim()
+        .to_owned()
 }
 
 fn collect_search_items(document: &DecodedDocument) -> Vec<DocumentSearchItem> {
@@ -667,10 +682,10 @@ fn collect_search_items(document: &DecodedDocument) -> Vec<DocumentSearchItem> {
         path: &[ParsedKey],
         items: &mut Vec<DocumentSearchItem>,
     ) {
-        let Some(node) = store.get(node_id) else {
+        let Some(_node) = store.get(node_id) else {
             return;
         };
-        let value_text = scalar_search_text(node);
+        let value_text = scalar_search_text(store, node_id);
         if value_text.is_empty() {
             return;
         }
@@ -700,16 +715,18 @@ fn collect_search_items(document: &DecodedDocument) -> Vec<DocumentSearchItem> {
                 while index + 1 < node.content.len() {
                     let key_id = node.content[index];
                     let value_id = node.content[index + 1];
-                    let Some(key_node) = store.get(key_id) else {
+                    let Some(_key_node) = store.get(key_id) else {
                         index += 2;
                         continue;
                     };
-                    let key_text = scalar_search_text(key_node);
-                    path.push(ParsedKey::Str(key_node.value.clone()));
+                    let key_text = scalar_search_text(store, key_id);
+                    path.push(ParsedKey::Str(
+                        store.value_string_for(key_id).unwrap_or_default(),
+                    ));
                     if !key_text.is_empty() {
                         let value_text = store
                             .get(value_id)
-                            .map(scalar_search_text)
+                            .map(|_| scalar_search_text(store, value_id))
                             .unwrap_or_default();
                         let path_text = format_parsed_path(path);
                         items.push(DocumentSearchItem {
@@ -975,7 +992,7 @@ fn annotate_decoded_document_spans_with_line_index(
     let mut direct_updates = Vec::new();
     let mut unresolved = Vec::new();
     for index in 0..document.store.len() {
-        let id = NodeId(index);
+        let id = NodeId::from_index(index);
         let Some(node) = document.store.get(id) else {
             continue;
         };

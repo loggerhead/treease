@@ -1,10 +1,8 @@
 use std::io::Write;
 
 use crate::core::{
-    CoreError, EvalError, NodeId, SemType, TreeNode, TreeNodeKind, TreeStore, ValueRep,
+    CompactTag, CoreError, EvalError, NodeId, SemType, TreeNode, TreeNodeKind, TreeStore,
 };
-
-use super::formats_helpers;
 
 pub trait Encode {
     fn encode(
@@ -13,6 +11,14 @@ pub trait Encode {
         node: NodeId,
         writer: &mut dyn Write,
     ) -> Result<(), CoreError>;
+
+    fn encode_evaluated_value(
+        &self,
+        _value: &crate::evaluator::Value,
+        _writer: &mut dyn Write,
+    ) -> Result<bool, CoreError> {
+        Ok(false)
+    }
 
     fn encode_to_string(&self, store: &TreeStore, node: NodeId) -> Result<String, CoreError> {
         let mut bytes = Vec::new();
@@ -96,7 +102,7 @@ pub fn map_keys_to_strings(store: &mut TreeStore, node_id: NodeId) -> Result<(),
             if i % 2 == 0 {
                 if let Some(child) = store.get_mut(child_id) {
                     child.sem_type = Some(SemType::Str);
-                    child.tag = SemType::Str.to_string();
+                    child.tag = CompactTag::from_sem_type(SemType::Str);
                 }
             }
         }
@@ -119,7 +125,7 @@ pub(crate) fn add_sequence(store: &mut TreeStore) -> NodeId {
     store.add(TreeNode {
         kind: TreeNodeKind::Sequence,
         sem_type: Some(SemType::Seq),
-        tag: SemType::Seq.to_string(),
+        tag: CompactTag::from_sem_type(SemType::Seq),
         ..TreeNode::default()
     })
 }
@@ -128,7 +134,7 @@ pub(crate) fn add_mapping(store: &mut TreeStore) -> NodeId {
     store.add(TreeNode {
         kind: TreeNodeKind::Mapping,
         sem_type: Some(SemType::Map),
-        tag: SemType::Map.to_string(),
+        tag: CompactTag::from_sem_type(SemType::Map),
         ..TreeNode::default()
     })
 }
@@ -149,14 +155,14 @@ pub(crate) fn append_child(
     let sequence_index = {
         let parent_node = node(store, parent)?;
         if parent_node.kind == TreeNodeKind::Sequence {
-            Some(parent_node.content.len() as i64)
+            Some(parent_node.content.len() as u32)
         } else {
             None
         }
     };
     let child_node = store.get_mut(child).ok_or_else(missing_tree_node)?;
     child_node.parent = Some(parent);
-    child_node.sequence_index = sequence_index;
+    child_node.set_sequence_index(sequence_index);
     store
         .get_mut(parent)
         .ok_or_else(missing_tree_node)?
@@ -174,15 +180,15 @@ pub(crate) fn append_key_value(
     let key_id = store.add(TreeNode {
         kind: TreeNodeKind::Scalar,
         sem_type: Some(SemType::Str),
-        tag: SemType::Str.to_string(),
-        value: key.into(),
+        tag: CompactTag::from_sem_type(SemType::Str),
+        value: key.into().into(),
         parent: Some(parent),
         is_map_key: true,
         ..TreeNode::default()
     });
     let value_node = store.get_mut(value).ok_or_else(missing_tree_node)?;
     value_node.parent = Some(parent);
-    value_node.key = Some(key_id);
+    value_node.set_key(Some(key_id));
     let parent_node = store.get_mut(parent).ok_or_else(missing_tree_node)?;
     parent_node.content.push(key_id);
     parent_node.content.push(value);
@@ -199,46 +205,19 @@ pub(crate) fn append_existing_key_value(
         let key_node = store.get_mut(key_id).ok_or_else(missing_tree_node)?;
         key_node.parent = Some(parent);
         key_node.is_map_key = true;
-        key_node.sequence_index = None;
+        key_node.set_sequence_index(None);
     }
     {
         let value_node = store.get_mut(value_id).ok_or_else(missing_tree_node)?;
         value_node.parent = Some(parent);
         value_node.is_map_key = false;
-        value_node.key = Some(key_id);
-        value_node.sequence_index = None;
+        value_node.set_key(Some(key_id));
+        value_node.set_sequence_index(None);
     }
     let parent_node = store.get_mut(parent).ok_or_else(missing_tree_node)?;
     parent_node.content.push(key_id);
     parent_node.content.push(value_id);
     Ok(())
-}
-
-/// Render a scalar as JSON using the TreeStore contract of the current tree.
-///
-/// For same-language JSON document sessions, numeric scalar text has already
-/// been validated by the code that wrote the tree. This helper therefore emits
-/// `SemType::Int` / `SemType::Float` values verbatim instead of re-validating
-/// them or reparsing the full encoded document. Encoder correctness belongs in
-/// tests; producer-side invariant violations are bugs in the writer/mutator.
-pub(crate) fn scalar_json_text(node: &TreeNode) -> Result<String, CoreError> {
-    match node.resolved_sem_type() {
-        Some(SemType::Boolean) => Ok(if node.value.eq_ignore_ascii_case("true") {
-            "true".to_string()
-        } else {
-            "false".to_string()
-        }),
-        Some(SemType::Int | SemType::Float) => Ok(node.value.clone()),
-        Some(SemType::Nil) => Ok("null".to_string()),
-        Some(SemType::Str) => Ok(escape_json_string(&node.value)),
-        _ => match node.get_value_rep()? {
-            ValueRep::Nil => Ok("null".to_string()),
-            ValueRep::Boolean(value) => Ok(value.to_string()),
-            ValueRep::Int(value) => Ok(value.to_string()),
-            ValueRep::Float(value) => Ok(value.to_string()),
-            ValueRep::Str(value) => Ok(escape_json_string(&value)),
-        },
-    }
 }
 
 pub(crate) fn escape_json_string(value: &str) -> String {
@@ -251,8 +230,4 @@ pub(crate) fn is_truthy_literal(value: &str) -> bool {
         || value.eq_ignore_ascii_case("yes")
         || value.eq_ignore_ascii_case("on")
         || value == "1"
-}
-
-pub(crate) fn write_indent(out: &mut String, depth: usize, indent: i32) {
-    formats_helpers::write_indent(out, depth, indent);
 }

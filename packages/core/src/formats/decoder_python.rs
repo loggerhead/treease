@@ -1,5 +1,5 @@
 use crate::core::tree_sitter_support::tree_sitter_language;
-use crate::core::{CoreError, ParseError, SemType, TreeNode, TreeNodeKind, TreeStore};
+use crate::core::{CompactTag, CoreError, ParseError, SemType, TreeNode, TreeNodeKind, TreeStore};
 
 use super::formats_helpers::{set_node_range, ts_parse_checked_fail_fast};
 use super::{Decode, DecodedDocument};
@@ -442,7 +442,7 @@ fn build_candidate_from_ts_node(
             let mut map_node = TreeNode {
                 kind: TreeNodeKind::Mapping,
                 sem_type: Some(SemType::Map),
-                tag: SemType::Map.to_string(),
+                tag: CompactTag::from_sem_type(SemType::Map),
                 ..TreeNode::default()
             };
             set_node_range(&mut map_node, base_offset, node);
@@ -478,44 +478,45 @@ fn build_candidate_from_ts_node(
 
                 let key_kind = py_ts_node_kind(key_ts.kind())
                     .ok_or(CoreError::Parse(ParseError::InvalidPython))?;
-                match key_kind {
+                let key_value = match key_kind {
                     PyTsNodeKind::String => {
                         let raw = node_text(source, key_ts);
                         let unq = py_unquote(raw.as_bytes())?;
                         key_node.set_sem_type(SemType::Str);
-                        key_node.value = unq;
+                        unq
                     }
                     PyTsNodeKind::Integer => {
                         key_node.set_sem_type(SemType::Int);
-                        key_node.value = node_text(source, key_ts).to_string();
+                        node_text(source, key_ts).to_string()
                     }
                     PyTsNodeKind::Float => {
                         key_node.set_sem_type(SemType::Float);
-                        key_node.value = node_text(source, key_ts).to_string();
+                        node_text(source, key_ts).to_string()
                     }
                     PyTsNodeKind::TrueLit => {
                         key_node.set_sem_type(SemType::Boolean);
-                        key_node.value = "true".to_string();
+                        "true".to_string()
                     }
                     PyTsNodeKind::FalseLit => {
                         key_node.set_sem_type(SemType::Boolean);
-                        key_node.value = "false".to_string();
+                        "false".to_string()
                     }
                     PyTsNodeKind::NoneLit => {
                         key_node.set_sem_type(SemType::Nil);
-                        key_node.value = "null".to_string();
+                        "null".to_string()
                     }
                     _ => return Err(CoreError::Parse(ParseError::InvalidPython)),
-                }
-
+                };
+                key_node.value = Default::default();
                 let key_id = store.add(key_node);
+                store.set_value(key_id, key_value)?;
 
                 // Build the value node.
                 let val_id = build_candidate_from_ts_node(store, source, val_ts, base_offset)?;
 
                 // Set back-links.
                 if let Some(v) = store.get_mut(val_id) {
-                    v.key = Some(key_id);
+                    v.set_key(Some(key_id));
                     v.parent = Some(map_id);
                 }
 
@@ -532,7 +533,7 @@ fn build_candidate_from_ts_node(
             let mut seq_node = TreeNode {
                 kind: TreeNodeKind::Sequence,
                 sem_type: Some(SemType::Seq),
-                tag: SemType::Seq.to_string(),
+                tag: CompactTag::from_sem_type(SemType::Seq),
                 ..TreeNode::default()
             };
             set_node_range(&mut seq_node, base_offset, node);
@@ -548,8 +549,8 @@ fn build_candidate_from_ts_node(
                 let key_id = store.add(TreeNode {
                     kind: TreeNodeKind::Scalar,
                     sem_type: Some(SemType::Int),
-                    tag: SemType::Int.to_string(),
-                    value: i.to_string(),
+                    tag: CompactTag::from_sem_type(SemType::Int),
+                    value: i.to_string().into(),
                     parent: Some(seq_id),
                     is_map_key: true,
                     ..TreeNode::default()
@@ -558,8 +559,8 @@ fn build_candidate_from_ts_node(
                 // Set parent and sequence_index on the child.
                 if let Some(child) = store.get_mut(child_id) {
                     child.parent = Some(seq_id);
-                    child.key = Some(key_id);
-                    child.sequence_index = Some(i as i64);
+                    child.set_key(Some(key_id));
+                    child.set_sequence_index(Some(i as u32));
                 }
 
                 // Push into sequence content.
@@ -576,8 +577,8 @@ fn build_candidate_from_ts_node(
             let mut scalar = TreeNode {
                 kind: TreeNodeKind::Scalar,
                 sem_type: Some(SemType::Str),
-                tag: SemType::Str.to_string(),
-                value: unq,
+                tag: CompactTag::from_sem_type(SemType::Str),
+                value: unq.into(),
                 ..TreeNode::default()
             };
             set_node_range(&mut scalar, base_offset, node);
@@ -587,8 +588,8 @@ fn build_candidate_from_ts_node(
             let mut scalar = TreeNode {
                 kind: TreeNodeKind::Scalar,
                 sem_type: Some(SemType::Int),
-                tag: SemType::Int.to_string(),
-                value: node_text(source, node).to_string(),
+                tag: CompactTag::from_sem_type(SemType::Int),
+                value: node_text(source, node).to_string().into(),
                 ..TreeNode::default()
             };
             set_node_range(&mut scalar, base_offset, node);
@@ -598,8 +599,8 @@ fn build_candidate_from_ts_node(
             let mut scalar = TreeNode {
                 kind: TreeNodeKind::Scalar,
                 sem_type: Some(SemType::Float),
-                tag: SemType::Float.to_string(),
-                value: node_text(source, node).to_string(),
+                tag: CompactTag::from_sem_type(SemType::Float),
+                value: node_text(source, node).to_string().into(),
                 ..TreeNode::default()
             };
             set_node_range(&mut scalar, base_offset, node);
@@ -609,8 +610,8 @@ fn build_candidate_from_ts_node(
             let mut scalar = TreeNode {
                 kind: TreeNodeKind::Scalar,
                 sem_type: Some(SemType::Boolean),
-                tag: SemType::Boolean.to_string(),
-                value: "true".to_string(),
+                tag: CompactTag::from_sem_type(SemType::Boolean),
+                value: "true".to_string().into(),
                 ..TreeNode::default()
             };
             set_node_range(&mut scalar, base_offset, node);
@@ -620,8 +621,8 @@ fn build_candidate_from_ts_node(
             let mut scalar = TreeNode {
                 kind: TreeNodeKind::Scalar,
                 sem_type: Some(SemType::Boolean),
-                tag: SemType::Boolean.to_string(),
-                value: "false".to_string(),
+                tag: CompactTag::from_sem_type(SemType::Boolean),
+                value: "false".to_string().into(),
                 ..TreeNode::default()
             };
             set_node_range(&mut scalar, base_offset, node);
@@ -631,8 +632,8 @@ fn build_candidate_from_ts_node(
             let mut scalar = TreeNode {
                 kind: TreeNodeKind::Scalar,
                 sem_type: Some(SemType::Nil),
-                tag: SemType::Nil.to_string(),
-                value: "null".to_string(),
+                tag: CompactTag::from_sem_type(SemType::Nil),
+                value: "null".to_string().into(),
                 ..TreeNode::default()
             };
             set_node_range(&mut scalar, base_offset, node);
@@ -835,9 +836,10 @@ mod tests {
         let decoded = PythonDecoder.decode_str("[1, 2]").unwrap();
         let root = decoded.store.get(decoded.root).unwrap();
         let first = decoded.store.get(root.content[0]).unwrap();
-        let key = decoded.store.get(first.key.unwrap()).unwrap();
+        let key_id = first.key().unwrap();
+        let key = decoded.store.get(key_id).unwrap();
 
-        assert_eq!(key.value, "0");
+        assert_eq!(decoded.store.value_for(key_id).unwrap(), "0");
         assert_eq!(key.sem_type, Some(SemType::Int));
     }
 

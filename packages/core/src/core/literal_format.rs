@@ -1,4 +1,4 @@
-use super::{CoreError, TreeNode, ValueRep};
+use super::{CoreError, NodeValueRef, TreeNode, ValueRep};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LiteralStyle {
@@ -8,7 +8,12 @@ pub enum LiteralStyle {
 }
 
 pub fn format_literal(node: &TreeNode, style: LiteralStyle) -> Result<String, CoreError> {
-    let value = node.get_value_rep()?;
+    let raw = match &node.value {
+        NodeValueRef::Missing => "",
+        NodeValueRef::Inline(value) => value.as_str(),
+        NodeValueRef::Stored(_) => "",
+    };
+    let value = node.get_value_rep_with(raw)?;
     Ok(match (style, value) {
         (LiteralStyle::Json, ValueRep::Nil) => "null".to_string(),
         (LiteralStyle::Python, ValueRep::Nil) => "None".to_string(),

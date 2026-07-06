@@ -11,7 +11,8 @@ mod web_payload;
 mod web_server;
 
 use treease_core::core::{
-    Context, CoreError, Encoder, NodeId, Printer, Reader, SystemError, VecPrinterWriter,
+    Context, CoreError, Encoder, IoPrinterWriter, NodeId, Printer, Reader, SystemError,
+    VecPrinterWriter,
 };
 use treease_core::evaluator::StreamEvaluator;
 use treease_core::formats::{
@@ -124,6 +125,25 @@ impl InputPayload {
     }
 }
 
+#[derive(Debug, Clone)]
+struct StreamingInput {
+    name: String,
+    input_format: String,
+    source: StreamingInputSource,
+}
+
+#[derive(Debug, Clone)]
+enum StreamingInputSource {
+    Stdin(Vec<u8>),
+    FilePath(String),
+}
+
+impl StreamingInput {
+    fn display_name(&self) -> &str {
+        &self.name
+    }
+}
+
 struct CliPrinterEncoder {
     inner: Box<dyn Encode>,
 }
@@ -139,6 +159,14 @@ impl Encoder for CliPrinterEncoder {
             .current_print_store()
             .ok_or(CoreError::System(SystemError::Error))?;
         self.inner.encode(store, node, writer)
+    }
+
+    fn encode_evaluated_value(
+        &self,
+        value: &treease_core::evaluator::Value,
+        writer: &mut dyn std::io::Write,
+    ) -> Result<bool, CoreError> {
+        self.inner.encode_evaluated_value(value, writer)
     }
 }
 
@@ -177,21 +205,27 @@ fn run(raw_args: &[String]) -> Result<i32, CliError> {
         }
     }
 
-    let inputs = if parsed.null_input {
-        Vec::new()
-    } else {
-        read_inputs(&parsed.files)?
-    };
-
-    let output = execute_command(&parsed, &inputs)?;
-
     if parsed.inplace {
+        let inputs = if parsed.null_input {
+            Vec::new()
+        } else {
+            read_inputs(&parsed.files)?
+        };
+        let output = execute_command(&parsed, &inputs)?;
         fs::write(&parsed.files[0], output)?;
         return Ok(0);
     }
 
-    io::Write::write_all(&mut io::stdout(), &output)?;
-    Ok(compute_exit_status(parsed.exit_status, &output) as i32)
+    let stdout = io::stdout();
+    let mut stdout = stdout.lock();
+    let streaming_inputs = if parsed.null_input {
+        Vec::new()
+    } else {
+        prepare_streaming_inputs(&parsed)?
+    };
+    let printed = execute_command_to_writer(&parsed, &streaming_inputs, &mut stdout)?;
+    stdout.flush()?;
+    Ok(compute_exit_status_from_printed(parsed.exit_status, printed) as i32)
 }
 
 fn should_render_root_help_on_empty_interactive_invocation(
@@ -310,6 +344,78 @@ fn execute_command(parsed: &ParsedArgs, inputs: &[InputPayload]) -> Result<Vec<u
     result
 }
 
+fn execute_command_to_writer<W: Write>(
+    parsed: &ParsedArgs,
+    inputs: &[StreamingInput],
+    output: &mut W,
+) -> Result<bool, CliError> {
+    let mut registry = treease_core::init()?;
+    let result = (|| {
+        let mut ctx = Context::empty(registry.handle());
+        let configured = configured_formats_from_input_format(
+            parsed,
+            inputs.first().map(|input| input.input_format.as_str()),
+        )?;
+        let prefs = configured_preferences(parsed, &configured.output)?;
+        let encoder = CliPrinterEncoder {
+            inner: make_value_encoder(&configured.output, prefs.clone())?,
+        };
+        let writer = IoPrinterWriter::new(output);
+        let mut printer = Printer::new(encoder, writer);
+
+        let mut evaluator = StreamEvaluator::new();
+        if parsed.null_input {
+            evaluator
+                .evaluate_new(&mut ctx, &parsed.expression, &mut printer)
+                .map_err(|err| CliError::Eval(format!("{err:?}")))?;
+        } else {
+            let parsed_expression = parse_expression(&parsed.expression)?;
+            let mut total_processed_docs = 0_u32;
+            for input in inputs {
+                total_processed_docs += match &input.source {
+                    StreamingInputSource::Stdin(bytes) => {
+                        let mut cursor = io::Cursor::new(bytes.as_slice());
+                        let mut reader = Reader::new(&mut cursor);
+                        evaluator
+                            .evaluate_with_format(
+                                &mut ctx,
+                                input.display_name(),
+                                &mut reader,
+                                parsed_expression.as_deref(),
+                                &mut printer,
+                                Some(input.input_format.as_str()),
+                            )
+                            .map_err(|err| CliError::Eval(format!("{err:?}")))?
+                    }
+                    StreamingInputSource::FilePath(path) => {
+                        let mut file = fs::File::open(path)?;
+                        let mut reader = Reader::new(&mut file);
+                        evaluator
+                            .evaluate_with_format(
+                                &mut ctx,
+                                input.display_name(),
+                                &mut reader,
+                                parsed_expression.as_deref(),
+                                &mut printer,
+                                Some(input.input_format.as_str()),
+                            )
+                            .map_err(|err| CliError::Eval(format!("{err:?}")))?
+                    }
+                };
+            }
+            if total_processed_docs == 0 {
+                evaluator
+                    .evaluate_new(&mut ctx, &parsed.expression, &mut printer)
+                    .map_err(|err| CliError::Eval(format!("{err:?}")))?;
+            }
+        }
+
+        Ok(printer.printed_anything())
+    })();
+    treease_core::deinit(&mut registry);
+    result
+}
+
 fn parse_expression(
     expression: &str,
 ) -> Result<Option<Box<treease_core::core::ExpressionNode>>, CliError> {
@@ -348,14 +454,59 @@ fn configured_formats(
 ) -> Result<ConfiguredFormats, CliError> {
     let input = first_input
         .map(|payload| resolve_input_format(parsed, payload))
-        .transpose()?
-        .unwrap_or_else(|| "json".to_string());
+        .transpose()?;
+    configured_formats_from_input_format(parsed, input.as_deref())
+}
+
+fn configured_formats_from_input_format(
+    parsed: &ParsedArgs,
+    first_input_format: Option<&str>,
+) -> Result<ConfiguredFormats, CliError> {
+    let input = first_input_format.unwrap_or("json").to_string();
     let output = match parsed.output_format.as_deref() {
         Some(value) => canonical_cli_format(value)?,
-        None if first_input.is_some() => input.clone(),
+        None if first_input_format.is_some() => input.clone(),
         None => "yaml".to_string(),
     };
     Ok(ConfiguredFormats { output })
+}
+
+fn prepare_streaming_inputs(parsed: &ParsedArgs) -> Result<Vec<StreamingInput>, CliError> {
+    let sources = if parsed.files.is_empty() {
+        vec!["-".to_string()]
+    } else {
+        parsed.files.clone()
+    };
+
+    let mut inputs = Vec::with_capacity(sources.len());
+    for source in sources {
+        if source == "-" {
+            let mut bytes = Vec::new();
+            io::stdin().read_to_end(&mut bytes)?;
+            let input_format = parsed
+                .input_format
+                .as_deref()
+                .map(canonical_cli_format)
+                .transpose()?
+                .unwrap_or_else(|| {
+                    guess_input_format_from_content(&bytes).unwrap_or_else(|| "json".to_string())
+                });
+            inputs.push(StreamingInput {
+                name: "<stdin>".to_string(),
+                input_format,
+                source: StreamingInputSource::Stdin(bytes),
+            });
+            continue;
+        }
+
+        let input_format = resolve_input_format_for_path(parsed, &source)?;
+        inputs.push(StreamingInput {
+            name: source.clone(),
+            input_format,
+            source: StreamingInputSource::FilePath(source),
+        });
+    }
+    Ok(inputs)
 }
 
 fn resolve_input_format(parsed: &ParsedArgs, payload: &InputPayload) -> Result<String, CliError> {
@@ -369,6 +520,19 @@ fn resolve_input_format(parsed: &ParsedArgs, payload: &InputPayload) -> Result<S
 fn guess_input_format(payload: &InputPayload) -> Option<String> {
     guess_input_format_from_filename(payload.display_name())
         .or_else(|| guess_input_format_from_content(&payload.bytes))
+}
+
+fn resolve_input_format_for_path(parsed: &ParsedArgs, path: &str) -> Result<String, CliError> {
+    if let Some(value) = parsed.input_format.as_deref() {
+        return canonical_cli_format(value);
+    }
+
+    if let Some(format) = guess_input_format_from_filename(path) {
+        return Ok(format);
+    }
+
+    let bytes = fs::read(path)?;
+    Ok(guess_input_format_from_content(&bytes).unwrap_or_else(|| "json".to_string()))
 }
 
 fn guess_input_format_from_filename(filename: &str) -> Option<String> {
@@ -649,11 +813,16 @@ fn render_runtime_error(err: &CliError) -> String {
     errors::render_text(err)
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
 fn compute_exit_status(enabled: bool, output: &[u8]) -> u8 {
     let trimmed = std::str::from_utf8(output)
         .unwrap_or("")
         .trim_matches(|ch| matches!(ch, ' ' | '\t' | '\r' | '\n' | '\0'));
     let printed = !trimmed.is_empty() && trimmed != "null" && trimmed != "false";
+    compute_exit_status_from_printed(enabled, printed)
+}
+
+fn compute_exit_status_from_printed(enabled: bool, printed: bool) -> u8 {
     if enabled && !printed { 1 } else { 0 }
 }
 
@@ -1103,6 +1272,28 @@ mod tests {
         let output = execute_command(&parsed, &inputs).expect("command should succeed");
 
         assert_eq!(String::from_utf8(output).unwrap(), "1\n");
+    }
+
+    #[test]
+    fn streaming_run_path_reads_file_contents_at_execution_time() {
+        let root = test_asset_dir(&[("input.yaml", b"foo: 1\n")]);
+        let path = root.join("input.yaml");
+        let parsed = parse_args(&[
+            "treease".to_string(),
+            ".foo".to_string(),
+            path.to_string_lossy().into_owned(),
+        ])
+        .expect("parse should succeed");
+
+        let inputs = prepare_streaming_inputs(&parsed).expect("streaming inputs should prepare");
+        fs::write(&path, b"foo: 2\n").expect("test input should update");
+
+        let mut output = Vec::new();
+        let printed = execute_command_to_writer(&parsed, &inputs, &mut output)
+            .expect("streaming command should succeed");
+
+        assert!(printed);
+        assert_eq!(String::from_utf8(output).unwrap(), "2\n");
     }
 
     #[test]

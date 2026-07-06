@@ -1090,7 +1090,7 @@ fn find_map_entry_in_store(
         let key_id = node.content[index];
         let value_id = node.content[index + 1];
         let key_node = store.get(key_id)?;
-        if key_node.is_map_key && key_node.value == expected_key {
+        if key_node.is_map_key && store.value_for(key_id).ok()? == expected_key {
             return Some((key_id, value_id));
         }
         index += 2;

@@ -1,20 +1,25 @@
+use std::io::Read;
+
 use crate::{
     core::{
         CodecService, CoreError,
         context::Context,
         diagnostics::DiagnosticStage,
-        expression::ExpressionNode,
+        expression::{ExpressionNode, OperationId},
         format::format_string_from_filename,
         io_adapters::AnyReader,
         printer::{Encoder, Printer},
         printer_writer::PrinterWriter,
-        sem_type::SemType,
         tree_navigator::TreeEngine,
-        tree_node::{NodeId, TreeNode, TreeNodeKind},
+        tree_node::ParsedKey,
+        tree_node::{NodeId, TreeNodeKind},
         tree_store::TreeStore,
     },
-    expression_pipeline,
-    stream::{build_tree_from_events, streaming_decoder, streaming_events::StreamingEvent},
+    formats::DecodedDocument,
+    stream::{
+        build_tree_from_events, streaming_decoder, streaming_events::StreamingEvent,
+        streaming_json, tree_builder,
+    },
 };
 
 use super::all_at_once_evaluator::{AllAtOnceEvaluator, value_to_tree_node};
@@ -100,16 +105,12 @@ impl StreamEvaluator {
         E: Encoder,
         W: PrinterWriter,
     {
-        let values = AllAtOnceEvaluator::new().evaluate_many(&[Value::Null], node)?;
-        let mut result_store = TreeStore::new();
-        let mut result_ids = Vec::with_capacity(values.len());
-        for value in &values {
-            result_ids.push(value_to_tree_node(&mut result_store, value)?);
-        }
-
-        printer
-            .print_results(ctx, &result_store, &result_ids)
-            .map_err(EvaluationError::Core)?;
+        let mut result_index = 0_u32;
+        AllAtOnceEvaluator::new().evaluate_many_into(&[Value::Null], node, |value| {
+            print_value_result(ctx, printer, &value, None, result_index)?;
+            result_index = result_index.saturating_add(1);
+            Ok(())
+        })?;
 
         Ok(())
     }
@@ -166,7 +167,7 @@ impl StreamEvaluator {
         }
 
         if total_processed_docs == 0 {
-            return self.evaluate_new(ctx, expression, printer);
+            return self.evaluate_no_input(ctx, parsed.as_deref(), printer);
         }
 
         Ok(())
@@ -210,28 +211,30 @@ impl StreamEvaluator {
         E: Encoder,
         W: PrinterWriter,
     {
-        let bytes = reader.read_all().map_err(|e| EvaluationError::Core(e))?;
-        let source = String::from_utf8(bytes).map_err(|_| {
-            EvaluationError::Core(CoreError::System(
-                crate::core::errors::SystemError::InvalidUtf8,
-            ))
-        })?;
-
-        if source.trim().is_empty() {
-            self.file_index += 1;
-            return Ok(0);
-        }
-
         let format = input_format.unwrap_or_else(|| format_string_from_filename(filename));
         let eval_ctx = Self::inherited_context(ctx);
 
         let current_index = match streaming_decoder::stream_kind(format) {
-            streaming_decoder::StreamKind::Json => self.evaluate_streaming_format(
-                ctx, &eval_ctx, filename, format, &source, node, printer,
-            )?,
-            streaming_decoder::StreamKind::NonStreaming => self.evaluate_non_streaming_format(
-                ctx, &eval_ctx, filename, format, &source, node, printer,
-            )?,
+            streaming_decoder::StreamKind::Json => {
+                self.evaluate_streaming_format(ctx, &eval_ctx, filename, reader, node, printer)?
+            }
+            streaming_decoder::StreamKind::NonStreaming => {
+                let bytes = reader.read_all().map_err(EvaluationError::Core)?;
+                let source = String::from_utf8(bytes).map_err(|_| {
+                    EvaluationError::Core(CoreError::System(
+                        crate::core::errors::SystemError::InvalidUtf8,
+                    ))
+                })?;
+
+                if source.trim().is_empty() {
+                    self.file_index += 1;
+                    return Ok(0);
+                }
+
+                self.evaluate_non_streaming_format(
+                    ctx, &eval_ctx, filename, format, &source, node, printer,
+                )?
+            }
         };
 
         self.file_index += 1;
@@ -246,8 +249,7 @@ impl StreamEvaluator {
         ctx: &mut Context,
         eval_ctx: &Context,
         filename: &str,
-        format: &str,
-        source: &str,
+        reader: &mut AnyReader<'_>,
         node: Option<&ExpressionNode>,
         printer: &mut Printer<E, W>,
     ) -> Result<u32, EvaluationError>
@@ -255,63 +257,28 @@ impl StreamEvaluator {
         E: Encoder,
         W: PrinterWriter,
     {
-        let events = streaming_decoder::decode(format, source).map_err(|err| {
-            self.emit_bad_file_diagnostic(ctx, filename, &err.to_string());
+        let Some(mut decoded) = decode_streaming_document_reader(reader).map_err(|err| {
+            self.emit_bad_file_diagnostic(ctx, filename, &err);
             EvaluationError::Core(CoreError::Parse(
                 crate::core::errors::ParseError::InvalidSyntax,
             ))
-        })?;
-
-        let documents = split_event_documents(&events);
-        if documents.is_empty() {
+        })?
+        else {
             return Ok(0);
-        }
+        };
 
-        let mut current_index: u32 = 0;
-        for document in documents {
-            let mut decoded = build_tree_from_events(document).map_err(|err| {
-                self.emit_bad_file_diagnostic(ctx, filename, &err.to_string());
-                err
-            })?;
-
-            // Stamp document metadata on the root and its descendants.
-            if let Some((doc_filename, doc_file_index, doc_document)) = document_metadata(document)
-            {
-                merge_document_meta(
-                    &mut decoded.store,
-                    decoded.root,
-                    &doc_filename,
-                    doc_file_index,
-                    doc_document,
-                )?;
+        decoded
+            .store
+            .set_document_meta_if_absent(0, filename, self.file_index);
+        if let Some(root_node) = decoded.store.get_mut(decoded.root) {
+            if root_node.document == 0 {
+                root_node.document = 0;
             }
-
-            // Also stamp the file-level metadata.
-            if let Some(root_node) = decoded.store.get_mut(decoded.root) {
-                if root_node.filename.is_empty() {
-                    root_node.filename = filename.to_owned();
-                }
-                if root_node.file_index == 0 {
-                    root_node.file_index = self.file_index;
-                }
-                if root_node.document == 0 {
-                    root_node.document = current_index;
-                }
-            }
-
-            self.evaluate_and_print_one(
-                ctx,
-                eval_ctx,
-                &decoded.store,
-                decoded.root,
-                node,
-                printer,
-            )?;
-
-            current_index += 1;
         }
+        decoded.store.discard_value_index();
 
-        Ok(current_index)
+        self.evaluate_and_print_one(ctx, eval_ctx, &decoded.store, decoded.root, node, printer)?;
+        Ok(1)
     }
 
     /// Process a non-streaming format (YAML, TOML, CSV, etc.): decode
@@ -344,17 +311,15 @@ impl StreamEvaluator {
         let mut current_index: u32 = 0;
         for (doc_index, mut decoded) in decoded_docs.into_iter().enumerate() {
             // Stamp file-level metadata on the root.
+            decoded
+                .store
+                .set_document_meta_if_absent(doc_index as u32, filename, self.file_index);
             if let Some(root_node) = decoded.store.get_mut(decoded.root) {
-                if root_node.filename.is_empty() {
-                    root_node.filename = filename.to_owned();
-                }
-                if root_node.file_index == 0 {
-                    root_node.file_index = self.file_index;
-                }
                 if root_node.document == 0 {
                     root_node.document = doc_index as u32;
                 }
             }
+            decoded.store.discard_value_index();
 
             self.evaluate_and_print_one(
                 ctx,
@@ -385,33 +350,49 @@ impl StreamEvaluator {
         E: Encoder,
         W: PrinterWriter,
     {
-        let input = tree_to_value(store, root)?;
-        let values = expression_pipeline::execute_many(&[input], node)?;
-        let mut result_store = TreeStore::new();
-        let mut result_ids = Vec::with_capacity(values.len());
         let root_meta = store.get(root).map(|node| {
             (
                 node.document,
-                node.file_index,
-                node.filename.clone(),
-                node.evaluate_together,
+                store.file_index_for(root).unwrap_or_default(),
+                store.filename_for(root).unwrap_or_default().to_owned(),
+                node.evaluate_together(),
             )
         });
-        for value in &values {
-            let result_id = value_to_tree_node(&mut result_store, value)?;
-            if let (Some(meta), Some(node)) = (root_meta.as_ref(), result_store.get_mut(result_id))
-            {
-                node.document = meta.0;
-                node.file_index = meta.1;
-                node.filename = meta.2.clone();
-                node.evaluate_together = meta.3;
+
+        if let Some(matches) = direct_lookup_matches(store, root, node)? {
+            if matches.is_empty() {
+                print_value_result(ctx, printer, &Value::Null, root_meta.as_ref(), 0)?;
+            } else {
+                printer
+                    .print_results(ctx, store, &matches)
+                    .map_err(EvaluationError::Core)?;
             }
-            result_ids.push(result_id);
+            return Ok(());
         }
 
-        printer
-            .print_results(ctx, &result_store, &result_ids)
-            .map_err(EvaluationError::Core)?;
+        if let Some(matches) = direct_traversal_matches(store, root, node)? {
+            printer
+                .print_results(ctx, store, &matches)
+                .map_err(EvaluationError::Core)?;
+            return Ok(());
+        }
+
+        if let Some(values) = direct_unary_values(store, root, node)? {
+            let mut result_index = 0_u32;
+            for value in values {
+                print_value_result(ctx, printer, &value, root_meta.as_ref(), result_index)?;
+                result_index = result_index.saturating_add(1);
+            }
+            return Ok(());
+        }
+
+        let evaluator = AllAtOnceEvaluator::new();
+        let mut result_index = 0_u32;
+        evaluator.evaluate_tree_into(store, root, node, |value| {
+            print_value_result(ctx, printer, &value, root_meta.as_ref(), result_index)?;
+            result_index = result_index.saturating_add(1);
+            Ok(())
+        })?;
 
         Ok(())
     }
@@ -445,7 +426,8 @@ impl StreamEvaluator {
         events: &[StreamingEvent],
     ) -> Result<Vec<Value>, EvaluationError> {
         let documents = split_event_documents(events);
-        let mut inputs = Vec::with_capacity(documents.len().max(1));
+        let evaluator = AllAtOnceEvaluator::new();
+        let mut results = Vec::with_capacity(documents.len().max(1));
 
         for document in documents {
             let mut decoded = build_tree_from_events(document)?;
@@ -458,14 +440,21 @@ impl StreamEvaluator {
                     document_index,
                 )?;
             }
-            inputs.push(tree_to_value(&decoded.store, decoded.root)?);
+            decoded.store.discard_value_index();
+            evaluator.evaluate_tree_into(&decoded.store, decoded.root, expression, |value| {
+                results.push(value);
+                Ok(())
+            })?;
         }
 
-        if inputs.is_empty() {
-            inputs.push(Value::Null);
+        if results.is_empty() {
+            evaluator.evaluate_many_into(&[Value::Null], expression, |value| {
+                results.push(value);
+                Ok(())
+            })?;
         }
 
-        Ok(expression_pipeline::execute_many(&inputs, expression)?)
+        Ok(results)
     }
 }
 
@@ -569,14 +558,9 @@ fn merge_document_meta(
         if document != 0 || node.document == 0 {
             node.document = document;
         }
-        if !filename.is_empty() || node.filename.is_empty() {
-            node.filename = filename.to_owned();
-        }
-        if file_index != 0 || node.file_index == 0 {
-            node.file_index = file_index;
-        }
         node.content.clone()
     };
+    store.set_document_meta_if_absent(document, filename, file_index);
     for child in children {
         merge_document_meta(store, child, filename, file_index, document)?;
     }
@@ -585,6 +569,7 @@ fn merge_document_meta(
 
 // ── Tree-node / Value conversion ────────────────────────────────────
 
+#[cfg(test)]
 fn tree_to_value(store: &TreeStore, id: NodeId) -> Result<Value, EvaluationError> {
     let node = store.get(id).ok_or(CoreError::Eval(
         crate::core::errors::EvalError::MissingTreeNode,
@@ -604,32 +589,38 @@ fn tree_to_value(store: &TreeStore, id: NodeId) -> Result<Value, EvaluationError
                         CoreError::Parse(crate::core::errors::ParseError::InvalidSyntax).into(),
                     );
                 }
-                let key = store.get(pair[0]).ok_or(CoreError::Eval(
+                store.get(pair[0]).ok_or(CoreError::Eval(
                     crate::core::errors::EvalError::MissingTreeNode,
                 ))?;
-                out.insert(key.value.clone(), tree_to_value(store, pair[1])?);
+                out.insert(
+                    store.value_string_for(pair[0])?,
+                    tree_to_value(store, pair[1])?,
+                );
             }
             Ok(Value::Object(out))
         }
-        TreeNodeKind::Scalar => scalar_node_to_value(node),
+        TreeNodeKind::Scalar => scalar_node_to_value(store, id),
         TreeNodeKind::Alias | TreeNodeKind::Unknown => Err(EvaluationError::UnsupportedOperation(
             "tree node".to_string(),
         )),
     }
 }
 
-fn scalar_node_to_value(node: &TreeNode) -> Result<Value, EvaluationError> {
-    if node.resolved_sem_type() == Some(SemType::Int) && node.value.parse::<i64>().is_err() {
-        return Ok(Value::String(node.value.clone()));
+#[cfg(test)]
+fn scalar_node_to_value(store: &TreeStore, id: NodeId) -> Result<Value, EvaluationError> {
+    if store.resolved_sem_type_for(id)? == Some(crate::core::SemType::Int)
+        && store.value_for(id)?.parse::<i64>().is_err()
+    {
+        return Ok(Value::String(store.value_string_for(id)?));
     }
 
-    match node.get_value_rep()? {
+    match store.value_rep_for(id)? {
         crate::core::ValueRep::Nil => Ok(Value::Null),
         crate::core::ValueRep::Boolean(value) => Ok(Value::Bool(value)),
         crate::core::ValueRep::Int(value) => Ok(Value::Number(value as f64)),
         crate::core::ValueRep::Float(value) => Ok(Value::Number(value)),
         crate::core::ValueRep::Str(value) => {
-            if node.resolved_sem_type() == Some(SemType::Nil) {
+            if store.resolved_sem_type_for(id)? == Some(crate::core::SemType::Nil) {
                 Ok(Value::Null)
             } else {
                 Ok(Value::String(value))
@@ -638,13 +629,421 @@ fn scalar_node_to_value(node: &TreeNode) -> Result<Value, EvaluationError> {
     }
 }
 
+fn direct_lookup_matches(
+    store: &TreeStore,
+    root: NodeId,
+    node: Option<&ExpressionNode>,
+) -> Result<Option<Vec<NodeId>>, EvaluationError> {
+    let mut path = Vec::new();
+    if !collect_direct_lookup_path(node, &mut path) {
+        return Ok(None);
+    }
+    if path.is_empty() {
+        return Ok(Some(vec![root]));
+    }
+    let found = store.find_descendant_by_path(root, &path, false)?;
+    Ok(Some(found.into_iter().collect()))
+}
+
+fn direct_traversal_matches(
+    store: &TreeStore,
+    root: NodeId,
+    node: Option<&ExpressionNode>,
+) -> Result<Option<Vec<NodeId>>, EvaluationError> {
+    let Some(node) = node else {
+        return Ok(Some(vec![root]));
+    };
+    if collect_direct_lookup_path(Some(node), &mut Vec::new()) {
+        return Ok(None);
+    }
+    evaluate_direct_traversal_expr(store, vec![root], node)
+}
+
+fn direct_unary_values(
+    store: &TreeStore,
+    root: NodeId,
+    node: Option<&ExpressionNode>,
+) -> Result<Option<Vec<Value>>, EvaluationError> {
+    let Some(node) = node else {
+        return Ok(None);
+    };
+    let unary_id = node.operation.operation_type.id;
+    if unary_id != OperationId::Length || node.lhs.is_some() || node.rhs.is_some() {
+        match node.operation.operation_type.id {
+            OperationId::Pipe | OperationId::ShortPipe => {
+                let Some(lhs) = node.lhs.as_deref() else {
+                    return Ok(None);
+                };
+                let Some(rhs) = node.rhs.as_deref() else {
+                    return Ok(None);
+                };
+                if rhs.operation.operation_type.id != OperationId::Length
+                    || rhs.lhs.is_some()
+                    || rhs.rhs.is_some()
+                {
+                    return Ok(None);
+                }
+                let inputs = if let Some(matches) = direct_lookup_matches(store, root, Some(lhs))? {
+                    matches
+                } else if let Some(matches) =
+                    evaluate_direct_traversal_expr(store, vec![root], lhs)?
+                {
+                    matches
+                } else {
+                    return Ok(None);
+                };
+                return direct_length_values_for_nodes(store, &inputs).map(Some);
+            }
+            _ => return Ok(None),
+        }
+    }
+    direct_length_values_for_nodes(store, &[root]).map(Some)
+}
+
+fn direct_length_values_for_nodes(
+    store: &TreeStore,
+    node_ids: &[NodeId],
+) -> Result<Vec<Value>, EvaluationError> {
+    let mut out = Vec::with_capacity(node_ids.len());
+    for &node_id in node_ids {
+        let Some(node) = store.get(node_id) else {
+            return Ok(Vec::new());
+        };
+        let length = match node.kind {
+            TreeNodeKind::Sequence => node.content.len(),
+            TreeNodeKind::Mapping => node.content.len() / 2,
+            TreeNodeKind::Scalar => match store.value_rep_for(node_id)? {
+                crate::core::ValueRep::Nil => 0,
+                crate::core::ValueRep::Boolean(_) => 1,
+                crate::core::ValueRep::Int(value) => value.to_string().len(),
+                crate::core::ValueRep::Float(value) => value.to_string().len(),
+                crate::core::ValueRep::Str(value) => value.chars().count(),
+            },
+            TreeNodeKind::Alias | TreeNodeKind::Unknown => return Ok(Vec::new()),
+        };
+        out.push(Value::Number(length as f64));
+    }
+    Ok(out)
+}
+
+fn evaluate_direct_traversal_expr(
+    store: &TreeStore,
+    current: Vec<NodeId>,
+    node: &ExpressionNode,
+) -> Result<Option<Vec<NodeId>>, EvaluationError> {
+    match node.operation.operation_type.id {
+        OperationId::SelfRef => Ok(Some(current)),
+        OperationId::TraversePath => {
+            let inputs = if let Some(lhs) = node.lhs.as_deref() {
+                let Some(inputs) = evaluate_direct_traversal_expr(store, current, lhs)? else {
+                    return Ok(None);
+                };
+                inputs
+            } else {
+                current
+            };
+            let Some(segment) = parse_traverse_path_segment(node) else {
+                return Ok(None);
+            };
+            let Some(outputs) = traverse_path_segment_nodes(store, inputs, &segment)? else {
+                return Ok(None);
+            };
+            Ok(Some(outputs))
+        }
+        OperationId::TraverseArray => {
+            let inputs = if let Some(lhs) = node.lhs.as_deref() {
+                let Some(inputs) = evaluate_direct_traversal_expr(store, current, lhs)? else {
+                    return Ok(None);
+                };
+                inputs
+            } else {
+                current
+            };
+            traverse_array_segment_nodes(store, inputs, node)
+        }
+        OperationId::Pipe | OperationId::ShortPipe => {
+            let Some(lhs) = node.lhs.as_deref() else {
+                return Ok(None);
+            };
+            let Some(rhs) = node.rhs.as_deref() else {
+                return Ok(None);
+            };
+            let Some(inputs) = evaluate_direct_traversal_expr(store, current, lhs)? else {
+                return Ok(None);
+            };
+            evaluate_direct_traversal_expr(store, inputs, rhs)
+        }
+        _ => Ok(None),
+    }
+}
+
+fn traverse_path_segment_nodes(
+    store: &TreeStore,
+    inputs: Vec<NodeId>,
+    segment: &ParsedKey,
+) -> Result<Option<Vec<NodeId>>, EvaluationError> {
+    let mut out = Vec::with_capacity(inputs.len());
+    for node_id in inputs {
+        let Some(found) =
+            store.find_descendant_by_path(node_id, std::slice::from_ref(segment), false)?
+        else {
+            return Ok(None);
+        };
+        out.push(found);
+    }
+    Ok(Some(out))
+}
+
+fn traverse_array_segment_nodes(
+    store: &TreeStore,
+    inputs: Vec<NodeId>,
+    node: &ExpressionNode,
+) -> Result<Option<Vec<NodeId>>, EvaluationError> {
+    let Some(rhs) = node.rhs.as_deref() else {
+        return Ok(None);
+    };
+
+    if rhs.operation.operation_type.id == OperationId::Collect
+        && rhs
+            .rhs
+            .as_deref()
+            .is_some_and(|inner| inner.operation.operation_type.id == OperationId::Empty)
+    {
+        let mut out = Vec::new();
+        for node_id in inputs {
+            let Some(current) = store.get(node_id) else {
+                return Ok(None);
+            };
+            if current.kind != TreeNodeKind::Sequence {
+                return Ok(None);
+            }
+            out.extend(current.content.iter().copied());
+        }
+        return Ok(Some(out));
+    }
+
+    let Some(segment) = parse_traverse_array_segment(node) else {
+        return Ok(None);
+    };
+    let ParsedKey::Int(index) = segment else {
+        return Ok(None);
+    };
+    if index < 0 {
+        return Ok(None);
+    }
+
+    let mut out = Vec::with_capacity(inputs.len());
+    for node_id in inputs {
+        let Some(current) = store.get(node_id) else {
+            return Ok(None);
+        };
+        if current.kind != TreeNodeKind::Sequence {
+            return Ok(None);
+        }
+        let Some(child_id) = current.content.get(index as usize).copied() else {
+            return Ok(None);
+        };
+        out.push(child_id);
+    }
+    Ok(Some(out))
+}
+
+fn collect_direct_lookup_path(node: Option<&ExpressionNode>, path: &mut Vec<ParsedKey>) -> bool {
+    let Some(node) = node else {
+        return true;
+    };
+
+    match node.operation.operation_type.id {
+        OperationId::SelfRef => node.lhs.is_none() && node.rhs.is_none(),
+        OperationId::TraversePath => {
+            if let Some(lhs) = node.lhs.as_deref() {
+                if !collect_direct_lookup_path(Some(lhs), path) {
+                    return false;
+                }
+            }
+            let Some(segment) = parse_traverse_path_segment(node) else {
+                return false;
+            };
+            path.push(segment);
+            true
+        }
+        OperationId::TraverseArray => {
+            if let Some(lhs) = node.lhs.as_deref() {
+                if !collect_direct_lookup_path(Some(lhs), path) {
+                    return false;
+                }
+            }
+            let Some(segment) = parse_traverse_array_segment(node) else {
+                return false;
+            };
+            path.push(segment);
+            true
+        }
+        OperationId::ShortPipe | OperationId::Pipe => {
+            collect_direct_lookup_path(node.lhs.as_deref(), path)
+                && collect_direct_lookup_path(node.rhs.as_deref(), path)
+        }
+        _ => false,
+    }
+}
+
+fn parse_traverse_path_segment(node: &ExpressionNode) -> Option<ParsedKey> {
+    if let Some(rhs) = node.rhs.as_deref() {
+        return parse_direct_lookup_literal_segment(rhs);
+    }
+    Some(parse_traverse_segment_text(&node.operation.string_value))
+}
+
+fn parse_traverse_array_segment(node: &ExpressionNode) -> Option<ParsedKey> {
+    let rhs = node.rhs.as_deref()?;
+    if rhs.operation.operation_type.id == OperationId::Collect {
+        return rhs
+            .rhs
+            .as_deref()
+            .and_then(parse_direct_lookup_literal_segment);
+    }
+    parse_direct_lookup_literal_segment(rhs)
+}
+
+fn parse_direct_lookup_literal_segment(node: &ExpressionNode) -> Option<ParsedKey> {
+    if node.operation.operation_type.id != OperationId::Value {
+        return None;
+    }
+    match Value::from_literal(&node.operation.string_value).ok()? {
+        Value::String(value) => Some(ParsedKey::Str(value)),
+        Value::Number(value)
+            if value.fract() == 0.0 && value >= i64::MIN as f64 && value <= i64::MAX as f64 =>
+        {
+            Some(ParsedKey::Int(value as i64))
+        }
+        _ => None,
+    }
+}
+
+fn parse_traverse_segment_text(raw: &str) -> ParsedKey {
+    raw.parse::<i64>()
+        .map(ParsedKey::Int)
+        .unwrap_or_else(|_| ParsedKey::Str(raw.to_owned()))
+}
+
+pub(super) fn print_value_result<E, W>(
+    ctx: &mut Context,
+    printer: &mut Printer<E, W>,
+    value: &Value,
+    root_meta: Option<&(u32, i32, String, bool)>,
+    result_index: u32,
+) -> Result<(), EvaluationError>
+where
+    E: Encoder,
+    W: PrinterWriter,
+{
+    if printer.can_print_evaluated_value() {
+        return printer
+            .print_evaluated_value(ctx, value)
+            .map_err(EvaluationError::Core);
+    }
+
+    let mut result_store = TreeStore::new();
+    let result_id = value_to_tree_node(&mut result_store, value)?;
+    if let Some(node) = result_store.get_mut(result_id) {
+        if let Some(meta) = root_meta {
+            node.document = meta.0;
+            node.set_evaluate_together(meta.3);
+            result_store.set_document_meta(meta.0, meta.2.clone(), meta.1);
+        } else {
+            node.document = result_index;
+            node.set_evaluate_together(true);
+            result_store.set_document_meta(result_index, "", 0);
+        }
+    }
+    printer
+        .print_results(ctx, &result_store, &[result_id])
+        .map_err(EvaluationError::Core)
+}
+
+fn decode_streaming_document_reader(
+    reader: &mut AnyReader<'_>,
+) -> Result<Option<DecodedDocument>, String> {
+    const CHUNK_SIZE: usize = 64 * 1024;
+
+    let mut builder = tree_builder::Builder::new();
+    let mut parser = streaming_json::StreamingParser::with_sink(false, false, &mut builder);
+    let mut saw_non_whitespace = false;
+    let mut chunk = [0_u8; CHUNK_SIZE];
+
+    loop {
+        let read = reader.read(&mut chunk).map_err(|err| err.to_string())?;
+        if read == 0 {
+            break;
+        }
+        if !saw_non_whitespace {
+            saw_non_whitespace = chunk[..read].iter().any(|byte| !byte.is_ascii_whitespace());
+        }
+        parser
+            .feed_bytes(&chunk[..read])
+            .map_err(|_| "streaming decoder parse failed".to_owned())?;
+    }
+
+    if !saw_non_whitespace {
+        return Ok(None);
+    }
+
+    parser
+        .finish_without_events()
+        .map_err(|_| "streaming decoder parse failed".to_owned())?;
+    builder
+        .into_document()
+        .map(Some)
+        .map_err(|err| err.to_string())
+}
+
 // ── Tests ───────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests {
+    use std::{fs::File, io::Read as _, mem::size_of};
+
     use super::*;
     use crate::stream::Meta;
-    use crate::{core::SemType, core::io_adapters::reader_from_pointer, parser::parse_expression};
+    use crate::{
+        core::{
+            Context as CoreContext, CoreError, SemType, TreeNode, VecPrinterWriter,
+            io_adapters::reader_from_pointer, printer::Encoder as PrintEncoder,
+        },
+        parser::parse_expression,
+    };
+
+    struct DirectOnlyEncoder;
+
+    impl PrintEncoder for DirectOnlyEncoder {
+        fn encode(
+            &self,
+            _ctx: &mut CoreContext,
+            _node: NodeId,
+            _writer: &mut dyn std::io::Write,
+        ) -> Result<(), CoreError> {
+            panic!("store-backed encode should not be called");
+        }
+
+        fn encode_evaluated_value(
+            &self,
+            value: &crate::evaluator::Value,
+            writer: &mut dyn std::io::Write,
+        ) -> Result<bool, CoreError> {
+            match value {
+                crate::evaluator::Value::String(value) => writer.write_all(value.as_bytes())?,
+                crate::evaluator::Value::Number(value) => {
+                    writer.write_all(value.to_string().as_bytes())?
+                }
+                crate::evaluator::Value::Bool(value) => {
+                    writer.write_all(if *value { b"true" } else { b"false" })?
+                }
+                crate::evaluator::Value::Null => writer.write_all(b"null")?,
+                _ => writer.write_all(b"<complex>")?,
+            }
+            Ok(true)
+        }
+    }
 
     #[test]
     fn evaluates_scalar_stream_events() {
@@ -684,6 +1083,582 @@ mod tests {
         assert_eq!(results, vec![Value::Number(7.0)]);
     }
 
+    #[test]
+    fn direct_lookup_matches_literal_path_segments() {
+        let expression = parse_expression(".foo.bar")
+            .expect("parse should succeed")
+            .expect("tree should exist");
+        let mut store = TreeStore::new();
+        let root_id = store.add(TreeNode {
+            kind: TreeNodeKind::Mapping,
+            sem_type: Some(SemType::Map),
+            ..TreeNode::default()
+        });
+        let (_, foo_value_id) = store
+            .add_key_value_child(
+                root_id,
+                TreeNode::scalar(SemType::Str, "foo"),
+                TreeNode {
+                    kind: TreeNodeKind::Mapping,
+                    sem_type: Some(SemType::Map),
+                    ..TreeNode::default()
+                },
+            )
+            .expect("foo entry");
+        let (_, bar_value_id) = store
+            .add_key_value_child(
+                foo_value_id,
+                TreeNode::scalar(SemType::Str, "bar"),
+                TreeNode::scalar(SemType::Int, "7"),
+            )
+            .expect("bar entry");
+
+        let matches = direct_lookup_matches(&store, root_id, Some(&expression))
+            .expect("direct path lookup should succeed")
+            .expect("pure path should use direct lookup");
+        assert_eq!(matches.len(), 1);
+        assert_eq!(store.value_for(matches[0]).unwrap(), "7");
+        assert_eq!(matches[0], bar_value_id);
+    }
+
+    #[test]
+    fn direct_lookup_matches_array_index_segments() {
+        let expression = parse_expression(".items[1].name")
+            .expect("parse should succeed")
+            .expect("tree should exist");
+        let mut store = TreeStore::new();
+        let root_id = store.add(TreeNode {
+            kind: TreeNodeKind::Mapping,
+            sem_type: Some(SemType::Map),
+            ..TreeNode::default()
+        });
+        let (_, items_id) = store
+            .add_key_value_child(
+                root_id,
+                TreeNode::scalar(SemType::Str, "items"),
+                TreeNode {
+                    kind: TreeNodeKind::Sequence,
+                    sem_type: Some(SemType::Seq),
+                    ..TreeNode::default()
+                },
+            )
+            .expect("items entry");
+        let first_id = store
+            .add_child(items_id, TreeNode::scalar(SemType::Str, "first"))
+            .expect("first array item");
+        let second_map_id = store
+            .add_child(
+                items_id,
+                TreeNode {
+                    kind: TreeNodeKind::Mapping,
+                    sem_type: Some(SemType::Map),
+                    ..TreeNode::default()
+                },
+            )
+            .expect("second array item");
+        let (_, name_value_id) = store
+            .add_key_value_child(
+                second_map_id,
+                TreeNode::scalar(SemType::Str, "name"),
+                TreeNode::scalar(SemType::Str, "target"),
+            )
+            .expect("name entry");
+
+        let matches = direct_lookup_matches(&store, root_id, Some(&expression))
+            .expect("direct path lookup should succeed")
+            .expect("pure array path should use direct lookup");
+        assert_eq!(store.value_for(first_id).unwrap(), "first");
+        assert_eq!(matches, vec![name_value_id]);
+    }
+
+    #[test]
+    fn direct_lookup_matches_literal_rhs_segments() {
+        let expression = parse_expression(".foo[\"bar\"]")
+            .expect("parse should succeed")
+            .expect("tree should exist");
+        let mut store = TreeStore::new();
+        let root_id = store.add(TreeNode {
+            kind: TreeNodeKind::Mapping,
+            sem_type: Some(SemType::Map),
+            ..TreeNode::default()
+        });
+        let (_, foo_value_id) = store
+            .add_key_value_child(
+                root_id,
+                TreeNode::scalar(SemType::Str, "foo"),
+                TreeNode {
+                    kind: TreeNodeKind::Mapping,
+                    sem_type: Some(SemType::Map),
+                    ..TreeNode::default()
+                },
+            )
+            .expect("foo entry");
+        let (_, bar_value_id) = store
+            .add_key_value_child(
+                foo_value_id,
+                TreeNode::scalar(SemType::Str, "bar"),
+                TreeNode::scalar(SemType::Int, "9"),
+            )
+            .expect("bar entry");
+
+        let matches = direct_lookup_matches(&store, root_id, Some(&expression))
+            .expect("direct path lookup should succeed")
+            .expect("literal rhs path should use direct lookup");
+        assert_eq!(matches, vec![bar_value_id]);
+    }
+
+    #[test]
+    fn direct_lookup_rejects_non_path_expressions() {
+        let expression = parse_expression(".foo + 1")
+            .expect("parse should succeed")
+            .expect("tree should exist");
+        let mut store = TreeStore::new();
+        let root_id = value_to_tree_node(&mut store, &Value::Null).expect("null root");
+
+        assert!(
+            direct_lookup_matches(&store, root_id, Some(&expression))
+                .expect("lookup should not error")
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn direct_traversal_matches_sequence_splat_chain() {
+        let expression = parse_expression(".items[].name")
+            .expect("parse should succeed")
+            .expect("tree should exist");
+        let mut store = TreeStore::new();
+        let root_id = store.add(TreeNode {
+            kind: TreeNodeKind::Mapping,
+            sem_type: Some(SemType::Map),
+            ..TreeNode::default()
+        });
+        let (_, items_id) = store
+            .add_key_value_child(
+                root_id,
+                TreeNode::scalar(SemType::Str, "items"),
+                TreeNode {
+                    kind: TreeNodeKind::Sequence,
+                    sem_type: Some(SemType::Seq),
+                    ..TreeNode::default()
+                },
+            )
+            .expect("items entry");
+        let first_map_id = store
+            .add_child(
+                items_id,
+                TreeNode {
+                    kind: TreeNodeKind::Mapping,
+                    sem_type: Some(SemType::Map),
+                    ..TreeNode::default()
+                },
+            )
+            .expect("first map");
+        let second_map_id = store
+            .add_child(
+                items_id,
+                TreeNode {
+                    kind: TreeNodeKind::Mapping,
+                    sem_type: Some(SemType::Map),
+                    ..TreeNode::default()
+                },
+            )
+            .expect("second map");
+        let (_, first_name_id) = store
+            .add_key_value_child(
+                first_map_id,
+                TreeNode::scalar(SemType::Str, "name"),
+                TreeNode::scalar(SemType::Str, "alpha"),
+            )
+            .expect("first name");
+        let (_, second_name_id) = store
+            .add_key_value_child(
+                second_map_id,
+                TreeNode::scalar(SemType::Str, "name"),
+                TreeNode::scalar(SemType::Str, "beta"),
+            )
+            .expect("second name");
+
+        let matches = direct_traversal_matches(&store, root_id, Some(&expression))
+            .expect("direct traversal should succeed")
+            .expect("pure traversal chain should use direct traversal");
+        assert_eq!(matches, vec![first_name_id, second_name_id]);
+    }
+
+    #[test]
+    fn direct_traversal_rejects_shape_mismatch_and_falls_back() {
+        let expression = parse_expression(".items[].name")
+            .expect("parse should succeed")
+            .expect("tree should exist");
+        let mut store = TreeStore::new();
+        let root_id = store.add(TreeNode {
+            kind: TreeNodeKind::Mapping,
+            sem_type: Some(SemType::Map),
+            ..TreeNode::default()
+        });
+        let (_, items_id) = store
+            .add_key_value_child(
+                root_id,
+                TreeNode::scalar(SemType::Str, "items"),
+                TreeNode {
+                    kind: TreeNodeKind::Sequence,
+                    sem_type: Some(SemType::Seq),
+                    ..TreeNode::default()
+                },
+            )
+            .expect("items entry");
+        store
+            .add_child(items_id, TreeNode::scalar(SemType::Str, "not-a-map"))
+            .expect("scalar child");
+
+        assert!(
+            direct_traversal_matches(&store, root_id, Some(&expression))
+                .expect("direct traversal should not error")
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn direct_lookup_matches_top_level_array_index() {
+        let expression = parse_expression(".[1]")
+            .expect("parse should succeed")
+            .expect("tree should exist");
+        let mut store = TreeStore::new();
+        let root_id = store.add(TreeNode {
+            kind: TreeNodeKind::Sequence,
+            sem_type: Some(SemType::Seq),
+            ..TreeNode::default()
+        });
+        let first_id = store
+            .add_child(root_id, TreeNode::scalar(SemType::Str, "first"))
+            .expect("first item");
+        let second_id = store
+            .add_child(root_id, TreeNode::scalar(SemType::Str, "second"))
+            .expect("second item");
+
+        let matches = direct_lookup_matches(&store, root_id, Some(&expression))
+            .expect("direct path lookup should succeed")
+            .expect("top-level index should use direct lookup");
+        assert_eq!(store.value_for(first_id).unwrap(), "first");
+        assert_eq!(matches, vec![second_id]);
+    }
+
+    #[test]
+    fn direct_traversal_matches_top_level_sequence_splat_chain() {
+        let expression = parse_expression(".[] | .name")
+            .expect("parse should succeed")
+            .expect("tree should exist");
+        let mut store = TreeStore::new();
+        let root_id = store.add(TreeNode {
+            kind: TreeNodeKind::Sequence,
+            sem_type: Some(SemType::Seq),
+            ..TreeNode::default()
+        });
+        let first_map_id = store
+            .add_child(
+                root_id,
+                TreeNode {
+                    kind: TreeNodeKind::Mapping,
+                    sem_type: Some(SemType::Map),
+                    ..TreeNode::default()
+                },
+            )
+            .expect("first map");
+        let second_map_id = store
+            .add_child(
+                root_id,
+                TreeNode {
+                    kind: TreeNodeKind::Mapping,
+                    sem_type: Some(SemType::Map),
+                    ..TreeNode::default()
+                },
+            )
+            .expect("second map");
+        let (_, first_name_id) = store
+            .add_key_value_child(
+                first_map_id,
+                TreeNode::scalar(SemType::Str, "name"),
+                TreeNode::scalar(SemType::Str, "alpha"),
+            )
+            .expect("first name");
+        let (_, second_name_id) = store
+            .add_key_value_child(
+                second_map_id,
+                TreeNode::scalar(SemType::Str, "name"),
+                TreeNode::scalar(SemType::Str, "beta"),
+            )
+            .expect("second name");
+
+        let matches = direct_traversal_matches(&store, root_id, Some(&expression))
+            .expect("direct traversal should succeed")
+            .expect("top-level splat chain should use direct traversal");
+        assert_eq!(matches, vec![first_name_id, second_name_id]);
+    }
+
+    #[test]
+    fn direct_unary_length_matches_path_result() {
+        let expression = parse_expression(".items | length")
+            .expect("parse should succeed")
+            .expect("tree should exist");
+        let mut store = TreeStore::new();
+        let root_id = store.add(TreeNode {
+            kind: TreeNodeKind::Mapping,
+            sem_type: Some(SemType::Map),
+            ..TreeNode::default()
+        });
+        let (_, items_id) = store
+            .add_key_value_child(
+                root_id,
+                TreeNode::scalar(SemType::Str, "items"),
+                TreeNode {
+                    kind: TreeNodeKind::Sequence,
+                    sem_type: Some(SemType::Seq),
+                    ..TreeNode::default()
+                },
+            )
+            .expect("items entry");
+        store
+            .add_child(items_id, TreeNode::scalar(SemType::Str, "a"))
+            .expect("first item");
+        store
+            .add_child(items_id, TreeNode::scalar(SemType::Str, "b"))
+            .expect("second item");
+
+        let values = direct_unary_values(&store, root_id, Some(&expression))
+            .expect("direct unary should succeed")
+            .expect("path + length should use direct unary");
+        assert_eq!(values, vec![Value::Number(2.0)]);
+    }
+
+    #[test]
+    fn direct_unary_length_matches_top_level_splat_results() {
+        let expression = parse_expression(".[] | length")
+            .expect("parse should succeed")
+            .expect("tree should exist");
+        let mut store = TreeStore::new();
+        let root_id = store.add(TreeNode {
+            kind: TreeNodeKind::Sequence,
+            sem_type: Some(SemType::Seq),
+            ..TreeNode::default()
+        });
+        let first_map_id = store
+            .add_child(
+                root_id,
+                TreeNode {
+                    kind: TreeNodeKind::Mapping,
+                    sem_type: Some(SemType::Map),
+                    ..TreeNode::default()
+                },
+            )
+            .expect("first map");
+        let second_map_id = store
+            .add_child(
+                root_id,
+                TreeNode {
+                    kind: TreeNodeKind::Mapping,
+                    sem_type: Some(SemType::Map),
+                    ..TreeNode::default()
+                },
+            )
+            .expect("second map");
+        store
+            .add_key_value_child(
+                first_map_id,
+                TreeNode::scalar(SemType::Str, "name"),
+                TreeNode::scalar(SemType::Str, "alpha"),
+            )
+            .expect("first entry");
+        store
+            .add_key_value_child(
+                second_map_id,
+                TreeNode::scalar(SemType::Str, "name"),
+                TreeNode::scalar(SemType::Str, "beta"),
+            )
+            .expect("second entry");
+        store
+            .add_key_value_child(
+                second_map_id,
+                TreeNode::scalar(SemType::Str, "extra"),
+                TreeNode::scalar(SemType::Str, "gamma"),
+            )
+            .expect("third entry");
+
+        let values = direct_unary_values(&store, root_id, Some(&expression))
+            .expect("direct unary should succeed")
+            .expect("splat + length should use direct unary");
+        assert_eq!(values, vec![Value::Number(1.0), Value::Number(2.0)]);
+    }
+
+    #[test]
+    fn decode_streaming_document_reader_returns_none_for_whitespace_only_input() {
+        let mut cursor = std::io::Cursor::new(b" \n\t\r ".to_vec());
+        let mut reader = reader_from_pointer(&mut cursor);
+
+        let decoded = decode_streaming_document_reader(&mut reader)
+            .expect("whitespace input should not error");
+
+        assert!(decoded.is_none(), "whitespace-only input should be skipped");
+    }
+
+    #[test]
+    fn decode_streaming_document_reader_builds_tree_without_document_runtime() {
+        let mut cursor = std::io::Cursor::new(br#"{"items":[1,2],"ok":true}"#.to_vec());
+        let mut reader = reader_from_pointer(&mut cursor);
+
+        let decoded = decode_streaming_document_reader(&mut reader)
+            .expect("json input should decode")
+            .expect("json input should produce a document");
+
+        let root = decoded
+            .store
+            .get(decoded.root)
+            .expect("root node should exist");
+        assert_eq!(root.kind, TreeNodeKind::Mapping);
+    }
+
+    #[test]
+    #[ignore = "diagnostic harness for local large-json decode profiling"]
+    fn profile_large_json_decode_pipeline_from_env_path() {
+        let path = std::env::var("TREEASE_PROFILE_JSON")
+            .expect("set TREEASE_PROFILE_JSON to a local large JSON file path");
+        let input_bytes = std::fs::metadata(&path)
+            .expect("profile input should exist")
+            .len();
+
+        const CHUNK_SIZE: usize = 64 * 1024;
+
+        let mut file = File::open(&path).expect("profile input should open");
+        let mut builder = tree_builder::Builder::new();
+        let mut parser = streaming_json::StreamingParser::with_sink(false, false, &mut builder);
+        let mut saw_non_whitespace = false;
+        let mut chunk = [0_u8; CHUNK_SIZE];
+
+        crate::test_timing::reset();
+        crate::test_timing::mark("profile.decode.start");
+
+        loop {
+            let read = file.read(&mut chunk).expect("profile input should read");
+            if read == 0 {
+                break;
+            }
+            if !saw_non_whitespace {
+                saw_non_whitespace = chunk[..read].iter().any(|byte| !byte.is_ascii_whitespace());
+            }
+            parser
+                .feed_bytes(&chunk[..read])
+                .expect("parser feed should succeed");
+        }
+        crate::test_timing::mark("profile.decode.feed_complete");
+
+        assert!(
+            saw_non_whitespace,
+            "profile input should not be whitespace only"
+        );
+
+        parser
+            .finish_without_events()
+            .expect("parser finish should succeed");
+        crate::test_timing::mark("profile.decode.finish_complete");
+
+        drop(parser);
+
+        let document = builder
+            .into_document()
+            .expect("builder should produce a decoded document");
+        crate::test_timing::mark("profile.decode.document_built");
+        crate::test_timing::report();
+
+        let stats = document.store.stats();
+        let estimated_node_bytes = stats.node_capacity * size_of::<crate::core::TreeNode>();
+        let estimated_content_bytes = stats.total_content_slots * size_of::<crate::core::NodeId>();
+        eprintln!("--- decode profile ---");
+        eprintln!("input_bytes={input_bytes}");
+        eprintln!("node_count={}", stats.node_count);
+        eprintln!("node_capacity={}", stats.node_capacity);
+        eprintln!("scalar_node_count={}", stats.scalar_node_count);
+        eprintln!("mapping_node_count={}", stats.mapping_node_count);
+        eprintln!("sequence_node_count={}", stats.sequence_node_count);
+        eprintln!("alias_node_count={}", stats.alias_node_count);
+        eprintln!("unknown_node_count={}", stats.unknown_node_count);
+        eprintln!(
+            "nodes_with_content_count={}",
+            stats.nodes_with_content_count
+        );
+        eprintln!("total_content_slots={}", stats.total_content_slots);
+        eprintln!(
+            "nodes_with_stored_value_count={}",
+            stats.nodes_with_stored_value_count
+        );
+        eprintln!(
+            "nodes_with_missing_value_count={}",
+            stats.nodes_with_missing_value_count
+        );
+        eprintln!("value_count={}", stats.value_count);
+        eprintln!("value_capacity={}", stats.value_capacity);
+        eprintln!("interned_value_bytes={}", stats.interned_value_bytes);
+        eprintln!("node_extra_count={}", stats.node_extra_count);
+        eprintln!("document_meta_count={}", stats.document_meta_count);
+        eprintln!("value_index_entry_count={}", stats.value_index_entry_count);
+        eprintln!("sizeof<TreeNode>={}", size_of::<crate::core::TreeNode>());
+        eprintln!("sizeof<NodeId>={}", size_of::<crate::core::NodeId>());
+        eprintln!(
+            "sizeof<Option<NodeId>>={}",
+            size_of::<Option<crate::core::NodeId>>()
+        );
+        eprintln!(
+            "sizeof<NodeValueRef>={}",
+            size_of::<crate::core::NodeValueRef>()
+        );
+        eprintln!(
+            "sizeof<CompactTag>={}",
+            size_of::<crate::core::CompactTag>()
+        );
+        eprintln!(
+            "sizeof<Option<SemType>>={}",
+            size_of::<Option<crate::core::SemType>>()
+        );
+        eprintln!(
+            "sizeof<Vec<NodeId>>={}",
+            size_of::<Vec<crate::core::NodeId>>()
+        );
+        eprintln!("sizeof<NodeExtra>={}", size_of::<crate::core::NodeExtra>());
+        eprintln!(
+            "sizeof<DocumentMeta>={}",
+            size_of::<crate::core::tree_store::DocumentMeta>()
+        );
+        eprintln!("estimated_node_bytes={estimated_node_bytes}");
+        eprintln!("estimated_content_bytes={estimated_content_bytes}");
+        eprintln!("--- end decode profile ---");
+
+        assert!(stats.node_count > 0, "decoded tree should contain nodes");
+    }
+
+    #[test]
+    fn print_value_result_uses_direct_encoder_without_rebuilding_store() {
+        let mut registry = crate::init().expect("registry should initialize");
+        let result = (|| {
+            let mut ctx = CoreContext::empty(registry.handle());
+            let writer = VecPrinterWriter::new();
+            let mut printer = Printer::new(DirectOnlyEncoder, writer);
+
+            print_value_result(
+                &mut ctx,
+                &mut printer,
+                &Value::String("ok".to_string()),
+                None,
+                0,
+            )
+            .expect("direct print should succeed");
+
+            let output = String::from_utf8(printer.into_writer().into_bytes())
+                .expect("output should be utf-8");
+            assert_eq!(output, "ok");
+            Ok::<(), CoreError>(())
+        })();
+        crate::deinit(&mut registry);
+        result.expect("test body should succeed");
+    }
+
     // Helper: the old evaluate_readers that returned Vec<Value> is now
     // replaced by the printer-based path.  This test helper bridges the
     // two so existing tests continue to work.
@@ -708,50 +1683,32 @@ mod tests {
 
                 match streaming_decoder::stream_kind(format) {
                     streaming_decoder::StreamKind::Json => {
-                        let events = streaming_decoder::decode(format, &source).map_err(|_| {
-                            EvaluationError::Core(CoreError::Parse(
-                                crate::core::errors::ParseError::InvalidSyntax,
-                            ))
-                        })?;
-                        let documents = split_event_documents(&events);
-                        for (document_index, document) in documents.iter().enumerate() {
-                            let mut decoded = build_tree_from_events(document)?;
-                            if let Some((doc_filename, doc_file_index, doc_document)) =
-                                document_metadata(document)
-                            {
-                                merge_document_meta(
-                                    &mut decoded.store,
-                                    decoded.root,
-                                    &doc_filename,
-                                    doc_file_index,
-                                    doc_document,
-                                )?;
+                        let mut decoded = streaming_decoder::decode_to_tree(
+                            &crate::core::RegistryOwner::init_owned(),
+                            format,
+                            &source,
+                            crate::stream::DecodeOptions::default(),
+                        )
+                        .map_err(EvaluationError::Core)?;
+                        decoded
+                            .store
+                            .set_document_meta_if_absent(0, input.name, file_index as i32);
+                        if let Some(root_node) = decoded.store.get_mut(decoded.root) {
+                            if root_node.document == 0 {
+                                root_node.document = 0;
                             }
-                            // Also stamp file-level metadata.
-                            if let Some(root_node) = decoded.store.get_mut(decoded.root) {
-                                if root_node.filename.is_empty() {
-                                    root_node.filename = input.name.to_owned();
-                                }
-                                if root_node.file_index == 0 {
-                                    root_node.file_index = file_index as i32;
-                                }
-                                if root_node.document == 0 {
-                                    root_node.document = document_index as u32;
-                                }
-                            }
-                            values.push(tree_to_value(&decoded.store, decoded.root)?);
                         }
+                        values.push(tree_to_value(&decoded.store, decoded.root)?);
                     }
                     streaming_decoder::StreamKind::NonStreaming => {
                         let decoded_docs = codec.decode_all(format, &source)?;
                         for (document_index, mut decoded) in decoded_docs.into_iter().enumerate() {
+                            decoded.store.set_document_meta_if_absent(
+                                document_index as u32,
+                                input.name,
+                                file_index as i32,
+                            );
                             if let Some(root_node) = decoded.store.get_mut(decoded.root) {
-                                if root_node.filename.is_empty() {
-                                    root_node.filename = input.name.to_owned();
-                                }
-                                if root_node.file_index == 0 {
-                                    root_node.file_index = file_index as i32;
-                                }
                                 if root_node.document == 0 {
                                     root_node.document = document_index as u32;
                                 }
@@ -766,7 +1723,9 @@ mod tests {
                 values.push(Value::Null);
             }
 
-            Ok(expression_pipeline::execute_many(&values, expression)?)
+            Ok(crate::expression_pipeline::execute_many(
+                &values, expression,
+            )?)
         }
     }
 }

@@ -10,9 +10,10 @@ use crate::core::printer::{Encoder, Printer};
 use crate::core::printer_writer::PrinterWriter;
 use crate::core::sem_type::SemType;
 use crate::core::tree_navigator::TreeEngine;
-use crate::core::tree_node::{NodeId, TreeNode as CoreTreeNode, TreeNodeKind};
+use crate::core::tree_node::{CompactTag, NodeId, TreeNode as CoreTreeNode, TreeNodeKind};
 use crate::core::tree_store::TreeStore as CoreTreeStore;
 
+use super::stream_evaluator::print_value_result;
 use super::{EvaluationError, Value as EvalValue};
 
 /// Input descriptor for reader-based evaluation.
@@ -54,13 +55,52 @@ impl AllAtOnceEvaluator {
         expression: &str,
         nodes: &[NodeId],
     ) -> Result<Vec<EvalValue>, EvaluationError> {
-        let inputs: Vec<EvalValue> = nodes
-            .iter()
-            .map(|&id| tree_node_to_value(store, id))
-            .collect::<Result<_, _>>()?;
         let parsed = crate::parser::parse_expression(expression)
             .map_err(|e| EvaluationError::UnsupportedOperation(format!("{:?}", e)))?;
-        self.evaluate_many(&inputs, parsed.as_deref())
+        let mut results = Vec::new();
+        self.evaluate_nodes_into(store, nodes, parsed.as_deref(), |value| {
+            results.push(value);
+            Ok(())
+        })?;
+        Ok(results)
+    }
+
+    pub fn evaluate_nodes_into(
+        &self,
+        store: &CoreTreeStore,
+        nodes: &[NodeId],
+        expression: Option<&ExpressionNode>,
+        mut on_value: impl FnMut(EvalValue) -> Result<(), EvaluationError>,
+    ) -> Result<(), EvaluationError> {
+        for &id in nodes {
+            self.evaluate_tree_into(store, id, expression, &mut on_value)?;
+        }
+
+        Ok(())
+    }
+
+    pub fn evaluate_tree_into(
+        &self,
+        store: &CoreTreeStore,
+        root: NodeId,
+        expression: Option<&ExpressionNode>,
+        mut on_value: impl FnMut(EvalValue) -> Result<(), EvaluationError>,
+    ) -> Result<(), EvaluationError> {
+        let flatten_top_level_array = should_flatten_top_level_array_result(expression);
+        let result = self.evaluate_input(InputValue::TreeNode { store, id: root }, expression)?;
+        if flatten_top_level_array {
+            match result.into_owned()? {
+                EvalValue::Array(values) => {
+                    for value in values {
+                        on_value(value)?;
+                    }
+                }
+                value => on_value(value)?,
+            }
+        } else {
+            on_value(result.into_owned()?)?;
+        }
+        Ok(())
     }
 
     /// Evaluate an expression against multiple reader inputs, decode each
@@ -97,9 +137,10 @@ impl AllAtOnceEvaluator {
         E: Encoder,
         W: PrinterWriter,
     {
-        let mut file_index: i32 = 0;
-        let mut all_documents: Vec<NodeId> = Vec::new();
-        let mut store = CoreTreeStore::new();
+        let mut processed_documents = 0usize;
+        let mut result_index = 0_u32;
+        let parsed = crate::parser::parse_expression(expression)
+            .map_err(|e| EvaluationError::UnsupportedOperation(format!("{:?}", e)))?;
 
         for input in inputs.iter_mut() {
             let bytes = input
@@ -112,7 +153,6 @@ impl AllAtOnceEvaluator {
                 ))
             })?;
             if source.trim().is_empty() {
-                file_index += 1;
                 continue;
             }
             let format = input_format.unwrap_or_else(|| format_string_from_filename(input.name));
@@ -120,51 +160,34 @@ impl AllAtOnceEvaluator {
                 .decode_all(format, &source)
                 .map_err(|e| EvaluationError::Core(e))?;
 
-            for (doc_index, decoded) in decoded_docs.into_iter().enumerate() {
-                // Merge the decoded document's nodes into our local store and
-                // collect root NodeIds.
-                let root_id = merge_decoded_document(&mut store, &decoded.store, decoded.root);
-                if let Some(node) = store.get_mut(root_id) {
-                    node.filename = input.name.to_string();
-                    node.file_index = file_index;
-                    node.document = doc_index as u32;
-                    node.evaluate_together = true;
-                }
-                all_documents.push(root_id);
+            for mut decoded in decoded_docs {
+                processed_documents += 1;
+                decoded.store.discard_value_index();
+                self.evaluate_tree_into(
+                    &decoded.store,
+                    decoded.root,
+                    parsed.as_deref(),
+                    |value| {
+                        print_value_result(ctx, printer, &value, None, result_index)?;
+                        result_index = result_index.saturating_add(1);
+                        Ok(())
+                    },
+                )?;
             }
-            file_index += 1;
         }
 
-        if all_documents.is_empty() {
-            let null_node = CoreTreeNode::scalar(SemType::Nil, "");
-            let null_id = store.add(null_node);
-            all_documents.push(null_id);
+        if processed_documents == 0 {
+            let null_value = EvalValue::Null;
+            self.evaluate_many_into(
+                std::slice::from_ref(&null_value),
+                parsed.as_deref(),
+                |value| {
+                    print_value_result(ctx, printer, &value, None, result_index)?;
+                    result_index = result_index.saturating_add(1);
+                    Ok(())
+                },
+            )?;
         }
-
-        // Evaluate expression against all document roots.
-        let parsed = crate::parser::parse_expression(expression)
-            .map_err(|e| EvaluationError::UnsupportedOperation(format!("{:?}", e)))?;
-        let doc_values: Vec<EvalValue> = all_documents
-            .iter()
-            .map(|&id| tree_node_to_value(&store, id))
-            .collect::<Result<_, _>>()?;
-        let results = self.evaluate_many(&doc_values, parsed.as_deref())?;
-
-        // Convert results back to tree nodes and print.
-        let mut result_ids: Vec<NodeId> = Vec::with_capacity(results.len());
-        for (index, value) in results.iter().enumerate() {
-            let id = value_to_tree_node(&mut store, value)?;
-            if let Some(node) = store.get_mut(id) {
-                node.document = index as u32;
-                node.file_index = 0;
-                node.evaluate_together = true;
-            }
-            result_ids.push(id);
-        }
-
-        printer
-            .print_results(ctx, &store, &result_ids)
-            .map_err(|e| EvaluationError::Core(e))?;
 
         Ok(())
     }
@@ -174,22 +197,39 @@ impl AllAtOnceEvaluator {
         inputs: &[EvalValue],
         expression: Option<&ExpressionNode>,
     ) -> Result<Vec<EvalValue>, EvaluationError> {
-        let flatten_top_level_array = should_flatten_top_level_array_result(expression);
         let mut results = Vec::new();
+        self.evaluate_many_into(inputs, expression, |value| {
+            results.push(value);
+            Ok(())
+        })?;
+        Ok(results)
+    }
+
+    pub fn evaluate_many_into(
+        &self,
+        inputs: &[EvalValue],
+        expression: Option<&ExpressionNode>,
+        mut on_value: impl FnMut(EvalValue) -> Result<(), EvaluationError>,
+    ) -> Result<(), EvaluationError> {
+        let flatten_top_level_array = should_flatten_top_level_array_result(expression);
 
         for input in inputs {
             let result = self.evaluate(input, expression)?;
             if flatten_top_level_array {
                 match result {
-                    EvalValue::Array(values) => results.extend(values),
-                    value => results.push(value),
+                    EvalValue::Array(values) => {
+                        for value in values {
+                            on_value(value)?;
+                        }
+                    }
+                    value => on_value(value)?,
                 }
             } else {
-                results.push(result);
+                on_value(result)?;
             }
         }
 
-        Ok(results)
+        Ok(())
     }
 
     pub fn evaluate(
@@ -198,12 +238,160 @@ impl AllAtOnceEvaluator {
         expression: Option<&ExpressionNode>,
     ) -> Result<EvalValue, EvaluationError> {
         match expression {
-            Some(node) => self.evaluate_node(input, node),
+            Some(node) => self.evaluate_owned_node(input, node),
             None => Ok(input.clone()),
         }
     }
 
-    fn evaluate_node(
+    fn evaluate_input<'a>(
+        &self,
+        input: InputValue<'a>,
+        expression: Option<&ExpressionNode>,
+    ) -> Result<InputValue<'a>, EvaluationError> {
+        match expression {
+            Some(node) => self.evaluate_input_node(input, node),
+            None => Ok(input),
+        }
+    }
+
+    fn evaluate_input_node<'a>(
+        &self,
+        input: InputValue<'a>,
+        node: &ExpressionNode,
+    ) -> Result<InputValue<'a>, EvaluationError> {
+        use OperationId::*;
+
+        match node.operation.operation_type.id {
+            SelfRef => return Ok(input),
+            Value => {
+                return Ok(InputValue::Owned(EvalValue::from_literal(
+                    &node.operation.string_value,
+                )?));
+            }
+            Pipe | ShortPipe => {
+                let lhs = node
+                    .lhs
+                    .as_deref()
+                    .ok_or(EvaluationError::MissingOperand("lhs"))?;
+                let rhs = node
+                    .rhs
+                    .as_deref()
+                    .ok_or(EvaluationError::MissingOperand("rhs"))?;
+                let piped = self.evaluate_input_node(input, lhs)?;
+                if pipe_rhs_consumes_array(rhs) {
+                    return self.evaluate_input_node(piped, rhs);
+                }
+                if let Some((store, children)) = piped.clone().sequence_children() {
+                    let mut out = Vec::with_capacity(children.len());
+                    for child in children {
+                        let result = self
+                            .evaluate_input_node(InputValue::TreeNode { store, id: child }, rhs)?;
+                        let owned = result.into_owned()?;
+                        if matches!(rhs.operation.operation_type.id, Select | Filter)
+                            && owned == EvalValue::Null
+                        {
+                            continue;
+                        }
+                        out.push(owned);
+                    }
+                    return Ok(InputValue::Owned(EvalValue::Array(out)));
+                }
+
+                let value = piped.into_owned()?;
+                if matches!(lhs.operation.operation_type.id, Select | Filter)
+                    && value == EvalValue::Null
+                {
+                    return Ok(InputValue::Owned(EvalValue::Array(Vec::new())));
+                }
+                return self.evaluate_input_node(InputValue::Owned(value), rhs);
+            }
+            TraversePath | TraverseArray => {
+                let lhs = match node.lhs.as_deref() {
+                    Some(lhs_node) => self.evaluate_input_node(input.clone(), lhs_node)?,
+                    None => input.clone(),
+                };
+                let rhs = match node.rhs.as_deref() {
+                    Some(rhs_node) => self.evaluate_input_node(input, rhs_node)?.into_owned()?,
+                    None if node.operation.operation_type.id == TraversePath => {
+                        EvalValue::String(node.operation.string_value.clone())
+                    }
+                    None => EvalValue::Array(Vec::new()),
+                };
+                return self.evaluate_tree_backed_traversal(
+                    node.operation.operation_type.id,
+                    lhs,
+                    rhs,
+                );
+            }
+            Map => {
+                let rhs = node
+                    .rhs
+                    .as_deref()
+                    .ok_or(EvaluationError::MissingOperand("rhs"))?;
+                if let Some((store, children)) = input.clone().sequence_children() {
+                    let mut out = Vec::with_capacity(children.len());
+                    for child in children {
+                        out.push(
+                            self.evaluate_input_node(
+                                InputValue::TreeNode { store, id: child },
+                                rhs,
+                            )?
+                            .into_owned()?,
+                        );
+                    }
+                    return Ok(InputValue::Owned(EvalValue::Array(out)));
+                }
+            }
+            Select | Filter => {
+                let rhs = node
+                    .rhs
+                    .as_deref()
+                    .ok_or(EvaluationError::MissingOperand("rhs"))?;
+                if let Some((store, children)) = input.clone().sequence_children() {
+                    let mut out = Vec::new();
+                    for child in children {
+                        let item = InputValue::TreeNode { store, id: child };
+                        if self.evaluate_input_node(item.clone(), rhs)?.truthy()? {
+                            out.push(item.into_owned()?);
+                        }
+                    }
+                    return Ok(InputValue::Owned(EvalValue::Array(out)));
+                }
+            }
+            Length => {
+                if let Some(length) = input.clone().direct_length()? {
+                    return Ok(InputValue::Owned(EvalValue::Number(length as f64)));
+                }
+            }
+            Keys => {
+                if let Some(keys) = input.clone().direct_keys()? {
+                    return Ok(InputValue::Owned(EvalValue::Array(keys)));
+                }
+            }
+            Has => {
+                let lhs = match node.lhs.as_deref() {
+                    Some(lhs_node) => self.evaluate_input_node(input.clone(), lhs_node)?,
+                    None => input.clone(),
+                };
+                let rhs = node
+                    .rhs
+                    .as_deref()
+                    .ok_or(EvaluationError::MissingOperand("rhs"))?;
+                let rhs = self.evaluate_input_node(input.clone(), rhs)?.into_owned()?;
+                if let Some(result) = lhs.clone().direct_has(&rhs)? {
+                    return Ok(InputValue::Owned(EvalValue::Bool(result)));
+                }
+            }
+            _ => {}
+        }
+
+        let owned_input = input.into_owned()?;
+        Ok(InputValue::Owned(
+            self.evaluate_owned_node(&owned_input, node)?,
+        ))
+    }
+
+    fn evaluate_owned_node(
         &self,
         input: &EvalValue,
         node: &ExpressionNode,
@@ -219,7 +407,7 @@ impl AllAtOnceEvaluator {
                     .rhs
                     .as_deref()
                     .ok_or(EvaluationError::MissingOperand("rhs"))?;
-                let value = self.evaluate_node(input, rhs)?;
+                let value = self.evaluate_owned_node(input, rhs)?;
                 Ok(EvalValue::Bool(!value.truthy()))
             }
             Pipe | ShortPipe => {
@@ -231,15 +419,15 @@ impl AllAtOnceEvaluator {
                     .rhs
                     .as_deref()
                     .ok_or(EvaluationError::MissingOperand("rhs"))?;
-                let piped = self.evaluate_node(input, lhs)?;
+                let piped = self.evaluate_owned_node(input, lhs)?;
                 match piped {
                     EvalValue::Array(values) => {
                         if pipe_rhs_consumes_array(rhs) {
-                            return self.evaluate_node(&EvalValue::Array(values), rhs);
+                            return self.evaluate_owned_node(&EvalValue::Array(values), rhs);
                         }
                         let mut out = Vec::new();
                         for value in values {
-                            let result = self.evaluate_node(&value, rhs)?;
+                            let result = self.evaluate_owned_node(&value, rhs)?;
                             if matches!(rhs.operation.operation_type.id, Select | Filter)
                                 && result == EvalValue::Null
                             {
@@ -255,7 +443,7 @@ impl AllAtOnceEvaluator {
                         {
                             return Ok(EvalValue::Array(Vec::new()));
                         }
-                        self.evaluate_node(&value, rhs)
+                        self.evaluate_owned_node(&value, rhs)
                     }
                 }
             }
@@ -268,8 +456,8 @@ impl AllAtOnceEvaluator {
                     .rhs
                     .as_deref()
                     .ok_or(EvaluationError::MissingOperand("rhs"))?;
-                let _ = self.evaluate_node(input, lhs)?;
-                self.evaluate_node(input, rhs)
+                let _ = self.evaluate_owned_node(input, lhs)?;
+                self.evaluate_owned_node(input, rhs)
             }
             Assign => {
                 let lhs = node
@@ -281,15 +469,15 @@ impl AllAtOnceEvaluator {
                     .as_deref()
                     .ok_or(EvaluationError::MissingOperand("rhs"))?;
                 if node.operation.update_assign {
-                    let current = self.evaluate_node(input, lhs)?;
+                    let current = self.evaluate_owned_node(input, lhs)?;
                     let assigned = match current {
                         EvalValue::Array(values) => EvalValue::Array(
                             values
                                 .iter()
-                                .map(|value| self.evaluate_node(value, rhs))
+                                .map(|value| self.evaluate_owned_node(value, rhs))
                                 .collect::<Result<Vec<_>, _>>()?,
                         ),
-                        value => self.evaluate_node(&value, rhs)?,
+                        value => self.evaluate_owned_node(&value, rhs)?,
                     };
 
                     if is_top_level_array_update_assign(lhs) {
@@ -298,7 +486,7 @@ impl AllAtOnceEvaluator {
 
                     return self.evaluate_assign(input, lhs, assigned);
                 }
-                let assigned = self.evaluate_node(input, rhs)?;
+                let assigned = self.evaluate_owned_node(input, rhs)?;
                 self.evaluate_assign(input, lhs, assigned)
             }
             CreateMap => {
@@ -329,11 +517,11 @@ impl AllAtOnceEvaluator {
             Union => Ok(EvalValue::Array(self.collect_union_items(input, node)?)),
             TraversePath | TraverseArray => {
                 let lhs = match node.lhs.as_deref() {
-                    Some(lhs_node) => self.evaluate_node(input, lhs_node)?,
+                    Some(lhs_node) => self.evaluate_owned_node(input, lhs_node)?,
                     None => input.clone(),
                 };
                 let rhs = match node.rhs.as_deref() {
-                    Some(rhs_node) => self.evaluate_node(input, rhs_node)?,
+                    Some(rhs_node) => self.evaluate_owned_node(input, rhs_node)?,
                     None if node.operation.operation_type.id == TraversePath => {
                         EvalValue::String(node.operation.string_value.clone())
                     }
@@ -349,7 +537,7 @@ impl AllAtOnceEvaluator {
                 match input {
                     EvalValue::Array(values) => values
                         .iter()
-                        .map(|value| self.evaluate_node(value, rhs))
+                        .map(|value| self.evaluate_owned_node(value, rhs))
                         .collect::<Result<Vec<_>, _>>()
                         .map(EvalValue::Array),
                     other => Err(EvaluationError::TypeMismatch {
@@ -366,7 +554,7 @@ impl AllAtOnceEvaluator {
                 match input {
                     EvalValue::Array(values) => values
                         .iter()
-                        .filter_map(|value| match self.evaluate_node(value, rhs) {
+                        .filter_map(|value| match self.evaluate_owned_node(value, rhs) {
                             Ok(result) if result.truthy() => Some(Ok(value.clone())),
                             Ok(_) => None,
                             Err(err) => Some(Err(err)),
@@ -374,7 +562,7 @@ impl AllAtOnceEvaluator {
                         .collect::<Result<Vec<_>, _>>()
                         .map(EvalValue::Array),
                     value => {
-                        let result = self.evaluate_node(value, rhs)?;
+                        let result = self.evaluate_owned_node(value, rhs)?;
                         Ok(if result.truthy() {
                             value.clone()
                         } else {
@@ -392,7 +580,7 @@ impl AllAtOnceEvaluator {
                     EvalValue::Array(values) => {
                         let mut keyed = values
                             .iter()
-                            .map(|value| Ok((self.evaluate_node(value, rhs)?, value.clone())))
+                            .map(|value| Ok((self.evaluate_owned_node(value, rhs)?, value.clone())))
                             .collect::<Result<Vec<_>, EvaluationError>>()?;
                         keyed.sort_by(|(left_key, _), (right_key, _)| {
                             value_sort_key(left_key).cmp(&value_sort_key(right_key))
@@ -416,26 +604,26 @@ impl AllAtOnceEvaluator {
                 ),
             Contains => {
                 let lhs = match node.lhs.as_deref() {
-                    Some(lhs) => self.evaluate_node(input, lhs)?,
+                    Some(lhs) => self.evaluate_owned_node(input, lhs)?,
                     None => input.clone(),
                 };
                 let rhs = node
                     .rhs
                     .as_deref()
                     .ok_or(EvaluationError::MissingOperand("rhs"))?;
-                let rhs = self.evaluate_node(input, rhs)?;
+                let rhs = self.evaluate_owned_node(input, rhs)?;
                 Ok(EvalValue::Bool(self.value_contains(&lhs, &rhs)?))
             }
             Has => {
                 let lhs = match node.lhs.as_deref() {
-                    Some(lhs) => self.evaluate_node(input, lhs)?,
+                    Some(lhs) => self.evaluate_owned_node(input, lhs)?,
                     None => input.clone(),
                 };
                 let rhs = node
                     .rhs
                     .as_deref()
                     .ok_or(EvaluationError::MissingOperand("rhs"))?;
-                let rhs = self.evaluate_node(input, rhs)?;
+                let rhs = self.evaluate_owned_node(input, rhs)?;
                 Ok(EvalValue::Bool(self.value_has(&lhs, &rhs)?))
             }
             Add | Subtract | Multiply | Divide | Modulo | And | Or | Equals | NotEquals
@@ -448,8 +636,8 @@ impl AllAtOnceEvaluator {
                     .rhs
                     .as_deref()
                     .ok_or(EvaluationError::MissingOperand("rhs"))?;
-                let lhs = self.evaluate_node(input, lhs_node)?;
-                let rhs = self.evaluate_node(input, rhs_node)?;
+                let lhs = self.evaluate_owned_node(input, lhs_node)?;
+                let rhs = self.evaluate_owned_node(input, rhs_node)?;
                 self.evaluate_binary(
                     &node.operation.string_value,
                     node.operation.operation_type.id,
@@ -491,7 +679,7 @@ impl AllAtOnceEvaluator {
                 Ok(items)
             }
             OperationId::Empty => Ok(Vec::new()),
-            _ => Ok(vec![self.evaluate_node(input, node)?]),
+            _ => Ok(vec![self.evaluate_owned_node(input, node)?]),
         }
     }
 
@@ -535,12 +723,12 @@ impl AllAtOnceEvaluator {
                     .rhs
                     .as_deref()
                     .ok_or(EvaluationError::MissingOperand("rhs"))?;
-                let key = self.evaluate_node(input, lhs)?;
-                let value = self.evaluate_node(input, rhs)?;
+                let key = self.evaluate_owned_node(input, lhs)?;
+                let value = self.evaluate_owned_node(input, rhs)?;
                 out.insert(value_to_key(&key), value);
                 Ok(())
             }
-            _ => match self.evaluate_node(input, node)? {
+            _ => match self.evaluate_owned_node(input, node)? {
                 EvalValue::Object(values) => {
                     out.extend(values);
                     Ok(())
@@ -559,8 +747,8 @@ impl AllAtOnceEvaluator {
         lhs: &ExpressionNode,
         rhs: &ExpressionNode,
     ) -> Result<EvalValue, EvaluationError> {
-        let key = self.evaluate_node(input, lhs)?;
-        let value = self.evaluate_node(input, rhs)?;
+        let key = self.evaluate_owned_node(input, lhs)?;
+        let value = self.evaluate_owned_node(input, rhs)?;
         Ok(EvalValue::Object(std::collections::BTreeMap::from([(
             value_to_key(&key),
             value,
@@ -577,6 +765,99 @@ impl AllAtOnceEvaluator {
         let path = collect_assign_path(lhs)?;
         assign_path_value(&mut target, &path, assigned)?;
         Ok(target)
+    }
+
+    fn evaluate_tree_backed_traversal<'a>(
+        &self,
+        id: OperationId,
+        lhs: InputValue<'a>,
+        rhs: EvalValue,
+    ) -> Result<InputValue<'a>, EvaluationError> {
+        match id {
+            OperationId::TraversePath => {
+                let key = match rhs {
+                    EvalValue::String(value) => value,
+                    EvalValue::Number(value) if value.fract() == 0.0 => format!("{value:.0}"),
+                    other => {
+                        return Err(EvaluationError::TypeMismatch {
+                            expected: "string",
+                            actual: render_type(&other).to_string(),
+                        });
+                    }
+                };
+                if let Some((store, id)) = lhs.clone().tree_node() {
+                    if let Some(child) = tree_mapping_child(store, id, &key)? {
+                        return Ok(InputValue::TreeNode { store, id: child });
+                    }
+                    if store
+                        .get(id)
+                        .is_some_and(|node| node.kind == TreeNodeKind::Mapping)
+                    {
+                        return Ok(InputValue::Owned(EvalValue::Null));
+                    }
+                }
+                let owned = lhs.into_owned()?;
+                self.evaluate_traversal(id, owned, EvalValue::String(key))
+                    .map(InputValue::Owned)
+            }
+            OperationId::TraverseArray => {
+                if let Some((store, id)) = lhs.clone().tree_node() {
+                    let Some(node) = store.get(id) else {
+                        return Ok(InputValue::Owned(EvalValue::Null));
+                    };
+                    if node.kind == TreeNodeKind::Sequence {
+                        if matches!(rhs, EvalValue::Array(ref values) if values.is_empty()) {
+                            return Ok(InputValue::TreeNode { store, id });
+                        }
+                        if let EvalValue::Number(index) = rhs {
+                            if index.fract() != 0.0 || index < 0.0 {
+                                return Err(EvaluationError::TypeMismatch {
+                                    expected: "non-negative integer",
+                                    actual: index.to_string(),
+                                });
+                            }
+                            return Ok(node
+                                .content
+                                .get(index as usize)
+                                .copied()
+                                .map(|child| InputValue::TreeNode { store, id: child })
+                                .unwrap_or(InputValue::Owned(EvalValue::Null)));
+                        }
+                        if let EvalValue::Array(indices) = rhs {
+                            let mut selected = Vec::with_capacity(indices.len());
+                            for index_value in indices {
+                                let index = index_value.as_number()?;
+                                if index.fract() != 0.0 || index < 0.0 {
+                                    return Err(EvaluationError::TypeMismatch {
+                                        expected: "non-negative integer",
+                                        actual: index.to_string(),
+                                    });
+                                }
+                                selected.push(
+                                    node.content
+                                        .get(index as usize)
+                                        .copied()
+                                        .map(|child| tree_node_to_value(store, child))
+                                        .transpose()?
+                                        .unwrap_or(EvalValue::Null),
+                                );
+                            }
+                            return Ok(InputValue::Owned(if selected.len() == 1 {
+                                selected.into_iter().next().unwrap_or(EvalValue::Null)
+                            } else {
+                                EvalValue::Array(selected)
+                            }));
+                        }
+                    }
+                }
+                let owned = lhs.into_owned()?;
+                self.evaluate_traversal(id, owned, rhs)
+                    .map(InputValue::Owned)
+            }
+            _ => Err(EvaluationError::UnsupportedOperation(
+                id.as_str().to_string(),
+            )),
+        }
     }
 
     fn evaluate_traversal(
@@ -991,6 +1272,141 @@ impl AllAtOnceEvaluator {
     }
 }
 
+#[derive(Clone)]
+enum InputValue<'a> {
+    TreeNode {
+        store: &'a CoreTreeStore,
+        id: NodeId,
+    },
+    Owned(EvalValue),
+}
+
+impl<'a> InputValue<'a> {
+    fn tree_node(self) -> Option<(&'a CoreTreeStore, NodeId)> {
+        match self {
+            InputValue::TreeNode { store, id } => Some((store, id)),
+            InputValue::Owned(_) => None,
+        }
+    }
+
+    fn sequence_children(self) -> Option<(&'a CoreTreeStore, Vec<NodeId>)> {
+        let (store, id) = self.tree_node()?;
+        let node = store.get(id)?;
+        (node.kind == TreeNodeKind::Sequence).then(|| (store, node.content.clone()))
+    }
+
+    fn direct_length(self) -> Result<Option<usize>, EvaluationError> {
+        let Some((store, id)) = self.tree_node() else {
+            return Ok(None);
+        };
+        let Some(node) = store.get(id) else {
+            return Ok(Some(0));
+        };
+        let length = match node.kind {
+            TreeNodeKind::Sequence => node.content.len(),
+            TreeNodeKind::Mapping => node.content.len() / 2,
+            TreeNodeKind::Scalar => match store.value_rep_for(id)? {
+                crate::core::tree_node::ValueRep::Nil => 0,
+                crate::core::tree_node::ValueRep::Boolean(_) => 1,
+                crate::core::tree_node::ValueRep::Int(value) => value.to_string().len(),
+                crate::core::tree_node::ValueRep::Float(value) => value.to_string().len(),
+                crate::core::tree_node::ValueRep::Str(value) => value.chars().count(),
+            },
+            TreeNodeKind::Alias | TreeNodeKind::Unknown => return Ok(None),
+        };
+        Ok(Some(length))
+    }
+
+    fn direct_keys(self) -> Result<Option<Vec<EvalValue>>, EvaluationError> {
+        let Some((store, id)) = self.tree_node() else {
+            return Ok(None);
+        };
+        let Some(node) = store.get(id) else {
+            return Ok(Some(Vec::new()));
+        };
+        let keys = match node.kind {
+            TreeNodeKind::Sequence => node
+                .content
+                .iter()
+                .enumerate()
+                .map(|(index, _)| EvalValue::Number(index as f64))
+                .collect(),
+            TreeNodeKind::Mapping => {
+                let mut out = Vec::with_capacity(node.content.len() / 2);
+                for pair in node.content.chunks(2) {
+                    if pair.len() != 2 {
+                        return Err(CoreError::Parse(
+                            crate::core::errors::ParseError::InvalidSyntax,
+                        )
+                        .into());
+                    }
+                    out.push(EvalValue::String(store.value_string_for(pair[0])?));
+                }
+                out
+            }
+            TreeNodeKind::Scalar | TreeNodeKind::Alias | TreeNodeKind::Unknown => return Ok(None),
+        };
+        Ok(Some(keys))
+    }
+
+    fn direct_has(self, rhs: &EvalValue) -> Result<Option<bool>, EvaluationError> {
+        let Some((store, id)) = self.tree_node() else {
+            return Ok(None);
+        };
+        let Some(node) = store.get(id) else {
+            return Ok(Some(false));
+        };
+        match node.kind {
+            TreeNodeKind::Mapping => Ok(Some(
+                tree_mapping_child(store, id, &value_to_key(rhs))?.is_some(),
+            )),
+            TreeNodeKind::Sequence => match rhs {
+                EvalValue::Number(index) if index.fract() == 0.0 && *index >= 0.0 => {
+                    Ok(Some((*index as usize) < node.content.len()))
+                }
+                other => Err(EvaluationError::TypeMismatch {
+                    expected: "non-negative integer",
+                    actual: render_type(other).to_string(),
+                }),
+            },
+            TreeNodeKind::Scalar | TreeNodeKind::Alias | TreeNodeKind::Unknown => Ok(None),
+        }
+    }
+
+    fn truthy(self) -> Result<bool, EvaluationError> {
+        Ok(self.into_owned()?.truthy())
+    }
+
+    fn into_owned(self) -> Result<EvalValue, EvaluationError> {
+        match self {
+            InputValue::TreeNode { store, id } => tree_node_to_value(store, id),
+            InputValue::Owned(value) => Ok(value),
+        }
+    }
+}
+
+fn tree_mapping_child(
+    store: &CoreTreeStore,
+    id: NodeId,
+    key: &str,
+) -> Result<Option<NodeId>, EvaluationError> {
+    let Some(node) = store.get(id) else {
+        return Ok(None);
+    };
+    if node.kind != TreeNodeKind::Mapping {
+        return Ok(None);
+    }
+    for pair in node.content.chunks(2) {
+        if pair.len() != 2 {
+            return Err(CoreError::Parse(crate::core::errors::ParseError::InvalidSyntax).into());
+        }
+        if store.value_string_for(pair[0])? == key {
+            return Ok(Some(pair[1]));
+        }
+    }
+    Ok(None)
+}
+
 fn flatten_values(values: &[EvalValue], out: &mut Vec<EvalValue>, remaining_depth: Option<usize>) {
     for value in values {
         match value {
@@ -1318,14 +1734,17 @@ fn tree_node_to_value(store: &CoreTreeStore, id: NodeId) -> Result<EvalValue, Ev
                         CoreError::Parse(crate::core::errors::ParseError::InvalidSyntax).into(),
                     );
                 }
-                let key = store.get(pair[0]).ok_or(CoreError::Eval(
+                store.get(pair[0]).ok_or(CoreError::Eval(
                     crate::core::errors::EvalError::MissingTreeNode,
                 ))?;
-                out.insert(key.value.clone(), tree_node_to_value(store, pair[1])?);
+                out.insert(
+                    store.value_string_for(pair[0])?,
+                    tree_node_to_value(store, pair[1])?,
+                );
             }
             Ok(EvalValue::Object(out))
         }
-        TreeNodeKind::Scalar => scalar_node_to_value(node),
+        TreeNodeKind::Scalar => scalar_node_to_value(store, id),
         TreeNodeKind::Alias | TreeNodeKind::Unknown => Err(EvaluationError::UnsupportedOperation(
             "tree node".to_string(),
         )),
@@ -1333,24 +1752,28 @@ fn tree_node_to_value(store: &CoreTreeStore, id: NodeId) -> Result<EvalValue, Ev
 }
 
 /// Convert a scalar [`CoreTreeNode`] to an [`EvalValue`].
-fn scalar_node_to_value(node: &CoreTreeNode) -> Result<EvalValue, EvaluationError> {
-    if node.resolved_sem_type() == Some(SemType::Int) && node.value.parse::<i64>().is_err() {
-        return Ok(EvalValue::String(node.value.clone()));
+fn scalar_node_to_value(store: &CoreTreeStore, id: NodeId) -> Result<EvalValue, EvaluationError> {
+    store.get(id).ok_or(CoreError::Eval(
+        crate::core::errors::EvalError::MissingTreeNode,
+    ))?;
+    if store.resolved_sem_type_for(id)? == Some(SemType::Int)
+        && store.value_for(id)?.parse::<i64>().is_err()
+    {
+        return Ok(EvalValue::String(store.value_string_for(id)?));
     }
 
-    match node.get_value_rep() {
-        Ok(crate::core::tree_node::ValueRep::Nil) => Ok(EvalValue::Null),
-        Ok(crate::core::tree_node::ValueRep::Boolean(value)) => Ok(EvalValue::Bool(value)),
-        Ok(crate::core::tree_node::ValueRep::Int(value)) => Ok(EvalValue::Number(value as f64)),
-        Ok(crate::core::tree_node::ValueRep::Float(value)) => Ok(EvalValue::Number(value)),
-        Ok(crate::core::tree_node::ValueRep::Str(value)) => {
-            if node.resolved_sem_type() == Some(SemType::Nil) {
+    match store.value_rep_for(id)? {
+        crate::core::tree_node::ValueRep::Nil => Ok(EvalValue::Null),
+        crate::core::tree_node::ValueRep::Boolean(value) => Ok(EvalValue::Bool(value)),
+        crate::core::tree_node::ValueRep::Int(value) => Ok(EvalValue::Number(value as f64)),
+        crate::core::tree_node::ValueRep::Float(value) => Ok(EvalValue::Number(value)),
+        crate::core::tree_node::ValueRep::Str(value) => {
+            if store.resolved_sem_type_for(id)? == Some(SemType::Nil) {
                 Ok(EvalValue::Null)
             } else {
                 Ok(EvalValue::String(value))
             }
         }
-        Err(e) => Err(EvaluationError::Core(e)),
     }
 }
 
@@ -1360,122 +1783,105 @@ pub(super) fn value_to_tree_node(
     store: &mut CoreTreeStore,
     value: &EvalValue,
 ) -> Result<NodeId, EvaluationError> {
+    let root_id = store.add(shallow_tree_node_for_value(value));
+    populate_tree_children(store, root_id, value)?;
+    Ok(root_id)
+}
+
+fn shallow_tree_node_for_value(value: &EvalValue) -> CoreTreeNode {
     match value {
-        EvalValue::Null => {
-            let node = CoreTreeNode::scalar(SemType::Nil, "null");
-            Ok(store.add(node))
-        }
-        EvalValue::Bool(v) => {
-            let node = CoreTreeNode::scalar(SemType::Boolean, v.to_string());
-            Ok(store.add(node))
-        }
+        EvalValue::Null => CoreTreeNode::scalar(SemType::Nil, "null"),
+        EvalValue::Bool(v) => CoreTreeNode::scalar(SemType::Boolean, v.to_string()),
         EvalValue::Number(v) => {
             if v.fract() == 0.0 {
-                let node = CoreTreeNode::scalar(SemType::Int, (*v as i64).to_string());
-                Ok(store.add(node))
+                CoreTreeNode::scalar(SemType::Int, (*v as i64).to_string())
             } else {
-                let node = CoreTreeNode::scalar(SemType::Float, v.to_string());
-                Ok(store.add(node))
+                CoreTreeNode::scalar(SemType::Float, v.to_string())
             }
         }
-        EvalValue::String(v) => {
-            let node = CoreTreeNode::scalar(SemType::Str, v.clone());
-            Ok(store.add(node))
-        }
+        EvalValue::String(v) => CoreTreeNode::scalar(SemType::Str, v.clone()),
+        EvalValue::Array(_) => CoreTreeNode {
+            kind: TreeNodeKind::Sequence,
+            sem_type: Some(SemType::Seq),
+            tag: CompactTag::from_sem_type(SemType::Seq),
+            ..CoreTreeNode::default()
+        },
+        EvalValue::Object(_) => CoreTreeNode {
+            kind: TreeNodeKind::Mapping,
+            sem_type: Some(SemType::Map),
+            tag: CompactTag::from_sem_type(SemType::Map),
+            ..CoreTreeNode::default()
+        },
+    }
+}
+
+fn populate_tree_children(
+    store: &mut CoreTreeStore,
+    parent_id: NodeId,
+    value: &EvalValue,
+) -> Result<(), EvaluationError> {
+    match value {
         EvalValue::Array(values) => {
-            let parent_id = store.add(CoreTreeNode {
-                kind: TreeNodeKind::Sequence,
-                sem_type: Some(SemType::Seq),
-                tag: SemType::Seq.to_string(),
-                ..CoreTreeNode::default()
-            });
-            for v in values {
-                let child_id = value_to_tree_node(store, v)?;
-                let child = store
-                    .get(child_id)
-                    .ok_or(CoreError::Eval(
-                        crate::core::errors::EvalError::MissingTreeNode,
-                    ))?
-                    .clone();
-                store
-                    .add_child(parent_id, child)
-                    .map_err(|e| EvaluationError::Core(e))?;
+            for value in values {
+                let child_id = store
+                    .add_child(parent_id, shallow_tree_node_for_value(value))
+                    .map_err(EvaluationError::Core)?;
+                populate_tree_children(store, child_id, value)?;
             }
-            Ok(parent_id)
+            Ok(())
         }
         EvalValue::Object(values) => {
-            let parent_id = store.add(CoreTreeNode {
-                kind: TreeNodeKind::Mapping,
-                sem_type: Some(SemType::Map),
-                tag: SemType::Map.to_string(),
-                ..CoreTreeNode::default()
-            });
-            for (k, v) in values {
-                let key_node = CoreTreeNode::scalar(SemType::Str, k.clone());
-                let value_id = value_to_tree_node(store, v)?;
-                let value_node = store
-                    .get(value_id)
-                    .ok_or(CoreError::Eval(
-                        crate::core::errors::EvalError::MissingTreeNode,
-                    ))?
-                    .clone();
-                store
-                    .add_key_value_child(parent_id, key_node, value_node)
-                    .map_err(|e| EvaluationError::Core(e))?;
+            for (key, value) in values {
+                let key_node = CoreTreeNode::scalar(SemType::Str, key.clone());
+                let (_, value_id) = store
+                    .add_key_value_child(parent_id, key_node, shallow_tree_node_for_value(value))
+                    .map_err(EvaluationError::Core)?;
+                populate_tree_children(store, value_id, value)?;
             }
-            Ok(parent_id)
+            Ok(())
+        }
+        EvalValue::Null | EvalValue::Bool(_) | EvalValue::Number(_) | EvalValue::String(_) => {
+            Ok(())
         }
     }
-}
-
-/// Merge all nodes from `source_store` into `target_store`, returning the
-/// new [`NodeId`] for what was `source_root`.
-///
-/// This is a deep clone that recursively copies the tree rooted at
-/// `source_root` from `source_store` into `target_store`.
-fn merge_decoded_document(
-    target_store: &mut CoreTreeStore,
-    source_store: &CoreTreeStore,
-    source_root: NodeId,
-) -> NodeId {
-    merge_node_recursive(target_store, source_store, source_root)
-}
-
-fn merge_node_recursive(
-    target_store: &mut CoreTreeStore,
-    source_store: &CoreTreeStore,
-    source_id: NodeId,
-) -> NodeId {
-    let source_node = match source_store.get(source_id) {
-        Some(n) => n,
-        None => return target_store.add(CoreTreeNode::default()),
-    };
-
-    let mut new_node = source_node.clone();
-    // Save children and clear them so we can re-add with new IDs.
-    let children = std::mem::take(&mut new_node.content);
-    let new_id = target_store.add(new_node);
-
-    for child_id in children {
-        let new_child_id = merge_node_recursive(target_store, source_store, child_id);
-        // Push the child's ID directly to the parent's content.
-        if let Some(parent) = target_store.get_mut(new_id) {
-            parent.content.push(new_child_id);
-        }
-        // Update the child's parent reference.
-        if let Some(child) = target_store.get_mut(new_child_id) {
-            child.parent = Some(new_id);
-        }
-    }
-
-    new_id
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::core::CodecService;
+    use crate::core::{
+        Context as CoreContext, CoreError, SystemError, VecPrinterWriter,
+        printer::Encoder as PrintEncoder,
+    };
     use crate::evaluator::Value;
+    use crate::formats::{Encode, JsonEncoder};
     use crate::parser::parse_expression;
+    use std::collections::BTreeMap;
+
+    struct TestPrinterEncoder(JsonEncoder);
+
+    impl PrintEncoder for TestPrinterEncoder {
+        fn encode(
+            &self,
+            ctx: &mut CoreContext,
+            node: NodeId,
+            writer: &mut dyn std::io::Write,
+        ) -> Result<(), CoreError> {
+            let store = ctx
+                .current_print_store()
+                .ok_or(CoreError::System(SystemError::Error))?;
+            self.0.encode(store, node, writer)
+        }
+
+        fn encode_evaluated_value(
+            &self,
+            value: &crate::evaluator::Value,
+            writer: &mut dyn std::io::Write,
+        ) -> Result<bool, CoreError> {
+            self.0.encode_evaluated_value(value, writer)
+        }
+    }
 
     #[test]
     fn evaluates_basic_arithmetic() {
@@ -1487,5 +1893,143 @@ mod tests {
             .expect("evaluation should succeed");
 
         assert_eq!(value, Value::Number(7.0));
+    }
+
+    #[test]
+    fn value_to_tree_node_builds_dense_tree_without_orphans() {
+        let mut inner = BTreeMap::new();
+        inner.insert("c".to_string(), Value::String("x".to_string()));
+
+        let mut root = BTreeMap::new();
+        root.insert(
+            "a".to_string(),
+            Value::Array(vec![Value::Number(1.0), Value::Number(2.0)]),
+        );
+        root.insert("b".to_string(), Value::Object(inner));
+
+        let value = Value::Object(root);
+        let mut store = CoreTreeStore::new();
+        let root_id = value_to_tree_node(&mut store, &value).expect("tree should build");
+
+        let mut reachable = Vec::new();
+        collect_reachable_ids(&store, root_id, &mut reachable);
+        reachable.sort_by_key(|id| id.0);
+        reachable.dedup_by_key(|id| id.0);
+
+        assert_eq!(store.len(), 9);
+        assert_eq!(reachable.len(), store.len());
+        for node_id in reachable.into_iter().filter(|id| *id != root_id) {
+            let node = store.get(node_id).expect("reachable node should exist");
+            assert!(
+                node.parent.is_some(),
+                "node {node_id:?} should have a parent"
+            );
+        }
+    }
+
+    fn collect_reachable_ids(store: &CoreTreeStore, node_id: NodeId, out: &mut Vec<NodeId>) {
+        out.push(node_id);
+        let children = store
+            .get(node_id)
+            .expect("reachable node should exist")
+            .content
+            .clone();
+        for child in children {
+            collect_reachable_ids(store, child, out);
+        }
+    }
+
+    #[test]
+    fn evaluate_readers_streams_documents_without_batching_all_inputs() {
+        let mut registry = crate::init().expect("registry should initialize");
+        let result = (|| {
+            let mut ctx = CoreContext::empty(registry.handle());
+            let encoder = TestPrinterEncoder(JsonEncoder::default());
+            let writer = VecPrinterWriter::new();
+            let mut printer = Printer::new(encoder, writer);
+            let codec = CodecService::new();
+            let mut first = std::io::Cursor::new(br#"{"value":1}"#.to_vec());
+            let mut second = std::io::Cursor::new(br#"{"value":2}"#.to_vec());
+            let mut inputs = [
+                Input::new("first.json", Reader::new(&mut first)),
+                Input::new("second.json", Reader::new(&mut second)),
+            ];
+
+            AllAtOnceEvaluator::new()
+                .evaluate_readers_with_format(
+                    &mut ctx,
+                    ".value",
+                    &mut inputs,
+                    &mut printer,
+                    &codec,
+                    Some("json"),
+                )
+                .expect("reader evaluation should succeed");
+
+            let output = String::from_utf8(printer.into_writer().into_bytes())
+                .expect("output should be utf-8");
+            assert_eq!(output, "12");
+            Ok::<(), CoreError>(())
+        })();
+        crate::deinit(&mut registry);
+        result.expect("test body should succeed");
+    }
+
+    #[test]
+    fn evaluate_tree_into_skips_unrelated_unknown_subtrees_after_tree_backed_traversal() {
+        let expression = parse_expression(".target")
+            .expect("parse should succeed")
+            .expect("expression should exist");
+
+        let mut store = CoreTreeStore::new();
+        let root_id = store.add(CoreTreeNode {
+            kind: TreeNodeKind::Mapping,
+            sem_type: Some(SemType::Map),
+            tag: CompactTag::from_sem_type(SemType::Map),
+            ..CoreTreeNode::default()
+        });
+        let target_key = store.add(CoreTreeNode::scalar(SemType::Str, "target"));
+        let target_value = store.add(CoreTreeNode {
+            kind: TreeNodeKind::Sequence,
+            sem_type: Some(SemType::Seq),
+            tag: CompactTag::from_sem_type(SemType::Seq),
+            parent: Some(root_id),
+            ..CoreTreeNode::default()
+        });
+        let first_item = store.add(CoreTreeNode::scalar(SemType::Int, "1"));
+        let second_item = store.add(CoreTreeNode::scalar(SemType::Int, "2"));
+        let broken_key = store.add(CoreTreeNode::scalar(SemType::Str, "broken"));
+        let broken_value = store.add(CoreTreeNode {
+            kind: TreeNodeKind::Unknown,
+            parent: Some(root_id),
+            ..CoreTreeNode::default()
+        });
+
+        store.get_mut(root_id).expect("root exists").content =
+            vec![target_key, target_value, broken_key, broken_value];
+        store.get_mut(target_key).expect("target key exists").parent = Some(root_id);
+        store
+            .get_mut(target_value)
+            .expect("target value exists")
+            .content = vec![first_item, second_item];
+        store.get_mut(first_item).expect("first item exists").parent = Some(target_value);
+        store
+            .get_mut(second_item)
+            .expect("second item exists")
+            .parent = Some(target_value);
+        store.get_mut(broken_key).expect("broken key exists").parent = Some(root_id);
+
+        let mut values = Vec::new();
+        AllAtOnceEvaluator::new()
+            .evaluate_tree_into(&store, root_id, Some(&expression), |value| {
+                values.push(value);
+                Ok(())
+            })
+            .expect("tree-backed evaluation should succeed");
+
+        assert_eq!(
+            values,
+            vec![Value::Array(vec![Value::Number(1.0), Value::Number(2.0)])]
+        );
     }
 }

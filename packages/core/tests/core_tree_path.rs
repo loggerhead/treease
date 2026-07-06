@@ -46,8 +46,10 @@ fn node_with_span(
     store.add(TreeNode {
         kind,
         sem_type,
-        tag: sem_type.map(|s| s.to_string()).unwrap_or_default(),
-        value: value.to_string(),
+        tag: sem_type
+            .map(treease_core::core::CompactTag::from_sem_type)
+            .unwrap_or_default(),
+        value: value.to_string().into(),
         start_byte,
         end_byte,
         ..TreeNode::default()
@@ -243,13 +245,9 @@ fn tree_path_index_resolves_value_and_key_nodes_without_string_leaks() {
         .key_node(&target_path)
         .expect("target key node should be indexed");
 
-    let value = decoded
-        .store
-        .get(value_id)
-        .expect("value node should exist");
     let key = decoded.store.get(key_id).expect("key node should exist");
-    assert_eq!(value.value, "old");
-    assert_eq!(key.value, "target");
+    assert_eq!(decoded.store.value_for(value_id).unwrap(), "old");
+    assert_eq!(decoded.store.value_for(key_id).unwrap(), "target");
     assert!(key.is_map_key);
 
     let indexed_path = index
@@ -311,8 +309,8 @@ fn find_node_by_path_with_index_resolves_value_and_key() {
         find_node_by_path_with_index(decoded.root, &path, true, &decoded.store, Some(&index))
             .expect("indexed key lookup should resolve");
 
-    assert_eq!(decoded.store.get(value_id).unwrap().value, "old");
-    assert_eq!(decoded.store.get(key_id).unwrap().value, "target");
+    assert_eq!(decoded.store.value_for(value_id).unwrap(), "old");
+    assert_eq!(decoded.store.value_for(key_id).unwrap(), "target");
     assert!(decoded.store.get(key_id).unwrap().is_map_key);
 }
 

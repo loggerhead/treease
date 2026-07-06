@@ -2,7 +2,8 @@ use std::collections::HashMap;
 
 use super::tree_patch::TreePatch;
 use crate::core::{
-    CoreError, NodeId, ParseError, SemType, StructuralSpanIndex, TreeNode, TreeNodeKind, TreeStore,
+    CommentBlock, CompactTag, CoreError, NodeExtra, NodeId, ParseError, SemType,
+    StructuralSpanIndex, TreeNode, TreeNodeKind, TreeStore,
 };
 use crate::formats::DecodedDocument;
 
@@ -26,7 +27,7 @@ pub struct Builder {
     /// When Some, every structural push also records the corresponding patch.
     /// Drained with take_patches().
     patch_buffer: Option<Vec<TreePatch>>,
-    span_index: StructuralSpanIndex,
+    span_index: Option<StructuralSpanIndex>,
 }
 
 impl Default for Builder {
@@ -41,7 +42,7 @@ impl Default for Builder {
             parse_errors: Vec::new(),
             anchors: HashMap::new(),
             patch_buffer: None,
-            span_index: StructuralSpanIndex::default(),
+            span_index: None,
         }
     }
 }
@@ -73,6 +74,12 @@ impl Builder {
             .unwrap_or_default()
     }
 
+    pub fn enable_span_index(&mut self) {
+        if self.span_index.is_none() {
+            self.span_index = Some(StructuralSpanIndex::default());
+        }
+    }
+
     /// Consumes the builder and returns the constructed document.
     /// Returns an error if no root was built or if parse errors were collected.
     pub fn into_document(self) -> Result<DecodedDocument, CoreError> {
@@ -96,8 +103,8 @@ impl Builder {
     }
 
     /// Returns the incrementally-maintained structural span index.
-    pub fn span_index(&self) -> &StructuralSpanIndex {
-        &self.span_index
+    pub fn span_index(&self) -> Option<&StructuralSpanIndex> {
+        self.span_index.as_ref()
     }
 
     /// Called after a scalar node is attached (currently a no-op but kept
@@ -122,6 +129,11 @@ impl Builder {
                 self.current_document = meta.document;
                 self.current_filename = meta.filename.clone();
                 self.current_file_index = meta.file_index;
+                self.store.set_document_meta(
+                    self.current_document,
+                    self.current_filename.clone(),
+                    self.current_file_index,
+                );
                 Ok(())
             }
             StreamingEvent::DocEnd(_) => Ok(()),
@@ -129,6 +141,7 @@ impl Builder {
                 let id =
                     self.store
                         .add(self.container_node(TreeNodeKind::Mapping, SemType::Map, meta));
+                self.apply_meta_to_node(id, meta, None)?;
                 self.register_anchor(id, meta);
                 self.attach_value(id)?;
                 let (parent, key, sequence_index) = self.node_patch_attachment(id);
@@ -187,6 +200,7 @@ impl Builder {
                 key.is_map_key = true;
                 key.parent = Some(parent_id);
                 let key_id = self.store.add(key);
+                self.apply_meta_to_node(key_id, meta, None)?;
                 if let Some(frame) = self.stack.last_mut() {
                     frame.pending_key = Some(key_id);
                 }
@@ -229,11 +243,13 @@ impl Builder {
                     &scalar_value(value, sem_type),
                     meta,
                 ));
+                self.apply_meta_to_node(id, meta, None)?;
                 self.register_anchor(id, meta);
                 self.attach_value(id)?;
                 self.record_scalar_path(id);
-                self.span_index
-                    .insert_scalar(id, meta.start_byte, meta.end_byte);
+                if let Some(span_index) = self.span_index.as_mut() {
+                    span_index.insert_scalar(id, meta.start_byte, meta.end_byte);
+                }
                 let (parent, key, sequence_index) = self.node_patch_attachment(id);
                 self.emit_patch(TreePatch::NodeInserted {
                     node_id: id,
@@ -261,21 +277,16 @@ impl Builder {
                 let node = self.store.add(TreeNode {
                     kind: TreeNodeKind::Alias,
                     sem_type: None,
-                    tag: meta.tag.clone(),
+                    tag: compact_tag_or_default(meta, SemType::Str),
                     value: resolved_value,
                     start_byte: meta.start_byte,
                     end_byte: meta.end_byte,
-                    anchor: anchor.clone(),
-                    head_comment: meta.head_comment.clone(),
-                    line_comment: meta.line_comment.clone(),
-                    foot_comment: meta.foot_comment.clone(),
                     document: self.meta_document(meta),
-                    filename: self.meta_filename(meta),
                     line: meta.line,
                     column: meta.column,
-                    file_index: self.meta_file_index(meta),
                     ..TreeNode::default()
                 });
+                self.apply_meta_to_node(node, meta, Some(anchor.as_str()))?;
                 self.attach_value(node)
             }
             StreamingEvent::ParseError { message, .. } => {
@@ -329,13 +340,13 @@ impl Builder {
                     .get(frame.id)
                     .ok_or_else(|| CoreError::Parse(ParseError::InvalidSyntax))?
                     .content
-                    .len() as i64;
+                    .len() as u32;
                 let value = self
                     .store
                     .get_mut(node)
                     .ok_or_else(|| CoreError::Parse(ParseError::InvalidSyntax))?;
                 value.parent = Some(frame.id);
-                value.sequence_index = Some(sequence_index);
+                value.set_sequence_index(Some(sequence_index));
                 self.store
                     .get_mut(frame.id)
                     .ok_or_else(|| CoreError::Parse(ParseError::InvalidSyntax))?
@@ -357,8 +368,8 @@ impl Builder {
                         .get_mut(node)
                         .ok_or_else(|| CoreError::Parse(ParseError::InvalidSyntax))?;
                     value.parent = Some(frame.id);
-                    value.key = Some(pending_key);
-                    value.sequence_index = None;
+                    value.set_key(Some(pending_key));
+                    value.set_sequence_index(None);
                 }
                 let map = self
                     .store
@@ -378,52 +389,78 @@ impl Builder {
         };
         (
             node.parent,
-            node.key,
-            node.sequence_index
+            node.key(),
+            node.sequence_index()
                 .and_then(|index| u32::try_from(index).ok()),
         )
     }
 
     fn container_node(&self, kind: TreeNodeKind, sem_type: SemType, meta: &Meta) -> TreeNode {
-        TreeNode {
+        let mut node = TreeNode {
             kind,
-            sequence_closed: kind != TreeNodeKind::Sequence,
             sem_type: Some(sem_type),
-            tag: tag_or_default(meta, sem_type),
+            tag: compact_tag_or_default(meta, sem_type),
             start_byte: meta.start_byte,
             end_byte: meta.end_byte,
-            anchor: meta.anchor.clone(),
-            head_comment: meta.head_comment.clone(),
-            line_comment: meta.line_comment.clone(),
-            foot_comment: meta.foot_comment.clone(),
             document: self.meta_document(meta),
-            filename: self.meta_filename(meta),
             line: meta.line,
             column: meta.column,
-            file_index: self.meta_file_index(meta),
             ..TreeNode::default()
-        }
+        };
+        node.set_sequence_closed(kind != TreeNodeKind::Sequence);
+        node
     }
 
     fn scalar_node(&self, sem_type: SemType, value: &str, meta: &Meta) -> TreeNode {
         TreeNode {
             kind: TreeNodeKind::Scalar,
             sem_type: Some(sem_type),
-            tag: tag_or_default(meta, sem_type),
-            value: value.to_owned(),
+            tag: compact_tag_or_default(meta, sem_type),
+            value: value.to_owned().into(),
             start_byte: meta.start_byte,
             end_byte: meta.end_byte,
-            anchor: meta.anchor.clone(),
-            head_comment: meta.head_comment.clone(),
-            line_comment: meta.line_comment.clone(),
-            foot_comment: meta.foot_comment.clone(),
             document: self.meta_document(meta),
-            filename: self.meta_filename(meta),
             line: meta.line,
             column: meta.column,
-            file_index: self.meta_file_index(meta),
             ..TreeNode::default()
         }
+    }
+
+    fn apply_meta_to_node(
+        &mut self,
+        node: NodeId,
+        meta: &Meta,
+        anchor_override: Option<&str>,
+    ) -> Result<(), CoreError> {
+        let document = self.meta_document(meta);
+        let filename = self.meta_filename(meta);
+        let file_index = self.meta_file_index(meta);
+        self.store.set_document_meta(document, filename, file_index);
+
+        let anchor = anchor_override.unwrap_or(meta.anchor.as_str());
+        let extra = NodeExtra {
+            anchor: (!anchor.is_empty()).then(|| Box::new(anchor.to_owned())),
+            leading_content: None,
+            comments: {
+                let comments = CommentBlock {
+                    head: (!meta.head_comment.is_empty())
+                        .then(|| Box::new(meta.head_comment.clone())),
+                    line: (!meta.line_comment.is_empty())
+                        .then(|| Box::new(meta.line_comment.clone())),
+                    foot: (!meta.foot_comment.is_empty())
+                        .then(|| Box::new(meta.foot_comment.clone())),
+                };
+                (!comments.is_empty()).then_some(comments)
+            },
+        };
+        if !extra.is_empty() {
+            let extra_id = self.store.add_node_extra(extra);
+            self.store
+                .get_mut(node)
+                .ok_or_else(|| CoreError::Parse(ParseError::InvalidSyntax))?
+                .set_extra(Some(extra_id));
+        }
+        Ok(())
     }
 
     fn update_end_byte(&mut self, node: NodeId, end_byte: u32) -> Result<(), CoreError> {
@@ -433,7 +470,7 @@ impl Builder {
             .ok_or_else(|| CoreError::Parse(ParseError::InvalidSyntax))?;
         node_ref.end_byte = end_byte;
         if node_ref.kind == TreeNodeKind::Sequence {
-            node_ref.sequence_closed = true;
+            node_ref.set_sequence_closed(true);
         }
         Ok(())
     }
@@ -492,6 +529,14 @@ fn tag_or_default(meta: &Meta, sem_type: SemType) -> String {
         sem_type.to_string()
     } else {
         meta.tag.clone()
+    }
+}
+
+fn compact_tag_or_default(meta: &Meta, sem_type: SemType) -> CompactTag {
+    if meta.tag.is_empty() {
+        CompactTag::from_sem_type(sem_type)
+    } else {
+        CompactTag::from_text(meta.tag.clone())
     }
 }
 
@@ -585,5 +630,40 @@ mod tests {
         assert_eq!(scalar_id.0, 3);
         assert_eq!(scalar_parent.0, 2);
         assert_eq!(scalar_sequence_index, 0);
+    }
+
+    #[test]
+    fn tree_builder_does_not_allocate_span_index_by_default() {
+        let events = decode("json", r#"{"a":1,"b":[true,null]}"#).unwrap();
+        let mut builder = Builder::new();
+
+        for event in &events {
+            builder.push(event).unwrap();
+        }
+
+        assert!(builder.span_index().is_none());
+    }
+
+    #[test]
+    fn tree_builder_can_opt_in_span_index_tracking() {
+        let events = decode("json", r#"{"a":1,"b":[true,null]}"#).unwrap();
+        let mut builder = Builder::new();
+        builder.enable_span_index();
+
+        for event in &events {
+            builder.push(event).unwrap();
+        }
+
+        let (store, root) = builder.tree_ref().expect("tree should exist");
+        let entry = get_map_entry(store, root, "a")
+            .unwrap()
+            .expect("entry should exist");
+        let value = store.get(entry.value).expect("value node should exist");
+        let span_index = builder.span_index().expect("span index should be enabled");
+
+        assert_eq!(
+            span_index.find_exact_scalar(value.start_byte, value.end_byte),
+            Some(entry.value)
+        );
     }
 }

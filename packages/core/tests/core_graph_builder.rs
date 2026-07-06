@@ -75,7 +75,7 @@ fn compat_tree_from_core(store: &TreeStore, node_id: treease_core::core::NodeId)
             treease_core::core::TreeNodeKind::Alias => NodeKind::Alias,
             treease_core::core::TreeNodeKind::Unknown => NodeKind::Unknown,
         },
-        sequence_closed: source.sequence_closed,
+        sequence_closed: source.sequence_closed(),
         sem_type: source.sem_type.map(|sem_type| match sem_type {
             treease_core::core::SemType::Nil => SemType::Nil,
             treease_core::core::SemType::Str => SemType::Str,
@@ -85,27 +85,39 @@ fn compat_tree_from_core(store: &TreeStore, node_id: treease_core::core::NodeId)
             treease_core::core::SemType::Map => SemType::Map,
             treease_core::core::SemType::Seq => SemType::Seq,
         }),
-        tag: source.tag.clone(),
-        value: source.value.clone(),
+        tag: source.tag.to_string_value(),
+        value: store.value_string_for(node_id).unwrap_or_default(),
         start_byte: source.start_byte,
         end_byte: source.end_byte,
-        anchor: source.anchor.clone(),
-        alias: source.alias.map(|id| CompatNodeId(id.0)),
-        head_comment: source.head_comment.clone(),
-        line_comment: source.line_comment.clone(),
-        foot_comment: source.foot_comment.clone(),
-        parent: source.parent.map(|id| CompatNodeId(id.0)),
-        key: source.key.map(|id| CompatNodeId(id.0)),
-        sequence_index: source.sequence_index,
-        leading_content: source.leading_content.clone(),
+        anchor: store.anchor_for(node_id).unwrap_or_default().to_owned(),
+        alias: source.alias().map(|id| CompatNodeId(id.index())),
+        head_comment: store
+            .head_comment_for(node_id)
+            .unwrap_or_default()
+            .to_owned(),
+        line_comment: store
+            .line_comment_for(node_id)
+            .unwrap_or_default()
+            .to_owned(),
+        foot_comment: store
+            .foot_comment_for(node_id)
+            .unwrap_or_default()
+            .to_owned(),
+        parent: source.parent.map(|id| CompatNodeId(id.index())),
+        key: source.key().map(|id| CompatNodeId(id.index())),
+        sequence_index: source.sequence_index().map(|index| index as i64),
+        leading_content: store
+            .leading_content_for(node_id)
+            .unwrap_or_default()
+            .to_owned(),
         document: source.document,
-        filename: source.filename.clone(),
+        filename: store.filename_for(node_id).unwrap_or_default().to_owned(),
         line: source.line,
         column: source.column,
-        file_index: source.file_index,
+        file_index: store.file_index_for(node_id).unwrap_or_default(),
         is_map_key: source.is_map_key,
-        encode_separate: source.encode_separate,
-        evaluate_together: source.evaluate_together,
+        encode_separate: source.encode_separate(),
+        evaluate_together: source.evaluate_together(),
         ..TreeNode::default()
     };
     out.content = source

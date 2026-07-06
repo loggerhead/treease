@@ -375,7 +375,7 @@ fn build_table_scalar_cell_delta(
     }
 
     let patch_cell_path = impact.cell_path.clone();
-    let patch_cell = cell_from_value_node(&patch_cell_path, affected_id, affected);
+    let patch_cell = cell_from_value_node(new_store, &patch_cell_path, affected_id, affected);
     if patch_cell.path != impact.cell_path {
         return None;
     }
@@ -573,12 +573,13 @@ fn build_header_table_columns(store: &TreeStore, node_id: NodeId) -> Vec<GraphCe
         let mut i = 0;
         while i + 1 < item.content.len() {
             let key_id = item.content[i];
-            let Some(key_node) = store.get(key_id) else {
+            let Some(_key_node) = store.get(key_id) else {
                 i += 2;
                 continue;
             };
-            if seen.insert(key_node.value.clone()) {
-                keys.push(key_node.value.clone());
+            let key_text = store.value_string_for(key_id).unwrap_or_default();
+            if seen.insert(key_text.clone()) {
+                keys.push(key_text);
             }
             i += 2;
         }
@@ -674,14 +675,19 @@ fn is_leaf(node: &super::TreeNode) -> bool {
     node.content.is_empty()
 }
 
-fn cell_from_value_node(path: &[PathSeg], node_id: NodeId, node: &super::TreeNode) -> GraphCell {
+fn cell_from_value_node(
+    store: &TreeStore,
+    path: &[PathSeg],
+    node_id: NodeId,
+    node: &super::TreeNode,
+) -> GraphCell {
     GraphCell {
-        text: node.value.clone(),
+        text: store.value_string_for(node_id).unwrap_or_default(),
         sem_type: node.sem_type.map(|st| st.to_string()),
         path: path.to_vec(),
-        value: node.value.clone(),
+        value: store.value_string_for(node_id).unwrap_or_default(),
         editable: true,
-        source: Some(node_id.0),
+        source: Some(node_id.index()),
         ..Default::default()
     }
 }
@@ -743,16 +749,15 @@ fn graph_path_for_node(store: &TreeStore, id: NodeId) -> Option<Vec<PathSeg>> {
     };
     let mut path = graph_path_for_node(store, parent_id)?;
     if node.is_map_key {
-        path.push(PathSeg::Key(node.value.clone()));
+        path.push(PathSeg::Key(store.value_string_for(id).ok()?));
         return Some(path);
     }
-    if let Some(key_id) = node.key {
-        let key_node = store.get(key_id)?;
-        path.push(PathSeg::Key(key_node.value.clone()));
+    if let Some(key_id) = node.key() {
+        path.push(PathSeg::Key(store.value_string_for(key_id).ok()?));
         return Some(path);
     }
     if let Some(index) = node
-        .sequence_index
+        .sequence_index()
         .and_then(|value| usize::try_from(value).ok())
     {
         path.push(PathSeg::Index(index));
@@ -784,7 +789,7 @@ fn find_map_entry(
         let key_id = node.content[index];
         let value_id = node.content[index + 1];
         let key_node = store.get(key_id)?;
-        if key_node.value == expected_key {
+        if key_node.is_map_key && store.value_for(key_id).ok()? == expected_key {
             return Some((key_id, value_id));
         }
         index += 2;

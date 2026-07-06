@@ -43,24 +43,29 @@ pub fn append_json_string(out: &mut String, value: &str) {
 /// - `Int` writes the parsed integer, falling back to a JSON string
 /// - `Float` writes the parsed float, falling back to a JSON string
 /// - Everything else is written as a JSON string
-pub fn write_scalar_json(_store: &TreeStore, node: &crate::core::TreeNode, out: &mut String) {
-    let sem = node.resolved_sem_type().unwrap_or(SemType::Str);
+pub fn write_scalar_json(store: &TreeStore, node_id: NodeId, out: &mut String) {
+    let sem = store
+        .resolved_sem_type_for(node_id)
+        .ok()
+        .flatten()
+        .unwrap_or(SemType::Str);
+    let value = store.value_for(node_id).unwrap_or_default();
     match sem {
         SemType::Nil => out.push_str("null"),
-        SemType::Boolean => match crate::core::core_helpers::parse_bool(&node.value) {
+        SemType::Boolean => match crate::core::core_helpers::parse_bool(value) {
             Some(true) => out.push_str("true"),
             Some(false) => out.push_str("false"),
-            None => append_json_string(out, &node.value),
+            None => append_json_string(out, value),
         },
-        SemType::Int => match node.value.parse::<i64>() {
+        SemType::Int => match value.parse::<i64>() {
             Ok(parsed) => out.push_str(&parsed.to_string()),
-            Err(_) => append_json_string(out, &node.value),
+            Err(_) => append_json_string(out, value),
         },
-        SemType::Float => match node.value.parse::<f64>() {
+        SemType::Float => match value.parse::<f64>() {
             Ok(parsed) => out.push_str(&parsed.to_string()),
-            Err(_) => append_json_string(out, &node.value),
+            Err(_) => append_json_string(out, value),
         },
-        _ => append_json_string(out, &node.value),
+        _ => append_json_string(out, value),
     }
 }
 
@@ -90,19 +95,18 @@ pub fn write_tree_node_json(store: &TreeStore, id: NodeId, out: &mut String) -> 
             out.push('{');
             let mut first = true;
             for pair in node.content.chunks_exact(2) {
-                let key_node = store.get(pair[0])?;
                 if !first {
                     out.push(',');
                 }
                 first = false;
-                append_json_string(out, &key_node.value);
+                append_json_string(out, store.value_for(pair[0]).unwrap_or_default());
                 out.push(':');
                 write_tree_node_json(store, pair[1], out)?;
             }
             out.push('}');
         }
         TreeNodeKind::Alias | TreeNodeKind::Scalar | TreeNodeKind::Unknown => {
-            write_scalar_json(store, node, out);
+            write_scalar_json(store, id, out);
         }
     }
     Some(())

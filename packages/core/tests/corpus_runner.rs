@@ -200,6 +200,14 @@ fn decode(
     }
 }
 
+fn store_value_string(store: &TreeStore, id: CoreNodeId) -> String {
+    store.value_string_for(id).unwrap_or_default()
+}
+
+fn store_value_rep(store: &TreeStore, id: CoreNodeId) -> Result<ValueRep, CoreError> {
+    store.value_rep_for(id)
+}
+
 fn core_tree_to_compat(store: &TreeStore, root: CoreNodeId) -> Result<OpTreeNode, CoreError> {
     let source = store.get(root).ok_or(CoreError::Eval(
         treease_core::core::EvalError::MissingTreeNode,
@@ -222,29 +230,36 @@ fn core_tree_to_compat(store: &TreeStore, root: CoreNodeId) -> Result<OpTreeNode
 
     let mut out = OpTreeNode {
         kind,
-        sequence_closed: source.sequence_closed,
+        sequence_closed: source.sequence_closed(),
         sem_type,
-        tag: source.tag.clone(),
-        value: source.value.clone(),
-        anchor: source.anchor.clone(),
-        alias: source.alias.map(|id| treease_core::operators::NodeId(id.0)),
-        head_comment: source.head_comment.clone(),
-        line_comment: source.line_comment.clone(),
-        foot_comment: source.foot_comment.clone(),
+        tag: source.tag.to_string_value(),
+        value: store_value_string(store, root),
+        anchor: store.anchor_for(root).unwrap_or_default().to_owned(),
+        alias: source
+            .alias()
+            .map(|id| treease_core::operators::NodeId(id.index())),
+        head_comment: store.head_comment_for(root).unwrap_or_default().to_owned(),
+        line_comment: store.line_comment_for(root).unwrap_or_default().to_owned(),
+        foot_comment: store.foot_comment_for(root).unwrap_or_default().to_owned(),
         parent: source
             .parent
-            .map(|id| treease_core::operators::NodeId(id.0)),
-        key: source.key.map(|id| treease_core::operators::NodeId(id.0)),
-        sequence_index: source.sequence_index,
-        leading_content: String::new(),
+            .map(|id| treease_core::operators::NodeId(id.index())),
+        key: source
+            .key()
+            .map(|id| treease_core::operators::NodeId(id.index())),
+        sequence_index: source.sequence_index().map(|index| index as i64),
+        leading_content: store
+            .leading_content_for(root)
+            .unwrap_or_default()
+            .to_owned(),
         document: 0,
         filename: String::new(),
         line: 0,
         column: 0,
         file_index: 0,
         is_map_key: source.is_map_key,
-        encode_separate: source.encode_separate,
-        evaluate_together: source.evaluate_together,
+        encode_separate: source.encode_separate(),
+        evaluate_together: source.evaluate_together(),
         ..OpTreeNode::default()
     };
     out.content = source
@@ -309,25 +324,31 @@ fn json_oracle_escape_string(value: &str) -> String {
     out
 }
 
-fn json_oracle_write_scalar(node: &treease_core::core::TreeNode, out: &mut String) {
+fn json_oracle_write_scalar(
+    store: &TreeStore,
+    node_id: CoreNodeId,
+    node: &treease_core::core::TreeNode,
+    out: &mut String,
+) {
+    let value = store.value_for(node_id).unwrap_or_default();
     match node.resolved_sem_type() {
         Some(CoreSemType::Boolean) => {
-            out.push_str(if node.value.eq_ignore_ascii_case("true") {
+            out.push_str(if value.eq_ignore_ascii_case("true") {
                 "true"
             } else {
                 "false"
             });
         }
-        Some(CoreSemType::Int | CoreSemType::Float) => out.push_str(&node.value),
+        Some(CoreSemType::Int | CoreSemType::Float) => out.push_str(value),
         Some(CoreSemType::Nil) => out.push_str("null"),
-        Some(CoreSemType::Str) => out.push_str(&json_oracle_escape_string(&node.value)),
-        Some(CoreSemType::Map | CoreSemType::Seq) | None => match node.get_value_rep() {
+        Some(CoreSemType::Str) => out.push_str(&json_oracle_escape_string(value)),
+        Some(CoreSemType::Map | CoreSemType::Seq) | None => match store_value_rep(store, node_id) {
             Ok(ValueRep::Nil) => out.push_str("null"),
             Ok(ValueRep::Boolean(value)) => out.push_str(if value { "true" } else { "false" }),
             Ok(ValueRep::Int(value)) => out.push_str(&value.to_string()),
             Ok(ValueRep::Float(value)) => out.push_str(&value.to_string()),
             Ok(ValueRep::Str(value)) => out.push_str(&json_oracle_escape_string(&value)),
-            Err(_) => out.push_str(&json_oracle_escape_string(&node.value)),
+            Err(_) => out.push_str(&json_oracle_escape_string(value)),
         },
     }
 }
@@ -341,9 +362,9 @@ fn json_oracle_write_node(
         .get(node_id)
         .ok_or_else(|| format!("missing tree node for oracle encode: {:?}", node_id))?;
     match node.kind {
-        CoreTreeNodeKind::Scalar => json_oracle_write_scalar(node, out),
+        CoreTreeNodeKind::Scalar => json_oracle_write_scalar(store, node_id, node, out),
         CoreTreeNodeKind::Alias => {
-            if let Some(alias) = node.alias {
+            if let Some(alias) = node.alias() {
                 json_oracle_write_node(store, alias, out)?;
             } else {
                 out.push_str("null");
@@ -365,10 +386,12 @@ fn json_oracle_write_node(
                 if index > 0 {
                     out.push(',');
                 }
-                let key = store.get(pair[0]).ok_or_else(|| {
+                store.get(pair[0]).ok_or_else(|| {
                     format!("missing mapping key node for oracle encode: {:?}", pair[0])
                 })?;
-                out.push_str(&json_oracle_escape_string(&key.value));
+                out.push_str(&json_oracle_escape_string(
+                    store.value_for(pair[0]).unwrap_or_default(),
+                ));
                 out.push(':');
                 json_oracle_write_node(store, pair[1], out)?;
             }
@@ -703,39 +726,41 @@ fn oracle_parsed_key_for(store: &TreeStore, id: CoreNodeId) -> Option<Option<Par
     if node.is_map_key {
         return Some(Some(ParsedKey::Str(oracle_key_text(store, id))));
     }
-    if let Some(key_id) = node.key {
+    if let Some(key_id) = node.key() {
         let key_node = store.get(key_id)?;
         if key_node.resolved_sem_type() == Some(CoreSemType::Str)
             || key_node.kind == CoreTreeNodeKind::Alias
         {
             return Some(Some(ParsedKey::Str(oracle_key_text(store, key_id))));
         }
-        return Some(Some(match key_node.value.parse::<i64>() {
+        return Some(Some(match store.value_for(key_id).ok()?.parse::<i64>() {
             Ok(index) => ParsedKey::Int(index),
             Err(_) => ParsedKey::Str(oracle_key_text(store, key_id)),
         }));
     }
-    if let Some(index) = node.sequence_index {
-        return Some(Some(ParsedKey::Int(index)));
+    if let Some(index) = node.sequence_index() {
+        return Some(Some(ParsedKey::Int(index as i64)));
     }
     Some(None)
 }
 
 fn oracle_key_text(store: &TreeStore, id: CoreNodeId) -> String {
-    resolved_alias_node(store, id)
-        .map(|node| node.value.clone())
-        .unwrap_or_default()
+    store_value_string(store, resolved_alias_id(store, id).unwrap_or(id))
 }
 
 fn resolved_alias_node(store: &TreeStore, id: CoreNodeId) -> Option<&treease_core::core::TreeNode> {
+    store.get(resolved_alias_id(store, id)?)
+}
+
+fn resolved_alias_id(store: &TreeStore, id: CoreNodeId) -> Option<CoreNodeId> {
     let mut current_id = id;
     let mut seen = HashSet::new();
     loop {
         let node = store.get(current_id)?;
         if node.kind != CoreTreeNodeKind::Alias {
-            return Some(node);
+            return Some(current_id);
         }
-        let next = node.alias?;
+        let next = node.alias()?;
         if !seen.insert(next) {
             return None;
         }
@@ -756,11 +781,14 @@ fn resolved_tree_child_count_for_oracle(store: &TreeStore, id: CoreNodeId) -> us
 }
 
 fn resolved_tree_value_for_oracle(store: &TreeStore, id: CoreNodeId) -> String {
-    let Some(node) = resolved_alias_node(store, id) else {
+    let Some(resolved_id) = resolved_alias_id(store, id) else {
         return String::new();
     };
-    if node.kind == CoreTreeNodeKind::Scalar {
-        node.value.clone()
+    if store
+        .get(resolved_id)
+        .is_some_and(|node| node.kind == CoreTreeNodeKind::Scalar)
+    {
+        store_value_string(store, resolved_id)
     } else {
         String::new()
     }
@@ -838,8 +866,8 @@ fn compare_trees(
     }
 
     if let (Some(lhs_root), Some(rhs_root)) = (store_a.get(root_a), store_b.get(root_b)) {
-        if empty_mapping_matches_json_null(lhs_root, rhs_root)
-            || empty_mapping_matches_json_null(rhs_root, lhs_root)
+        if empty_mapping_matches_json_null(lhs_root, store_b, root_b, rhs_root)
+            || empty_mapping_matches_json_null(rhs_root, store_a, root_a, lhs_root)
         {
             return Ok(());
         }
@@ -897,12 +925,14 @@ fn compare_trees(
 
 fn empty_mapping_matches_json_null(
     lhs: &treease_core::core::TreeNode,
+    rhs_store: &TreeStore,
+    rhs_id: CoreNodeId,
     rhs: &treease_core::core::TreeNode,
 ) -> bool {
     lhs.kind == CoreTreeNodeKind::Mapping
         && lhs.content.is_empty()
         && rhs.kind == CoreTreeNodeKind::Scalar
-        && matches!(rhs.get_value_rep(), Ok(ValueRep::Nil))
+        && matches!(store_value_rep(rhs_store, rhs_id), Ok(ValueRep::Nil))
 }
 
 fn tree_scalar_entries_semantically_equal(
@@ -917,18 +947,14 @@ fn tree_scalar_entries_semantically_equal(
     let lhs_node = tree_node_at_path(store_a, root_a, path);
     let rhs_node = tree_node_at_path(store_b, root_b, path);
     match (lhs_node, rhs_node) {
-        (Some(lhs_node), Some(rhs_node)) => {
-            tree_scalar_nodes_semantically_equal(lhs_node, rhs_node)
+        (Some(lhs_id), Some(rhs_id)) => {
+            tree_scalar_nodes_semantically_equal(store_a, lhs_id, store_b, rhs_id)
         }
         _ => lhs_entry.value == rhs_entry.value,
     }
 }
 
-fn tree_node_at_path<'a>(
-    store: &'a TreeStore,
-    root: CoreNodeId,
-    path: &str,
-) -> Option<&'a treease_core::core::TreeNode> {
+fn tree_node_at_path(store: &TreeStore, root: CoreNodeId, path: &str) -> Option<CoreNodeId> {
     let mut current = root;
     for segment in parse_compare_path(path)? {
         let node = store.get(current)?;
@@ -949,16 +975,18 @@ fn tree_node_at_path<'a>(
             _ => return None,
         }
     }
-    resolved_alias_node(store, current)
+    resolved_alias_id(store, current)
 }
 
 fn tree_scalar_nodes_semantically_equal(
-    lhs: &treease_core::core::TreeNode,
-    rhs: &treease_core::core::TreeNode,
+    lhs_store: &TreeStore,
+    lhs_id: CoreNodeId,
+    rhs_store: &TreeStore,
+    rhs_id: CoreNodeId,
 ) -> bool {
     match (
-        normalize_scalar_value_for_oracle(lhs),
-        normalize_scalar_value_for_oracle(rhs),
+        normalize_scalar_value_for_oracle(lhs_store, lhs_id),
+        normalize_scalar_value_for_oracle(rhs_store, rhs_id),
     ) {
         (Some(OracleScalarValue::Nil), Some(OracleScalarValue::Nil)) => true,
         (Some(OracleScalarValue::Boolean(lhs)), Some(OracleScalarValue::Boolean(rhs))) => {
@@ -975,7 +1003,7 @@ fn tree_scalar_nodes_semantically_equal(
             int_and_float_semantically_equal(rhs, lhs)
         }
         (Some(OracleScalarValue::Str(lhs)), Some(OracleScalarValue::Str(rhs))) => lhs == rhs,
-        _ => lhs.value == rhs.value,
+        _ => store_value_string(lhs_store, lhs_id) == store_value_string(rhs_store, rhs_id),
     }
 }
 
@@ -989,27 +1017,30 @@ enum OracleScalarValue {
 }
 
 fn normalize_scalar_value_for_oracle(
-    node: &treease_core::core::TreeNode,
+    store: &TreeStore,
+    node_id: CoreNodeId,
 ) -> Option<OracleScalarValue> {
+    let node = store.get(node_id)?;
+    let value = store.value_for(node_id).ok()?;
     match node.resolved_sem_type() {
         Some(CoreSemType::Nil) => Some(OracleScalarValue::Nil),
         Some(CoreSemType::Boolean) => Some(OracleScalarValue::Boolean(
-            node.value.eq_ignore_ascii_case("true"),
+            value.eq_ignore_ascii_case("true"),
         )),
-        Some(CoreSemType::Int) => parse_integer_lexeme_for_oracle(&node.value)
+        Some(CoreSemType::Int) => parse_integer_lexeme_for_oracle(value)
             .ok()
             .map(OracleScalarValue::Int),
-        Some(CoreSemType::Float) => parse_float_lexeme_for_oracle(&node.value)
+        Some(CoreSemType::Float) => parse_float_lexeme_for_oracle(value)
             .ok()
             .map(OracleScalarValue::Float),
-        Some(CoreSemType::Str) => Some(OracleScalarValue::Str(node.value.clone())),
-        Some(CoreSemType::Map | CoreSemType::Seq) | None => match node.get_value_rep() {
+        Some(CoreSemType::Str) => Some(OracleScalarValue::Str(value.to_owned())),
+        Some(CoreSemType::Map | CoreSemType::Seq) | None => match store_value_rep(store, node_id) {
             Ok(ValueRep::Nil) => Some(OracleScalarValue::Nil),
             Ok(ValueRep::Boolean(value)) => Some(OracleScalarValue::Boolean(value)),
             Ok(ValueRep::Int(value)) => Some(OracleScalarValue::Int(value)),
             Ok(ValueRep::Float(value)) => Some(OracleScalarValue::Float(value)),
             Ok(ValueRep::Str(value)) => Some(OracleScalarValue::Str(value)),
-            Err(_) => Some(OracleScalarValue::Str(node.value.clone())),
+            Err(_) => Some(OracleScalarValue::Str(value.to_owned())),
         },
     }
 }

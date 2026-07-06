@@ -1,7 +1,7 @@
 use treease_core::core::{
-    CodecService, CoreError, FormatDefinition, FormatError, FormatLanguage, FormatRegistry,
-    ParseError, RegistryFormatPreferences, SemType, TreeNode, TreeNodeKind, TreeStore,
-    format_from_string, format_string_from_filename, get_map_entry,
+    CodecService, CompactTag, CoreError, FormatDefinition, FormatError, FormatLanguage,
+    FormatRegistry, ParseError, RegistryFormatPreferences, SemType, TreeNode, TreeNodeKind,
+    TreeStore, format_from_string, format_string_from_filename, get_map_entry,
 };
 use treease_core::formats::{
     CsvDecoder, CsvEncoder, CsvObjectDecoder, Decode, Encode, FormatPreferences, JavascriptEncoder,
@@ -10,6 +10,10 @@ use treease_core::formats::{
     formats_helpers::ArenaDecoderState,
 };
 use treease_core::stream::{DecodeOptions, StreamingEvent, decode_with_options};
+
+fn value_text(store: &TreeStore, id: treease_core::core::NodeId) -> String {
+    store.value_string_for(id).unwrap()
+}
 
 fn compact_json_encoder() -> JsonEncoder {
     let mut prefs = default_language_preferences().effective(FormatLanguage::Json);
@@ -164,7 +168,7 @@ fn json_ported_decode_to_yaml_keeps_nested_values_and_key_order() {
     let keys: Vec<_> = root
         .content
         .chunks_exact(2)
-        .map(|pair| decoded.store.get(pair[0]).unwrap().value.as_str())
+        .map(|pair| value_text(&decoded.store, pair[0]))
         .collect();
     assert_eq!(keys, ["a", "b", "ab"]);
 
@@ -400,7 +404,7 @@ fn yaml_ported_decodes_missing_mapping_value_as_empty_string_like_zig() {
         decoded.store.get(empty).unwrap().sem_type,
         Some(SemType::Str)
     );
-    assert_eq!(decoded.store.get(empty).unwrap().value, "");
+    assert_eq!(value_text(&decoded.store, empty), "");
 }
 
 #[test]
@@ -413,7 +417,7 @@ fn yaml_ported_keeps_quoted_scalar_escape_text_like_zig() {
         .unwrap()
         .value;
 
-    assert_eq!(decoded.store.get(message).unwrap().value, "line\nnext");
+    assert_eq!(value_text(&decoded.store, message), "line\nnext");
 }
 
 #[test]
@@ -424,7 +428,7 @@ fn yaml_ported_keeps_single_quote_escape_text_like_zig() {
         .unwrap()
         .value;
 
-    assert_eq!(decoded.store.get(message).unwrap().value, "it's");
+    assert_eq!(value_text(&decoded.store, message), "it's");
 }
 
 #[test]
@@ -562,7 +566,7 @@ fn toml_ported_decodes_inline_tables_and_nested_arrays() {
         .unwrap()
         .value;
 
-    assert_eq!(decoded.store.get(score).unwrap().value, "1");
+    assert_eq!(value_text(&decoded.store, score), "1");
 }
 
 #[test]
@@ -575,7 +579,7 @@ fn toml_ported_decodes_string_escapes_like_zig() {
         .unwrap()
         .value;
 
-    assert_eq!(decoded.store.get(text).unwrap().value, "a\u{08}b\u{0c}cA");
+    assert_eq!(value_text(&decoded.store, text), "a\u{08}b\u{0c}cA");
 }
 
 #[test]
@@ -587,8 +591,8 @@ fn toml_ported_decodes_timestamp_as_tagged_string_like_zig() {
         .value;
     let node = decoded.store.get(date).unwrap();
 
-    assert_eq!(node.value, "2024-01-02");
-    assert_eq!(node.tag, "!!timestamp");
+    assert_eq!(value_text(&decoded.store, date), "2024-01-02");
+    assert_eq!(node.tag.as_str(), Some("!!timestamp"));
 }
 
 #[test]
@@ -616,7 +620,7 @@ fn toml_ported_decodes_dotted_assignment_keys_as_nested_tables() {
         .unwrap()
         .value;
 
-    assert_eq!(decoded.store.get(name).unwrap().value, "Alice");
+    assert_eq!(value_text(&decoded.store, name), "Alice");
 }
 
 #[test]
@@ -733,7 +737,7 @@ fn yaml_ported_missing_tag_payload_decodes_to_nil_empty_value_like_zig() {
     let node = decoded.store.get(value).unwrap();
 
     assert_eq!(node.sem_type, Some(SemType::Nil));
-    assert_eq!(node.value, "");
+    assert_eq!(value_text(&decoded.store, value), "");
 }
 
 #[test]
@@ -810,7 +814,7 @@ fn json_encoder_preserves_object_order_like_zig() {
 
     let inner_map = store.add(TreeNode {
         kind: TreeNodeKind::Mapping,
-        tag: "!!map".to_string(),
+        tag: CompactTag::from_text("!!map"),
         ..TreeNode::default()
     });
     store
@@ -830,7 +834,7 @@ fn json_encoder_preserves_object_order_like_zig() {
 
     let seq = store.add(TreeNode {
         kind: TreeNodeKind::Sequence,
-        tag: "!!seq".to_string(),
+        tag: CompactTag::from_text("!!seq"),
         ..TreeNode::default()
     });
     store
@@ -839,7 +843,7 @@ fn json_encoder_preserves_object_order_like_zig() {
 
     let root = store.add(TreeNode {
         kind: TreeNodeKind::Mapping,
-        tag: "!!map".to_string(),
+        tag: CompactTag::from_text("!!map"),
         ..TreeNode::default()
     });
     store
@@ -887,7 +891,7 @@ fn json_null_in_array_like_zig() {
 
     let seq = store.add(TreeNode {
         kind: TreeNodeKind::Sequence,
-        tag: "!!seq".to_string(),
+        tag: CompactTag::from_text("!!seq"),
         ..TreeNode::default()
     });
     store
@@ -915,7 +919,7 @@ fn json_null_in_object_like_zig() {
 
     let root = store.add(TreeNode {
         kind: TreeNodeKind::Mapping,
-        tag: "!!map".to_string(),
+        tag: CompactTag::from_text("!!map"),
         ..TreeNode::default()
     });
     store
@@ -937,7 +941,7 @@ fn json_encoder_does_not_escape_html_chars_like_zig() {
 
     let root = store.add(TreeNode {
         kind: TreeNodeKind::Mapping,
-        tag: "!!map".to_string(),
+        tag: CompactTag::from_text("!!map"),
         ..TreeNode::default()
     });
     store
@@ -964,7 +968,7 @@ fn json_smart_align_object_array_like_zig() {
 
     let obj1 = store.add(TreeNode {
         kind: TreeNodeKind::Mapping,
-        tag: "!!map".to_string(),
+        tag: CompactTag::from_text("!!map"),
         ..TreeNode::default()
     });
     store
@@ -984,7 +988,7 @@ fn json_smart_align_object_array_like_zig() {
 
     let obj2 = store.add(TreeNode {
         kind: TreeNodeKind::Mapping,
-        tag: "!!map".to_string(),
+        tag: CompactTag::from_text("!!map"),
         ..TreeNode::default()
     });
     store
@@ -1004,7 +1008,7 @@ fn json_smart_align_object_array_like_zig() {
 
     let arr = store.add(TreeNode {
         kind: TreeNodeKind::Sequence,
-        tag: "!!seq".to_string(),
+        tag: CompactTag::from_text("!!seq"),
         ..TreeNode::default()
     });
     store
@@ -1084,7 +1088,7 @@ fn json_smart_array_multi_line_like_zig() {
 
     let arr = store.add(TreeNode {
         kind: TreeNodeKind::Sequence,
-        tag: "!!seq".to_string(),
+        tag: CompactTag::from_text("!!seq"),
         ..TreeNode::default()
     });
     for val in ["1", "2", "3", "4", "5", "6", "7"] {
@@ -1114,7 +1118,7 @@ fn json_smart_array_inline_respects_max_items_like_zig() {
 
     let arr = store.add(TreeNode {
         kind: TreeNodeKind::Sequence,
-        tag: "!!seq".to_string(),
+        tag: CompactTag::from_text("!!seq"),
         ..TreeNode::default()
     });
     for val in ["1", "2", "3"] {
@@ -1144,7 +1148,7 @@ fn json_smart_array_inline_disabled_when_limit_exceeded_like_zig() {
 
     let arr = store.add(TreeNode {
         kind: TreeNodeKind::Sequence,
-        tag: "!!seq".to_string(),
+        tag: CompactTag::from_text("!!seq"),
         ..TreeNode::default()
     });
     for val in ["1", "2", "3", "4", "5"] {
@@ -1174,7 +1178,7 @@ fn json_smart_object_array_no_align_different_keys_like_zig() {
 
     let obj1 = store.add(TreeNode {
         kind: TreeNodeKind::Mapping,
-        tag: "!!map".to_string(),
+        tag: CompactTag::from_text("!!map"),
         ..TreeNode::default()
     });
     store
@@ -1194,7 +1198,7 @@ fn json_smart_object_array_no_align_different_keys_like_zig() {
 
     let obj2 = store.add(TreeNode {
         kind: TreeNodeKind::Mapping,
-        tag: "!!map".to_string(),
+        tag: CompactTag::from_text("!!map"),
         ..TreeNode::default()
     });
     store
@@ -1214,7 +1218,7 @@ fn json_smart_object_array_no_align_different_keys_like_zig() {
 
     let arr = store.add(TreeNode {
         kind: TreeNodeKind::Sequence,
-        tag: "!!seq".to_string(),
+        tag: CompactTag::from_text("!!seq"),
         ..TreeNode::default()
     });
     store
@@ -1250,7 +1254,7 @@ fn json_smart_inline_complexity_limit_like_zig() {
 
     let inner = store.add(TreeNode {
         kind: TreeNodeKind::Mapping,
-        tag: "!!map".to_string(),
+        tag: CompactTag::from_text("!!map"),
         ..TreeNode::default()
     });
     store
@@ -1270,7 +1274,7 @@ fn json_smart_inline_complexity_limit_like_zig() {
 
     let root = store.add(TreeNode {
         kind: TreeNodeKind::Mapping,
-        tag: "!!map".to_string(),
+        tag: CompactTag::from_text("!!map"),
         ..TreeNode::default()
     });
     store
@@ -1375,19 +1379,19 @@ fn python_decoder_maps_bool_and_none_like_zig() {
     assert_eq!(root.content.len(), 4);
 
     let key_a = decoded.store.get(root.content[0]).unwrap();
-    assert_eq!(key_a.tag, "!!str");
-    assert_eq!(key_a.value, "a");
+    assert_eq!(key_a.tag.as_str(), Some("!!str"));
+    assert_eq!(value_text(&decoded.store, root.content[0]), "a");
 
     let val_a = decoded.store.get(root.content[1]).unwrap();
-    assert_eq!(val_a.tag, "!!bool");
-    assert_eq!(val_a.value, "true");
+    assert_eq!(val_a.tag.as_str(), Some("!!bool"));
+    assert_eq!(value_text(&decoded.store, root.content[1]), "true");
 
     let key_b = decoded.store.get(root.content[2]).unwrap();
-    assert_eq!(key_b.tag, "!!str");
-    assert_eq!(key_b.value, "b");
+    assert_eq!(key_b.tag.as_str(), Some("!!str"));
+    assert_eq!(value_text(&decoded.store, root.content[2]), "b");
 
     let val_b = decoded.store.get(root.content[3]).unwrap();
-    assert_eq!(val_b.tag, "!!null");
+    assert_eq!(val_b.tag.as_str(), Some("!!null"));
 }
 
 #[test]
@@ -1400,19 +1404,19 @@ fn javascript_decoder_maps_null_and_boolean_like_zig() {
     assert_eq!(root.content.len(), 4);
 
     let key_a = decoded.store.get(root.content[0]).unwrap();
-    assert_eq!(key_a.tag, "!!str");
-    assert_eq!(key_a.value, "a");
+    assert_eq!(key_a.tag.as_str(), Some("!!str"));
+    assert_eq!(value_text(&decoded.store, root.content[0]), "a");
 
     let val_a = decoded.store.get(root.content[1]).unwrap();
-    assert_eq!(val_a.tag, "!!null");
+    assert_eq!(val_a.tag.as_str(), Some("!!null"));
 
     let key_b = decoded.store.get(root.content[2]).unwrap();
-    assert_eq!(key_b.tag, "!!str");
-    assert_eq!(key_b.value, "b");
+    assert_eq!(key_b.tag.as_str(), Some("!!str"));
+    assert_eq!(value_text(&decoded.store, root.content[2]), "b");
 
     let val_b = decoded.store.get(root.content[3]).unwrap();
-    assert_eq!(val_b.tag, "!!bool");
-    assert_eq!(val_b.value, "false");
+    assert_eq!(val_b.tag.as_str(), Some("!!bool"));
+    assert_eq!(value_text(&decoded.store, root.content[3]), "false");
 }
 
 #[test]
@@ -1423,8 +1427,7 @@ fn javascript_decoder_accepts_parenthesized_escaped_string_keys() {
     let root = decoded.store.get(decoded.root).unwrap();
     assert_eq!(root.kind, TreeNodeKind::Mapping);
 
-    let key = decoded.store.get(root.content[0]).unwrap();
-    assert_eq!(key.value, r#"new\key"#);
+    assert_eq!(value_text(&decoded.store, root.content[0]), r#"new\key"#);
 }
 
 #[test]
@@ -1474,7 +1477,7 @@ fn python_literals_comment_and_semicolon_splitting_like_zig() {
     let key_a = get_map_entry(&decoded1.store, decoded1.root, "a")
         .unwrap()
         .unwrap();
-    assert_eq!(decoded1.store.get(key_a.value).unwrap().value, "1");
+    assert_eq!(value_text(&decoded1.store, key_a.value), "1");
 }
 
 #[test]
@@ -1486,14 +1489,11 @@ fn javascript_literals_identifier_keys_like_zig() {
     assert_eq!(root.kind, TreeNodeKind::Mapping);
     assert_eq!(root.content.len(), 4);
 
-    let key_a = decoded.store.get(root.content[0]).unwrap();
-    assert_eq!(key_a.value, "a");
+    assert_eq!(value_text(&decoded.store, root.content[0]), "a");
 
-    let val_a = decoded.store.get(root.content[1]).unwrap();
-    assert_eq!(val_a.value, "1");
+    assert_eq!(value_text(&decoded.store, root.content[1]), "1");
 
-    let key_b = decoded.store.get(root.content[2]).unwrap();
-    assert_eq!(key_b.value, "b");
+    assert_eq!(value_text(&decoded.store, root.content[2]), "b");
 
     let val_b = decoded.store.get(root.content[3]).unwrap();
     assert_eq!(val_b.kind, TreeNodeKind::Sequence);
@@ -1526,8 +1526,8 @@ fn json_encoder_unwrap_scalar_outputs_raw_value_like_zig() {
     let node = store.add(TreeNode {
         kind: TreeNodeKind::Scalar,
         sem_type: Some(SemType::Str),
-        tag: SemType::Str.tag().to_owned(),
-        value: "hello".to_owned(),
+        tag: CompactTag::from_sem_type(SemType::Str),
+        value: "hello".to_owned().into(),
         ..TreeNode::default()
     });
 

@@ -1,5 +1,6 @@
 use crate::core::{
-    CoreError, NodeId, ParseError, SemType, TreeNode, TreeNodeKind, TreeStore, tree_sitter_support,
+    CompactTag, CoreError, NodeId, ParseError, SemType, TreeNode, TreeNodeKind, TreeStore,
+    tree_sitter_support,
 };
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
@@ -294,22 +295,21 @@ fn add_yaml_node(
                     .map(str::trim)
                     .unwrap_or("");
                 if !anchor_suffix.is_empty() {
-                    if let Some(decoded) = store.get_mut(id) {
-                        if decoded.kind == TreeNodeKind::Scalar
+                    let current = store.value_string_for(id).unwrap_or_default();
+                    if store.get(id).is_some_and(|decoded| {
+                        decoded.kind == TreeNodeKind::Scalar
                             && decoded.resolved_sem_type() == Some(SemType::Str)
-                        {
-                            decoded.value = if decoded.value.is_empty() {
-                                anchor_suffix.to_owned()
-                            } else {
-                                format!("{anchor_suffix} {}", decoded.value)
-                            };
-                        }
+                    }) {
+                        let updated = if current.is_empty() {
+                            anchor_suffix.to_owned()
+                        } else {
+                            format!("{anchor_suffix} {current}")
+                        };
+                        let _ = store.set_value(id, updated);
                     }
                 }
                 if !anchor.is_empty() {
-                    if let Some(decoded) = store.get_mut(id) {
-                        decoded.anchor = anchor.to_owned();
-                    }
+                    let _ = store.set_anchor(id, anchor.to_owned());
                     ctx.anchors.insert(anchor.to_owned(), id);
                 }
             }
@@ -451,14 +451,15 @@ fn preserve_flow_pair_trailing_colon_in_key(
     if !raw.ends_with(':') {
         return;
     }
-    let Some(key_node) = store.get_mut(key) else {
+    let current = store.value_string_for(key).unwrap_or_default();
+    let Some(key_node) = store.get(key) else {
         return;
     };
     if key_node.kind == TreeNodeKind::Scalar
         && key_node.resolved_sem_type() == Some(SemType::Str)
-        && !key_node.value.ends_with(':')
+        && !current.ends_with(':')
     {
-        key_node.value.push(':');
+        let _ = store.set_value(key, format!("{current}:"));
     }
 }
 
@@ -521,12 +522,13 @@ fn add_yaml_alias(
     node: tree_sitter::Node,
 ) -> NodeId {
     let alias_name = parse_alias_name(node_text(source, node));
-    let id = store.add(TreeNode {
+    let mut alias_node = TreeNode {
         kind: TreeNodeKind::Alias,
-        value: alias_name.to_owned(),
-        alias: ctx.anchors.get(alias_name).copied(),
+        value: alias_name.to_owned().into(),
         ..TreeNode::default()
-    });
+    };
+    alias_node.set_alias(ctx.anchors.get(alias_name).copied());
+    let id = store.add(alias_node);
     set_ts_node_span(store, id, node);
     id
 }
@@ -691,7 +693,7 @@ fn apply_yaml_tag(store: &mut TreeStore, id: NodeId, raw_tag: &str) {
         return;
     }
     if let Some(node) = store.get_mut(id) {
-        node.tag = tag.to_owned();
+        node.tag = CompactTag::from_text(tag);
         if tag == "!!timestamp" && node.kind == TreeNodeKind::Scalar {
             node.sem_type = Some(SemType::Str);
         }

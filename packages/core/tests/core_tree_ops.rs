@@ -1,6 +1,6 @@
 use treease_core::core::{
-    SemType, TreeNode, TreeNodeKind, TreeStore, create_scalar_node, ensure_map, ensure_seq,
-    ensure_seq_index, get_map_entry, get_or_create_map_value,
+    CompactTag, SemType, TreeNode, TreeNodeKind, TreeStore, create_scalar_node, ensure_map,
+    ensure_seq, ensure_seq_index, get_map_entry, get_or_create_map_value,
 };
 use treease_core::operators::{self as ops, CoreError};
 
@@ -16,7 +16,7 @@ fn tree_ops_ensure_map_and_get_or_create_map_value_build_mapping_path() {
     let value = get_or_create_map_value(&mut store, root, "a").unwrap();
     let entry = get_map_entry(&store, root, "a").unwrap().unwrap();
     assert_eq!(entry.value, value);
-    assert_eq!(store.get(entry.key).unwrap().value, "a");
+    assert_eq!(store.value_for(entry.key).unwrap(), "a");
     assert_eq!(store.get(value).unwrap().sem_type, Some(SemType::Nil));
 }
 
@@ -32,7 +32,7 @@ fn tree_ops_ensure_seq_and_ensure_seq_index_fill_null_placeholders() {
     let index = ensure_seq_index(&mut store, root, 2).unwrap();
     assert_eq!(store.get(root).unwrap().content.len(), 3);
     assert_eq!(store.get(index).unwrap().sem_type, Some(SemType::Nil));
-    assert_eq!(store.get(index).unwrap().sequence_index, Some(2));
+    assert_eq!(store.get(index).unwrap().sequence_index(), Some(2));
 }
 
 #[test]
@@ -41,7 +41,7 @@ fn tree_ops_reuse_existing_map_values_and_create_scalar_nodes() {
     let root = store.add(TreeNode {
         kind: TreeNodeKind::Mapping,
         sem_type: Some(SemType::Map),
-        tag: SemType::Map.tag().to_owned(),
+        tag: CompactTag::from_sem_type(SemType::Map),
         ..TreeNode::default()
     });
     let existing = store
@@ -59,7 +59,10 @@ fn tree_ops_reuse_existing_map_values_and_create_scalar_nodes() {
     let scalar = create_scalar_node(SemType::Int, "3");
     assert_eq!(scalar.kind, TreeNodeKind::Scalar);
     assert_eq!(scalar.sem_type, Some(SemType::Int));
-    assert_eq!(scalar.value, "3");
+    assert_eq!(
+        scalar.get_value_rep_with("3").unwrap(),
+        treease_core::core::ValueRep::Int(3)
+    );
 }
 
 // ── Helper functions for deeply_assign tests ─────────────────────

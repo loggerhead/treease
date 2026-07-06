@@ -1,4 +1,4 @@
-#![expect(dead_code)]
+#![allow(dead_code)]
 /// Ultra-lightweight phase-timing utility for test and profiling scenarios.
 ///
 /// ## When to use

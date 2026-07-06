@@ -1,5 +1,6 @@
 use treease_core::core::{
-    NodeId, ParsedKey, SemType, TreeNode, TreeNodeKind, TreeStore, ValueRep, infer_scalar_tag,
+    CompactTag, NodeExtraId, NodeId, NodeValueRef, ParsedKey, SemType, TreeNode, TreeNodeKind,
+    TreeStore, ValueRep, infer_scalar_tag,
 };
 use treease_core::formats::Decode;
 use treease_core::formats::decoder_python::PythonDecoder;
@@ -9,9 +10,17 @@ fn parsed_key_for_node(node: &TreeNode) -> Option<ParsedKey> {
         return None;
     }
     match node.sem_type {
-        Some(SemType::Int) => node.value.parse::<i64>().ok().map(ParsedKey::Int),
-        Some(SemType::Str) | None => Some(ParsedKey::Str(node.value.clone())),
+        Some(SemType::Int) => inline_value(node).parse::<i64>().ok().map(ParsedKey::Int),
+        Some(SemType::Str) | None => Some(ParsedKey::Str(inline_value(node).to_owned())),
         _ => None,
+    }
+}
+
+fn inline_value(node: &TreeNode) -> &str {
+    match &node.value {
+        NodeValueRef::Missing => "",
+        NodeValueRef::Inline(value) => value.as_str(),
+        NodeValueRef::Stored(_) => panic!("expected inline node value in standalone test"),
     }
 }
 
@@ -19,57 +28,57 @@ fn parsed_key_for_node(node: &TreeNode) -> Option<ParsedKey> {
 fn tree_node_get_value_rep_and_infer_scalar_tag_cover_basic_scalars() {
     assert_eq!(
         TreeNode {
-            value: "\"cat\"".to_owned(),
+            value: "\"cat\"".to_owned().into(),
             ..TreeNode::default()
         }
-        .get_value_rep()
+        .get_value_rep_with("\"cat\"")
         .unwrap(),
         ValueRep::Str("\"cat\"".to_owned())
     );
     assert_eq!(
         TreeNode {
-            value: "3".to_owned(),
+            value: "3".to_owned().into(),
             ..TreeNode::default()
         }
-        .get_value_rep()
+        .get_value_rep_with("3")
         .unwrap(),
         ValueRep::Int(3)
     );
     assert_eq!(
         TreeNode {
-            value: "3.1".to_owned(),
+            value: "3.1".to_owned().into(),
             ..TreeNode::default()
         }
-        .get_value_rep()
+        .get_value_rep_with("3.1")
         .unwrap(),
         ValueRep::Float(3.1)
     );
     // bare "true" with empty tag → inferred as boolean (Zig: "true", tag="", expected=.boolean=true)
     assert_eq!(
         TreeNode {
-            value: "true".to_owned(),
+            value: "true".to_owned().into(),
             ..TreeNode::default()
         }
-        .get_value_rep()
+        .get_value_rep_with("true")
         .unwrap(),
         ValueRep::Boolean(true)
     );
     assert_eq!(
         TreeNode {
-            value: "y".to_owned(),
-            tag: SemType::Boolean.tag().to_owned(),
+            value: "y".to_owned().into(),
+            tag: CompactTag::from_sem_type(SemType::Boolean),
             ..TreeNode::default()
         }
-        .get_value_rep()
+        .get_value_rep_with("y")
         .unwrap(),
         ValueRep::Boolean(true)
     );
     assert_eq!(
         TreeNode {
-            tag: SemType::Nil.tag().to_owned(),
+            tag: CompactTag::from_sem_type(SemType::Nil),
             ..TreeNode::default()
         }
-        .get_value_rep()
+        .get_value_rep_with("")
         .unwrap(),
         ValueRep::Nil
     );
@@ -84,12 +93,33 @@ fn tree_node_get_value_rep_and_infer_scalar_tag_cover_basic_scalars() {
 }
 
 #[test]
+fn tree_node_packed_flags_round_trip_and_stay_compact() {
+    let mut node = TreeNode::default();
+    assert!(node.sequence_closed());
+    assert!(!node.evaluate_together());
+    assert!(!node.encode_separate());
+
+    node.set_sequence_closed(false);
+    node.set_evaluate_together(true);
+    node.set_encode_separate(true);
+    node.set_sequence_index(Some(3));
+    node.set_extra(Some(NodeExtraId(5)));
+
+    assert!(!node.sequence_closed());
+    assert!(node.evaluate_together());
+    assert!(node.encode_separate());
+    assert_eq!(node.sequence_index(), Some(3));
+    assert_eq!(node.extra(), Some(NodeExtraId(5)));
+    assert!(std::mem::size_of::<TreeNode>() <= 128);
+}
+
+#[test]
 fn tree_store_add_child_and_key_value_child_set_relationships() {
     let mut store = TreeStore::new();
     let root = store.add(TreeNode {
         kind: TreeNodeKind::Mapping,
         sem_type: Some(SemType::Map),
-        tag: SemType::Map.tag().to_owned(),
+        tag: CompactTag::from_sem_type(SemType::Map),
         ..TreeNode::default()
     });
 
@@ -99,8 +129,8 @@ fn tree_store_add_child_and_key_value_child_set_relationships() {
             TreeNode {
                 kind: TreeNodeKind::Scalar,
                 sem_type: Some(SemType::Str),
-                tag: SemType::Str.tag().to_owned(),
-                value: "child".to_owned(),
+                tag: CompactTag::from_sem_type(SemType::Str),
+                value: "child".to_owned().into(),
                 ..TreeNode::default()
             },
         )
@@ -115,7 +145,7 @@ fn tree_store_add_child_and_key_value_child_set_relationships() {
         )
         .unwrap();
     assert!(store.get(key).unwrap().is_map_key);
-    assert_eq!(store.get(value).unwrap().key, Some(key));
+    assert_eq!(store.get(value).unwrap().key(), Some(key));
     assert_eq!(store.get(root).unwrap().content.len(), 3);
 }
 
@@ -125,7 +155,7 @@ fn tree_store_create_child_and_document_for_work() {
     let root = store.add(TreeNode {
         kind: TreeNodeKind::Sequence,
         sem_type: Some(SemType::Seq),
-        tag: SemType::Seq.tag().to_owned(),
+        tag: CompactTag::from_sem_type(SemType::Seq),
         document: 7,
         ..TreeNode::default()
     });
@@ -162,9 +192,8 @@ fn tree_node_child_when_parent_updated() {
     let mut store = TreeStore::new();
     let mut parent = TreeNode::default();
     parent.set_document(1);
-    parent.set_file_index(2);
-    parent.set_filename("meow");
     let parent_id = store.add(parent);
+    store.set_document_meta(1, "meow", 2);
     let child_id = store.create_child(parent_id).unwrap();
 
     assert_eq!(store.filename_for(child_id).unwrap(), "meow");
@@ -180,24 +209,24 @@ fn tree_node_child_when_parent_updated() {
 #[test]
 fn create_scalar_node_scenarios() {
     let n1 = TreeNode::scalar(SemType::Str, "mike");
-    assert_eq!(n1.value, "mike");
-    assert_eq!(n1.tag, "!!str");
+    assert_eq!(inline_value(&n1), "mike");
+    assert_eq!(n1.tag.as_str(), Some("!!str"));
 
     let n2 = TreeNode::scalar(SemType::Int, "3");
-    assert_eq!(n2.value, "3");
-    assert_eq!(n2.tag, "!!int");
+    assert_eq!(inline_value(&n2), "3");
+    assert_eq!(n2.tag.as_str(), Some("!!int"));
 
     let n3 = TreeNode::scalar(SemType::Float, "3.1");
-    assert_eq!(n3.value, "3.1");
-    assert_eq!(n3.tag, "!!float");
+    assert_eq!(inline_value(&n3), "3.1");
+    assert_eq!(n3.tag.as_str(), Some("!!float"));
 
     let n4 = TreeNode::scalar(SemType::Boolean, "true");
-    assert_eq!(n4.value, "true");
-    assert_eq!(n4.tag, "!!bool");
+    assert_eq!(inline_value(&n4), "true");
+    assert_eq!(n4.tag.as_str(), Some("!!bool"));
 
     let n5 = TreeNode::scalar(SemType::Nil, "~");
-    assert_eq!(n5.value, "~");
-    assert_eq!(n5.tag, "!!null");
+    assert_eq!(inline_value(&n5), "~");
+    assert_eq!(n5.tag.as_str(), Some("!!null"));
 }
 
 // ---------------------------------------------------------------------------
@@ -209,12 +238,12 @@ fn get_key_for_map_value() {
     let mut store = TreeStore::new();
     let key_node = TreeNode::scalar(SemType::Str, "yourKey");
     let key_id = store.add(key_node);
-    let value_node = TreeNode {
-        key: Some(key_id),
-        value: "meow".to_owned(),
+    let mut value_node = TreeNode {
+        value: "meow".to_owned().into(),
         document: 3,
         ..TreeNode::default()
     };
+    value_node.set_key(Some(key_id));
     let value_id = store.add(value_node);
 
     let pk = store.parsed_key_for(value_id).unwrap();
@@ -245,7 +274,7 @@ fn get_key_for_map_key() {
 fn get_key_for_value() {
     let mut store = TreeStore::new();
     let node = TreeNode {
-        value: "meow".to_owned(),
+        value: "meow".to_owned().into(),
         document: 3,
         ..TreeNode::default()
     };
@@ -277,7 +306,7 @@ fn get_parsed_key_for_map_key() {
 #[test]
 fn get_parsed_key_for_loose_value() {
     let node = TreeNode {
-        value: "meow".to_owned(),
+        value: "meow".to_owned().into(),
         document: 3,
         ..TreeNode::default()
     };
@@ -295,12 +324,12 @@ fn get_parsed_key_for_map_value() {
     // Create a string key and add it to the store
     let key_id = store.add(TreeNode::scalar(SemType::Str, "yourKey"));
     // Create a map value node whose key points to the key node
-    let value_node = TreeNode {
-        key: Some(key_id),
-        value: "meow".to_owned(),
+    let mut value_node = TreeNode {
+        value: "meow".to_owned().into(),
         document: 3,
         ..TreeNode::default()
     };
+    value_node.set_key(Some(key_id));
     let value_id = store.add(value_node);
 
     let pk = store.parsed_key_for(value_id).unwrap();
@@ -318,12 +347,12 @@ fn get_parsed_key_for_array_value() {
     // Create an integer key node and add it to the store
     let key_id = store.add(TreeNode::scalar(SemType::Int, "4"));
     // Create a map value node whose key points to the int key node
-    let value_node = TreeNode {
-        key: Some(key_id),
-        value: "meow".to_owned(),
+    let mut value_node = TreeNode {
+        value: "meow".to_owned().into(),
         document: 3,
         ..TreeNode::default()
     };
+    value_node.set_key(Some(key_id));
     let value_id = store.add(value_node);
 
     let pk = store.parsed_key_for(value_id).unwrap();
@@ -340,16 +369,16 @@ fn tree_node_add_key_value_child_clears_is_map_key() {
     let root = store.add(TreeNode {
         kind: TreeNodeKind::Mapping,
         sem_type: Some(SemType::Map),
-        tag: SemType::Map.tag().to_owned(),
+        tag: CompactTag::from_sem_type(SemType::Map),
         ..TreeNode::default()
     });
 
     let raw_key = TreeNode {
-        value: "newKey".to_owned(),
+        value: "newKey".to_owned().into(),
         ..TreeNode::default()
     };
     let raw_value = TreeNode {
-        value: "cool".to_owned(),
+        value: "cool".to_owned().into(),
         is_map_key: true,
         ..TreeNode::default()
     };
@@ -373,8 +402,8 @@ fn convert_to_node_info() {
 
     let child = store.add(TreeNode {
         kind: TreeNodeKind::Scalar,
-        tag: "!!str".to_owned(),
-        value: "childValue".to_owned(),
+        tag: CompactTag::from_text("!!str"),
+        value: "childValue".to_owned().into(),
         line: 2,
         column: 3,
         ..TreeNode::default()
@@ -382,32 +411,33 @@ fn convert_to_node_info() {
 
     let parent = store.add(TreeNode {
         kind: TreeNodeKind::Mapping,
-        tag: "!!map".to_owned(),
+        tag: CompactTag::from_text("!!map"),
         line: 1,
         column: 1,
-        head_comment: "head".to_owned(),
-        line_comment: "line".to_owned(),
-        foot_comment: "foot".to_owned(),
-        anchor: "anchor".to_owned(),
         content: vec![child],
         ..TreeNode::default()
     });
+    store.set_comments(parent, "head", "line", "foot").unwrap();
+    store.set_anchor(parent, "anchor").unwrap();
 
     let parent_node = store.get(parent).unwrap();
     assert_eq!(parent_node.kind, TreeNodeKind::Mapping);
-    assert_eq!(parent_node.tag, "!!map");
-    assert_eq!(parent_node.head_comment, "head");
-    assert_eq!(parent_node.line_comment, "line");
-    assert_eq!(parent_node.foot_comment, "foot");
-    assert_eq!(parent_node.anchor, "anchor");
+    assert_eq!(parent_node.tag.as_str(), Some("!!map"));
+    assert_eq!(store.head_comment_for(parent), Some("head"));
+    assert_eq!(store.line_comment_for(parent), Some("line"));
+    assert_eq!(store.foot_comment_for(parent), Some("foot"));
+    assert_eq!(store.anchor_for(parent), Some("anchor"));
     assert_eq!(parent_node.line, 1);
     assert_eq!(parent_node.column, 1);
     assert_eq!(parent_node.content.len(), 1);
 
     let child_node = store.get(parent_node.content[0]).unwrap();
     assert_eq!(child_node.kind, TreeNodeKind::Scalar);
-    assert_eq!(child_node.tag, "!!str");
-    assert_eq!(child_node.value, "childValue");
+    assert_eq!(child_node.tag.as_str(), Some("!!str"));
+    assert_eq!(
+        store.value_for(parent_node.content[0]).unwrap(),
+        "childValue"
+    );
     assert_eq!(child_node.line, 2);
     assert_eq!(child_node.column, 3);
 }
@@ -422,7 +452,7 @@ fn tree_node_get_path() {
 
     // Root node: path should be empty
     let root = store.add(TreeNode {
-        value: "root".to_owned(),
+        value: "root".to_owned().into(),
         ..TreeNode::default()
     });
     let root_path = store.path_for(root).unwrap();
@@ -430,30 +460,31 @@ fn tree_node_get_path() {
 
     // Node with a key: path should have one segment
     let key = store.add(TreeNode::scalar(SemType::Str, "myKey"));
-    let node = store.add(TreeNode {
-        key: Some(key),
-        value: "myValue".to_owned(),
+    let mut node = TreeNode {
+        value: "myValue".to_owned().into(),
         ..TreeNode::default()
-    });
+    };
+    node.set_key(Some(key));
+    let node = store.add(node);
     let node_path = store.path_for(node).unwrap();
     assert_eq!(node_path.len(), 1);
     assert_eq!(node_path[0], ParsedKey::Str("myKey".to_owned()));
 
     // Nested: parent key + child key
     let parent_key = store.add(TreeNode::scalar(SemType::Str, "parent"));
-    let parent = store.add(TreeNode {
-        key: Some(parent_key),
-        ..TreeNode::default()
-    });
+    let mut parent = TreeNode::default();
+    parent.set_key(Some(parent_key));
+    let parent = store.add(parent);
 
     // Rebuild the nested node with parent set
     let nested_key = store.add(TreeNode::scalar(SemType::Str, "myKey"));
-    let nested = store.add(TreeNode {
-        key: Some(nested_key),
-        value: "myValue".to_owned(),
+    let mut nested = TreeNode {
+        value: "myValue".to_owned().into(),
         parent: Some(parent),
         ..TreeNode::default()
-    });
+    };
+    nested.set_key(Some(nested_key));
+    let nested = store.add(nested);
 
     let nested_path = store.path_for(nested).unwrap();
     assert_eq!(nested_path.len(), 2);
@@ -472,40 +503,37 @@ fn tree_node_get_nice_path() {
 
     // Simple string key
     let key = store.add(TreeNode::scalar(SemType::Str, "simple"));
-    let node = store.add(TreeNode {
-        key: Some(key),
-        ..TreeNode::default()
-    });
+    let mut node = TreeNode::default();
+    node.set_key(Some(key));
+    let node = store.add(node);
     assert_eq!(store.nice_path_for(node).unwrap(), "simple");
 
     // Array index key
     let array_key = store.add(TreeNode::scalar(SemType::Int, "0"));
-    let array_node = store.add(TreeNode {
-        key: Some(array_key),
-        ..TreeNode::default()
-    });
+    let mut array_node = TreeNode::default();
+    array_node.set_key(Some(array_key));
+    let array_node = store.add(array_node);
     assert_eq!(store.nice_path_for(array_node).unwrap(), "[0]");
 
     // Dotted key
     let dot_key = store.add(TreeNode::scalar(SemType::Str, "key.with.dots"));
-    let dot_node = store.add(TreeNode {
-        key: Some(dot_key),
-        ..TreeNode::default()
-    });
+    let mut dot_node = TreeNode::default();
+    dot_node.set_key(Some(dot_key));
+    let dot_node = store.add(dot_node);
     assert_eq!(store.nice_path_for(dot_node).unwrap(), "key.with.dots");
 
     // Nested path: parent.child
     let parent_key = store.add(TreeNode::scalar(SemType::Str, "parent"));
-    let parent = store.add(TreeNode {
-        key: Some(parent_key),
-        ..TreeNode::default()
-    });
+    let mut parent = TreeNode::default();
+    parent.set_key(Some(parent_key));
+    let parent = store.add(parent);
     let child_key = store.add(TreeNode::scalar(SemType::Str, "child"));
-    let child = store.add(TreeNode {
-        key: Some(child_key),
+    let mut child = TreeNode {
         parent: Some(parent),
         ..TreeNode::default()
-    });
+    };
+    child.set_key(Some(child_key));
+    let child = store.add(child);
     assert_eq!(store.nice_path_for(child).unwrap(), "parent.child");
 }
 
@@ -537,8 +565,8 @@ fn tree_node_filter_map_content_by_key() {
     while i + 1 < map.content.len() {
         let k = map.content[i];
         let v = map.content[i + 1];
-        let key_node = store.get(k).unwrap();
-        if key_node.value == "key1" || key_node.value == "key3" {
+        let key_text = store.value_for(k).unwrap();
+        if key_text == "key1" || key_text == "key3" {
             filtered.push(k);
             filtered.push(v);
         }
@@ -546,10 +574,10 @@ fn tree_node_filter_map_content_by_key() {
     }
 
     assert_eq!(filtered.len(), 4);
-    assert_eq!(store.get(filtered[0]).unwrap().value, "key1");
-    assert_eq!(store.get(filtered[1]).unwrap().value, "value1");
-    assert_eq!(store.get(filtered[2]).unwrap().value, "key3");
-    assert_eq!(store.get(filtered[3]).unwrap().value, "value3");
+    assert_eq!(store.value_for(filtered[0]).unwrap(), "key1");
+    assert_eq!(store.value_for(filtered[1]).unwrap(), "value1");
+    assert_eq!(store.value_for(filtered[2]).unwrap(), "key3");
+    assert_eq!(store.value_for(filtered[3]).unwrap(), "value3");
 }
 
 // ---------------------------------------------------------------------------
@@ -577,7 +605,7 @@ fn tree_node_visit_values() {
     let mut i = 0;
     while i + 1 < map.content.len() {
         // Skip key, visit value
-        visited.push(&store.get(map.content[i + 1]).unwrap().value);
+        visited.push(store.value_for(map.content[i + 1]).unwrap());
         i += 2;
     }
     assert_eq!(visited.len(), 2);
@@ -597,7 +625,7 @@ fn tree_node_visit_values() {
     let seq = store.get(seq_node).unwrap();
     let mut seq_visited: Vec<&str> = Vec::new();
     for &child_id in &seq.content {
-        seq_visited.push(&store.get(child_id).unwrap().value);
+        seq_visited.push(store.value_for(child_id).unwrap());
     }
     assert_eq!(seq_visited.len(), 2);
     assert_eq!(seq_visited[0], "item1");
@@ -606,7 +634,7 @@ fn tree_node_visit_values() {
     // Scalar: visitValues should visit nothing
     let scalar = store.add(TreeNode {
         kind: TreeNodeKind::Scalar,
-        value: "scalar".to_owned(),
+        value: "scalar".to_owned().into(),
         ..TreeNode::default()
     });
     let scalar_node = store.get(scalar).unwrap();
@@ -639,25 +667,20 @@ fn tree_node_can_visit_values() {
 
 #[test]
 fn tree_node_copy_helpers_and_value_child_ids_preserve_zig_relationships() {
-    let original = TreeNode {
+    let mut original = TreeNode {
         kind: TreeNodeKind::Mapping,
         sem_type: Some(SemType::Map),
-        tag: SemType::Map.tag().to_owned(),
+        tag: CompactTag::from_sem_type(SemType::Map),
         content: vec![NodeId(10), NodeId(11), NodeId(12), NodeId(13)],
         parent: Some(NodeId(2)),
-        key: Some(NodeId(3)),
-        sequence_index: Some(4),
+        key: NodeId(3),
         document: 9,
-        filename: "doc.yaml".to_owned(),
         line: 7,
         column: 5,
-        file_index: 1,
-        leading_content: "  ".to_owned(),
-        head_comment: "# head".to_owned(),
-        line_comment: "# line".to_owned(),
-        foot_comment: "# foot".to_owned(),
         ..TreeNode::default()
     };
+    original.set_sequence_index(Some(4));
+    original.set_extra(Some(NodeExtraId(7)));
 
     assert_eq!(original.value_child_ids(), vec![NodeId(11), NodeId(13)]);
 
@@ -670,18 +693,15 @@ fn tree_node_copy_helpers_and_value_child_ids_preserve_zig_relationships() {
     assert_eq!(replaced.kind, TreeNodeKind::Scalar);
     assert_eq!(replaced.sem_type, Some(SemType::Int));
     assert_eq!(replaced.parent, Some(NodeId(2)));
-    assert_eq!(replaced.key, Some(NodeId(3)));
-    assert_eq!(replaced.sequence_index, Some(4));
+    assert_eq!(replaced.key(), Some(NodeId(3)));
+    assert_eq!(replaced.sequence_index(), Some(4));
     assert_eq!(replaced.document, 9);
 
     let commented = original
         .create_replacement_with_comments(TreeNodeKind::Sequence, SemType::Seq.tag())
         .unwrap();
     assert_eq!(commented.kind, TreeNodeKind::Sequence);
-    assert_eq!(commented.leading_content, "  ");
-    assert_eq!(commented.head_comment, "# head");
-    assert_eq!(commented.line_comment, "# line");
-    assert_eq!(commented.foot_comment, "# foot");
+    assert_eq!(commented.extra(), Some(NodeExtraId(7)));
 }
 
 // ---------------------------------------------------------------------------
@@ -706,7 +726,7 @@ fn tree_node_add_child() {
     let child_node = store.get(child).unwrap();
     assert!(!child_node.is_map_key);
     // For a sequence, add_child sets sequence_index to the content length
-    assert_eq!(child_node.sequence_index, Some(0));
+    assert_eq!(child_node.sequence_index(), Some(0));
     assert_eq!(child_node.parent, Some(parent));
 }
 
@@ -732,8 +752,8 @@ fn tree_node_add_children() {
 
     let seq = store.get(seq_parent).unwrap();
     assert_eq!(seq.content.len(), 2);
-    assert_eq!(store.get(child1).unwrap().value, "child1");
-    assert_eq!(store.get(child2).unwrap().value, "child2");
+    assert_eq!(store.value_for(child1).unwrap(), "child1");
+    assert_eq!(store.value_for(child2).unwrap(), "child2");
 
     // Mapping: add key-value pairs
     let map_parent = store.add(TreeNode {

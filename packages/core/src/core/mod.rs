@@ -158,7 +158,7 @@ pub use operation_prefs::{
     get_relational_preference, get_traverse_preference,
 };
 pub use printer::{Encoder, Printer};
-pub use printer_writer::{PrinterWriter, VecPrinterWriter};
+pub use printer_writer::{IoPrinterWriter, PrinterWriter, VecPrinterWriter};
 pub use registry::{Registry, RegistryHandle, RegistryOwner, from_handle, to_handle};
 pub use sem_type::SemType;
 pub use semantic_tokens::{
@@ -169,7 +169,8 @@ pub use semantic_tokens::{
 pub use span_index::StructuralSpanIndex;
 pub use traversal_builder::{build_recursive_descent_expression, build_traversal_expression};
 pub use tree_node::{
-    NodeId, NodeInfo, NodeList, ParsedKey, TreeNode, TreeNodeKind, ValueRep, infer_scalar_tag,
+    CommentBlock, CompactTag, NodeExtra, NodeExtraId, NodeId, NodeInfo, NodeList, NodeValueRef,
+    ParsedKey, TreeNode, TreeNodeKind, ValueId, ValueRep, infer_scalar_tag,
 };
 pub use tree_ops::{
     MapEntry, PathElement, create_scalar_node, ensure_map, ensure_seq, ensure_seq_index,
@@ -189,4 +190,4 @@ pub use tree_sitter_support::{
     parse_supported_language, parse_with_tree, query_capture_name_for_id, query_cursor_exec,
     query_cursor_new, query_new, tree_sitter_language,
 };
-pub use tree_store::{DocumentAnalysis, GraphEntry, TokenSpan, TreeEntry, TreeStore};
+pub use tree_store::{DocumentAnalysis, DocumentMeta, GraphEntry, TokenSpan, TreeEntry, TreeStore};

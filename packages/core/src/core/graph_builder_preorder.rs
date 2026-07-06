@@ -297,12 +297,14 @@ impl Builder {
                             while i > 1 {
                                 let key_id = node.content[i - 2];
                                 let value_id = node.content[i - 1];
-                                let key_node = store.get(key_id).ok_or_else(|| {
+                                let _key_node = store.get(key_id).ok_or_else(|| {
                                     format!("missing tree-store node {}", key_id.0)
                                 })?;
                                 stack.push(EmitFrame::Visit(value_id));
                                 stack.push(EmitFrame::MapKey {
-                                    value: key_node.value.clone(),
+                                    value: store
+                                        .value_string_for(key_id)
+                                        .map_err(|_| format!("missing key value {}", key_id.0))?,
                                 });
                                 i -= 2;
                             }
@@ -318,13 +320,15 @@ impl Builder {
                         }
                         TreeNodeKind::Scalar => {
                             self.on_event(&StreamingEvent::Scalar {
-                                value: node.value.clone(),
+                                value: store
+                                    .value_string_for(id)
+                                    .map_err(|_| format!("missing scalar value {}", id.0))?,
                                 meta,
                             })?;
                         }
                         TreeNodeKind::Alias => {
                             self.on_event(&StreamingEvent::Alias {
-                                anchor: node.anchor.clone(),
+                                anchor: store.anchor_for(id).unwrap_or_default().to_owned(),
                                 meta,
                             })?;
                         }
@@ -423,7 +427,7 @@ impl Builder {
             .get(id)
             .unwrap_or_else(|| panic!("missing tree-store node {}", id.0));
         Meta {
-            tag: node.tag.clone(),
+            tag: node.tag.to_string_value(),
             sem_type: node.sem_type.map(Into::into),
             start_byte: node.start_byte,
             end_byte: node.end_byte,
@@ -432,12 +436,12 @@ impl Builder {
             path: format_graph_path(path),
             path_supplier: None,
             document: node.document,
-            filename: node.filename.clone(),
-            file_index: node.file_index,
-            anchor: node.anchor.clone(),
-            head_comment: node.head_comment.clone(),
-            line_comment: node.line_comment.clone(),
-            foot_comment: node.foot_comment.clone(),
+            filename: store.filename_for(id).unwrap_or_default().to_owned(),
+            file_index: store.file_index_for(id).unwrap_or_default(),
+            anchor: store.anchor_for(id).unwrap_or_default().to_owned(),
+            head_comment: store.head_comment_for(id).unwrap_or_default().to_owned(),
+            line_comment: store.line_comment_for(id).unwrap_or_default().to_owned(),
+            foot_comment: store.foot_comment_for(id).unwrap_or_default().to_owned(),
         }
     }
 

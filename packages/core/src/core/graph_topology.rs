@@ -176,8 +176,8 @@ impl DirtySet {
             (
                 row.table_handle,
                 row.row_index,
-                row.table_node_id.0,
-                row.row_node_id.0,
+                row.table_node_id.index(),
+                row.row_node_id.index(),
             )
         });
     }
@@ -239,17 +239,17 @@ impl<T: Copy + Default> GenerationCache<T> {
 
     fn get(&self, id: NodeId) -> Option<T> {
         self.entries
-            .get(id.0)
+            .get(id.index())
             .filter(|entry| entry.generation == self.generation)
             .map(|entry| entry.value)
     }
 
     fn set(&mut self, id: NodeId, value: T) {
-        if id.0 >= self.entries.len() {
+        if id.index() >= self.entries.len() {
             self.entries
-                .resize_with(id.0 + 1, GenerationCacheEntry::default);
+                .resize_with(id.index() + 1, GenerationCacheEntry::default);
         }
-        if let Some(entry) = self.entries.get_mut(id.0) {
+        if let Some(entry) = self.entries.get_mut(id.index()) {
             entry.generation = self.generation;
             entry.value = value;
         }
@@ -406,7 +406,7 @@ impl GraphPatchPlanner {
     }
 
     fn mark_dense(values: &mut [bool], id: NodeId) -> bool {
-        if let Some(value) = values.get_mut(id.0) {
+        if let Some(value) = values.get_mut(id.index()) {
             let was_new = !*value;
             *value = true;
             was_new
@@ -416,11 +416,11 @@ impl GraphPatchPlanner {
     }
 
     fn contains_dense(values: &[bool], id: NodeId) -> bool {
-        values.get(id.0).copied().unwrap_or(false)
+        values.get(id.index()).copied().unwrap_or(false)
     }
 
     fn set_attachment(&mut self, id: NodeId, attachment: PatchAttachment) {
-        if let Some(slot) = self.inserted_attachments.get_mut(id.0) {
+        if let Some(slot) = self.inserted_attachments.get_mut(id.index()) {
             *slot = Some(attachment);
         }
     }
@@ -459,7 +459,7 @@ impl GraphPatchPlanner {
     ) {
         if Self::mark_dense(&mut self.seen_touched_sequences, sequence_id) {
             self.touched_sequences.push(sequence_id);
-            if let Some(slot) = self.sequence_previous.get_mut(sequence_id.0) {
+            if let Some(slot) = self.sequence_previous.get_mut(sequence_id.index()) {
                 *slot = Some(previous_states.get(&sequence_id).copied());
             }
         }
@@ -472,17 +472,19 @@ impl GraphPatchPlanner {
     }
 
     fn sort_touched(&mut self) {
-        self.touched_sequences.sort_by_key(|id| id.0);
-        self.touched_nodes.sort_by_key(|id| id.0);
+        self.touched_sequences.sort_by_key(|id| id.index());
+        self.touched_nodes.sort_by_key(|id| id.index());
     }
 
     fn sort_workset(&mut self) {
         self.workset.sort_by_key(|owner| match owner {
             GraphWorksetOwner::RootStructural => (0, 0, 0),
-            GraphWorksetOwner::StructuralSequence { sequence_id } => (1, sequence_id.0, 0),
-            GraphWorksetOwner::GraphFrontier { node_id } => (2, node_id.0, 0),
-            GraphWorksetOwner::DirtyTableRow(row) => (3, row.table_node_id.0, row.row_node_id.0),
-            GraphWorksetOwner::DirtyInlineOwner { graph_node_id } => (4, graph_node_id.0, 0),
+            GraphWorksetOwner::StructuralSequence { sequence_id } => (1, sequence_id.index(), 0),
+            GraphWorksetOwner::GraphFrontier { node_id } => (2, node_id.index(), 0),
+            GraphWorksetOwner::DirtyTableRow(row) => {
+                (3, row.table_node_id.index(), row.row_node_id.index())
+            }
+            GraphWorksetOwner::DirtyInlineOwner { graph_node_id } => (4, graph_node_id.index(), 0),
         });
     }
 
@@ -540,7 +542,12 @@ impl<'a> PlannerResolver<'a> {
     fn sequence_state(&self, sequence_id: NodeId, epoch: PlannerEpoch) -> Option<SequenceState> {
         match epoch {
             PlannerEpoch::Previous => {
-                match self.sequence_previous.get(sequence_id.0).copied().flatten() {
+                match self
+                    .sequence_previous
+                    .get(sequence_id.index())
+                    .copied()
+                    .flatten()
+                {
                     Some(previous) => previous,
                     None => self.sequence_current.get(&sequence_id).copied(),
                 }
@@ -602,8 +609,8 @@ impl<'a> PlannerResolver<'a> {
         id: NodeId,
     ) -> Option<&Option<Option<(NodeId, NodeId)>>> {
         match epoch {
-            PlannerEpoch::Previous => self.folded_context_by_node_previous.get(id.0),
-            PlannerEpoch::Current => self.folded_context_by_node_current.get(id.0),
+            PlannerEpoch::Previous => self.folded_context_by_node_previous.get(id.index()),
+            PlannerEpoch::Current => self.folded_context_by_node_current.get(id.index()),
         }
     }
 
@@ -613,22 +620,22 @@ impl<'a> PlannerResolver<'a> {
         id: NodeId,
     ) -> Option<&mut Option<Option<(NodeId, NodeId)>>> {
         match epoch {
-            PlannerEpoch::Previous => self.folded_context_by_node_previous.get_mut(id.0),
-            PlannerEpoch::Current => self.folded_context_by_node_current.get_mut(id.0),
+            PlannerEpoch::Previous => self.folded_context_by_node_previous.get_mut(id.index()),
+            PlannerEpoch::Current => self.folded_context_by_node_current.get_mut(id.index()),
         }
     }
 
     fn role_slot(&self, epoch: PlannerEpoch, id: NodeId) -> Option<&Option<GraphRole>> {
         match epoch {
-            PlannerEpoch::Previous => self.role_by_node_previous.get(id.0),
-            PlannerEpoch::Current => self.role_by_node_current.get(id.0),
+            PlannerEpoch::Previous => self.role_by_node_previous.get(id.index()),
+            PlannerEpoch::Current => self.role_by_node_current.get(id.index()),
         }
     }
 
     fn role_slot_mut(&mut self, epoch: PlannerEpoch, id: NodeId) -> Option<&mut Option<GraphRole>> {
         match epoch {
-            PlannerEpoch::Previous => self.role_by_node_previous.get_mut(id.0),
-            PlannerEpoch::Current => self.role_by_node_current.get_mut(id.0),
+            PlannerEpoch::Previous => self.role_by_node_previous.get_mut(id.index()),
+            PlannerEpoch::Current => self.role_by_node_current.get_mut(id.index()),
         }
     }
 
@@ -801,21 +808,21 @@ impl<'a> PlannerResolver<'a> {
         index_hint: Option<usize>,
     ) -> usize {
         if let Some(index) = index_hint.or_else(|| sequence_row_index(self.store, child)) {
-            if let Some(slot) = self.row_index_by_node.get_mut(child.0) {
+            if let Some(slot) = self.row_index_by_node.get_mut(child.index()) {
                 *slot = Some(index);
             }
             return index;
         }
-        if let Some(index) = self.row_index_by_node.get(child.0).copied().flatten() {
+        if let Some(index) = self.row_index_by_node.get(child.index()).copied().flatten() {
             return index;
         }
         for (index, &candidate) in parent.content.iter().enumerate() {
-            if let Some(slot) = self.row_index_by_node.get_mut(candidate.0) {
+            if let Some(slot) = self.row_index_by_node.get_mut(candidate.index()) {
                 *slot = Some(index);
             }
         }
         self.row_index_by_node
-            .get(child.0)
+            .get(child.index())
             .copied()
             .flatten()
             .unwrap_or(parent.content.len())
@@ -860,7 +867,11 @@ impl<'a> PlannerResolver<'a> {
     }
 
     fn owner_from_attachment_fast(&mut self, id: NodeId) -> Option<AttachmentFastPlan> {
-        let attachment = self.inserted_attachments.get(id.0).copied().flatten()?;
+        let attachment = self
+            .inserted_attachments
+            .get(id.index())
+            .copied()
+            .flatten()?;
         let parent_id = attachment
             .parent
             .or_else(|| self.store.get(id).and_then(|node| node.parent))?;
@@ -982,7 +993,11 @@ impl<'a> PlannerResolver<'a> {
         id: NodeId,
         current_role: GraphRole,
     ) -> Option<PlannedGraphOwner> {
-        let attachment = self.inserted_attachments.get(id.0).copied().flatten()?;
+        let attachment = self
+            .inserted_attachments
+            .get(id.index())
+            .copied()
+            .flatten()?;
         let parent_id = attachment
             .parent
             .or_else(|| self.store.get(id).and_then(|node| node.parent))?;
@@ -1121,14 +1136,12 @@ impl PathCursor {
 fn path_segment_for_node(store: &TreeStore, id: NodeId) -> Option<PathSeg> {
     let node = store.get(id)?;
     if node.is_map_key {
-        return Some(PathSeg::Key(node.value.clone()));
+        return Some(PathSeg::Key(store.value_string_for(id).ok()?));
     }
-    if let Some(key_id) = node.key {
-        return store
-            .get(key_id)
-            .map(|key_node| PathSeg::Key(key_node.value.clone()));
+    if let Some(key_id) = node.key() {
+        return Some(PathSeg::Key(store.value_string_for(key_id).ok()?));
     }
-    node.sequence_index
+    node.sequence_index()
         .and_then(|value| usize::try_from(value).ok())
         .map(PathSeg::Index)
 }
@@ -2362,12 +2375,12 @@ fn sequence_state_from_store(store: &TreeStore, id: NodeId) -> Option<SequenceSt
     let first_child = node.content.first().copied();
     let first_child_kind = first_child.and_then(|child| store.get(child).map(|node| node.kind));
     let header_key_count =
-        if matches!(first_child_kind, Some(TreeNodeKind::Mapping)) && !node.sequence_closed {
+        if matches!(first_child_kind, Some(TreeNodeKind::Mapping)) && !node.sequence_closed() {
             header_key_count(store, id)
         } else {
             0
         };
-    let presentation = match (first_child_kind, node.sequence_closed, header_key_count) {
+    let presentation = match (first_child_kind, node.sequence_closed(), header_key_count) {
         (None, true, _) => SequencePresentationState::EmptyClosed,
         (None, false, _) => SequencePresentationState::EmptyOpen,
         (Some(TreeNodeKind::Mapping), true, _) => SequencePresentationState::HeaderTable,
@@ -2381,7 +2394,7 @@ fn sequence_state_from_store(store: &TreeStore, id: NodeId) -> Option<SequenceSt
         first_child,
         first_child_kind,
         header_key_count,
-        closed: node.sequence_closed,
+        closed: node.sequence_closed(),
     })
 }
 
@@ -2436,7 +2449,7 @@ fn value_node_builds_child(node: &super::tree_node::TreeNode) -> bool {
 fn sequence_row_index(store: &TreeStore, child: NodeId) -> Option<usize> {
     store
         .get(child)?
-        .sequence_index
+        .sequence_index()
         .and_then(|value| usize::try_from(value).ok())
 }
 
@@ -2511,14 +2524,14 @@ mod tests {
         TreePatch::NodeInserted {
             node_id,
             parent: node.parent,
-            key: node.key,
+            key: node.key(),
             sequence_index: node
-                .sequence_index
+                .sequence_index()
                 .and_then(|index| u32::try_from(index).ok()),
             kind: node.kind as i32,
             sem_type: node.sem_type.map(|sem_type| sem_type as i32).unwrap_or(-1),
-            tag: node.tag.clone(),
-            value: node.value.clone(),
+            tag: node.tag.to_string_value(),
+            value: store.value_string_for(node_id).unwrap_or_default(),
         }
     }
 

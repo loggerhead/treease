@@ -17,9 +17,9 @@ use std::collections::BTreeSet;
 
 use treease_core::core::semantic_tokens::TOKEN_TYPES as SEMANTIC_TOKEN_TYPES;
 use treease_core::core::{
-    LANG_SPECS, SemType, TreeNode, TreeNodeKind, TreeStore, collect_token_spans_with_tree,
-    encode_semantic_tokens, lang_from_name, parse_with_tree, query_capture_name_for_id,
-    query_from_language, query_new, tree_sitter_language,
+    CompactTag, LANG_SPECS, SemType, TreeNode, TreeNodeKind, TreeStore,
+    collect_token_spans_with_tree, encode_semantic_tokens, lang_from_name, parse_with_tree,
+    query_capture_name_for_id, query_from_language, query_new, tree_sitter_language,
 };
 
 fn token_type_ids_for(language: &str, source: &str) -> BTreeSet<u32> {
@@ -509,7 +509,7 @@ fn node_id_and_tree_store_basic_operations() {
     let root = store.add(TreeNode {
         kind: TreeNodeKind::Mapping,
         sem_type: Some(SemType::Map),
-        tag: SemType::Map.tag().to_owned(),
+        tag: CompactTag::from_sem_type(SemType::Map),
         ..TreeNode::default()
     });
 
@@ -523,7 +523,7 @@ fn node_id_and_tree_store_basic_operations() {
         .unwrap();
 
     assert!(store.get(key_id).unwrap().is_map_key);
-    assert_eq!(store.get(value_id).unwrap().key, Some(key_id));
+    assert_eq!(store.get(value_id).unwrap().key(), Some(key_id));
     assert_eq!(store.get(value_id).unwrap().parent, Some(root));
 
     // Verify path

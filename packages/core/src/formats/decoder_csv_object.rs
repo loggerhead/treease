@@ -1,5 +1,6 @@
 use crate::core::{
-    CoreError, LineIndex, ParseError, SemType, TreeNode, TreeNodeKind, TreeStore, infer_scalar_tag,
+    CompactTag, CoreError, LineIndex, ParseError, SemType, TreeNode, TreeNodeKind, TreeStore,
+    infer_scalar_tag,
 };
 
 use super::preferences::FormatPreferences;
@@ -203,13 +204,14 @@ fn add_auto_scalar(store: &mut TreeStore, raw: &str, auto_parse: bool) -> crate:
     }
 
     if auto_parse && raw.starts_with('#') {
-        return store.add(TreeNode {
+        let id = store.add(TreeNode {
             kind: TreeNodeKind::Scalar,
             sem_type: Some(SemType::Nil),
-            tag: SemType::Nil.to_string(),
-            line_comment: raw.to_string(),
+            tag: CompactTag::from_sem_type(SemType::Nil),
             ..TreeNode::default()
         });
+        let _ = store.set_comments(id, "", raw, "");
+        return id;
     }
 
     if raw == "null" {

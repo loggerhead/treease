@@ -151,7 +151,7 @@ pub fn parse_snippet(value: &str) -> Result<TreeNode, CoreError> {
         let mut n = TreeNode::default();
         n.kind = NodeKind::Scalar;
         n.sem_type = Some(SemType::Nil);
-        n.tag = SemType::Nil.to_string().to_string();
+        n.tag = SemType::Nil.to_string().into();
         return Ok(n);
     }
     if value == ":" {
@@ -162,7 +162,7 @@ pub fn parse_snippet(value: &str) -> Result<TreeNode, CoreError> {
         let mut n = TreeNode::default();
         n.kind = NodeKind::Scalar;
         n.sem_type = Some(SemType::Nil);
-        n.tag = SemType::Nil.to_string().to_string();
+        n.tag = SemType::Nil.to_string().into();
         n.line_comment = value.to_string();
         return Ok(n);
     }
@@ -173,7 +173,7 @@ pub fn parse_snippet(value: &str) -> Result<TreeNode, CoreError> {
 
     if value == "null" {
         n.sem_type = Some(SemType::Nil);
-        n.tag = SemType::Nil.to_string().to_string();
+        n.tag = SemType::Nil.to_string().into();
         return Ok(n);
     }
 

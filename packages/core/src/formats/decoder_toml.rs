@@ -1,7 +1,7 @@
 use std::{collections::HashMap, path::Path};
 
 use crate::core::{
-    CoreError, NodeId, ParseError, SemType, TreeStore, ensure_map, ensure_seq,
+    CompactTag, CoreError, NodeId, ParseError, SemType, TreeStore, ensure_map, ensure_seq,
     get_or_create_map_value,
 };
 
@@ -190,7 +190,7 @@ fn parse_value(
         store
             .get_mut(node)
             .ok_or(CoreError::Parse(ParseError::BadTomlDocument))?
-            .tag = TIMESTAMP_TAG.to_string();
+            .tag = CompactTag::from_text(TIMESTAMP_TAG);
         return Ok(node);
     }
     if parse_float_literal(raw).is_ok() {

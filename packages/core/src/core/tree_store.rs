@@ -1,11 +1,17 @@
-use std::collections::HashMap;
+use std::{
+    collections::{HashMap, hash_map::DefaultHasher},
+    hash::{Hash, Hasher},
+};
 
 use super::errors::{CoreError, EvalError};
 use super::graph_builder::GraphModel as BuilderGraphModel;
 use super::graph_fragment_index::GraphFragmentIndex;
 use super::line_index::LineIndex;
 use super::sem_type::SemType;
-use super::tree_node::{NodeId, ParsedKey, TreeNode, TreeNodeKind};
+use super::tree_node::{
+    CommentBlock, NodeExtra, NodeExtraId, NodeId, NodeValueRef, ParsedKey, TreeNode, TreeNodeKind,
+    ValueId,
+};
 use crate::wasm_types::PathSpan;
 
 // ---------------------------------------------------------------------------
@@ -68,14 +74,41 @@ pub struct GraphEntry {
     pub fragment_index: Option<GraphFragmentIndex>,
 }
 
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct DocumentMeta {
+    pub filename: String,
+    pub file_index: i32,
+}
+
+#[derive(Debug, Clone)]
+enum ValueBucket {
+    One(ValueId),
+    Many(Vec<ValueId>),
+}
+
+impl ValueBucket {
+    fn push(&mut self, value_id: ValueId) {
+        match self {
+            ValueBucket::One(existing) => {
+                *self = ValueBucket::Many(vec![*existing, value_id]);
+            }
+            ValueBucket::Many(values) => values.push(value_id),
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // TreeStore
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct TreeStore {
     // -- Node container (existing) -------------------------------------------
     nodes: Vec<TreeNode>,
+    document_meta: Vec<DocumentMeta>,
+    node_extras: Vec<NodeExtra>,
+    values: Vec<Box<str>>,
+    value_index: Option<HashMap<u64, ValueBucket>>,
 
     // -- Document-level tree entries (new) -----------------------------------
     /// Full document entries keyed by document cache key.
@@ -95,6 +128,52 @@ pub struct TreeStore {
     semantic_tokens_cache: HashMap<String, Vec<u32>>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TreeStoreStats {
+    pub node_count: usize,
+    pub node_capacity: usize,
+    pub scalar_node_count: usize,
+    pub mapping_node_count: usize,
+    pub sequence_node_count: usize,
+    pub alias_node_count: usize,
+    pub unknown_node_count: usize,
+    pub nodes_with_content_count: usize,
+    pub total_content_slots: usize,
+    pub nodes_with_stored_value_count: usize,
+    pub nodes_with_missing_value_count: usize,
+    pub document_meta_count: usize,
+    pub document_meta_capacity: usize,
+    pub node_extra_count: usize,
+    pub node_extra_capacity: usize,
+    pub value_count: usize,
+    pub value_capacity: usize,
+    pub interned_value_bytes: usize,
+    pub value_index_entry_count: usize,
+    pub tree_entry_count: usize,
+    pub graph_entry_count: usize,
+    pub token_spans_cache_count: usize,
+    pub semantic_tokens_cache_count: usize,
+}
+
+impl Default for TreeStore {
+    fn default() -> Self {
+        let empty_id = ValueId(0);
+        let mut value_index = HashMap::new();
+        value_index.insert(value_hash(""), ValueBucket::One(empty_id));
+        Self {
+            nodes: Vec::new(),
+            document_meta: Vec::new(),
+            node_extras: Vec::new(),
+            values: vec![Box::<str>::from("")],
+            value_index: Some(value_index),
+            trees: HashMap::new(),
+            views: HashMap::new(),
+            token_spans_cache: HashMap::new(),
+            semantic_tokens_cache: HashMap::new(),
+        }
+    }
+}
+
 // ============================================================================
 // Node-container methods (existing – unchanged)
 // ============================================================================
@@ -104,18 +183,141 @@ impl TreeStore {
         Self::default()
     }
 
-    pub fn add(&mut self, node: TreeNode) -> NodeId {
-        let id = NodeId(self.nodes.len());
+    pub fn add(&mut self, mut node: TreeNode) -> NodeId {
+        node.value = match node.value {
+            NodeValueRef::Missing => NodeValueRef::Missing,
+            NodeValueRef::Stored(id) => NodeValueRef::Stored(id),
+            NodeValueRef::Inline(value) => NodeValueRef::Stored(self.intern_boxed_value(value)),
+        };
+        let id = NodeId::from_index(self.nodes.len());
         self.nodes.push(node);
         id
     }
 
+    pub fn add_node_extra(&mut self, extra: NodeExtra) -> NodeExtraId {
+        let id = NodeExtraId::from_index(self.node_extras.len());
+        self.node_extras.push(extra);
+        id
+    }
+
+    pub fn node_extra(&self, id: NodeExtraId) -> Option<&NodeExtra> {
+        self.node_extras.get(id.index())
+    }
+
+    pub fn node_extra_mut(&mut self, id: NodeExtraId) -> Option<&mut NodeExtra> {
+        self.node_extras.get_mut(id.index())
+    }
+
+    pub fn ensure_node_extra(&mut self, node: NodeId) -> Result<&mut NodeExtra, CoreError> {
+        let extra_id = match self.node(node)?.extra() {
+            Some(extra_id) => extra_id,
+            None => {
+                let extra_id = self.add_node_extra(NodeExtra::default());
+                self.node_mut(node)?.set_extra(Some(extra_id));
+                extra_id
+            }
+        };
+        self.node_extra_mut(extra_id)
+            .ok_or(CoreError::Eval(EvalError::MissingTreeNode))
+    }
+
+    pub fn set_anchor(&mut self, node: NodeId, anchor: impl Into<String>) -> Result<(), CoreError> {
+        let anchor = anchor.into();
+        let extra = self.ensure_node_extra(node)?;
+        extra.anchor = (!anchor.is_empty()).then(|| Box::new(anchor));
+        self.prune_empty_extra(node)
+    }
+
+    pub fn set_leading_content(
+        &mut self,
+        node: NodeId,
+        leading_content: impl Into<String>,
+    ) -> Result<(), CoreError> {
+        let leading_content = leading_content.into();
+        let extra = self.ensure_node_extra(node)?;
+        extra.leading_content = (!leading_content.is_empty()).then(|| Box::new(leading_content));
+        self.prune_empty_extra(node)
+    }
+
+    pub fn set_comments(
+        &mut self,
+        node: NodeId,
+        head: impl Into<String>,
+        line: impl Into<String>,
+        foot: impl Into<String>,
+    ) -> Result<(), CoreError> {
+        let head = head.into();
+        let line = line.into();
+        let foot = foot.into();
+        let extra = self.ensure_node_extra(node)?;
+        let comments = super::tree_node::CommentBlock {
+            head: (!head.is_empty()).then(|| Box::new(head)),
+            line: (!line.is_empty()).then(|| Box::new(line)),
+            foot: (!foot.is_empty()).then(|| Box::new(foot)),
+        };
+        extra.comments = (!comments.is_empty()).then_some(comments);
+        self.prune_empty_extra(node)
+    }
+
+    pub fn set_document_meta_if_absent(&mut self, document: u32, filename: &str, file_index: i32) {
+        let meta = self.ensure_document_meta(document);
+        if meta.filename.is_empty() && !filename.is_empty() {
+            meta.filename = filename.to_owned();
+        }
+        if meta.file_index == 0 && file_index != 0 {
+            meta.file_index = file_index;
+        }
+    }
+
+    fn prune_empty_extra(&mut self, node: NodeId) -> Result<(), CoreError> {
+        let Some(extra_id) = self.node(node)?.extra() else {
+            return Ok(());
+        };
+        let should_clear = self
+            .node_extra(extra_id)
+            .is_some_and(super::tree_node::NodeExtra::is_empty);
+        if should_clear {
+            self.node_mut(node)?.set_extra(None);
+        }
+        Ok(())
+    }
+
+    pub fn ensure_document_meta(&mut self, document: u32) -> &mut DocumentMeta {
+        let index = document as usize;
+        if self.document_meta.len() <= index {
+            self.document_meta
+                .resize(index + 1, DocumentMeta::default());
+        }
+        &mut self.document_meta[index]
+    }
+
+    pub fn set_document_meta(
+        &mut self,
+        document: u32,
+        filename: impl Into<String>,
+        file_index: i32,
+    ) {
+        let meta = self.ensure_document_meta(document);
+        meta.filename = filename.into();
+        meta.file_index = file_index;
+    }
+
+    pub fn document_meta(&self, document: u32) -> Option<&DocumentMeta> {
+        self.document_meta.get(document as usize)
+    }
+
+    pub fn document_meta_for_node(&self, id: NodeId) -> Result<&DocumentMeta, CoreError> {
+        let document = self.document_for(id)?;
+        self.document_meta(document)
+            .ok_or(CoreError::Eval(EvalError::MissingTreeNode))
+    }
+
     pub fn get(&self, id: NodeId) -> Option<&TreeNode> {
-        self.nodes.get(id.0)
+        self.nodes.get(id.index())
     }
 
     pub fn get_mut(&mut self, id: NodeId) -> Option<&mut TreeNode> {
-        self.nodes.get_mut(id.0)
+        self.nodes.get_mut(id.index())
     }
 
     pub fn nodes(&self) -> &[TreeNode] {
@@ -130,6 +332,65 @@ impl TreeStore {
         self.nodes.is_empty()
     }
 
+    pub fn stats(&self) -> TreeStoreStats {
+        let mut scalar_node_count = 0;
+        let mut mapping_node_count = 0;
+        let mut sequence_node_count = 0;
+        let mut alias_node_count = 0;
+        let mut unknown_node_count = 0;
+        let mut nodes_with_content_count = 0;
+        let mut total_content_slots = 0;
+        let mut nodes_with_stored_value_count = 0;
+        let mut nodes_with_missing_value_count = 0;
+
+        for node in &self.nodes {
+            match node.kind {
+                TreeNodeKind::Scalar => scalar_node_count += 1,
+                TreeNodeKind::Mapping => mapping_node_count += 1,
+                TreeNodeKind::Sequence => sequence_node_count += 1,
+                TreeNodeKind::Alias => alias_node_count += 1,
+                TreeNodeKind::Unknown => unknown_node_count += 1,
+            }
+
+            if !node.content.is_empty() {
+                nodes_with_content_count += 1;
+                total_content_slots += node.content.len();
+            }
+
+            match node.value {
+                NodeValueRef::Stored(_) => nodes_with_stored_value_count += 1,
+                NodeValueRef::Missing => nodes_with_missing_value_count += 1,
+                NodeValueRef::Inline(_) => {}
+            }
+        }
+
+        TreeStoreStats {
+            node_count: self.nodes.len(),
+            node_capacity: self.nodes.capacity(),
+            scalar_node_count,
+            mapping_node_count,
+            sequence_node_count,
+            alias_node_count,
+            unknown_node_count,
+            nodes_with_content_count,
+            total_content_slots,
+            nodes_with_stored_value_count,
+            nodes_with_missing_value_count,
+            document_meta_count: self.document_meta.len(),
+            document_meta_capacity: self.document_meta.capacity(),
+            node_extra_count: self.node_extras.len(),
+            node_extra_capacity: self.node_extras.capacity(),
+            value_count: self.values.len(),
+            value_capacity: self.values.capacity(),
+            interned_value_bytes: self.values.iter().map(|value| value.len()).sum(),
+            value_index_entry_count: self.value_index.as_ref().map_or(0, HashMap::len),
+            tree_entry_count: self.trees.len(),
+            graph_entry_count: self.views.len(),
+            token_spans_cache_count: self.token_spans_cache.len(),
+            semantic_tokens_cache_count: self.semantic_tokens_cache.len(),
+        }
+    }
+
     pub fn create_child(&mut self, parent: NodeId) -> Result<NodeId, CoreError> {
         self.add_child(parent, TreeNode::default())
     }
@@ -138,7 +399,7 @@ impl TreeStore {
         let sequence_index = {
             let parent_node = self.node(parent)?;
             if parent_node.kind == TreeNodeKind::Sequence {
-                Some(parent_node.content.len() as i64)
+                Some(parent_node.content.len() as u32)
             } else {
                 None
             }
@@ -147,7 +408,7 @@ impl TreeStore {
         let mut child = raw_child;
         child.parent = Some(parent);
         child.is_map_key = false;
-        child.sequence_index = sequence_index;
+        child.set_sequence_index(sequence_index);
         let child_id = self.add(child);
         self.node_mut(parent)?.content.push(child_id);
         Ok(child_id)
@@ -162,14 +423,14 @@ impl TreeStore {
         let mut key = raw_key;
         key.parent = Some(parent);
         key.is_map_key = true;
-        key.sequence_index = None;
+        key.set_sequence_index(None);
         let key_id = self.add(key);
 
         let mut value = raw_value;
         value.parent = Some(parent);
         value.is_map_key = false;
-        value.key = Some(key_id);
-        value.sequence_index = None;
+        value.set_key(Some(key_id));
+        value.set_sequence_index(None);
         let value_id = self.add(value);
 
         let parent_node = self.node_mut(parent)?;
@@ -187,38 +448,198 @@ impl TreeStore {
     }
 
     pub fn filename_for(&self, id: NodeId) -> Result<&str, CoreError> {
-        let node = self.node(id)?;
-        match node.parent {
-            Some(parent) => self.filename_for(parent),
-            None => Ok(&node.filename),
-        }
+        Ok(&self.document_meta_for_node(id)?.filename)
     }
 
     pub fn file_index_for(&self, id: NodeId) -> Result<i32, CoreError> {
+        Ok(self.document_meta_for_node(id)?.file_index)
+    }
+
+    pub fn resolved_sem_type_for(&self, id: NodeId) -> Result<Option<SemType>, CoreError> {
+        Ok(self.node(id)?.resolved_sem_type())
+    }
+
+    pub fn value_for(&self, id: NodeId) -> Result<&str, CoreError> {
+        let value_id = self.value_id_for(id)?;
+        Ok(self.value_text(value_id))
+    }
+
+    pub fn value_string_for(&self, id: NodeId) -> Result<String, CoreError> {
+        Ok(self.value_for(id)?.to_owned())
+    }
+
+    pub fn set_value(&mut self, id: NodeId, value: impl Into<String>) -> Result<(), CoreError> {
+        let value_ref = NodeValueRef::Stored(self.intern_value(value));
+        let node = self.node_mut(id)?;
+        node.value = value_ref;
+        Ok(())
+    }
+
+    pub fn clear_value(&mut self, id: NodeId) -> Result<(), CoreError> {
+        let empty_value_id = self.empty_value_id();
+        let node = self.node_mut(id)?;
+        node.value = NodeValueRef::Stored(empty_value_id);
+        Ok(())
+    }
+
+    pub fn remove_value(&mut self, id: NodeId) -> Result<(), CoreError> {
+        let node = self.node_mut(id)?;
+        node.value = NodeValueRef::Missing;
+        Ok(())
+    }
+
+    pub fn guess_tag_from_custom_type(&self, id: NodeId) -> Result<String, CoreError> {
         let node = self.node(id)?;
-        match node.parent {
-            Some(parent) => self.file_index_for(parent),
-            None => Ok(node.file_index),
+        Ok(super::tree_node::infer_scalar_tag(node.tag_str(), self.value_for(id)?).to_owned())
+    }
+
+    pub fn value_rep_for(&self, id: NodeId) -> Result<super::tree_node::ValueRep, CoreError> {
+        match SemType::from_string(&self.guess_tag_from_custom_type(id)?) {
+            Some(SemType::Int) => match self.value_for(id)?.parse::<i64>() {
+                Ok(v) => Ok(super::tree_node::ValueRep::Int(v)),
+                Err(_) => Err(CoreError::ParseMessage {
+                    line: 0,
+                    column: 0,
+                    message: format!(
+                        "integer value '{}' out of range for target format",
+                        self.value_for(id)?
+                    ),
+                }),
+            },
+            Some(SemType::Float) => self
+                .value_for(id)?
+                .parse::<f64>()
+                .map(super::tree_node::ValueRep::Float)
+                .map_err(|_| super::errors::ParseError::InvalidSyntax.into()),
+            Some(SemType::Boolean) => Ok(super::tree_node::ValueRep::Boolean(matches!(
+                self.value_for(id)?.to_ascii_lowercase().as_str(),
+                "true" | "y" | "yes" | "on" | "1"
+            ))),
+            Some(SemType::Nil) => Ok(super::tree_node::ValueRep::Nil),
+            _ => Ok(super::tree_node::ValueRep::Str(self.value_string_for(id)?)),
         }
+    }
+
+    pub fn anchor_for(&self, id: NodeId) -> Option<&str> {
+        let extra = self.get(id)?.extra()?;
+        self.node_extra(extra)?
+            .anchor
+            .as_deref()
+            .map(String::as_str)
+    }
+
+    pub fn leading_content_for(&self, id: NodeId) -> Option<&str> {
+        let extra = self.get(id)?.extra()?;
+        self.node_extra(extra)?
+            .leading_content
+            .as_deref()
+            .map(String::as_str)
+    }
+
+    pub fn comments_for(&self, id: NodeId) -> Option<&CommentBlock> {
+        let extra = self.get(id)?.extra()?;
+        self.node_extra(extra)?.comments.as_ref()
+    }
+
+    pub fn head_comment_for(&self, id: NodeId) -> Option<&str> {
+        self.comments_for(id)?.head.as_deref().map(String::as_str)
+    }
+
+    pub fn line_comment_for(&self, id: NodeId) -> Option<&str> {
+        self.comments_for(id)?.line.as_deref().map(String::as_str)
+    }
+
+    pub fn foot_comment_for(&self, id: NodeId) -> Option<&str> {
+        self.comments_for(id)?.foot.as_deref().map(String::as_str)
+    }
+
+    pub fn intern_value(&mut self, value: impl Into<String>) -> ValueId {
+        self.intern_boxed_value(Box::new(value.into()))
+    }
+
+    fn intern_boxed_value(&mut self, value: Box<String>) -> ValueId {
+        let hash = value_hash(value.as_str());
+        if let Some(existing) = self.ensure_value_index().get(&hash).cloned() {
+            match existing {
+                ValueBucket::One(value_id) => {
+                    if self.value_text(value_id) == value.as_str() {
+                        return value_id;
+                    }
+                }
+                ValueBucket::Many(value_ids) => {
+                    for value_id in value_ids {
+                        if self.value_text(value_id) == value.as_str() {
+                            return value_id;
+                        }
+                    }
+                }
+            }
+        }
+        let id = ValueId::from_index(self.values.len());
+        self.values.push(value.into_boxed_str());
+        self.index_value(hash, id);
+        id
+    }
+
+    fn index_value(&mut self, hash: u64, value: ValueId) {
+        self.ensure_value_index_mut()
+            .entry(hash)
+            .and_modify(|bucket| bucket.push(value))
+            .or_insert(ValueBucket::One(value));
+    }
+
+    pub fn discard_value_index(&mut self) {
+        self.value_index = None;
+    }
+
+    fn ensure_value_index(&mut self) -> &HashMap<u64, ValueBucket> {
+        if self.value_index.is_none() {
+            self.rebuild_value_index();
+        }
+        self.value_index
+            .as_ref()
+            .expect("value index should exist after rebuild")
+    }
+
+    fn ensure_value_index_mut(&mut self) -> &mut HashMap<u64, ValueBucket> {
+        if self.value_index.is_none() {
+            self.rebuild_value_index();
+        }
+        self.value_index
+            .as_mut()
+            .expect("value index should exist after rebuild")
+    }
+
+    fn rebuild_value_index(&mut self) {
+        let mut value_index = HashMap::new();
+        for (index, value) in self.values.iter().enumerate() {
+            value_index
+                .entry(value_hash(value))
+                .and_modify(|bucket: &mut ValueBucket| bucket.push(ValueId::from_index(index)))
+                .or_insert(ValueBucket::One(ValueId::from_index(index)));
+        }
+        self.value_index = Some(value_index);
     }
 
     pub fn parsed_key_for(&self, id: NodeId) -> Result<Option<ParsedKey>, CoreError> {
         let node = self.node(id)?;
         if node.is_map_key {
-            return Ok(Some(ParsedKey::Str(node.value.clone())));
+            return Ok(Some(ParsedKey::Str(self.value_string_for(id)?)));
         }
-        if let Some(key_id) = node.key {
+        if let Some(key_id) = node.key() {
             let key_node = self.node(key_id)?;
             if key_node.resolved_sem_type() == Some(SemType::Str) {
-                return Ok(Some(ParsedKey::Str(key_node.value.clone())));
+                return Ok(Some(ParsedKey::Str(self.value_string_for(key_id)?)));
             }
-            return Ok(Some(match key_node.value.parse::<i64>() {
+            return Ok(Some(match self.value_for(key_id)?.parse::<i64>() {
                 Ok(index) => ParsedKey::Int(index),
-                Err(_) => ParsedKey::Str(key_node.value.clone()),
+                Err(_) => ParsedKey::Str(self.value_string_for(key_id)?),
             }));
         }
         if self.sequence_index_for(id)?.is_some() {
-            return Ok(node.sequence_index.map(ParsedKey::Int));
+            return Ok(node
+                .sequence_index()
+                .map(|index| ParsedKey::Int(index as i64)));
         }
         Ok(None)
     }
@@ -325,7 +746,7 @@ impl TreeStore {
         if node.is_map_key || parent.kind != TreeNodeKind::Sequence {
             return Ok(None);
         }
-        Ok(node.sequence_index)
+        Ok(node.sequence_index().map(|index| index as i64))
     }
 
     fn node(&self, id: NodeId) -> Result<&TreeNode, CoreError> {
@@ -349,13 +770,50 @@ impl TreeStore {
             let key_id = node.content[index];
             let value_id = node.content[index + 1];
             let key_node = self.node(key_id)?;
-            if key_node.is_map_key && key_node.value == expected_key {
+            if key_node.is_map_key && self.value_for(key_id)? == expected_key {
                 return Ok(Some((key_id, value_id)));
             }
             index += 2;
         }
         Ok(None)
     }
+
+    pub fn value_id_for(&self, id: NodeId) -> Result<ValueId, CoreError> {
+        Ok(match self.node(id)?.value {
+            NodeValueRef::Stored(value_id) => value_id,
+            NodeValueRef::Missing => self.empty_value_id(),
+            NodeValueRef::Inline(_) => {
+                return Err(CoreError::Eval(EvalError::MissingTreeNode));
+            }
+        })
+    }
+
+    pub fn value_ref_for(&self, id: NodeId) -> Result<Option<ValueId>, CoreError> {
+        Ok(match self.node(id)?.value {
+            NodeValueRef::Stored(value_id) => Some(value_id),
+            NodeValueRef::Missing => None,
+            NodeValueRef::Inline(_) => {
+                return Err(CoreError::Eval(EvalError::MissingTreeNode));
+            }
+        })
+    }
+
+    fn value_text(&self, value_id: ValueId) -> &str {
+        self.values
+            .get(value_id.index())
+            .map(|value| value.as_ref())
+            .unwrap_or_default()
+    }
+
+    fn empty_value_id(&self) -> ValueId {
+        ValueId(0)
+    }
+}
+
+fn value_hash(value: &str) -> u64 {
+    let mut hasher = DefaultHasher::new();
+    value.hash(&mut hasher);
+    hasher.finish()
 }
 
 // ============================================================================
