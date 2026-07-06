@@ -1,3 +1,9 @@
+---
+summary: "Repository 的硬性约束与跨目录治理入口。"
+read_when:
+  - 需要确认任务边界、跨层职责与文档读取顺序时
+---
+
 # Repository Guidelines
 
 ## 0. 最高优先级：任何操作前先执行 `pnpm docs:list`
@@ -8,23 +14,22 @@
 
 ## Project Overview
 - Treease 是一个多格式结构化文档工具链：`packages/core/` 负责 Rust 解析/格式化/算子/评估/建图，`apps/web/` 负责编辑器与图形界面，`apps/server/` 负责账号 / 计费 / 分享 / AI server 能力，`apps/cli/` 负责独立 CLI crate、acceptance 测试与文档入口。
-- 根文件只保留跨仓约束与稳定入口；细节规则下沉到模块级 `AGENTS.md` 与 `docs/` 主题文档。
+- 根文件只保留仓库级硬约束、跨层边界和稳定入口；文档层级、主题导航和内容组织下沉到 `docs/`。
+
+## Routing
+- docs 首页与主题入口：`docs/index.md`
+- docs 元规则：`docs/AGENTS.md`
+- scripts 层规则：`scripts/AGENTS.md`
+- Web：`apps/web/AGENTS.md` → `docs/web/index.md`
+- Core：`packages/core/AGENTS.md` → `docs/core/index.md`
+- CLI：`apps/cli/AGENTS.md` → `docs/cli/index.md`
+- 测试与验证：`docs/testing/index.md`
 
 ## Stable Entry Points
 - Web 主链：`apps/web/src/lib/components/Editor.svelte` → `apps/web/src/workers/wasm-runtime.worker.ts` → `packages/core/wasm/index.ts` → `packages/core/src/wasm_document.rs` → `packages/core/src/document/*`
 - Graph 链路：`apps/web/src/lib/components/GraphViewer.svelte` / `ViewportPanel.svelte` 消费 `DocumentJob` 事件、`SnapshotReady.mainGraph` 与 snapshot-bound 查询结果
 - CLI 主链：`apps/cli/src/main.rs` → `apps/cli/src/lib.rs` → `treease-core`
 - 协议真源：`packages/core/src/document/protocol.rs`；TypeScript 生成物是 `packages/core/wasm/document-protocol.generated.ts`
-
-## Directory Map
-- `apps/web/`：UI、前端状态、Worker、浏览器运行时
-- `apps/web/src/workers/`：transport / correlation / fan-out / 统一错误出口
-- `apps/web/test/`：集成测试与 Playwright E2E
-- `apps/server/`：Fastify server、账号会话、订阅、分享、AI 与 usage 路由
-- `packages/core/`：解析、格式化、算子、评估、snapshot authority、graph build、WASM 导出
-- `packages/core/src/document/`：document runtime、job engine、snapshot、projection、protocol
-- `packages/core/tests/`：Rust 集成、operator、corpus、graph、protocol 回归测试
-- `docs/`：规则、参考、执行计划、产品与性能文档
 
 ## Cross-Repo Rules
 - 不要跨层绕行：Web 不直接引用 `packages/core/src`，Core 不承载 Svelte/DOM/浏览器逻辑，CLI 不复制 Core 实现。
@@ -45,7 +50,7 @@
 - 修改 `apps/cli` 并需要发布 `treease-cli` 时，更新 `apps/cli/Cargo.toml` 的 version，并使用版本升级 commit（例如 `chore(cli): bump treease-cli to vX.Y.Z`）。
 
 ## Verification
-- 默认从 `docs/TESTING.md` 选择最小相关验证，不无差别全跑。
+- 默认从 `docs/testing/index.md` 选择最小相关验证，不无差别全跑。
 - Core 常用：`cd packages/core && cargo nextest run --locked`
 - CLI 常用：`cd apps/cli && cargo nextest run --locked --lib`；`cd apps/cli && bash tests/acceptance/run.sh`
 - Web 常用：`cd apps/web && pnpm test:unit` / `pnpm test:integration` / `pnpm test:e2e`
@@ -53,12 +58,5 @@
 - 文档变更：在仓库根目录运行 `node scripts/check-docs.mjs`
 - 改协议或 WASM 后：`cd packages/core && cargo run --locked --bin export_document_protocol`，再在 `apps/web/` 运行 `pnpm wasm:bindgen`；必要时继续 `pnpm wasm:sync`
 
-## Key References
-- `docs/index.md`：按任务路由的最短路径
-- `docs/WEB.md`：Web 规则、职责边界、freshness / graph / worker 约束
-- `docs/CORE.md`：Core 规则、协议边界、WASM / runtime 约束
-- `docs/TESTING.md`：真实覆盖、timeout、mock 与 E2E 规则
-- `scripts/check-docs.mjs`：文档路径、命令、选择器一致性校验
-- `.github/workflows/core.yml`、`.github/workflows/web.yml`：CI 入口
 ## Final Reminder
 - 如果这次任务还没有执行 `pnpm docs:list`，立刻先执行它；在此之前，不要进行任何其他仓库相关操作。

@@ -272,15 +272,24 @@ function advanceGraphSettlement(): void {
     snapshot.graph.interactiveRevision >= snapshot.graph.requestedRevision && !snapshot.graph.pendingRenderWork
       ? snapshot.graph.interactiveRevision
       : snapshot.graph.settledRevision;
+  const nextSettledRevisionCandidate = Math.min(
+    snapshot.graph.appliedRevision,
+    snapshot.graph.flushedRevision,
+    nextInteractiveRevision,
+  );
   snapshot = {
     ...snapshot,
     graph: {
       ...snapshot.graph,
-      settledRevision: Math.max(snapshot.graph.settledRevision, nextInteractiveRevision),
+      settledRevision: Math.max(snapshot.graph.settledRevision, nextSettledRevisionCandidate),
       settled:
         snapshot.graph.requestedRevision === 0
           ? true
-          : Math.max(snapshot.graph.settledRevision, nextInteractiveRevision) >= snapshot.graph.requestedRevision,
+          : Math.min(
+              snapshot.graph.appliedRevision,
+              snapshot.graph.flushedRevision,
+              Math.max(snapshot.graph.settledRevision, nextInteractiveRevision),
+            ) >= snapshot.graph.requestedRevision,
     },
   };
 }

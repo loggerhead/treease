@@ -253,7 +253,10 @@
     });
   }
 
-  function updateSidecarSourceText(value: string, options: { clearSnapshot?: boolean } = {}): void {
+  function updateSidecarSourceText(
+    value: string,
+    options: { clearSnapshot: boolean | undefined } = { clearSnapshot: undefined },
+  ): void {
     const documentKey = sidecarDocumentKey();
     const shouldClearSnapshot = options.clearSnapshot ?? true;
     updateWorkspaceTab(tabId, {
@@ -337,7 +340,7 @@
   function setModelValueSilently(
     target: Monaco.editor.ITextModel | null,
     value: string,
-    afterSet?: () => void,
+    afterSet: (() => void) | undefined,
   ): boolean {
     if (!target) return false;
     suppressChange = true;

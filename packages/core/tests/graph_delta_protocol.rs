@@ -199,7 +199,7 @@ fn graph_delta_edge_json(
 }
 
 /// Assert edge has valid camelCase bezierArgs in protocol delta.
-/// 验证 from_y 在父节点范围内，to_y 在子节点范围内（对应 docs/CORE.md
+/// 验证 from_y 在父节点范围内，to_y 在子节点范围内（对应 docs/core/index.md
 /// "起点 y 为父节点对应 value 单元格的中点；终点 y 为子节点首个 row 的中点"）。
 fn assert_graph_delta_edge_with_camel_bezier(
     delta: &GraphDelta,

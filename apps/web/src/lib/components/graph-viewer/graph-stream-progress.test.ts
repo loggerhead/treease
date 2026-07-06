@@ -256,4 +256,32 @@ describe('graph-stream-progress', () => {
     controller.completeIfActive();
     expect(controller.getSnapshot().phase).toBe('idle');
   });
+
+  it('completeIfActive preserves finishing for one frame before done', () => {
+    vi.useFakeTimers();
+    const controller = createGraphStreamProgressController();
+
+    controller.handleEvent({
+      event: 'graphProgress',
+      documentKey: 'cache-key',
+      streamRunId: 'stream-id',
+      eventSeq: 1,
+      phase: 'finishing',
+      processedBytes: 100,
+      totalBytes: 100,
+      value: 99,
+      final: false,
+    });
+
+    controller.completeIfActive();
+    expect(controller.getSnapshot()).toMatchObject({
+      phase: 'finishing',
+      value: 99,
+      label: 'Finalizing graph',
+      detail: 'Applying final result',
+    });
+
+    vi.advanceTimersByTime(16);
+    expect(controller.getSnapshot().phase).toBe('idle');
+  });
 });

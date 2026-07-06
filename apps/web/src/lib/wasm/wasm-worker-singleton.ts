@@ -397,8 +397,7 @@ export function createWorkerClient(worker: WorkerLike): WorkerClient {
         postedAtMs: performance.now(),
       };
       pending.set(id, pendingRequest);
-      pendingRequest.watchdog = setInterval(() => {
-      }, 5000);
+      pendingRequest.watchdog = setInterval(() => {}, 5000);
       try {
         worker.postMessage(message, transfer);
       } catch (error) {

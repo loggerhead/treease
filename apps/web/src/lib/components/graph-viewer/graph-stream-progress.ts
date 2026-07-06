@@ -75,6 +75,7 @@ export function createGraphStreamProgressController(): GraphStreamProgressContro
   let state = createIdleState();
   let showTimer: ReturnType<typeof setTimeout> | null = null;
   let hideTimer: ReturnType<typeof setTimeout> | null = null;
+  let completionTimer: ReturnType<typeof setTimeout> | null = null;
   let lastEventSeq: number | null = null;
   const supersededStreamRunIds = new Set<string>();
 
@@ -106,9 +107,16 @@ export function createGraphStreamProgressController(): GraphStreamProgressContro
     hideTimer = null;
   };
 
+  const clearCompletionTimer = () => {
+    if (!completionTimer) return;
+    clearTimeout(completionTimer);
+    completionTimer = null;
+  };
+
   const transitionToIdle = (streamRunId: string) => {
     clearShowTimer();
     clearHideTimer();
+    clearCompletionTimer();
     lastEventSeq = null;
     rememberSupersededStreamRunId(streamRunId || state.streamRunId);
     setState(createIdleState());
@@ -139,6 +147,34 @@ export function createGraphStreamProgressController(): GraphStreamProgressContro
     }, HIDE_DELAY_MS);
   };
 
+  const finalizeCompletion = (streamRunId: string) => {
+    clearShowTimer();
+    const doneState: GraphStreamProgressState = {
+      ...state,
+      visible: state.visible,
+      label: 'Graph ready',
+      detail: 'Graph view is ready',
+      value: 100,
+      phase: 'done',
+      completedAt: Date.now(),
+    };
+    setState(doneState);
+    if (state.visible) {
+      scheduleHide(streamRunId);
+    } else {
+      transitionToIdle(streamRunId);
+    }
+  };
+
+  const scheduleCompletionAfterFinishing = (streamRunId: string) => {
+    if (completionTimer) return;
+    completionTimer = setTimeout(() => {
+      completionTimer = null;
+      if (state.streamRunId !== streamRunId || state.phase !== 'finishing') return;
+      finalizeCompletion(streamRunId);
+    }, 16);
+  };
+
   const handleEvent = (event: AnyProgressEvent): boolean => {
     const streamRunId = String(event.streamRunId ?? '');
     if (!streamRunId) return false;
@@ -154,6 +190,7 @@ export function createGraphStreamProgressController(): GraphStreamProgressContro
     if (state.streamRunId !== streamRunId) {
       rememberSupersededStreamRunId(state.streamRunId);
       clearShowTimer();
+      clearCompletionTimer();
       lastEventSeq = null;
     }
     if (eventSeq != null) {
@@ -197,22 +234,12 @@ export function createGraphStreamProgressController(): GraphStreamProgressContro
 
   const completeIfActive = () => {
     if (state.phase === 'idle' || state.phase === 'done' || state.phase === 'failed') return;
-    clearShowTimer();
-    const doneState: GraphStreamProgressState = {
-      ...state,
-      visible: state.visible,
-      label: 'Graph ready',
-      detail: 'Graph view is ready',
-      value: 100,
-      phase: 'done',
-      completedAt: Date.now(),
-    };
-    setState(doneState);
-    if (state.visible) {
-      scheduleHide(state.streamRunId);
-    } else {
-      transitionToIdle(state.streamRunId);
+    if (state.phase === 'finishing') {
+      scheduleCompletionAfterFinishing(state.streamRunId);
+      return;
     }
+    clearCompletionTimer();
+    finalizeCompletion(state.streamRunId);
   };
 
   return {

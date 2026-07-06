@@ -247,8 +247,13 @@
 
   const getNestEnabled = () => $settings.parser.enableNest;
   const updateCurrentTempModel = (updater: (current: any) => any) => activeTempModel.update(updater);
-  const clearDocumentSemanticTokens = (documentKey?: string) => clearSemanticTokensForDocument(documentKey);
-  const refreshDocumentSemanticTokens = (languageId?: string) => refreshSemanticTokensForLanguage(languageId);
+  function clearDocumentSemanticTokens(documentKey: string | undefined): void {
+    clearSemanticTokensForDocument(documentKey);
+  }
+
+  function refreshDocumentSemanticTokens(languageId: string | undefined): void {
+    refreshSemanticTokensForLanguage(languageId);
+  }
   const callWasmWorkerFromEditor = <T>(method: string, input: unknown) =>
     callSharedWasmWorker<T>(method as any, input);
 
@@ -1265,7 +1270,10 @@
     editor.focus();
   }
 
-  export async function revealPath(path: PathSeg[], options?: { target?: 'key' | 'value' | 'node'; focus?: boolean }) {
+  export async function revealPath(
+    path: PathSeg[],
+    options: { target?: 'key' | 'value' | 'node'; focus?: boolean } | undefined,
+  ) {
     if (!editor || !model || !monaco) return;
     if (!path || path.length === 0) return;
     const documentKeyValue = getDocumentKey();

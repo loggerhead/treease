@@ -276,7 +276,7 @@
     if (path.length) onGraphReveal(event.detail)
   }
 
-  export function revealPath(path: PathSeg[], options?: { target?: 'key' | 'value' | 'node' }) {
+  export function revealPath(path: PathSeg[], options: { target?: 'key' | 'value' | 'node' } | undefined) {
     if (!path.length) return
     graphViewer?.revealPath?.(path, options)
   }

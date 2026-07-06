@@ -1,0 +1,50 @@
+{
+  "title": "Treease Docs",
+  "layers": [
+    {
+      "id": "start",
+      "label": "Start",
+      "entry": "docs/start/index.md"
+    },
+    {
+      "id": "web",
+      "label": "Web",
+      "entry": "docs/web/index.md"
+    },
+    {
+      "id": "core",
+      "label": "Core",
+      "entry": "docs/core/index.md"
+    },
+    {
+      "id": "testing",
+      "label": "Testing",
+      "entry": "docs/testing/index.md"
+    },
+    {
+      "id": "cli",
+      "label": "CLI",
+      "entry": "docs/cli/index.md"
+    },
+    {
+      "id": "operators",
+      "label": "Operators",
+      "entry": "docs/operators/index.md"
+    },
+    {
+      "id": "formats",
+      "label": "Formats",
+      "entry": "docs/formats/index.md"
+    },
+    {
+      "id": "references",
+      "label": "References",
+      "entry": "docs/references/index.md"
+    },
+    {
+      "id": "generated",
+      "label": "Generated",
+      "entry": "docs/generated/index.md"
+    }
+  ]
+}

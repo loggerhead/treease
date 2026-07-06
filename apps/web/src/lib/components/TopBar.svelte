@@ -46,7 +46,7 @@
     importOpen = false
   }
 
-  const handleImportFile = async (file?: File | null) => {
+  const handleImportFile = async (file: File | null | undefined) => {
     if (!file) return
     importDropActive = false
     onImportFileStream({ file, sourceFormat: importFormat, targetFormat: $languageIdStore, fileName: file.name })

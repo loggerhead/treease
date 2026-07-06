@@ -1,3 +1,9 @@
+---
+summary: "apps/web 集成测试与 E2E 的边界、测试策略与文档入口。"
+read_when:
+  - 需要确认 Web 测试策略与最小复现路径
+---
+
 # apps/web/test 导航
 
 ## 作用域
@@ -5,8 +11,8 @@
 
 ## 最短路径
 - 先读：`../../../docs/index.md`
-- 测试规则：`../../../docs/TESTING.md`
-- Web 规则：`../../../docs/WEB.md`
+- 测试规则：`../../../docs/testing/index.md`
+- Web 规则：`../../../docs/web/index.md`
 
 ## 本地规则
 - 集成测试放在 `integration/**/*.test.ts`。
@@ -14,4 +20,4 @@
 - 优先覆盖真实 Worker/WASM 链路，避免过度 mock。
 
 ## 验证
-- 按 `../../../docs/TESTING.md` 选择最小相关命令；不要无差别全跑。
+- 按 `../../../docs/testing/index.md` 选择最小相关命令；不要无差别全跑。

@@ -65,7 +65,11 @@
     return editorCore?.importAs(targetFormat, text, sourceFormat);
   }
 
-  export function importStream(file: File, sourceLanguage: string, targetLanguage?: SupportedEditorLanguageId) {
+  export function importStream(
+    file: File,
+    sourceLanguage: string,
+    targetLanguage: SupportedEditorLanguageId | undefined,
+  ) {
     return editorCore?.importStream(file, sourceLanguage, targetLanguage);
   }
 
@@ -77,7 +81,7 @@
     editorCore?.revealLine(lineNumber, column);
   }
 
-  export function revealPath(path: PathSeg[], options?: { target?: 'key' | 'value' | 'node' }) {
+  export function revealPath(path: PathSeg[], options: { target?: 'key' | 'value' | 'node' } | undefined) {
     return editorCore?.revealPath(path, options);
   }
 

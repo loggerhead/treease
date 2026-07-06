@@ -444,16 +444,27 @@ export async function waitForSettingsReady(page: Page, timeout = DEFAULT_UI_TIME
     .toBe('ready');
 }
 
-export async function waitForGraphRendered(page: Page, timeout = DEFAULT_UI_TIMEOUT) {
-  await expect.poll(async () => readRuntimeReadiness(page), { timeout }).toEqual(expect.objectContaining({
-      editorRevision: expect.any(Number),
-      graph: expect.objectContaining({
-        settled: true,
-      }),
-    }));
+export async function waitForGraphRendered(
+  page: Page,
+  timeout = DEFAULT_UI_TIMEOUT,
+  target?: { documentKey: string; revision: number },
+) {
   await waitForRuntimeReadiness(
     page,
-    (readiness) => readiness.graph.settled && readiness.graph.settledRevision >= readiness.graph.requestedRevision,
+    (lastReadiness) => {
+      const targetDocumentKey = target?.documentKey ?? lastReadiness.documentKey;
+      const targetRevision = Math.max(1, target?.revision ?? lastReadiness.graph.requestedRevision);
+      return (
+        lastReadiness.documentKey === targetDocumentKey &&
+        lastReadiness.import.settled &&
+        lastReadiness.graph.requestedRevision >= targetRevision &&
+        lastReadiness.graph.appliedRevision >= targetRevision &&
+        lastReadiness.graph.flushedRevision >= targetRevision &&
+        lastReadiness.graph.interactiveRevision >= targetRevision &&
+        lastReadiness.graph.settled &&
+        lastReadiness.graph.settledRevision >= targetRevision
+      );
+    },
     timeout,
   );
 }
@@ -1172,7 +1183,11 @@ async function commitGraphValueLikeViaProbes(
       .then(() => true)
       .catch(() => false);
     if (committed) {
-      await waitForGraphRendered(page);
+      const readiness = await readRuntimeReadiness(page);
+      await waitForGraphRendered(page, DEFAULT_UI_TIMEOUT, {
+        documentKey: readiness.documentKey,
+        revision: readiness.editorRevision,
+      });
       return true;
     }
     await setEditorContent(page, { sourceText: options.sourceText });
@@ -1251,7 +1266,11 @@ async function commitGraphValueLikeViaProbes(
     }
 
     if (committed) {
-      await waitForGraphRendered(page);
+      const readiness = await readRuntimeReadiness(page);
+      await waitForGraphRendered(page, DEFAULT_UI_TIMEOUT, {
+        documentKey: readiness.documentKey,
+        revision: readiness.editorRevision,
+      });
       return true;
     }
   }

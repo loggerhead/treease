@@ -239,7 +239,7 @@ YAML 的 value edit 规则从静态 `planner_for_rule_kind` 迁移到 capability
 验收：
 
 - 有脚本或 CI job 输出 full/lite wasm bytes。
-- `docs/wasm-language-packs.md` 中的基线数字可复核。
+- `docs/core/wasm-language-packs.md` 中的基线数字可复核。
 - YAML 相关测试矩阵明确覆盖 decode、encode、semantic tokens、graph value edit、snapshot event。
 
 ### 阶段 1：Core base 内部 capability registry

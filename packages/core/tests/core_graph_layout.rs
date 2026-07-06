@@ -371,10 +371,10 @@ fn assert_bezier_contract(model: &GraphModel) {
         );
     }
 }
-/// 按 docs/layout-pipeline.md Graph layout 规则计算锚点 y：
+/// 按 docs/web/layout-pipeline.md Graph layout 规则计算锚点 y：
 /// - Table：header row 为 header 高度中点，body row 为对应 body row 中点
 /// - Object/Scalar：使用 row.abs_bounds.y + height/2（abs_bounds 已包含 node.y）
-/// 按 docs/layout-pipeline.md Graph layout 规则计算锚点 y。
+/// 按 docs/web/layout-pipeline.md Graph layout 规则计算锚点 y。
 /// Table 使用 header/body row 高度从 node.y 独立推导。
 /// Object/Scalar 从 node.y + 配置参数独立计算（不用 row.abs_bounds，避免循环验证）。
 fn computed_anchor_y(node: &GraphNode, row_index: i32) -> i32 {
@@ -643,7 +643,7 @@ fn view_layout_multi_child_parent_keeps_row_order_monotonic() {
 }
 
 // ---------------------------------------------------------------------------
-// docs/CORE.md rule 2: 第一个子节点 y = 父节点 y
+// docs/core/index.md rule 2: 第一个子节点 y = 父节点 y
 // ---------------------------------------------------------------------------
 
 #[test]

@@ -156,7 +156,7 @@ fn max_width(config: &BuilderConfig, texts: &[&str], limit: i32) -> i32 {
     width.min(limit)
 }
 
-// Graph layout 规则验证（docs/layout-pipeline.md）
+// Graph layout 规则验证（docs/web/layout-pipeline.md）
 include!("common/layout_assertions.rs");
 
 #[test]

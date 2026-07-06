@@ -44,22 +44,23 @@ export function commitEditorTabTextChange(options: CommitEditorTabTextChangeOpti
     settings: options.settings,
     builderConfig: options.builderConfig,
   }).then((result) => {
+    const fresh = options.isFresh({ revision });
     if (
       result.sourceText != null &&
       options.documentTextEdits.length === 0 &&
-      options.isFresh({ revision }) &&
+      fresh &&
       result.sourceText !== options.requestModel.getValue()
     ) {
       options.applyCommittedSourceText?.(result.sourceText);
     }
-    if (result.status === 'snapshotReady' && options.isFresh({ revision })) {
+    if (result.status === 'snapshotReady' && fresh) {
       options.bindSnapshot({
         documentKey: options.requestDocumentKey,
         revision,
         snapshotId: result.snapshotId,
       });
     }
-    if (result.analysis != null && options.isFresh({ revision })) {
+    if (result.analysis != null && fresh) {
       void options.applyGraphAnalysis(
         options.requestModel,
         options.requestLanguage,

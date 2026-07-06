@@ -9,50 +9,6 @@ title: "Docs map"
 This file is generated from `docs/**/*.md` and `docs/**/*.mdx` headings to help agents navigate the documentation tree.
 Do not edit it by hand; run `pnpm docs:map:gen`.
 
-## index.md
-
-- Route: /index
-- Headings:
-  - H1: Agent 最短路径
-  - H2: 默认规则
-  - H2: 任务路由
-  - H2: 稳定入口
-  - H2: 深读触发器
-
-## bidirectional-edit-pipeline.md
-
-- Route: /bidirectional-edit-pipeline
-- Headings:
-  - H1: 双向编辑
-  - H2: 核心实体
-  - H3: Editor Model
-  - H3: Graph Interaction
-  - H3: Graph Edit Planner
-  - H3: Commit Transaction
-  - H3: DocumentSnapshot
-  - H2: 核心实体关系
-  - H2: 双向编辑约束
-  - H3: Editor → Graph
-  - H3: Graph → Editor
-  - H3: fallback
-  - H2: 数据流
-  - H3: 1. Editor → Graph
-  - H3: 2. Graph → Editor
-  - H3: 3. 子图工作区 graph pane
-  - H3: 4. 子图工作区 content pane
-  - H2: 子图工作区入口约束
-  - H2: 检查清单
-
-## cli/README.md
-
-- Route: /cli/README
-- Headings:
-  - H1: Treease CLI
-  - H2: Tasks
-  - H2: Local Web Graph
-  - H2: Machine-Readable Files
-  - H2: Error Codes
-
 ## CODING.md
 
 - Route: /CODING
@@ -69,54 +25,62 @@ Do not edit it by hand; run `pnpm docs:map:gen`.
   - H2: 临时脚本规则
   - H2: 禁止事项
 
-## CORE.md
+## cli/index.md
 
-- Route: /CORE
+- Route: /cli
 - Headings:
-  - H1: Core 约束
-  - H2: Core 的职责
-  - H3: 必须放在 Core 的能力
-  - H3: 不应放在 Core 的能力
-  - H2: 对外边界
-  - H3: 稳定入口
-  - H3: 协议边界
-  - H3: runtime 边界
-  - H3: graph edit 边界
-  - H2: 主图与读取边界
-  - H2: 设计约束
-  - H2: 生产环境变更边界
-  - H2: 常见判断题
-  - H3: “这个能力应不应该下沉到 Core？”
-  - H3: “这个能力能不能留在 Web？”
-  - H2: 变更流程
+  - H1: CLI
+  - H2: Common Tasks
+  - H2: Local Graph Page
+  - H2: Machine-Readable Outputs
+  - H2: Error Codes
 
-## editor-data-flow.md
+## core/index.md
 
-- Route: /editor-data-flow
+- Route: /core
 - Headings:
-  - H1: 主文档数据流
-  - H2: 核心实体
-  - H3: Editor Model
-  - H3: Commit Transaction
-  - H3: Document Runtime
-  - H3: DocumentSnapshot
-  - H3: Workspace Store
-  - H3: Workspace Mirror Text
-  - H3: Active Document Context
-  - H3: View Runtime
-  - H2: 核心实体关系
-  - H2: 核心约束
-  - H3: 文本 authority
-  - H3: 提交 authority
-  - H3: 语义 authority
-  - H3: 绑定 authority
-  - H2: 业务场景数据流
-  - H3: 1. 用户直接编辑主文档
-  - H3: 2. 程序化整文替换
-  - H3: 3. 主文档语义读取
-  - H3: 4. parse failed / clear graph
-  - H3: 5. blank / whitespace clear
-  - H2: 主文档数据流检查清单
+  - H1: Core
+  - H2: Domain Rules
+  - H2: What This Domain Covers
+  - H2: Read By Topic
+  - H2: Stable Entry Points
+  - H2: Relation To Other Domains
+
+## core/wasm-language-packs.md
+
+- Route: /core/wasm-language-packs
+- Headings:
+  - H1: WASM Language Packs 拆分计划
+  - H2: 目标
+  - H2: 非目标
+  - H2: 模块划分
+  - H3: Core base
+  - H3: YAML language pack
+  - H3: Web Worker language pack loader
+  - H2: Core API 形态
+  - H2: 加载链路
+  - H2: 数据流变化
+  - H3: AnalyzeSource
+  - H3: ApplyEdits
+  - H3: snapshot-bound read
+  - H3: graph value edit
+  - H2: 全局状态处理
+  - H3: 必须留在 Core base 的状态
+  - H3: 可以在 pack 内局部持有的状态
+  - H3: 需要迁移成 registry 的状态
+  - H2: 落地阶段
+  - H3: 阶段 0：基线与边界确认
+  - H3: 阶段 1：Core base 内部 capability registry
+  - H3: 阶段 2：base 构建排除 YAML 默认能力
+  - H3: 阶段 3：YAML pack 独立 WASM
+  - H3: 阶段 4：Web 集成与性能验收
+  - H3: 阶段 5：推广到其他格式
+  - H2: 验收标准
+  - H3: 功能验收
+  - H3: 性能验收
+  - H3: 架构验收
+  - H3: 测试验收
+  - H2: 风险与缓解
 
 ## formats/csv.md
 
@@ -126,6 +90,14 @@ Do not edit it by hand; run `pnpm docs:map:gen`.
   - H2: Encode
   - H2: Decode
   - H2: Web import and export
+
+## formats/index.md
+
+- Route: /formats
+- Headings:
+  - H1: Formats
+  - H2: Read By Need
+  - H2: Scope
 
 ## formats/javascript.md
 
@@ -148,15 +120,6 @@ Do not edit it by hand; run `pnpm docs:map:gen`.
   - H2: Roundtrip: preserve Python-style data
   - H2: Convert to another format
   - H2: Notes
-
-## formats/README.md
-
-- Route: /formats/README
-- Headings:
-  - H1: 格式说明
-  - H2: 入口
-  - H2: 手写页面
-  - H2: 说明
 
 ## formats/toml.md
 
@@ -181,26 +144,6 @@ Do not edit it by hand; run `pnpm docs:map:gen`.
   - H2: Roundtrip: empty table
   - H2: Roundtrip: comments
 
-## WEB.md
-
-- Route: /WEB
-- Headings:
-  - H1: Frontend 约束
-  - H2: 总体依赖方向
-  - H2: 前端分层
-  - H3: 1. UI 层
-  - H3: 2. Web 状态 / 服务编排层
-  - H3: 3. Worker 层
-  - H3: 4. WASM 绑定层
-  - H2: 前端内部架构约束
-  - H3: UI 与状态
-  - H3: GraphViewer
-  - H3: Editor
-  - H3: Workspace
-  - H2: 复用与实现边界
-  - H2: 单向依赖检查清单
-  - H2: 设计目标
-
 ## generated/core-registry-capabilities.md
 
 - Route: /generated/core-registry-capabilities
@@ -210,44 +153,25 @@ Do not edit it by hand; run `pnpm docs:map:gen`.
   - H2: Operators
   - H2: Formats
 
-## layout-pipeline.md
+## generated/index.md
 
-- Route: /layout-pipeline
+- Route: /generated
 - Headings:
-  - H1: 布局约束
-  - H2: 输入与输出
-  - H3: 输入
-  - H3: 输出
-  - H2: 核心实体
-  - H3: Topology
-  - H3: Graph Node
-  - H3: Graph Edge
-  - H3: Table Presentation
-  - H3: Layout Result
-  - H2: 核心实体关系
-  - H2: 一、节点判定
-  - H3: Tree 结构到图结构的映射
-  - H3: 独立节点规则
-  - H3: sequence 分化规则
-  - H3: 节点判定的一致性要求
-  - H2: 二、节点表现
-  - H3: Scalar
-  - H3: Object
-  - H3: 空容器退化
-  - H3: Headerless Table
-  - H3: Header Table
-  - H3: Header Table 的 fallback value 列规则
-  - H3: virtual table
-  - H2: 三、几何规则
-  - H3: X 方向规则
-  - H3: Y 方向规则
-  - H3: edge 规则
-  - H2: 四、一致性约束
-  - H3: full build / streaming 一致性
-  - H3: changed-region 一致性
-  - H3: 几何一致性
-  - H2: 五、明确错误
-  - H2: 检查清单
+  - H1: Generated
+  - H2: Generated Assets
+  - H2: Rules
+  - H2: Related Domains
+
+## index.md
+
+- Route: /
+- Headings:
+  - H1: Treease Docs
+  - H2: What Treease Covers
+  - H2: Start Here
+  - H2: Theme Indexes
+  - H2: Reading Paths
+  - H2: Verification
 
 ## operators/add.md
 
@@ -504,6 +428,14 @@ Do not edit it by hand; run `pnpm docs:map:gen`.
   - H2: Select, checking for existence of deep paths
   - H2: Has array index
 
+## operators/index.md
+
+- Route: /operators
+- Headings:
+  - H1: Operators
+  - H2: Read By Need
+  - H2: Scope
+
 ## operators/keys.md
 
 - Route: /operators/keys
@@ -653,14 +585,6 @@ Do not edit it by hand; run `pnpm docs:map:gen`.
   - H2: Pick keys from map, included all the keys
   - H2: Pick indices from array
 
-## operators/README.md
-
-- Route: /operators/README
-- Headings:
-  - H1: 算子文档
-  - H2: 目录分工
-  - H2: 阅读顺序
-
 ## operators/recursive-descent-glob.md
 
 - Route: /operators/recursive-descent-glob
@@ -690,12 +614,12 @@ Do not edit it by hand; run `pnpm docs:map:gen`.
 - Headings:
   - H1: Relational Operators
   - H2: Related Operators
-  - H2: Relational comparison of numbers (\>gt;)
-  - H2: Relational comparison of equal numbers (\>gt;=)
+  - H2: Relational comparison of numbers (&gt;)
+  - H2: Relational comparison of equal numbers (&gt;=)
   - H2: Relational comparison of strings
   - H2: Relational comparison of date times
-  - H2: Both sides are null: \>gt; is false
-  - H2: Both sides are null: \>gt;= is true
+  - H2: Both sides are null: &gt; is false
+  - H2: Both sides are null: &gt;= is true
 
 ## operators/reverse.md
 
@@ -886,13 +810,13 @@ Do not edit it by hand; run `pnpm docs:map:gen`.
   - H2: Update multiple deeply nested properties
   - H2: Update array elements relatively
 
-## references/README.md
+## references/index.md
 
-- Route: /references/README
+- Route: /references
 - Headings:
-  - H1: Core 参考资料
-  - H2: 文档列表
-  - H2: 说明
+  - H1: References
+  - H2: Pages
+  - H2: Related Layers
 
 ## references/supported-syntax-and-operators.md
 
@@ -929,9 +853,174 @@ Do not edit it by hand; run `pnpm docs:map:gen`.
   - H2: 不属于常见子集
   - H2: 当前失败集分类
 
-## stream-pipeline.md
+## start/index.md
 
-- Route: /stream-pipeline
+- Route: /start
+- Headings:
+  - H1: Start
+  - H2: What Readers Should Learn Here
+  - H2: Read Here First
+  - H2: Then Continue To
+
+## start/user-stories.md
+
+- Route: /start/user-stories
+- Headings:
+  - H1: User Stories
+  - H2: 说明
+  - H2: 产品概览
+  - H2: 目标用户
+  - H2: 核心用户旅程
+  - H2: 用户故事
+  - H3: US-01 导入文件并自动识别格式
+  - H3: US-02 在混杂文本中定位并查看 JSON 块
+  - H3: US-03 在 editor 中整理文本
+  - H3: US-04 在 Graph 和 Tree Path 中定位字段
+  - H3: US-05 在 editor 中 hover 值节点查看预览
+  - H3: US-06 在 Graph 中 click 打开局部工作区
+  - H3: US-07 在 Graph 中逐层打开子图工作区
+  - H3: US-08 在 Graph 和 editor 之间同步修改结果
+  - H3: US-09 导出为目标格式
+  - H3: US-10 比较两份内容
+  - H3: US-11 通过 URL preset 打开可复现入口
+  - H3: US-12 调整个人使用偏好
+  - H3: US-13 处理大文件时看到进度
+  - H3: US-14 在命令行中处理结构化输入
+  - H2: 使用边界
+  - H2: 维护规则
+
+## testing/index.md
+
+- Route: /testing
+- Headings:
+  - H1: Testing
+  - H2: Core Principles
+  - H2: Layer Selection
+  - H2: Verification Commands
+  - H2: What Requires Real-Chain Proof
+  - H2: Related Domains
+
+## web/bidirectional-edit-pipeline.md
+
+- Route: /web/bidirectional-edit-pipeline
+- Headings:
+  - H1: Bidirectional Edit Pipeline
+  - H2: 核心实体
+  - H3: Editor Model
+  - H3: Graph Interaction
+  - H3: Graph Edit Planner
+  - H3: Commit Transaction
+  - H3: DocumentSnapshot
+  - H2: 核心实体关系
+  - H2: 双向编辑约束
+  - H3: Editor → Graph
+  - H3: Graph → Editor
+  - H3: fallback
+  - H2: 数据流
+  - H3: 1. Editor → Graph
+  - H3: 2. Graph → Editor
+  - H3: 3. 子图工作区 graph pane
+  - H3: 4. 子图工作区 content pane
+  - H2: 子图工作区入口约束
+  - H2: 检查清单
+
+## web/editor-data-flow.md
+
+- Route: /web/editor-data-flow
+- Headings:
+  - H1: Editor Data Flow
+  - H2: 核心实体
+  - H3: Editor Model
+  - H3: Commit Transaction
+  - H3: Document Runtime
+  - H3: DocumentSnapshot
+  - H3: Workspace Store
+  - H3: Workspace Mirror Text
+  - H3: Active Document Context
+  - H3: View Runtime
+  - H2: 核心实体关系
+  - H2: 核心约束
+  - H3: 文本 authority
+  - H3: 提交 authority
+  - H3: 语义 authority
+  - H3: 绑定 authority
+  - H2: 业务场景数据流
+  - H3: 1. 用户直接编辑主文档
+  - H3: 2. 程序化整文替换
+  - H3: 3. 主文档语义读取
+  - H3: 4. parse failed / clear graph
+  - H3: 5. blank / whitespace clear
+  - H2: 主文档数据流检查清单
+
+## web/graph-stream-benchmark.md
+
+- Route: /web/graph-stream-benchmark
+- Headings:
+  - H1: Web Graph Stream Benchmark
+  - H2: 目的
+  - H2: 冻结口径
+  - H2: 运行命令
+  - H2: 输出文件
+  - H2: 关键指标
+  - H2: 推荐规则
+  - H2: 回归阈值
+  - H2: 当前冻结推荐（v2）
+  - H2: 当前运行时 chunk size 策略
+  - H2: 风险标记
+  - H2: 仍保留的边界
+
+## web/index.md
+
+- Route: /web
+- Headings:
+  - H1: Web
+  - H2: Domain Rules
+  - H2: What This Domain Covers
+  - H2: Read By Topic
+  - H2: Relation To Other Domains
+
+## web/layout-pipeline.md
+
+- Route: /web/layout-pipeline
+- Headings:
+  - H1: 布局约束
+  - H2: 输入与输出
+  - H3: 输入
+  - H3: 输出
+  - H2: 核心实体
+  - H3: Topology
+  - H3: Graph Node
+  - H3: Graph Edge
+  - H3: Table Presentation
+  - H3: Layout Result
+  - H2: 核心实体关系
+  - H2: 一、节点判定
+  - H3: Tree 结构到图结构的映射
+  - H3: 独立节点规则
+  - H3: sequence 分化规则
+  - H3: 节点判定的一致性要求
+  - H2: 二、节点表现
+  - H3: Scalar
+  - H3: Object
+  - H3: 空容器退化
+  - H3: Headerless Table
+  - H3: Header Table
+  - H3: Header Table 的 fallback value 列规则
+  - H3: virtual table
+  - H2: 三、几何规则
+  - H3: X 方向规则
+  - H3: Y 方向规则
+  - H3: edge 规则
+  - H2: 四、一致性约束
+  - H3: full build / streaming 一致性
+  - H3: changed-region 一致性
+  - H3: 几何一致性
+  - H2: 五、明确错误
+  - H2: 检查清单
+
+## web/stream-pipeline.md
+
+- Route: /web/stream-pipeline
 - Headings:
   - H1: 流式处理
   - H2: 核心实体
@@ -957,9 +1046,9 @@ Do not edit it by hand; run `pnpm docs:map:gen`.
   - H3: root scalar replace 约束
   - H2: 检查清单
 
-## subgraph-workspace.md
+## web/subgraph-workspace.md
 
-- Route: /subgraph-workspace
+- Route: /web/subgraph-workspace
 - Headings:
   - H1: 子图工作区
   - H2: 核心实体
@@ -990,110 +1079,3 @@ Do not edit it by hand; run `pnpm docs:map:gen`.
   - H3: 交互一致性规则
   - H2: 检查清单
 
-## TESTING.md
-
-- Route: /TESTING
-- Headings:
-  - H1: Treease 测试约束
-  - H2: 目标
-  - H2: 核心原则
-  - H2: 什么是伪覆盖
-  - H2: 什么是真实覆盖
-  - H2: 分层策略
-  - H3: Core
-  - H3: Web 单元
-  - H3: Web 集成
-  - H3: E2E
-  - H2: 如何选测试层级
-  - H2: 断言规则
-  - H3: 组织 case 的方式
-  - H3: 断言优先级
-  - H2: streaming / graph / workspace 重点
-  - H2: timeout 与慢链路
-  - H2: 性能度量约定
-  - H2: Mock 与替身规则
-  - H2: UI 与 E2E 可测性
-  - H2: Leafer / Graph E2E 约定
-  - H2: 文档运行时回归矩阵
-  - H2: 验证命令
-  - H2: 执行约定
-
-## user-stories.md
-
-- Route: /user-stories
-- Headings:
-  - H1: Treease 用户故事
-  - H2: 说明
-  - H2: 产品概览
-  - H2: 目标用户
-  - H2: 核心用户旅程
-  - H2: 用户故事
-  - H3: US-01 导入文件并自动识别格式
-  - H3: US-02 在混杂文本中定位并查看 JSON 块
-  - H3: US-03 在 editor 中整理文本
-  - H3: US-04 在 Graph 和 Tree Path 中定位字段
-  - H3: US-05 在 editor 中 hover 值节点查看预览
-  - H3: US-06 在 Graph 中 click 打开局部工作区
-  - H3: US-07 在 Graph 中逐层打开子图工作区
-  - H3: US-08 在 Graph 和 editor 之间同步修改结果
-  - H3: US-09 导出为目标格式
-  - H3: US-10 比较两份内容
-  - H3: US-11 通过 URL preset 打开可复现入口
-  - H3: US-12 调整个人使用偏好
-  - H3: US-13 处理大文件时看到进度
-  - H3: US-14 在命令行中处理结构化输入
-  - H2: 使用边界
-  - H2: 维护规则
-
-## wasm-language-packs.md
-
-- Route: /wasm-language-packs
-- Headings:
-  - H1: WASM Language Packs 拆分计划
-  - H2: 目标
-  - H2: 非目标
-  - H2: 模块划分
-  - H3: Core base
-  - H3: YAML language pack
-  - H3: Web Worker language pack loader
-  - H2: Core API 形态
-  - H2: 加载链路
-  - H2: 数据流变化
-  - H3: AnalyzeSource
-  - H3: ApplyEdits
-  - H3: snapshot-bound read
-  - H3: graph value edit
-  - H2: 全局状态处理
-  - H3: 必须留在 Core base 的状态
-  - H3: 可以在 pack 内局部持有的状态
-  - H3: 需要迁移成 registry 的状态
-  - H2: 落地阶段
-  - H3: 阶段 0：基线与边界确认
-  - H3: 阶段 1：Core base 内部 capability registry
-  - H3: 阶段 2：base 构建排除 YAML 默认能力
-  - H3: 阶段 3：YAML pack 独立 WASM
-  - H3: 阶段 4：Web 集成与性能验收
-  - H3: 阶段 5：推广到其他格式
-  - H2: 验收标准
-  - H3: 功能验收
-  - H3: 性能验收
-  - H3: 架构验收
-  - H3: 测试验收
-  - H2: 风险与缓解
-
-## web-graph-stream-benchmark.md
-
-- Route: /web-graph-stream-benchmark
-- Headings:
-  - H1: Web Graph Stream Benchmark
-  - H2: 目的
-  - H2: 冻结口径
-  - H2: 运行命令
-  - H2: 输出文件
-  - H2: 关键指标
-  - H2: 推荐规则
-  - H2: 回归阈值
-  - H2: 当前冻结推荐（v2）
-  - H2: 当前运行时 chunk size 策略
-  - H2: 风险标记
-  - H2: 仍保留的边界

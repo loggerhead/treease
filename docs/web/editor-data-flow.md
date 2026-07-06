@@ -4,7 +4,9 @@ read_when:
   - 任务涉及主文档 authority、sourceText、snapshot、workspace 或 editor/store/runtime 关系
   - 需要从数据流角度理解主文档主链
 ---
-# 主文档数据流
+# Editor Data Flow
+
+本文解释 Treease 主文档主链：文本 authority 在哪里、提交如何推进、哪些状态可以被前端持有、哪些语义只能来自 runtime。
 
 本文只描述主文档主链：
 

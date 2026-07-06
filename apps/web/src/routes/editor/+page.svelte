@@ -513,7 +513,7 @@
 
   function updateTreeSelection(
     path: PathSeg[],
-    options?: { target?: GraphHighlightTarget; source?: TreeSelectionSource },
+    options: { target?: GraphHighlightTarget; source?: TreeSelectionSource } | undefined,
   ) {
     if (!path.length) return;
     activeTempModel.update((current) => ({

@@ -219,6 +219,8 @@
   let graphRuntimeProbeActions: ReturnType<typeof createGraphRuntimeProbeActions>;
   let lastFullEditProgressActive = false;
   let lastFullEditIncrementalActive = false;
+  let lastActiveFullEditDocumentKey = '';
+  let lastActiveFullEditRevision = -1;
   let fullEditSettledCleanupHandle: number | null = null;
   let fullEditIdleCleanupHandle: number | null = null;
   let lastFullEditHandledDocumentKey = '';
@@ -234,6 +236,10 @@
     const fullEditProgressActive = isFullEditProgressActive();
     if (lastFullEditProgressActive && !fullEditProgressActive) {
       completeStreamProgress();
+    }
+    if (fullEditProgressActive) {
+      lastActiveFullEditDocumentKey = $fullEditUiState?.documentKey ?? documentKeyValue;
+      lastActiveFullEditRevision = $fullEditUiState?.revision ?? editorRevisionValue;
     }
     lastFullEditProgressActive = fullEditProgressActive;
   }
@@ -408,7 +414,7 @@
       };
     },
     ensurePathIndex: (path) => ensurePathIndex(path),
-    resolveTreePathByPosition,
+    resolveTreePathByPosition: (row, column) => resolveTreePathByPosition(row, column),
     resolveInteractiveCellPath,
     emitReveal: (path, target, source) => {
       if (source === 'runtime-query') {
@@ -1070,20 +1076,19 @@
     // lastFullEditHandled* is never set, fullEditHandled is always false,
     // and maybeRenderIncremental fires a redundant full rebuild.
     if (lastFullEditIncrementalActive && !fullEditProgressActive) {
-      lastFullEditHandledDocumentKey = documentKeyValue;
-      lastFullEditHandledRevision = editorRevisionValue;
+      lastFullEditHandledDocumentKey = lastActiveFullEditDocumentKey || documentKeyValue;
+      lastFullEditHandledRevision =
+        lastActiveFullEditRevision >= 0 ? lastActiveFullEditRevision : editorRevisionValue;
     }
     lastFullEditIncrementalActive = fullEditProgressActive;
 
     const fullEditHandled =
       lastFullEditHandledDocumentKey === documentKeyValue && lastFullEditHandledRevision === editorRevisionValue;
+    const incrementalBlocked = fullEditProgressActive || fullEditHandled || Boolean($jsonBlockSelection);
     graphRenderEffects.maybeRenderJsonBlock($jsonBlockSelection, renderRuntimeReady);
     graphRenderEffects.maybeRenderIncremental({
       hasRenderRuntime: renderRuntimeReady,
-      isBlocked:
-        isFullEditProgressActive() ||
-        fullEditHandled ||
-        Boolean($jsonBlockSelection),
+      isBlocked: incrementalBlocked,
       documentKey: documentKeyValue,
       language: languageIdValue,
       sourceText: $sourceText,

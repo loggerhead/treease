@@ -94,7 +94,7 @@ fn find_table_cell<'a>(table: &'a GraphTable, row_index: usize, column: &str) ->
     &table.rows[row_index][column_index]
 }
 
-// Graph layout 规则验证（docs/layout-pipeline.md）
+// Graph layout 规则验证（docs/web/layout-pipeline.md）
 include!("common/layout_assertions.rs");
 
 #[test]

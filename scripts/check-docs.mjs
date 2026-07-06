@@ -70,7 +70,7 @@ function requiresDocMetadata(docPath) {
   }
 
   if (docPath.startsWith('docs/operators/')) {
-    return docPath === 'docs/operators/README.md';
+    return docPath === 'docs/operators/index.md';
   }
 
   if (docPath.startsWith('docs/generated/')) {
@@ -78,11 +78,11 @@ function requiresDocMetadata(docPath) {
   }
 
   if (docPath.startsWith('docs/references/')) {
-    return docPath === 'docs/references/README.md' || docPath === 'docs/references/yaml-common-subset.md';
+    return docPath === 'docs/references/index.md' || docPath === 'docs/references/yaml-common-subset.md';
   }
 
   if (docPath.startsWith('docs/formats/')) {
-    return docPath === 'docs/formats/README.md' || docPath.endsWith('.md');
+    return docPath === 'docs/formats/index.md' || docPath.endsWith('.md');
   }
 
   return true;
@@ -418,6 +418,9 @@ function validateAgentRoutingContract() {
   if (!rootAgents.includes('docs/index.md')) {
     fail('AGENTS.md: 根导航未指向 docs/index.md');
   }
+  if (!rootAgents.includes('docs/AGENTS.md')) {
+    fail('AGENTS.md: 根导航未列出 docs/AGENTS.md');
+  }
 
   if (rootAgents.includes('README.md` → `CONTEXT.md` → `ARCHITECTURE.md` → `docs/README.md`')) {
     fail('AGENTS.md: 仍存在无条件多跳阅读链');
@@ -439,14 +442,16 @@ function validateDocMetadata(docPath, content) {
 
 function validateHotDocBudgets() {
   const budgets = {
-    'AGENTS.md': 65,
-    'docs/index.md': 60,
-    'docs/WEB.md': 160,
-    'docs/CORE.md': 115,
-    'apps/web/AGENTS.md': 24,
-    'apps/web/test/AGENTS.md': 20,
-    'packages/core/AGENTS.md': 22,
+    'AGENTS.md': 90,
+    'docs/AGENTS.md': 70,
+    'docs/index.md': 70,
+    'docs/web/index.md': 170,
+    'docs/core/index.md': 120,
+    'apps/web/AGENTS.md': 26,
+    'apps/web/test/AGENTS.md': 24,
+    'packages/core/AGENTS.md': 27,
     'apps/cli/AGENTS.md': 24,
+    'apps/server/AGENTS.md': 28,
   };
 
   for (const [relativePath, maxLines] of Object.entries(budgets)) {

@@ -92,6 +92,34 @@ describe('runtime-readiness', () => {
     });
   });
 
+  it('does not settle graph readiness before apply and flush catch up', () => {
+    syncRuntimeReadinessFromEditorState({
+      documentKey: 'doc-1',
+      editorRevision: 3,
+      fullEditUiState: idleFullEditUiState(),
+    });
+
+    markGraphRequested({ documentKey: 'doc-1', revision: 3, mode: 'committed' });
+    syncGraphInteractionReadiness({
+      documentKey: 'doc-1',
+      revision: 3,
+      mode: 'committed',
+      hasGraphData: true,
+      nodeCount: 1,
+      pendingRenderWork: false,
+      interactiveReady: true,
+    });
+
+    expect(readRuntimeReadiness().graph).toMatchObject({
+      requestedRevision: 3,
+      interactiveRevision: 3,
+      appliedRevision: 0,
+      flushedRevision: 0,
+      settledRevision: 0,
+      settled: false,
+    });
+  });
+
   it('resets revision-scoped readiness when document changes', () => {
     markGraphRequested({ documentKey: 'doc-1', revision: 2, mode: 'committed' });
     markPreviewRequested({ requestId: 1, sourceRevision: 2 });

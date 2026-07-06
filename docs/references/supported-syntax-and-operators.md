@@ -8,14 +8,14 @@
 ## 先说明边界
 - 本文档覆盖“当前手写总览想让读者先知道的能力分组”。
 - 本文档列出的能力不等于 `docs/operators/` 下都已有独立正文页。
-- 是否存在独立正文页，以 `docs/operators/README.md` 的目录说明和实际文件为准。
+- 是否存在独立正文页，以 `docs/operators/index.md` 的目录说明和实际文件为准。
 - 是否被当前构建真正注册，以 `../generated/core-registry-capabilities.md` 和实际 registry 为准。
 
 ## 当前代码入口
 - 词法：`packages/core/src/parser/lexer_participle.rs`
 - Token 后处理：`packages/core/src/parser/lexer.rs`
 - 表达式解析 / 中缀转后缀：`packages/core/src/parser/parser.rs`
-- 表达式树构建：`packages/core/src/core/expression_builder.rs`
+- 表达式树构建：`packages/core/src/registry/expression_builder.rs`
 - 核心操作定义：`packages/core/src/registry/operation.rs`
 - 算子注册：`packages/core/src/operators/registry.rs`
 - 算子注册表：`packages/core/src/operators/registry_tables_ops.rs`

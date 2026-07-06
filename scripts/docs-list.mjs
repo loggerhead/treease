@@ -103,7 +103,7 @@ function requiresDocMetadata(relativePath) {
   }
 
   if (relativePath.startsWith('docs/operators/')) {
-    return relativePath === 'docs/operators/README.md';
+    return relativePath === 'docs/operators/index.md';
   }
 
   if (relativePath.startsWith('docs/generated/')) {
@@ -111,11 +111,11 @@ function requiresDocMetadata(relativePath) {
   }
 
   if (relativePath.startsWith('docs/references/')) {
-    return relativePath === 'docs/references/README.md' || relativePath === 'docs/references/yaml-common-subset.md';
+    return relativePath === 'docs/references/index.md' || relativePath === 'docs/references/yaml-common-subset.md';
   }
 
   if (relativePath.startsWith('docs/formats/')) {
-    return relativePath === 'docs/formats/README.md' || relativePath.endsWith('.md');
+    return relativePath === 'docs/formats/index.md' || relativePath.endsWith('.md');
   }
 
   return true;

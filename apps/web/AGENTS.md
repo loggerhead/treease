@@ -1,3 +1,9 @@
+---
+summary: "apps/web 的层级边界、职责与验证约束。"
+read_when:
+  - 需要确认 web 改动是否触达正确层级
+---
+
 # apps/web 导航
 
 ## 作用域
@@ -15,5 +21,5 @@
 - 单元测试优先放相邻 `**/*.test.ts`。
 
 ## 验证
-- 整体链路验证回到 `../../docs/TESTING.md`。
+- 整体链路验证回到 `../../docs/testing/index.md`。
 - 改 protocol / WASM 时，在 `../../packages/core/` 运行 `cargo run --locked --bin export_document_protocol`，再在本目录按需运行 `pnpm wasm:bindgen`。

@@ -4,7 +4,9 @@ read_when:
   - 任务涉及图上编辑、planner、graph value edit、fallback 或双向编辑收敛
   - 需要只看双向编辑，而不是整个主文档数据流
 ---
-# 双向编辑
+# Bidirectional Edit Pipeline
+
+本文解释 `Editor <-> Graph` 双向编辑主链：哪些实体参与、两个方向如何流动、哪些边界绝不能被绕过。
 
 本文只描述 `Editor <-> Graph` 双向编辑：
 
@@ -121,7 +123,7 @@ content pane Monaco 草稿
 
 - 子图工作区里的 graph pane 和 content pane 都只是双向编辑入口
 - planner authority 不因入口不同而改变
-- pane 分流、草稿持有方式、工作区生命周期等产品规则以 `subgraph-workspace.md` 为准
+- pane 分流、草稿持有方式、工作区生命周期等产品规则以 `./subgraph-workspace.md` 为准
 
 ## 检查清单
 
