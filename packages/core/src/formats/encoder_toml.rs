@@ -1,6 +1,7 @@
 use std::io::Write;
 
-use crate::core::{CoreError, FormatError, NodeId, ParseError, TreeNodeKind, TreeStore, ValueRep};
+use crate::errors::{CoreError, FormatError, ParseError};
+use crate::tree::{NodeId, TreeNodeKind, TreeStore, ValueRep};
 
 use super::preferences::FormatPreferences;
 use super::{Encode, node};
@@ -538,7 +539,7 @@ fn is_nil_scalar(store: &TreeStore, node_id: NodeId) -> Result<bool, CoreError> 
 
 fn should_encode_as_separate_mapping(
     store: &TreeStore,
-    mapping: &crate::core::TreeNode,
+    mapping: &crate::tree::TreeNode,
 ) -> Result<bool, CoreError> {
     Ok(mapping.encode_separate()
         || has_encode_separate_child(store, mapping)?
@@ -547,7 +548,7 @@ fn should_encode_as_separate_mapping(
 
 fn has_encode_separate_child(
     store: &TreeStore,
-    mapping: &crate::core::TreeNode,
+    mapping: &crate::tree::TreeNode,
 ) -> Result<bool, CoreError> {
     for pair in mapping.content.chunks_exact(2) {
         let value = node(store, pair[1])?;
@@ -560,7 +561,7 @@ fn has_encode_separate_child(
 
 fn has_structural_children(
     store: &TreeStore,
-    mapping: &crate::core::TreeNode,
+    mapping: &crate::tree::TreeNode,
 ) -> Result<bool, CoreError> {
     for pair in mapping.content.chunks_exact(2) {
         let value = node(store, pair[1])?;
@@ -574,7 +575,7 @@ fn has_structural_children(
     Ok(false)
 }
 
-fn has_attributes(store: &TreeStore, mapping: &crate::core::TreeNode) -> Result<bool, CoreError> {
+fn has_attributes(store: &TreeStore, mapping: &crate::tree::TreeNode) -> Result<bool, CoreError> {
     for pair in mapping.content.chunks_exact(2) {
         if is_attribute_value(store, pair[1], node(store, pair[1])?)? {
             return Ok(true);
@@ -586,7 +587,7 @@ fn has_attributes(store: &TreeStore, mapping: &crate::core::TreeNode) -> Result<
 fn is_attribute_value(
     store: &TreeStore,
     node_id: NodeId,
-    value: &crate::core::TreeNode,
+    value: &crate::tree::TreeNode,
 ) -> Result<bool, CoreError> {
     match value.kind {
         TreeNodeKind::Scalar if is_nil_scalar(store, node_id)? => Ok(false),
@@ -601,7 +602,7 @@ fn is_attribute_value(
 
 fn is_structural_value(
     store: &TreeStore,
-    value: &crate::core::TreeNode,
+    value: &crate::tree::TreeNode,
 ) -> Result<bool, CoreError> {
     match value.kind {
         TreeNodeKind::Sequence => Ok(!value.content.is_empty() && all_maps(store, value)?),
@@ -613,7 +614,7 @@ fn is_structural_value(
 fn is_root_attribute_value(
     store: &TreeStore,
     node_id: NodeId,
-    value: &crate::core::TreeNode,
+    value: &crate::tree::TreeNode,
 ) -> Result<bool, CoreError> {
     if value.kind == TreeNodeKind::Mapping && !value.content.is_empty() {
         return Ok(false);
@@ -624,7 +625,7 @@ fn is_root_attribute_value(
 fn is_root_structural_value(
     store: &TreeStore,
     node_id: NodeId,
-    value: &crate::core::TreeNode,
+    value: &crate::tree::TreeNode,
 ) -> Result<bool, CoreError> {
     if value.kind == TreeNodeKind::Mapping && !value.content.is_empty() {
         return Ok(true);
@@ -635,7 +636,7 @@ fn is_root_structural_value(
     is_structural_value(store, value)
 }
 
-fn all_maps(store: &TreeStore, node: &crate::core::TreeNode) -> Result<bool, CoreError> {
+fn all_maps(store: &TreeStore, node: &crate::tree::TreeNode) -> Result<bool, CoreError> {
     for child in &node.content {
         if node_kind(store, *child)? != TreeNodeKind::Mapping {
             return Ok(false);
@@ -711,10 +712,10 @@ pub fn encode_toml(store: &TreeStore, node: NodeId) -> Result<String, CoreError>
 #[cfg(test)]
 mod tests {
     use super::{TomlEncoder, encode_toml};
-    use crate::core::{
-        CompactTag, CoreError, NodeId, ParseError, SemType, TreeNode, TreeNodeKind, TreeStore,
-    };
+    use crate::errors::{CoreError, ParseError};
     use crate::formats::{Encode, FormatPreferences};
+    use crate::language::SemType;
+    use crate::tree::{CompactTag, NodeId, TreeNode, TreeNodeKind, TreeStore};
 
     fn scalar(sem_type: SemType, value: &str) -> TreeNode {
         TreeNode::scalar(sem_type, value)

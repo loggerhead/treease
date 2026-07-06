@@ -1,4 +1,4 @@
-import { editorStore } from '../store/editor-store';
+import { getDocumentSessionState } from '../store/document-session-store';
 import { settingsStore } from '../settings/settings-store';
 import { callSharedWasmWorker } from '../wasm/wasm-worker-singleton';
 import type {
@@ -25,7 +25,7 @@ export function clearGraphBridge(): void {
 export function installGraphExtrasBridge(): void {
   registerTreeaseGraphExtras({
     buildGraph: async () => {
-      const state = editorStore.get();
+      const state = getDocumentSessionState();
       const settings = settingsStore.get();
       return callSharedWasmWorker<TreeaseGraphBuildResult>('buildGraph', {
         documentKey: state.documentKey,

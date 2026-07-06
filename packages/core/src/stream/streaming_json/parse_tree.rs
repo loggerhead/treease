@@ -200,7 +200,8 @@ pub fn decode_slice_to_document_with_token_spans(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::{SemType, TreeNodeKind, get_map_entry};
+    use crate::language::SemType;
+    use crate::tree::{TreeNodeKind, get_map_entry};
 
     // ------------------------------------------------------------------
     // normalized_number_value

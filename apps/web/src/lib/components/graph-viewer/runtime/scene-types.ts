@@ -1,4 +1,4 @@
-import type { GraphHighlightTarget } from '../../../store/editor-store';
+import type { GraphHighlightTarget } from '../../../store/graph-selection-store';
 import type { PathSeg } from '../../../store/tree-path';
 
 export type GraphRuntimeRect = {

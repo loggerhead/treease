@@ -1,4 +1,4 @@
-use crate::core::expression::{Operation, OperationId};
+use crate::registry::expression::{Operation, OperationId};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TokenKind {
@@ -796,7 +796,7 @@ fn is_ident_continue(ch: char) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::expression::OperationId;
+    use crate::registry::expression::OperationId;
 
     #[test]
     fn lexes_binary_expression_without_dependencies() {

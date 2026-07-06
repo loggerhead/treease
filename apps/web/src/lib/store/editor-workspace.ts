@@ -1,6 +1,8 @@
 import type { SnapshotId } from '@core-wasm/index';
 import type { SupportedEditorLanguageId } from '../monaco/language-support';
-import type { DiagnosticItem, FullEditUiState, GraphHighlightState, TempModel } from './editor-store';
+import type { DiagnosticItem, TempModel } from './diagnostics-store';
+import type { FullEditUiState } from './full-edit-ui-store';
+import type { GraphHighlightState } from './graph-selection-store';
 import type { PathSeg } from './tree-path';
 
 export type EditorPaneId = 'left' | 'right';

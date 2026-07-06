@@ -1,9 +1,10 @@
 use std::io::Write;
 
-use crate::core::{
-    CoreError, LineIndex, NodeId, SemType, TokenSpan, TreeNodeKind, TreeStore, ValueRep,
-};
+use crate::analysis::LineIndex;
+use crate::errors::CoreError;
 use crate::evaluator::Value as EvalValue;
+use crate::language::SemType;
+use crate::tree::{NodeId, TokenSpan, TreeNodeKind, TreeStore, ValueRep};
 
 use super::encoder_javascript::{is_js_identifier, is_safe_integer_literal};
 use super::formats_helpers::write_quoted_string;
@@ -1127,13 +1128,13 @@ mod tests {
         )
         .expect("json should format");
 
-        let remapped = crate::core::encode_and_cache_semantic_tokens(
+        let remapped = crate::language::encode_and_cache_semantic_tokens(
             None,
             "",
             &formatted.text,
             &formatted.semantic_token_spans,
         );
-        let fresh = crate::core::encode_semantic_tokens("json", &formatted.text);
+        let fresh = crate::language::encode_semantic_tokens("json", &formatted.text);
 
         assert_eq!(remapped, fresh);
     }

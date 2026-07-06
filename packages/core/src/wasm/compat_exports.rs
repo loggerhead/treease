@@ -47,7 +47,7 @@ pub fn get_chunk_size_config() -> JsValue {
 
 #[wasm_bindgen]
 pub fn guess_language_wasm(text: String) -> Option<String> {
-    crate::core::guess_language(&text)
+    crate::language::guess_language(&text)
         .and_then(Language::as_name)
         .map(str::to_string)
 }
@@ -195,13 +195,13 @@ fn json_tree_node_from_store(store: &TreeStore, id: NodeId) -> Option<JsonTreeNo
     })
 }
 
-fn tree_kind_code(kind: crate::core::TreeNodeKind) -> i32 {
+fn tree_kind_code(kind: crate::tree::TreeNodeKind) -> i32 {
     match kind {
-        crate::core::TreeNodeKind::Sequence => 0,
-        crate::core::TreeNodeKind::Mapping => 1,
-        crate::core::TreeNodeKind::Scalar => 2,
-        crate::core::TreeNodeKind::Alias => 3,
-        crate::core::TreeNodeKind::Unknown => 4,
+        crate::tree::TreeNodeKind::Sequence => 0,
+        crate::tree::TreeNodeKind::Mapping => 1,
+        crate::tree::TreeNodeKind::Scalar => 2,
+        crate::tree::TreeNodeKind::Alias => 3,
+        crate::tree::TreeNodeKind::Unknown => 4,
     }
 }
 
@@ -464,7 +464,7 @@ fn apply_value_edit_canonical_impl(
 }
 
 fn apply_value_edit_impl(input: &ApplyValueEditInput) -> Result<String, String> {
-    crate::core::value_edit::apply_value_edit_text(
+    crate::tree::value_edit::apply_value_edit_text(
         &input.language,
         &input.text,
         &value_edit_path_segments(&input.path),
@@ -476,10 +476,10 @@ fn apply_value_edit_impl(input: &ApplyValueEditInput) -> Result<String, String> 
 
 fn value_edit_path_segments(
     input: &[ValueEditPathSeg],
-) -> Vec<crate::core::value_edit::DocumentPathSeg> {
+) -> Vec<crate::tree::value_edit::DocumentPathSeg> {
     input
         .iter()
-        .map(|segment| crate::core::value_edit::DocumentPathSeg {
+        .map(|segment| crate::tree::value_edit::DocumentPathSeg {
             tag: segment.tag,
             key: segment.key.clone(),
             index: segment.index,

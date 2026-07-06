@@ -1,5 +1,5 @@
-use treease_core::document::engine::{advance_job, start_job};
-use treease_core::document::materialize::materialize;
+use treease_core::document::job::{advance_job, start_job};
+use treease_core::document::materialize;
 use treease_core::document::metrics::DocumentEngineMetrics;
 use treease_core::document::protocol::{
     AdvanceInput, DocumentEvent, DocumentInputPlan, DocumentJobKind, DocumentJobSettings,
@@ -1007,7 +1007,7 @@ fn table_cell_geometry_patch_keeps_incremental_index_and_delta_patch() {
         &[],
         None,
     );
-    let result = treease_core::document::materialize::materialize_with_base(
+    let result = treease_core::document::materialize_with_base(
         &DocumentInputPlan::BaseTextWithEdits,
         "csv-table-cell",
         "csv",
@@ -1057,7 +1057,7 @@ fn structural_subtree_delta_does_not_clear_or_replace_unaffected_root() {
         &[],
         None,
     );
-    let result = treease_core::document::materialize::materialize_with_base(
+    let result = treease_core::document::materialize_with_base(
         &DocumentInputPlan::BaseTextWithEdits,
         "json-subtree-delta",
         "json",
@@ -1115,7 +1115,7 @@ fn table_cell_value_edit_uses_table_patch_without_clearing_graph() {
         &[],
         None,
     );
-    let result = treease_core::document::materialize::materialize_with_base(
+    let result = treease_core::document::materialize_with_base(
         &DocumentInputPlan::BaseTextWithEdits,
         "doc-table-patch",
         "json",

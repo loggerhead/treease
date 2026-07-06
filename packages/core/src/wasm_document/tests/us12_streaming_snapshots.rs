@@ -208,7 +208,7 @@ fn final_artifacts(document_key: &str, language: &str, chunks: &[&str]) -> Final
         .and_then(|analysis| analysis.document.as_ref())
         .map(|decoded| {
             canonical_graph_view(
-                &crate::core::graph_projection_service::build_initial_projection_delta(
+                &crate::graph::graph_projection_service::build_initial_projection_delta(
                     &decoded.store,
                     decoded.root,
                     language,
@@ -1865,13 +1865,13 @@ impl RealEventTreeBuilder {
                 }
                 let (parent, key, sequence_index) = self.store.next_attachment();
                 let sem_type = match meta.sem_type {
-                    Some(crate::core::SemType::Map) => 0,
-                    Some(crate::core::SemType::Seq) => 1,
-                    Some(crate::core::SemType::Str) => 2,
-                    Some(crate::core::SemType::Int) => 3,
-                    Some(crate::core::SemType::Float) => 4,
-                    Some(crate::core::SemType::Boolean) => 5,
-                    Some(crate::core::SemType::Nil) => 6,
+                    Some(crate::language::SemType::Map) => 0,
+                    Some(crate::language::SemType::Seq) => 1,
+                    Some(crate::language::SemType::Str) => 2,
+                    Some(crate::language::SemType::Int) => 3,
+                    Some(crate::language::SemType::Float) => 4,
+                    Some(crate::language::SemType::Boolean) => 5,
+                    Some(crate::language::SemType::Nil) => 6,
                     None => 2,
                 };
                 let rendered_value = if sem_type == 6 {
@@ -2445,7 +2445,7 @@ fn current_canonical_graph_from_builder(
             edges: Vec::new(),
         };
     };
-    let delta = crate::core::graph_projection_service::build_initial_projection_delta(
+    let delta = crate::graph::graph_projection_service::build_initial_projection_delta(
         &store, root, language, None,
     );
     canonical_graph_view(&delta)
@@ -2674,7 +2674,7 @@ fn wasm_document_escape_nest_json_reconstructs_original_graph_when_enabled() {
         .and_then(|analysis| analysis.document.as_ref())
         .map(|decoded| {
             canonical_graph_view(
-                &crate::core::graph_projection_service::build_initial_projection_delta(
+                &crate::graph::graph_projection_service::build_initial_projection_delta(
                     &decoded.store,
                     decoded.root,
                     "json",

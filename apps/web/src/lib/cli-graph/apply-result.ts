@@ -1,4 +1,12 @@
-import { editorStore, editorRevision, graphAppliedRevision } from '../store/editor-store';
+import {
+  editorRevision,
+  graphAppliedRevision,
+  resetDocumentSession,
+  setDocumentKey,
+  setLanguageId,
+  setSourceText,
+} from '../store/document-session-store';
+import { initWorkspaceFromPrimaryTab } from '../store/workspace-store';
 import {
   editorLanguageFallback,
   supportedEditorLanguageSet,
@@ -21,11 +29,11 @@ export function applyCliGraphResultToEditorStore(token: string, result: CliGraph
   const documentKey = buildCliGraphDocumentKey(token);
   const tabName = result.sourceLabel || 'CLI result';
 
-  editorStore.reset();
-  editorStore.actions.setDocumentKey(documentKey);
-  editorStore.actions.setLanguageId(language);
-  editorStore.actions.setSourceText(result.text);
+  resetDocumentSession();
+  setDocumentKey(documentKey);
+  setLanguageId(language);
+  setSourceText(result.text);
   editorRevision.set(1);
   graphAppliedRevision.set(0);
-  editorStore.actions.initWorkspaceFromPrimaryTab({ id: 'cli-graph', name: tabName });
+  initWorkspaceFromPrimaryTab({ id: 'cli-graph', name: tabName });
 }

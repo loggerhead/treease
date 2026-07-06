@@ -7,7 +7,8 @@
 // submodules that still depend on the compatibility surface.
 
 pub mod compat;
-pub use crate::core::tree_navigator;
+pub mod core_helpers;
+pub use crate::tree::tree_navigator;
 
 pub use compat::*;
 pub use tree_navigator::*;

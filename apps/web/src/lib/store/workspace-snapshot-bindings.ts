@@ -1,5 +1,9 @@
 import type { SnapshotId } from '@core-wasm/index';
-import { editorStore } from './editor-store';
+import {
+  bindWorkspaceSnapshot,
+  clearWorkspaceSnapshotBinding,
+  getWorkspaceSnapshotId as getBoundWorkspaceSnapshotId,
+} from './workspace-store';
 
 export type WorkspaceSnapshotBindingPayload = {
   documentKey: string;
@@ -8,13 +12,13 @@ export type WorkspaceSnapshotBindingPayload = {
 };
 
 export function bindWorkspaceSnapshotIfPresent(payload: WorkspaceSnapshotBindingPayload): void {
-  editorStore.actions.bindWorkspaceSnapshot(payload);
+  bindWorkspaceSnapshot(payload);
 }
 
 export function clearWorkspaceSnapshot(documentKey: string, snapshotId?: SnapshotId | null): void {
-  editorStore.actions.clearWorkspaceSnapshot(documentKey, snapshotId);
+  clearWorkspaceSnapshotBinding(documentKey, snapshotId);
 }
 
 export function getWorkspaceSnapshotId(documentKey: string): SnapshotId | null {
-  return editorStore.actions.getWorkspaceSnapshotId(documentKey);
+  return getBoundWorkspaceSnapshotId(documentKey);
 }

@@ -3,8 +3,9 @@ import { InnerEditorEvent } from '@leafer-in/editor';
 import type { DocumentTextEdit } from '@core-wasm/index';
 import type { SupportedEditorLanguageId } from '../../monaco/language-support';
 import type { GraphCell, GraphCellKind } from '../../graph/graph-viewer-render';
+import type { EditorIO } from '../../store/document-session-store';
+import type { GraphEditReplaceFallbackReason } from '../../store/editor-store';
 import type { PathSeg } from '../../store/tree-path';
-import type { EditorIO, GraphEditReplaceFallbackReason } from '../../store/editor-store';
 import { clearGraphSelectionAfterEdit } from '../GraphViewer.graph-highlight';
 import { callSharedWasmWorker } from '../../wasm/wasm-worker-singleton';
 import type { TreeNode } from '@core-wasm/index'

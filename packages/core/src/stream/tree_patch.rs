@@ -1,4 +1,4 @@
-use crate::core::NodeId;
+use crate::tree::NodeId;
 
 /// Internal tree mutation patch produced by the streaming tree builder
 /// as it consumes parser events.  Patches are applied to an append-only

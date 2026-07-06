@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use tsify::Tsify;
 
-use crate::core::incremental_edit::DocumentTextEdit;
+use crate::tree::incremental_edit::DocumentTextEdit;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize, Tsify)]
 #[serde(transparent)]

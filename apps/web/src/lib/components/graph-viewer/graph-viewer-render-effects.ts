@@ -3,7 +3,7 @@ import {
   createFullEditExternalRenderAuthority,
   type FullEditExternalRenderSessionRef,
 } from '../../graph-stream/full-edit-render-authority';
-import type { FullEditUiState, JsonBlockSelection } from '../../store/editor-store';
+import type { FullEditUiState, JsonBlockSelection } from '../../store/full-edit-ui-store';
 
 type RenderDocumentGraph = (input: {
   kind: 'incremental' | 'full-edit';

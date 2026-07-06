@@ -117,7 +117,7 @@ fn is_already_seen(
         }
         UniqueKey::Complex(n) => {
             for prev in seen_complex.iter() {
-                if crate::core::recursive_node_compare(prev, n) {
+                if crate::operators::core_helpers::recursive_node_compare(prev, n) {
                     return true;
                 }
             }

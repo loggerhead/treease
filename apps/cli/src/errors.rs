@@ -1,6 +1,6 @@
 use serde::Serialize;
 
-use super::CliError;
+use crate::args::CliError;
 
 #[derive(Debug, Clone, Serialize)]
 pub(super) struct CliErrorReport {

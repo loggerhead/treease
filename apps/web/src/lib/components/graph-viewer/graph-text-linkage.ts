@@ -4,7 +4,7 @@ import type { SnapshotId } from '@core-wasm/index';
 import { buildPathKey } from '../../graph/graph-viewer-path';
 import type { GraphCell, GraphNode } from '../../graph/graph-viewer-render';
 import { isPathSegIndex, type PathSeg } from '../../store/tree-path';
-import type { GraphHighlightTarget } from '../../store/editor-store';
+import type { GraphHighlightTarget } from '../../store/graph-selection-store';
 import { resolveTreePathFromTextResult } from '../../services/TreePathService';
 import type { CellBoxEntry, GraphViewerClickTarget, LeaferBox } from './model';
 import { getCellEntry, getHighlightTarget, getScrollContext } from './graph-anchor-index';

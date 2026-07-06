@@ -2,13 +2,13 @@
   import { tick } from 'svelte'
   import { toast } from 'svelte-sonner'
   import {
-    sourceText,
     compareEditToken,
-    languageId as languageIdStore,
-    activeTempModel,
     documentKey as documentKeyStore,
-    jsonBlockSelection
-  } from '../store/editor-store'
+    languageId as languageIdStore,
+    sourceText,
+  } from '../store/document-session-store'
+  import { activeTempModel } from '../store/graph-selection-store'
+  import { jsonBlockSelection } from '../store/full-edit-ui-store'
   import type { PathSeg } from '../store/tree-path'
   import { readImportSourceSample, resolveImportSourceFormat } from '../import/resolve-import-source'
   import { callSharedWasmWorker } from '../wasm/wasm-worker-singleton'

@@ -1,5 +1,5 @@
-use crate::core::expression::{Operation, OperationId};
-use crate::core::operation_prefs::{
+use crate::registry::expression::{Operation, OperationId};
+use crate::registry::operation_prefs::{
     AssignPreferences, ChangeCasePrefs, DecoderPreferences, EncoderPreferences,
     ExpressionOpPreferences, FlattenPreferences, OperationPreferences, ParentOpPreferences,
     RecursiveDescentPreferences, RelationalPref, TraversePreferences,

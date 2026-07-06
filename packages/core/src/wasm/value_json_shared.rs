@@ -1,5 +1,6 @@
-use crate::core::{NodeId, SemType, TreeNodeKind, TreeStore};
 use crate::formats::DecodedDocument;
+use crate::language::SemType;
+use crate::tree::{NodeId, TreeNodeKind, TreeStore};
 
 /// Append a single byte as two lowercase hex digits.
 fn append_hex_byte(out: &mut String, value: u8) {
@@ -34,7 +35,7 @@ pub fn append_json_string(out: &mut String, value: &str) {
     out.push('"');
 }
 
-/// Write a scalar [`TreeNode`](crate::core::TreeNode) as a JSON value into
+/// Write a scalar [`TreeNode`](crate::tree::TreeNode) as a JSON value into
 /// `out`.
 ///
 /// Dispatches on the node's resolved semantic type:
@@ -52,7 +53,7 @@ pub fn write_scalar_json(store: &TreeStore, node_id: NodeId, out: &mut String) {
     let value = store.value_for(node_id).unwrap_or_default();
     match sem {
         SemType::Nil => out.push_str("null"),
-        SemType::Boolean => match crate::core::core_helpers::parse_bool(value) {
+        SemType::Boolean => match crate::operators::core_helpers::parse_bool(value) {
             Some(true) => out.push_str("true"),
             Some(false) => out.push_str("false"),
             None => append_json_string(out, value),
@@ -69,7 +70,7 @@ pub fn write_scalar_json(store: &TreeStore, node_id: NodeId, out: &mut String) {
     }
 }
 
-/// Recursively write a [`TreeNode`](crate::core::TreeNode) (identified by
+/// Recursively write a [`TreeNode`](crate::tree::TreeNode) (identified by
 /// `id` in `store`) as JSON into `out`.
 ///
 /// - Sequences are written as `[...]`

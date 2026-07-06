@@ -1,4 +1,4 @@
-import type { GraphHighlightTarget, TempModel } from '../../store/editor-store';
+import type { GraphHighlightTarget, TempModel } from '../../store/graph-selection-store';
 import type { PathSeg } from '../../store/tree-path';
 
 export const editorDrivenCursorReasons = {

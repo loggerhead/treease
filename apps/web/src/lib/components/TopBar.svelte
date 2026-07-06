@@ -3,7 +3,7 @@
   import { cubicOut } from 'svelte/easing'
   import { fly } from 'svelte/transition'
   import { Plus, X, FileInput, FileOutput, BookOpen, MessageCircle, Share2, User, ArrowRight } from 'lucide-svelte'
-  import { languageId as languageIdStore } from '../store/editor-store'
+  import { languageId as languageIdStore } from '../store/document-session-store'
   import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from './ui/dropdown-menu'
   import * as Select from './ui/select'
   import * as ButtonGroup from './ui/button-group'

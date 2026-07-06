@@ -16,7 +16,7 @@
 - Token 后处理：`packages/core/src/parser/lexer.rs`
 - 表达式解析 / 中缀转后缀：`packages/core/src/parser/parser.rs`
 - 表达式树构建：`packages/core/src/core/expression_builder.rs`
-- 核心操作定义：`packages/core/src/core/operation.rs`
+- 核心操作定义：`packages/core/src/registry/operation.rs`
 - 算子注册：`packages/core/src/operators/registry.rs`
 - 算子注册表：`packages/core/src/operators/registry_tables_ops.rs`
 - 编解码注册表：`packages/core/src/operators/registry_tables_formats.rs`

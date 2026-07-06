@@ -4,87 +4,83 @@
   import { cubicOut } from 'svelte/easing';
   import { fly } from 'svelte/transition';
   import { X } from 'lucide-svelte';
-  import type { SnapshotId } from '@core-wasm/index';
   import {
-    sourceText,
     documentKey as documentKeyStore,
-    languageId as languageIdStore,
+    editorIO,
+    emitEditorMutation,
     editorRevision,
     graphAppliedRevision,
-    editorIO,
-    activeTempModel,
-    treeState,
-    fullEditUiState,
-    jsonBlockSelection,
-    editorStore,
-  } from '../store/editor-store';
+    languageId as languageIdStore,
+    sourceText,
+  } from '../store/document-session-store';
+  import { activeTempModel, treeState } from '../store/graph-selection-store';
+  import { fullEditUiState, jsonBlockSelection } from '../store/full-edit-ui-store';
 
   import { type GraphViewerConfig } from '../settings/ui-settings';
   import { settings, settingsStore } from '../settings/settings-store';
   import { shouldShowGraphRuntimeLoading, type RuntimeStateEventDetail } from '../runtime-loading';
   import { callSharedWasmWorker } from '../wasm/wasm-worker-singleton';
   import { getWorkspaceSnapshotId } from '../store/workspace-snapshot-bindings';
-  import { queryPathValue } from '../services/SnapshotProjectionService';
   import { getFullEditDocumentJobSession } from '../graph-stream/full-edit-document-job-session';
   import { buildReadablePath, type PathSeg } from '../store/tree-path';
   import { type MinimapViewData } from '../leafer-minimap';
-  import GraphRuntimeHost from './graph-viewer/GraphRuntimeHost.svelte';
-  import GraphRuntimeLoading from './graph-viewer/GraphRuntimeLoading.svelte';
+  import { GraphRuntimeHost, GraphRuntimeLoading } from './graph-viewer/runtime';
   import GraphStreamProgressOverlay from './graph-viewer/GraphStreamProgressOverlay.svelte';
   import SidecarEditor from './Editor/SidecarEditor.svelte';
-  import { getClampedPaneSize, splitLayoutDrag } from './ui/split-layout';
-  import { createGraphPointerController, type LeaferEventTarget } from './graph-viewer/graph-pointer-controller';
-  import { createGraphRuntimeProbeController } from './graph-viewer/graph-runtime-probe-controller';
-  import {
-    createGraphStreamProgressController,
-    type GraphStreamProgressState,
-  } from './graph-viewer/graph-stream-progress';
-  import { createGraphTextLinkageController } from './graph-viewer/graph-text-linkage';
-  import { createGraphMinimapRuntimeController } from './graph-viewer/graph-minimap-runtime-controller';
-  import { createGraphValueEditController } from './graph-viewer/graph-value-edit';
-  import { createGraphViewportController, type LeaferZoomLayer } from './graph-viewer/graph-viewport-controller';
-  import { getZoomScale } from './graph-viewer/graph-viewport-geometry';
-  import {
-    buildSubgraphWorkspaceRenderSignature,
-    createSubgraphWorkspaceGraphCache,
-    destroySubgraphWorkspaceRuntime,
-    formatSubgraphWorkspacePath,
-    rebaseSubgraphWorkspacePath,
-    renderSubgraphWorkspaceGraph,
-    shouldOpenSubgraphWorkspaceContent,
-    shouldIgnoreSubgraphOpenCell,
-  } from './graph-viewer/graph-subgraph-workspace';
-  import { shouldResetSubgraphWorkspaceForFullEdit } from './graph-viewer/graph-subgraph-workspace-lifecycle';
-  import {
-    indexTableCellAnchorsForNode,
-    rebuildTableCellAnchorIndex,
-    removeTableCellAnchorsForNode,
-    type TableCellAnchor,
-  } from './graph-viewer/graph-table-anchor-index';
-  import {
-    getCellEntry,
-    registerCellBox as registerCellBoxEntry,
-    registerRowBox as registerRowBoxEntry,
-    resolveInteractiveCellPath as resolveInteractiveCellPathWithFallback,
-    unregisterCellBox as unregisterCellBoxEntry,
-    unregisterRowBox as unregisterRowBoxEntry,
-    upsertCellEntry as upsertCellEntryInIndex,
-    updateCellEntry as updateCellEntryInIndex,
-  } from './graph-viewer/graph-anchor-index';
-  import {
-    getClientRectFromBoxLike,
-    getClientProbeCoordFromBoxLike,
-    getWorldRectFromBoxLike,
-  } from './graph-viewer/graph-geometry';
-  import { createGraphRenderSession, type GraphRenderGuard } from './graph-viewer/graph-render-session';
-  import { createGraphSceneController } from './graph-viewer/graph-scene';
-  import type { GraphSceneViewData } from './graph-viewer/graph-scene-runtime';
-  import { createGraphMeasurementController } from './graph-viewer/graph-measurement-controller';
+  import { splitLayoutDrag } from './ui/split-layout';
   import {
     buildGraphHighlightSignature,
+    createGraphFullEditRuntime,
+    createGraphPointerController,
+    createGraphStreamProgressController,
+    createGraphTreeStateController,
+    createGraphTextLinkageController,
+    createGraphValueEditController,
+    createGraphViewportController,
     shouldApplyGraphHighlight,
-  } from './graph-viewer/graph-viewer-highlight-effects';
-  import { createGraphViewerRenderEffects } from './graph-viewer/graph-viewer-render-effects';
+    type GraphStreamProgressState,
+    type LeaferEventTarget,
+    type LeaferZoomLayer,
+  } from './graph-viewer/interaction';
+  import {
+    GraphSceneViewData,
+    createGraphRenderBindings,
+    createGraphSceneRenderDeps,
+    createGraphRenderState,
+    createGraphRenderSession,
+    createGraphSceneController,
+    createGraphTextLinkageRenderDeps,
+    createGraphViewerRenderEffects,
+    getClientProbeCoordFromBoxLike,
+    getClientRectFromBoxLike,
+    getWorldRectFromBoxLike,
+    getZoomScale,
+    resolveInteractiveCellPath as resolveInteractiveCellPathWithFallback,
+    toMinimapViewData,
+    type GraphRenderGuard,
+  } from './graph-viewer/rendering';
+  import {
+    buildClientProbeCoord,
+    clearCanvasHintOverlay,
+    createGraphMeasurementController,
+    createGraphMinimapRuntimeController,
+    createGraphRuntimeProbeActions,
+    createGraphRuntimeProbeController,
+    dispatchGraphEditEvent,
+    ensureCanvasHintOverlay,
+    exportLeaferImage,
+    getLeaferContentRoot,
+  } from './graph-viewer/runtime';
+  import {
+    createSubgraphWorkspaceActions,
+    buildSubgraphWorkspaceRenderSignature,
+    buildPathSegFromCell,
+    createSubgraphWorkspaceController,
+    rebaseSubgraphWorkspacePath,
+    shouldResetSubgraphWorkspaceForFullEdit,
+    type SubgraphWorkspacePaneState,
+    type VisibleSubgraphWorkspacePaneState,
+  } from './graph-viewer/workspace';
   import {
     clearGraphViewerTestHooks as clearGraphViewerTestHookState,
     shouldAttachGraphViewerTestHooks,
@@ -94,19 +90,14 @@
     LeaferAppLike,
     LeaferBox,
     ScrollableBox,
-    SubgraphWorkspaceRuntime,
   } from './graph-viewer/model';
-  import type {
-    GraphRuntimeProbeTarget,
-  } from './graph-viewer/runtime/scene-types';
   import { editorLanguageFallback, type SupportedEditorLanguageId } from '../monaco/language-support';
-  import type { EditorIO, GraphHighlightTarget } from '../store/editor-store';
+  import type { EditorIO } from '../store/document-session-store';
   import { handleError } from '../utils/error-handler';
   import { GRAPH_CONFIG } from '../config/constants';
   import { resolveGraphCellDisplayText } from '../graph/literal-display';
-  import { type GraphCell, type GraphCellKind, type GraphNode, type ValueType } from '../graph/graph-viewer-render';
+  import { type GraphCell, type GraphCellKind, type GraphNode } from '../graph/graph-viewer-render';
   import { buildPathKey } from '../graph/graph-viewer-path';
-  import type { SubgraphWorkspaceGraphData } from './graph-viewer/graph-subgraph-workspace-types';
   import { isDocumentRevisionGuardCurrent } from '../guards/document-revision-guard';
   import { clearGraphSelectionForFullEdit } from './GraphViewer.graph-highlight';
   import {
@@ -123,7 +114,6 @@
     syncGraphInteractionReadiness,
     syncSubgraphInteractionReadiness,
   } from '../test-bridge/runtime-readiness';
-  import { PathSegTag, type TreeNode } from '@core-wasm/index';
   import type {
     App as LeaferApp,
     Box,
@@ -144,8 +134,6 @@
 
   const MINIMAP_WIDTH = 220;
   const MINIMAP_HEIGHT = 150;
-  const SUBGRAPH_WORKSPACE_MIN_HEIGHT = 100;
-  const SUBGRAPH_WORKSPACE_MAX_HEIGHT_FRACTION = 0.75;
   const SUBGRAPH_WORKSPACE_DEFAULT_HEIGHT = 220;
 
   let graphViewerShell: HTMLDivElement;
@@ -179,7 +167,6 @@
   let LeaferEventCtor: typeof LeaferEvent | undefined;
   let PointerEventCtor: typeof LeaferPointerEvent | undefined;
   const dispatch = createEventDispatcher<{ reveal: unknown; 'runtime-state': RuntimeStateEventDetail }>();
-  let nodeDataMap = new Map<number, GraphNode>();
   let lastRuntimeStateSignature = '';
 
   $: documentKeyValue = $documentKeyStore;
@@ -192,10 +179,8 @@
     errorMessage,
   });
   $: renderRuntimeReady = Boolean(leafer && BoxCtor && TextCtor && PenCtor);
-  let nodeBoxMap = new Map<number, LeaferBox>();
-  let pathKeyToRenderHandleMap = new Map<string, number>();
-  let cellBoxByPathMap = new Map<string, CellBoxEntry>();
-  let tableCellAnchorMap = new Map<string, TableCellAnchor>();
+  const graphRenderState = createGraphRenderState();
+  const graphRenderBindings = createGraphRenderBindings(graphRenderState);
   let lastAppliedGraphHighlightSignature = '';
   let lastAppliedGraphHighlightRevision = -1;
   let treeStateToken = 0;
@@ -214,28 +199,28 @@
     streamProgressState = value;
   });
   let subgraphWorkspaceChain: SubgraphWorkspacePaneState[] = [];
-  let subgraphWorkspaceVisiblePanes: Array<SubgraphWorkspacePaneState & { visibleIndex: number; absoluteIndex: number }> = [];
-  let subgraphWorkspaceHostMap = new Map<string, HTMLDivElement>();
-  let subgraphWorkspaceRuntimeMap = new Map<string, SubgraphWorkspaceRuntime>();
-  let subgraphWorkspacePendingEditKeys = new Set<string>();
-  let subgraphWorkspaceQueuedEditMap = new Map<string, string>();
-  let subgraphWorkspaceRenderSignature = '';
-  let subgraphWorkspaceRefreshSignature = '';
-  let subgraphWorkspaceRefreshRevision = -1;
-  let subgraphWorkspaceRefreshToken = 0;
-  let subgraphWorkspaceRequestId = 0;
+  let subgraphWorkspaceVisiblePanes: VisibleSubgraphWorkspacePaneState[] = [];
   let subgraphWorkspaceHeightPx = SUBGRAPH_WORKSPACE_DEFAULT_HEIGHT;
   let isDraggingSubgraphWorkspaceDivider = false;
-  let subgraphWorkspaceResizeState: { startClientY: number; startHeightPx: number } | null = null;
+  let subgraphWorkspaceRefreshSignature = '';
+  let subgraphWorkspaceRefreshRevision = -1;
 
   let graphSceneController: ReturnType<typeof createGraphSceneController>;
   let graphRuntimeProbeController: ReturnType<typeof createGraphRuntimeProbeController>;
+  let graphRuntimeProbeActions: ReturnType<typeof createGraphRuntimeProbeActions>;
   let lastFullEditProgressActive = false;
   let lastFullEditIncrementalActive = false;
   let fullEditSettledCleanupHandle: number | null = null;
   let fullEditIdleCleanupHandle: number | null = null;
   let lastFullEditHandledDocumentKey = '';
   let lastFullEditHandledRevision = -1;
+  const graphTreeStateController = createGraphTreeStateController({
+    getToken: () => treeStateToken,
+    setToken: (token) => {
+      treeStateToken = token;
+    },
+    setTreeState: treeState.set,
+  });
   $: {
     const fullEditProgressActive = isFullEditProgressActive();
     if (lastFullEditProgressActive && !fullEditProgressActive) {
@@ -256,10 +241,7 @@
   let renderConfig: GraphViewerConfig = $settings.viewer.graphViewer;
   $: renderConfig = $settings.viewer.graphViewer;
   $: if (subgraphWorkspaceVisiblePanes.length) {
-    const nextSubgraphWorkspaceHeightPx = clampSubgraphWorkspaceHeight(subgraphWorkspaceHeightPx);
-    if (nextSubgraphWorkspaceHeightPx !== subgraphWorkspaceHeightPx) {
-      subgraphWorkspaceHeightPx = nextSubgraphWorkspaceHeightPx;
-    }
+    subgraphWorkspaceController.syncHeightToShell();
   }
   const fullBuildReasonSet = new Set([
     'import-file',
@@ -274,6 +256,25 @@
   let measureRowText: HTMLSpanElement;
   let measureHeader: HTMLDivElement;
   let measureHeaderText: HTMLSpanElement;
+  const graphFullEditRuntime = createGraphFullEditRuntime({
+    getFullEditUiState: () => $fullEditUiState,
+    getLeafer: () => leafer as LeaferAppLike | null,
+    getGraphData: () => graphSceneController.getLastGraphData(),
+    replaceAll: (graphData) => graphSceneController.replaceAll(graphData),
+    updateMinimap: () => graphMinimapRuntimeController.update(),
+    resetActiveEditState,
+    isInteractionBlocked: () => isFullEditInteractionBlocked(),
+    requestFrame: requestAnimationFrame,
+    completeStreamProgress: () => graphStreamProgressController.completeIfActive(),
+    getCleanupHandles: () => ({
+      settled: fullEditSettledCleanupHandle,
+      idle: fullEditIdleCleanupHandle,
+    }),
+    setCleanupHandles: (handles) => {
+      fullEditSettledCleanupHandle = handles.settled;
+      fullEditIdleCleanupHandle = handles.idle;
+    },
+  });
   let measureSignature = '';
 
   type GraphSearchTarget = 'node' | 'key' | 'value';
@@ -284,25 +285,6 @@
     label: string;
     path: PathSeg[];
     pathText: string;
-  };
-
-  type SubgraphWorkspaceContentState = {
-    tabId: string;
-    tabName: string;
-    sourceText: string;
-    valueType: ValueType;
-  };
-
-  type SubgraphWorkspacePaneState = {
-    requestId?: number;
-    path: PathSeg[];
-    pathKey: string;
-    title: string;
-    kind: 'graph' | 'content';
-    graph: SubgraphWorkspaceGraphData | null;
-    content: SubgraphWorkspaceContentState | null;
-    status: 'loading' | 'ready' | 'empty' | 'error';
-    error?: string;
   };
 
   const graphPointerController = createGraphPointerController({
@@ -350,74 +332,8 @@
     },
   });
 
-  const listClickTargetProbes = () => graphRuntimeProbeController?.listRootClickTargets() ?? [];
-  const setGraphHighlightTestState = (path: PathSeg[] | null, target?: GraphHighlightTarget, box?: LeaferBox | null) =>
-    graphRuntimeProbeController?.setGraphHighlightTestState(path, target, box);
-  const setGraphRevealTestState = (path: PathSeg[] | null, target?: GraphHighlightTarget) =>
-    graphRuntimeProbeController?.setGraphRevealTestState(path, target);
-  const setGraphRowScrollTestState = (path: PathSeg[] | null, scrollY?: number) =>
-    graphRuntimeProbeController?.setGraphRowScrollTestState(path, scrollY);
   const centerOnBox = (box: LeaferBox) => graphViewportController.centerOnBox(box);
   const centerOnNode = (node: GraphNode) => graphViewportController.centerOnNode(node);
-  const registerClickTarget = (target: LeaferBox, cell: GraphCell, kind: GraphCellKind, nodeKind?: GraphNode['kind']) =>
-    graphRuntimeProbeController?.registerRootClickTarget(target, cell, kind, nodeKind) ?? '';
-  const getRuntimeProbeTargets = (scope: 'root' = 'root') =>
-    graphRuntimeProbeController?.getRuntimeProbeTargets(scope) ?? [];
-  const getSubgraphWorkspaceProbeTargets = (): GraphRuntimeProbeTarget[] => {
-    const workspaceHost = document.querySelector("[data-testid='graph-subgraph-workspace']") as HTMLElement | null;
-    const workspaceRect = workspaceHost?.getBoundingClientRect() ?? null;
-    if (!workspaceRect) return [];
-    return subgraphWorkspaceVisiblePanes.flatMap((pane) => {
-      const runtime = subgraphWorkspaceRuntimeMap.get(pane.pathKey);
-      if (!runtime) return [];
-      const app = runtime.app as LeaferAppLike | null;
-      return Object.values(runtime.clickTargetsById ?? {}).map((entry) => {
-        const path = rebaseSubgraphWorkspacePath(pane.path, entry.cell?.path ?? []);
-        const point = getClientProbeCoordFromBoxLike(entry.box, app);
-        return {
-          scope: 'workspace',
-          id: entry.id,
-          target: entry.target,
-          nodeType: String((entry.box as { tag?: string }).tag ?? ''),
-          coord:
-            point && workspaceRect
-              ? {
-                  x: Math.round(point.x - workspaceRect.left),
-                  y: Math.round(point.y - workspaceRect.top),
-                }
-              : null,
-          rect: getClientRectFromBoxLike(entry.box, app),
-          worldRect: getWorldRectFromBoxLike(entry.box),
-          cell: entry.cell
-            ? {
-                text: resolveGraphCellDisplayText(
-                  entry.cell.text,
-                  entry.cell.value,
-                  String(entry.cell.valueType ?? ''),
-                  languageIdValue,
-                ),
-                valueType: String(entry.cell.valueType ?? ''),
-                isTableCell: !!entry.cell.isTableCell,
-                isHeader: !!entry.cell.isHeader,
-                path,
-              }
-            : null,
-        };
-      });
-    });
-  };
-  const getRuntimeHighlightTarget = () => graphRuntimeProbeController?.getRuntimeHighlightTarget() ?? null;
-  const getRuntimeRowScrollState = (path?: PathSeg[] | null) =>
-    graphRuntimeProbeController?.getRuntimeRowScrollState(path) ?? null;
-  const getRuntimeHitResult = (point: { x: number; y: number }) =>
-    graphRuntimeProbeController?.getRuntimeHitResult(point) ?? null;
-  const clearLastReveal = () => graphRuntimeProbeController?.clearLastReveal();
-  const getLastReveal = () => graphRuntimeProbeController?.getLastReveal() ?? null;
-  const activateRuntimeProbe = async (probeId: string) => {
-    await graphRuntimeProbeController?.activateRuntimeProbe(probeId);
-  };
-  const commitRuntimeProbe = async (probeId: string, text: string) =>
-    (await graphRuntimeProbeController?.commitRuntimeProbe(probeId, text)) ?? false;
   const updateSize = () => graphViewportController.updateSize();
   function requestLeaferRender(): void {
     const target = leafer as ({ update?: () => void; forceRender?: () => void; updateClientBounds?: () => void } & object) | null;
@@ -448,16 +364,10 @@
     getActiveSnapshotId: () => graphRenderCoordinator.getActiveSnapshotId(),
     getEnableNest: () => $settings.parser.enableNest,
     getRenderConfig: () => renderConfig,
-    getNodeDataMap: () => nodeDataMap,
-    getNodeBoxMap: () => nodeBoxMap,
-    getCellBoxByPathMap: () => cellBoxByPathMap,
-    getTableCellAnchorMap: () => tableCellAnchorMap,
-    getPathKeyToRenderHandleMap: () => pathKeyToRenderHandleMap,
-    getClickTargetProbes: () => listClickTargetProbes(),
-    setGraphHighlightTestState,
-    setGraphRevealTestState,
-    setGraphRowScrollTestState,
-    scrollTableCellAnchorIntoView: (anchor) => graphSceneController.scrollTableToRow(anchor.nodeId, anchor.rowIndex),
+    getClickTargetProbes: () => graphRuntimeProbeActions.listClickTargetProbes(),
+    setGraphHighlightTestState: graphRuntimeProbeActions.setGraphHighlightTestState,
+    setGraphRevealTestState: graphRuntimeProbeActions.setGraphRevealTestState,
+    setGraphRowScrollTestState: graphRuntimeProbeActions.setGraphRowScrollTestState,
     buildPathSegFromCell,
     upsertCellEntry,
     centerOnBox,
@@ -469,6 +379,9 @@
     getEnableRevealSync: () => enableRevealSync,
     dispatchReveal: (path, target, trigger) => dispatch('reveal', { path, target, trigger }),
     handleError,
+    ...createGraphTextLinkageRenderDeps(graphRenderState, (anchor) =>
+      graphSceneController.scrollTableToRow(anchor.nodeId, anchor.rowIndex),
+    ),
   });
   const clearSearchHighlight = graphTextLinkageController.clearSearchHighlight;
   const resolveTreePathByPosition = graphTextLinkageController.resolveTreePathByPosition;
@@ -486,25 +399,58 @@
     getEditorRevision: () => editorRevisionValue,
     getActiveSnapshotId: () => getWorkspaceSnapshotId(documentKeyValue),
     resolveTreePathByPosition,
-    nextTreeStateToken: () => ++treeStateToken,
-    publishTreeState,
-    emitEditorMutation: editorStore.actions.emitMutation,
+    nextTreeStateToken: () => graphTreeStateController.nextToken(),
+    publishTreeState: (...args) => graphTreeStateController.publish(...args),
+    emitEditorMutation,
     updateActiveTempModel: (updater) => activeTempModel.update(updater),
-    dispatchGraphEditEvent: (type, detail) => emitGraphEditEvent(type, detail),
+    dispatchGraphEditEvent: (type, detail) => dispatchGraphEditEvent(container, type, detail),
     handleError,
   });
   const hasActiveEdit = graphValueEditController.hasActiveEdit;
   const applyGraphEdit = graphValueEditController.applyGraphEdit;
   const bindGraphEditorLifecycle = graphValueEditController.bindGraphEditorLifecycle;
   const resetActiveEditState = graphValueEditController.resetActiveEditState;
-  const subgraphWorkspaceGraphCache = createSubgraphWorkspaceGraphCache({
+  const subgraphWorkspaceController = createSubgraphWorkspaceController({
+    defaultHeightPx: SUBGRAPH_WORKSPACE_DEFAULT_HEIGHT,
     getActiveSnapshotId: () => graphRenderCoordinator.getActiveSnapshotId(),
+    getWorkspaceSnapshotId: () => getWorkspaceSnapshotId(documentKeyValue),
     getDocumentKey: () => documentKeyValue,
     getLanguageId: () => languageIdValue,
     getRevision: () => editorRevisionValue,
-    getEnableNest: () => $settings.parser.enableNest,
     getRenderConfig: () => renderConfig,
+    getEnableNest: () => $settings.parser.enableNest,
+    getReadonly: () => readonly,
+    getShellHeight: () => graphViewerShellHeight,
+    getConstructors: () => ({ LeaferCtor, PlainLeaferCtor, BoxCtor, TextCtor, PenCtor }),
+    getValueTypeToSemType: () => valueTypeToSemType as Record<string, string>,
     inferGraphPaths: (nodes, edges) => graphSceneController.inferGraphPaths(nodes, edges),
+    clearSearchHighlight,
+    clearActiveGraphSelection: () => {
+      activeTempModel.update((current) => clearGraphSelectionForFullEdit(current));
+    },
+    emitReveal: (path, target) => emitReveal(path, target, 'click'),
+    handleError,
+    applyGraphEdit,
+    markSubgraphRequested,
+    markSubgraphMaterialized,
+    bindGraphEditorLifecycle,
+    bindPointerClick: (target, handler) => graphPointerController.bindPointerClick(target, handler),
+    getMoveEventName: () => (MoveEventCtor?.BEFORE_MOVE ?? MoveEventCtor?.MOVE) as string | undefined,
+    bindVerticalScrollGesture: (target, handler) => graphPointerController.bindVerticalScrollGesture(target, handler),
+    bindPointerDown: (target, handler) => graphPointerController.bindPointerDown(target, handler),
+    getPointFromEvent: (hostApp, target, event, space) =>
+      graphPointerController.getPointFromEvent(hostApp, target, event, space),
+    resolveInteractiveCellPath,
+    onState: (state) => {
+      subgraphWorkspaceChain = state.chain;
+      subgraphWorkspaceVisiblePanes = state.visiblePanes;
+      subgraphWorkspaceHeightPx = state.heightPx;
+      isDraggingSubgraphWorkspaceDivider = state.isDraggingDivider;
+    },
+  });
+  const subgraphWorkspaceActions = createSubgraphWorkspaceActions({
+    controller: subgraphWorkspaceController,
+    syncPaneReadiness: syncSubgraphReadinessForPane,
   });
 
   function clearGraphViewerTestHooks(): void {
@@ -563,7 +509,7 @@
     const interactiveReady =
       pane.kind === 'content'
         ? pane.status === 'ready'
-        : pane.status === 'ready' && subgraphWorkspaceRuntimeMap.has(pane.pathKey);
+        : pane.status === 'ready' && subgraphWorkspaceController.hasRuntime(pane.pathKey);
     syncSubgraphInteractionReadiness({
       requestId: pane.requestId,
       pathKey: pane.pathKey,
@@ -577,7 +523,7 @@
     const interaction = syncGraphReadinessFromInteraction();
     const base = readRuntimeReadiness();
     if (base.subgraph.pathKey) {
-      syncSubgraphReadinessForPane(subgraphWorkspaceChain.find((pane) => pane.pathKey === base.subgraph.pathKey));
+      syncSubgraphReadinessForPane(subgraphWorkspaceController.getChain().find((pane) => pane.pathKey === base.subgraph.pathKey));
     }
     const next = readRuntimeReadiness();
     return {
@@ -608,9 +554,9 @@
     shouldAttachGraphViewerTestHooks,
     getGraphStreamState: () => window._treease?.graph.getStreamState() ?? null,
     replaceGraphStreamState,
-    nextTreeToken: () => ++treeStateToken,
-    publishTreeState,
-    clearTreeState,
+    nextTreeToken: () => graphTreeStateController.nextToken(),
+    publishTreeState: (...args) => graphTreeStateController.publish(...args),
+    clearTreeState: (...args) => graphTreeStateController.clear(...args),
     resetJsonBlockViewport: () => {
       const layer = leafer?.zoomLayer as LeaferZoomLayer | undefined;
       lastAutoOffset = null;
@@ -634,8 +580,8 @@
       ) {
         return;
       }
-      const requestId = ++treeStateToken;
-      clearTreeState(requestId, 'graph', revision);
+      const requestId = graphTreeStateController.nextToken();
+      graphTreeStateController.clear(requestId, 'graph', revision);
     },
     onStreamFinalRedraw: (mode, revision, guard) => {
       if (
@@ -657,7 +603,7 @@
       }
     },
     updateStreamProgress: (event) => {
-      if ($fullEditUiState?.active && !isFullEditProgressActive()) {
+      if ($fullEditUiState?.active && !graphFullEditRuntime.isProgressActive()) {
         return;
       }
       graphStreamProgressController.handleEvent(event as any);
@@ -666,7 +612,7 @@
       graphStreamProgressController.reset();
     },
     completeStreamProgress: () => {
-      completeStreamProgress();
+      graphFullEditRuntime.completeStreamProgress();
     },
     setErrorMessage: (message) => setError(message),
     clearErrorMessage: () => {
@@ -720,27 +666,7 @@
     },
     buildPathSegFromCell,
     clearSearchHighlight,
-    beginMainGraphRedraw: (nodes) => {
-      nodeDataMap = new Map(nodes.map((node) => [node.renderHandle, node]));
-      nodeBoxMap = new Map();
-      pathKeyToRenderHandleMap = new Map();
-      cellBoxByPathMap = new Map();
-      tableCellAnchorMap = rebuildTableCellAnchorIndex(nodes);
-      graphRuntimeProbeController?.resetRootClickTargets();
-      nodes.forEach((node) => {
-        const pathKey = buildPathKey(node.path ?? []);
-        if (!pathKey) return;
-        if (!pathKeyToRenderHandleMap.has(pathKey))
-          pathKeyToRenderHandleMap.set(pathKey, node.renderHandle);
-      });
-      return nodeBoxMap;
-    },
-    getNodeDataMap: () => nodeDataMap,
-    getNodeBoxMap: () => nodeBoxMap,
-    getPathKeyToRenderHandleMap: () => pathKeyToRenderHandleMap,
-    indexTableCellAnchorsForNode: (node) => indexTableCellAnchorsForNode(tableCellAnchorMap, node),
-    removeTableCellAnchorsForNode: (nodeId) => removeTableCellAnchorsForNode(tableCellAnchorMap, nodeId),
-    getClickTargetProbes: () => listClickTargetProbes(),
+    getClickTargetProbes: () => graphRuntimeProbeActions.listClickTargetProbes(),
     getClickTargetProbeStore: () => graphRuntimeProbeController?.getRootStore() ?? (Object.create(null) as any),
     upsertCellEntry,
     updateCellEntry,
@@ -756,7 +682,7 @@
     unregisterCellBox,
     registerRowBox,
     unregisterRowBox,
-    registerClickTarget,
+    registerClickTarget: graphRuntimeProbeActions.registerClickTarget,
     bindVerticalScrollGesture: (target, handler) => graphPointerController.bindVerticalScrollGesture(target, handler),
     bindPointerDown: (target, handler) => graphPointerController.bindPointerDown(target, handler),
     getPointFromEvent: (hostApp, target, event, space) =>
@@ -764,6 +690,7 @@
     refreshActiveHighlight: () => graphTextLinkageController.refreshActiveHighlight(),
     updateLeafer: requestLeaferRender,
     handleError,
+    ...createGraphSceneRenderDeps(graphRenderState, () => graphRuntimeProbeController?.resetRootClickTargets()),
   });
   graphRenderCoordinator.attachSceneBridge({
     applyGraphDelta: async (delta, version) => {
@@ -791,24 +718,9 @@
   });
   let lastSyncedReadonly = readonly;
 
-  function closeGraphInnerEditor(): void {
-    const editor = (leafer as ({ editor?: { closeInnerEditor?: (skipUpdate?: boolean) => void } } & object) | null)
-      ?.editor;
-    editor?.closeInnerEditor?.(true);
-  }
-
-  function syncReadonlyEditability(): void {
-    resetActiveEditState();
-    closeGraphInnerEditor();
-    const graphData = graphSceneController.getLastGraphData();
-    if (!graphData) return;
-    graphSceneController.replaceAll(graphData);
-    if (!isFullEditInteractionBlocked()) graphMinimapRuntimeController.update();
-  }
-
   $: if (readonly !== lastSyncedReadonly) {
     lastSyncedReadonly = readonly;
-    syncReadonlyEditability();
+    graphFullEditRuntime.syncReadonlyEditability();
   }
 
   graphRuntimeProbeController = createGraphRuntimeProbeController({
@@ -817,10 +729,10 @@
     isFullEditStreaming: () => isFullEditInteractionBlocked(),
     bindPointerClick: (target, handler) => graphPointerController.bindPointerClick(target, handler),
     getContainerRect: () => container?.getBoundingClientRect() ?? null,
-    getRootClickTargets: () => listClickTargetProbes(),
+    getRootClickTargets: () => graphRuntimeProbeActions.listClickTargetProbes(),
     getRootApp: () => leafer as LeaferAppLike | null,
     getLanguageId: () => languageIdValue,
-    getCellBoxByPathMap: () => cellBoxByPathMap,
+    getCellBoxByPathMap: () => graphRenderState.getCellBoxByPathMap(),
     buildPathKey,
     getClientProbeCoordFromBox: (box, app) => getClientProbeCoordFromBoxLike(box, app),
     getClientRectFromBox: (box, app) => getClientRectFromBoxLike(box, app),
@@ -863,7 +775,7 @@
     },
     commitProbe: async ({ cell, kind }, text) => {
       if (kind !== 'key' && kind !== 'value') return false;
-      emitGraphEditEvent('graph-edit-open', {
+      dispatchGraphEditEvent(container, 'graph-edit-open', {
         path: cell.path,
         kind,
         valueType: cell.valueType,
@@ -871,184 +783,56 @@
       return applyGraphEdit(cell, kind, text, null);
     },
   });
-
-  function getLeaferContentRoot(target: LeaferAppOrLeafer | null): Box | null {
-    if (!target) return null;
-    const zoomLayer = (target as LeaferAppOrLeafer & { zoomLayer?: Box }).zoomLayer;
-    if (zoomLayer) return zoomLayer;
-    return 'add' in target ? (target as unknown as Box) : null;
-  }
-
-  function upsertCellEntry(
-    map: Map<string, CellBoxEntry>,
-    cell: GraphCell,
-    updater: (entry: CellBoxEntry) => void,
-  ): void {
-    upsertCellEntryInIndex(map, cell, updater);
-  }
-
-  function updateCellEntry(
-    map: Map<string, CellBoxEntry>,
-    cell: GraphCell,
-    updater: (entry: CellBoxEntry) => void,
-  ): void {
-    updateCellEntryInIndex(map, cell, updater);
-  }
-
-  function toGraphClickTarget(kind: GraphCellKind): 'key' | 'value' | 'node' {
-    if (kind === 'key') return 'key';
-    if (kind === 'value') return 'value';
-    return 'node';
-  }
-
-  function buildPathSegFromCell(cell: GraphCell | undefined, rowIndex: number): PathSeg | null {
-    const raw = String(cell?.text ?? '').trim();
-    if (!raw) return cell?.isIndex ? ({ tag: PathSegTag.INDEX, key: '' as any, index: rowIndex } as PathSeg) : null;
-    const bracketMatch = raw.match(/^\[(\d+)\]$/);
-    if (bracketMatch) {
-      return { tag: PathSegTag.INDEX, key: '' as any, index: Number.parseInt(bracketMatch[1], 10) } as PathSeg;
-    }
-    if (cell?.isIndex && /^\d+$/.test(raw)) {
-      return { tag: PathSegTag.INDEX, key: '' as any, index: Number.parseInt(raw, 10) } as PathSeg;
-    }
-    return { tag: PathSegTag.KEY, key: raw as any, index: 0 } as PathSeg;
-  }
+  graphRuntimeProbeActions = createGraphRuntimeProbeActions({
+    getController: () => graphRuntimeProbeController,
+    getVisiblePanes: () => subgraphWorkspaceVisiblePanes,
+    getWorkspaceRuntime: (pathKey) => subgraphWorkspaceController.getRuntime(pathKey),
+    getWorkspaceRect: () =>
+      (document.querySelector("[data-testid='graph-subgraph-workspace']") as HTMLElement | null)?.getBoundingClientRect() ??
+      null,
+    rebaseWorkspacePath: rebaseSubgraphWorkspacePath,
+    resolveCellText: (entry) =>
+      resolveGraphCellDisplayText(
+        entry.cell?.text,
+        entry.cell?.value,
+        String(entry.cell?.valueType ?? ''),
+        languageIdValue,
+      ),
+    getLanguageId: () => languageIdValue,
+  });
 
   function resolveInteractiveCellPath(cell: GraphCell, fallbackPath: PathSeg[]): Promise<PathSeg[]> {
     return resolveInteractiveCellPathWithFallback(cell, fallbackPath, resolveTreePathByPosition);
   }
 
-  function publishTreeState(
-    requestId: number,
-    _tree: TreeNode | null,
-    _value: unknown,
-    source: 'editor' | 'graph',
-    revision: number,
-    _snapshotId?: SnapshotId | null,
-  ) {
-    const accepted = requestId === treeStateToken;
-    if (!accepted) return false;
-    treeState.set({ tree: null, value: null, source, revision });
-    return true;
-  }
-
-  function clearTreeState(
-    requestId: number,
-    source: 'editor' | 'graph',
-    revision: number,
-    _snapshotId?: SnapshotId | null,
-  ) {
-    const accepted = requestId === treeStateToken;
-    if (!accepted) return false;
-    treeState.set({ tree: null, value: null, source, revision });
-    return true;
-  }
-
   function getRenderRoot(): Box | null {
-    return getLeaferContentRoot(leafer);
+    return getLeaferContentRoot(leafer as LeaferAppLike | null);
   }
 
   function isFullEditProgressActive(): boolean {
-    return $fullEditUiState?.active === true && $fullEditUiState.phase !== 'idle';
+    return graphFullEditRuntime.isProgressActive();
   }
 
   function completeStreamProgress(): void {
-    graphStreamProgressController.completeIfActive();
+    graphFullEditRuntime.completeStreamProgress();
   }
 
   function scheduleFullEditCleanup(kind: 'settled' | 'idle', task: () => void): void {
-    if (kind === 'settled') {
-      if (fullEditSettledCleanupHandle != null) return;
-      fullEditSettledCleanupHandle = requestAnimationFrame(() => {
-        fullEditSettledCleanupHandle = null;
-        task();
-      });
-      return;
-    }
-    if (fullEditIdleCleanupHandle != null) return;
-    fullEditIdleCleanupHandle = requestAnimationFrame(() => {
-      fullEditIdleCleanupHandle = null;
-      task();
-    });
+    graphFullEditRuntime.scheduleCleanup(kind, task);
   }
 
   function ensureCanvasHint(): void {
-    if (!container || !leafer || !overlayLayer || !TextCtor) return;
-    if (canvasHintText && canvasHintText.parent === overlayLayer) return;
-    const zoomLayer = (leafer as LeaferAppLike & { zoomLayer?: LeaferZoomLayer }).zoomLayer;
-    if (!zoomLayer) return;
-    const { scaleX, scaleY } = getZoomScale(zoomLayer);
-    if (!Number.isFinite(scaleX) || !Number.isFinite(scaleY) || scaleX <= 0 || scaleY <= 0) return;
-    const hintWidth = 320;
-    const offsetX = zoomLayer.x ?? 0;
-    const offsetY = zoomLayer.y ?? 0;
-    const worldX = (container.clientWidth / 2 - offsetX) / scaleX - hintWidth / 2;
-    const worldY = (16 - offsetY) / scaleY;
-    const hint = new TextCtor({
-      text: 'Hold Space and drag to move the canvas',
-      width: hintWidth,
-      fontSize: 12,
-      fontWeight: '500',
-      textAlign: 'center',
-      fill: '#94a3b8',
-      hittable: false,
-      hitSelf: false,
-      hitChildren: false,
-    });
-    hint.x = worldX;
-    hint.y = worldY;
-    overlayLayer.add(hint);
-    canvasHintText = hint;
+    canvasHintText = ensureCanvasHintOverlay(
+      container,
+      leafer as LeaferAppLike | null,
+      overlayLayer,
+      TextCtor,
+      canvasHintText,
+    );
   }
 
   function resetCanvasHint(): void {
-    canvasHintText?.remove?.();
-    canvasHintText = null;
-  }
-
-
-  function toMinimapViewData(graphData: GraphSceneViewData | null): MinimapViewData | null {
-    if (!graphData) return null;
-
-    // minimap 纵向间距系数
-    const SPREAD = 1.1;
-    const nodes = graphData.nodes;
-
-    const centerY = nodes.length > 0 ? nodes.reduce((sum, n) => sum + n.boxArgs.y, 0) / nodes.length : 0;
-
-    const yDeltaByHandle = new Map<number, number>();
-    const spreadNodes = nodes.map((node) => {
-      const handle = node.renderHandle;
-      const origY = node.boxArgs.y;
-      const spreadY = centerY + (origY - centerY) * SPREAD;
-      yDeltaByHandle.set(handle, spreadY - origY);
-      return {
-        id: handle,
-        kind: node.kind,
-        x: node.boxArgs.x,
-        y: spreadY,
-        width: node.boxArgs.width,
-        height: node.boxArgs.height,
-      };
-    });
-
-    return {
-      nodes: spreadNodes,
-      edges: graphData.edges.map((edge) => {
-        const fromDelta = yDeltaByHandle.get(edge.fromRenderHandle) ?? 0;
-        const toDelta = yDeltaByHandle.get(edge.toRenderHandle) ?? 0;
-        return {
-          fromX: edge.bezierArgs.fromX,
-          fromY: edge.bezierArgs.fromY + fromDelta,
-          c1x: edge.bezierArgs.c1x,
-          c1y: edge.bezierArgs.c1y + fromDelta,
-          c2x: edge.bezierArgs.c2x,
-          c2y: edge.bezierArgs.c2y + toDelta,
-          toX: edge.bezierArgs.toX,
-          toY: edge.bezierArgs.toY + toDelta,
-        };
-      }),
-    };
+    canvasHintText = clearCanvasHintOverlay(canvasHintText);
   }
 
   const graphMeasurementController = createGraphMeasurementController({
@@ -1063,14 +847,6 @@
     graphMeasurementController.scheduleMeasure();
   }
 
-  function emitGraphEditEvent(
-    type: 'graph-edit-open' | 'graph-edit-commit' | 'graph-edit-replace-fallback' | 'graph-edit-probes',
-    detail: unknown,
-  ) {
-    if (!container) return;
-    container.dispatchEvent(new CustomEvent(type, { detail, bubbles: true }));
-  }
-
   /**
    * 注册可高亮的单元格。
    * @param cell 单元格数据
@@ -1078,377 +854,46 @@
    * @param box 单元格容器
    * @returns void
    */
-  function registerCellBox(cell: GraphCell, kind: GraphCellKind, box: LeaferBox): void {
-    registerCellBoxEntry(cellBoxByPathMap, cell, kind, box);
-  }
-
-  function unregisterCellBox(cell: GraphCell, kind: GraphCellKind, box: LeaferBox): void {
-    unregisterCellBoxEntry(cellBoxByPathMap, cell, kind, box);
-  }
-
-  function registerRowBox(
-    cell: GraphCell,
-    rowBox: LeaferBox,
-    scrollOwner?: ScrollableBox,
-    bodyHeight?: number,
-    contentHeight?: number,
-  ): void {
-    registerRowBoxEntry(cellBoxByPathMap, cell, rowBox, scrollOwner, bodyHeight, contentHeight);
-  }
-
-  function unregisterRowBox(cell: GraphCell, rowBox: LeaferBox): void {
-    unregisterRowBoxEntry(cellBoxByPathMap, cell, rowBox);
-  }
-
-
   function getClientProbeCoord(box: LeaferBox): { x: number; y: number } | null {
-    const absoluteProbe = getClientProbeCoordFromBoxLike(box, leafer as LeaferAppLike | null);
-    const containerRect = container?.getBoundingClientRect();
-    if (!absoluteProbe || !containerRect) return null;
-    return {
-      x: Math.round(absoluteProbe.x - containerRect.left),
-      y: Math.round(absoluteProbe.y - containerRect.top),
-    };
-  }
-
-  async function buildSubgraphWorkspaceContentState(path: PathSeg[]): Promise<SubgraphWorkspaceContentState | null> {
-    const snapshotId = getWorkspaceSnapshotId(documentKeyValue);
-    const pathValue = await queryPathValue({ documentKey: documentKeyValue, snapshotId, path });
-    if (pathValue.status !== 'ready' || !pathValue.data) return null;
-    const valueType = pathValue.data.valueType as ValueType;
-    if (!shouldOpenSubgraphWorkspaceContent(pathValue.data)) return null;
-    return {
-      tabId: `subgraph-content:${buildPathKey(path)}`,
-      tabName: formatSubgraphWorkspacePath(path, renderConfig),
-      sourceText: pathValue.data.displayText,
-      valueType,
-    };
-  }
-
-  function syncSubgraphWorkspaceTransientState(nextChain: SubgraphWorkspacePaneState[]): void {
-    const nextKeys = new Set(nextChain.map((pane) => pane.pathKey));
-    for (const pathKey of subgraphWorkspacePendingEditKeys) {
-      if (!nextKeys.has(pathKey)) subgraphWorkspacePendingEditKeys.delete(pathKey);
-    }
-    for (const pathKey of subgraphWorkspaceQueuedEditMap.keys()) {
-      if (!nextKeys.has(pathKey)) subgraphWorkspaceQueuedEditMap.delete(pathKey);
-    }
-  }
-
-  function updateVisibleSubgraphWorkspacePanes(): void {
-    const start = Math.max(0, subgraphWorkspaceChain.length - 3);
-    subgraphWorkspaceVisiblePanes = subgraphWorkspaceChain.slice(start).map((pane, index) => ({
-      ...pane,
-      visibleIndex: index,
-      absoluteIndex: start + index,
-    }));
-  }
-
-  function disposeSubgraphWorkspaceRuntimes(exceptPathKeys: string[] = []): void {
-    const preserved = new Set(exceptPathKeys);
-    for (const [pathKey, runtime] of subgraphWorkspaceRuntimeMap.entries()) {
-      if (preserved.has(pathKey)) continue;
-      destroySubgraphWorkspaceRuntime(runtime);
-      subgraphWorkspaceRuntimeMap.delete(pathKey);
-    }
-  }
-
-  function setSubgraphWorkspaceChain(nextChain: SubgraphWorkspacePaneState[]): void {
-    const previousRequestIds = new Map(
-      subgraphWorkspaceChain
-        .filter((pane) => typeof pane.requestId === 'number')
-        .map((pane) => [pane.pathKey, pane.requestId as number]),
-    );
-    const normalizedChain = nextChain.map((pane) => ({
-      ...pane,
-      requestId: pane.requestId ?? previousRequestIds.get(pane.pathKey),
-    }));
-    syncSubgraphWorkspaceTransientState(normalizedChain);
-    subgraphWorkspaceChain = normalizedChain;
-    updateVisibleSubgraphWorkspacePanes();
-    disposeSubgraphWorkspaceRuntimes(normalizedChain.map((pane) => pane.pathKey));
+    return buildClientProbeCoord(box, leafer as LeaferAppLike | null, container);
   }
 
   function resetSubgraphWorkspace(): void {
-    subgraphWorkspaceRefreshToken += 1;
-    subgraphWorkspaceRequestId += 1;
-    subgraphWorkspaceRenderSignature = '';
-    clearSearchHighlight();
-    activeTempModel.update((current) => clearGraphSelectionForFullEdit(current));
-    setSubgraphWorkspaceChain([]);
-    subgraphWorkspaceGraphCache.clear();
-  }
-
-  async function prepareSubgraphWorkspacePane(path: PathSeg[]): Promise<SubgraphWorkspacePaneState | null> {
-    const pathKey = buildPathKey(path);
-    if (!pathKey) return null;
-    const title = formatSubgraphWorkspacePath(path, renderConfig);
-    const content = await buildSubgraphWorkspaceContentState(path);
-    if (content) {
-      return {
-        path,
-        pathKey,
-        title,
-        kind: 'content',
-        graph: null,
-        content,
-        status: 'ready',
-      };
-    }
-    try {
-      const graph = await subgraphWorkspaceGraphCache.prepareGraph(path);
-      return {
-        path,
-        pathKey,
-        title,
-        kind: 'graph',
-        graph,
-        content: null,
-        status: graph ? 'ready' : 'empty',
-      };
-    } catch (error) {
-      handleError(error, {
-        component: 'GraphViewer',
-        operation: 'buildSubgraphWorkspaceProjection',
-        metadata: { documentKey: documentKeyValue, language: languageIdValue, pathKey },
-      });
-      return {
-        path,
-        pathKey,
-        title,
-        kind: 'graph',
-        graph: null,
-        content: null,
-        status: 'error',
-        error: error instanceof Error ? error.message : String(error),
-      };
-    }
+    subgraphWorkspaceActions.reset();
   }
 
   async function openSubgraphWorkspacePath(path: PathSeg[], parentAbsoluteIndex: number): Promise<void> {
-    const pathKey = buildPathKey(path);
-    if (!pathKey) return;
-    const currentChild = subgraphWorkspaceChain[parentAbsoluteIndex + 1] ?? null;
-    if (currentChild?.pathKey === pathKey) return;
-    const requestId = ++subgraphWorkspaceRequestId;
-    markSubgraphRequested({
-      requestId,
-      pathKey,
-      sourceRevision: editorRevisionValue,
-    });
-    const base = parentAbsoluteIndex >= 0 ? subgraphWorkspaceChain.slice(0, parentAbsoluteIndex + 1) : [];
-    const loadingPane: SubgraphWorkspacePaneState = {
-      requestId,
-      path,
-      pathKey,
-      title: formatSubgraphWorkspacePath(path, renderConfig),
-      kind: 'graph',
-      graph: null,
-      content: null,
-      status: 'loading',
-    };
-    setSubgraphWorkspaceChain([...base, loadingPane]);
-    const pane = await prepareSubgraphWorkspacePane(path);
-    if (!pane) return;
-    if (requestId !== subgraphWorkspaceRequestId) return;
-    const latestBase = parentAbsoluteIndex >= 0 ? subgraphWorkspaceChain.slice(0, parentAbsoluteIndex + 1) : [];
-    if (latestBase.some((entry, index) => base[index]?.pathKey !== entry.pathKey)) return;
-    const nextPane = { ...pane, requestId };
-    markSubgraphMaterialized({
-      requestId,
-      pathKey,
-      sourceRevision: editorRevisionValue,
-      materializedRevision: editorRevisionValue,
-    });
-    setSubgraphWorkspaceChain([...latestBase, nextPane]);
-    await tick();
-    await renderSubgraphWorkspacePanes();
-    syncSubgraphReadinessForPane(nextPane);
+    await subgraphWorkspaceActions.openPath(path, parentAbsoluteIndex);
   }
 
   function closeSubgraphWorkspacePane(absoluteIndex: number): void {
-    if (absoluteIndex < 0 || absoluteIndex >= subgraphWorkspaceChain.length) return;
-    setSubgraphWorkspaceChain(subgraphWorkspaceChain.slice(0, absoluteIndex));
-  }
-
-  function clampSubgraphWorkspaceHeight(nextHeightPx: number): number {
-    return getClampedPaneSize(
-      nextHeightPx,
-      graphViewerShellHeight,
-      SUBGRAPH_WORKSPACE_MIN_HEIGHT,
-      SUBGRAPH_WORKSPACE_MAX_HEIGHT_FRACTION,
-    );
-  }
-
-  async function handleSubgraphWorkspaceActivate(
-    payload: { path: PathSeg[]; target: 'key' | 'value' | 'node'; cell: GraphCell },
-    parentAbsoluteIndex: number,
-  ): Promise<void> {
-    if (shouldIgnoreSubgraphOpenCell(payload.cell)) return;
-    emitReveal(payload.path, payload.target, 'click');
-    await openSubgraphWorkspacePath(payload.path, parentAbsoluteIndex);
+    subgraphWorkspaceActions.closePane(absoluteIndex);
   }
 
   async function commitSubgraphWorkspaceValueEdit(pane: SubgraphWorkspacePaneState, draft?: string): Promise<void> {
-    if (readonly || pane.kind !== 'content' || !pane.content) return;
-    const nextText = draft ?? pane.content.sourceText;
-    if (nextText === pane.content.sourceText) return;
-    if (subgraphWorkspacePendingEditKeys.has(pane.pathKey)) {
-      subgraphWorkspaceQueuedEditMap.set(pane.pathKey, nextText);
-      return;
-    }
-    subgraphWorkspacePendingEditKeys.add(pane.pathKey);
-    try {
-      let nextDraft = nextText;
-      if (pane.content.valueType === 'string') {
-        try {
-          const parsed = JSON.parse(nextDraft);
-          if (typeof parsed === 'string') nextDraft = parsed;
-        } catch {}
-      }
-      await applyGraphEdit(
-        {
-          text: pane.content.sourceText,
-          value: pane.content.sourceText,
-          valueType: pane.content.valueType,
-          path: pane.path,
-          editable: !readonly,
-          boxArgs: { x: 0, y: 0, width: 0, height: 0, cornerRadius: 0 },
-          textArgs: {
-            x: 0,
-            y: 0,
-            width: 0,
-            height: 0,
-            text: pane.content.sourceText,
-            textAlign: 'left',
-            verticalAlign: 'top',
-            editable: !readonly,
-          },
-        },
-        'value',
-        nextDraft,
-      );
-    } finally {
-      subgraphWorkspacePendingEditKeys.delete(pane.pathKey);
-    }
-    const queuedText = subgraphWorkspaceQueuedEditMap.get(pane.pathKey);
-    if (queuedText == null || queuedText === nextText) return;
-    subgraphWorkspaceQueuedEditMap.delete(pane.pathKey);
-    await commitSubgraphWorkspaceValueEdit(pane, queuedText);
+    await subgraphWorkspaceActions.commitValueEdit(pane, draft);
   }
 
-  function bindSubgraphWorkspaceHost(pathKey: string, host: HTMLDivElement | null): void {
-    if (host) {
-      subgraphWorkspaceHostMap.set(pathKey, host);
-    } else {
-      subgraphWorkspaceHostMap.delete(pathKey);
-      const runtime = subgraphWorkspaceRuntimeMap.get(pathKey);
-      destroySubgraphWorkspaceRuntime(runtime);
-      subgraphWorkspaceRuntimeMap.delete(pathKey);
-    }
-    subgraphWorkspaceRenderSignature = '';
-    void renderSubgraphWorkspacePanes();
-  }
-
-  function subgraphWorkspaceHostAction(node: HTMLDivElement, pathKey: string) {
-    let currentPathKey = pathKey;
-    bindSubgraphWorkspaceHost(currentPathKey, node);
-    return {
-      update(nextPathKey: string) {
-        if (nextPathKey === currentPathKey) return;
-        bindSubgraphWorkspaceHost(currentPathKey, null);
-        currentPathKey = nextPathKey;
-        bindSubgraphWorkspaceHost(currentPathKey, node);
-      },
-      destroy() {
-        bindSubgraphWorkspaceHost(currentPathKey, null);
-      },
-    };
-  }
+  const subgraphWorkspaceHostAction = subgraphWorkspaceActions.hostAction;
 
   function handleSubgraphWorkspaceDividerDragStart(clientY: number) {
-    isDraggingSubgraphWorkspaceDivider = true;
-    subgraphWorkspaceResizeState = {
-      startClientY: clientY,
-      startHeightPx: subgraphWorkspaceHeightPx,
-    };
+    subgraphWorkspaceActions.startDividerDrag(clientY);
   }
 
   function handleSubgraphWorkspaceDividerDragMove(clientY: number) {
-    if (!subgraphWorkspaceResizeState) return;
-    const deltaY = subgraphWorkspaceResizeState.startClientY - clientY;
-    subgraphWorkspaceHeightPx = clampSubgraphWorkspaceHeight(subgraphWorkspaceResizeState.startHeightPx + deltaY);
+    subgraphWorkspaceActions.moveDividerDrag(clientY);
   }
 
   function handleSubgraphWorkspaceDividerDragEnd() {
-    isDraggingSubgraphWorkspaceDivider = false;
-    subgraphWorkspaceResizeState = null;
+    subgraphWorkspaceActions.endDividerDrag();
   }
 
   async function renderSubgraphWorkspacePanes(): Promise<void> {
-    const visibleSignature = subgraphWorkspaceVisiblePanes
-      .map((pane) => `${pane.pathKey}:${pane.status}:${pane.absoluteIndex}`)
-      .join('|');
-    const nextSignature = `${visibleSignature}|${Boolean(LeaferCtor || PlainLeaferCtor)}|${Boolean(BoxCtor)}|${Boolean(TextCtor)}|${Boolean(PenCtor)}|${readonly}`;
-    if (nextSignature === subgraphWorkspaceRenderSignature) return;
-    subgraphWorkspaceRenderSignature = nextSignature;
-    const activeKeys = subgraphWorkspaceVisiblePanes
-      .filter((pane) => pane.status === 'ready' && pane.graph)
-      .map((pane) => pane.pathKey);
-    disposeSubgraphWorkspaceRuntimes(activeKeys);
-    for (const pane of subgraphWorkspaceVisiblePanes) {
-      syncSubgraphReadinessForPane(pane);
-      if (pane.kind === 'content') continue;
-      const mount = subgraphWorkspaceHostMap.get(pane.pathKey);
-      if (!mount) continue;
-      if (pane.status !== 'ready' || !pane.graph) {
-        mount.replaceChildren();
-        continue;
-      }
-      const existingRuntime = subgraphWorkspaceRuntimeMap.get(pane.pathKey) as (SubgraphWorkspaceRuntime & {
-        __graphRef?: SubgraphWorkspaceGraphData | null;
-      }) | undefined;
-      if (existingRuntime && existingRuntime.host === mount && existingRuntime.__graphRef === pane.graph) {
-        continue;
-      }
-      destroySubgraphWorkspaceRuntime(existingRuntime);
-      const runtime = await renderSubgraphWorkspaceGraph(mount, pane.graph, {
-        getConstructors: () => ({ LeaferCtor, PlainLeaferCtor, BoxCtor, TextCtor, PenCtor }),
-        getRenderConfig: () => renderConfig,
-        getLanguageId: () => languageIdValue,
-        getValueTypeToSemType: () => valueTypeToSemType as Record<string, string>,
-        isReadonly: () => readonly,
-        bindGraphEditorLifecycle,
-        bindPointerClick: (target, handler) => graphPointerController.bindPointerClick(target, handler),
-        getMoveEventName: () => (MoveEventCtor?.BEFORE_MOVE ?? MoveEventCtor?.MOVE) as string | undefined,
-        bindVerticalScrollGesture: (target, handler) => graphPointerController.bindVerticalScrollGesture(target, handler),
-        bindPointerDown: (target, handler) => graphPointerController.bindPointerDown(target, handler),
-        getPointFromEvent: (hostApp, target, event, space) =>
-          graphPointerController.getPointFromEvent(hostApp, target, event, space),
-        resolveInteractiveCellPath,
-        onActivateCell: (payload) => handleSubgraphWorkspaceActivate(payload, pane.absoluteIndex),
-      });
-      if (runtime) {
-        (runtime as SubgraphWorkspaceRuntime & { __graphRef?: SubgraphWorkspaceGraphData | null }).__graphRef =
-          pane.graph;
-        subgraphWorkspaceRuntimeMap.set(pane.pathKey, runtime);
-        syncSubgraphReadinessForPane(pane);
-      }
-    }
+    await subgraphWorkspaceActions.renderPanes();
   }
 
   async function refreshSubgraphWorkspacePanes(): Promise<void> {
-    if (!subgraphWorkspaceChain.length) return;
-    const token = ++subgraphWorkspaceRefreshToken;
-    const nextChain: SubgraphWorkspacePaneState[] = [];
-    for (const pane of subgraphWorkspaceChain) {
-      const nextPane = await prepareSubgraphWorkspacePane(pane.path);
-      if (token !== subgraphWorkspaceRefreshToken) return;
-      if (nextPane) nextChain.push(nextPane);
-    }
-    setSubgraphWorkspaceChain(nextChain);
-    await tick();
-    await renderSubgraphWorkspacePanes();
+    await subgraphWorkspaceActions.refreshPanes();
   }
   
   export function revealSearchResult(result: GraphSearchResult): void {
@@ -1466,20 +911,22 @@
 
   const graphViewerRuntimeApi = {
     getClickProbeTargets: (scope?: 'root' | 'workspace') =>
-      scope === 'workspace' ? getSubgraphWorkspaceProbeTargets() : getRuntimeProbeTargets(scope ?? 'root'),
-    getHighlightTarget: () => getRuntimeHighlightTarget(),
-    getLastReveal: () => getLastReveal(),
-    clearLastReveal: () => clearLastReveal(),
-    getRowScrollState: (path?: PathSeg[] | null) => getRuntimeRowScrollState(path),
-    getHitResult: (point: { x: number; y: number }) => getRuntimeHitResult(point),
+      scope === 'workspace'
+        ? graphRuntimeProbeActions.getSubgraphWorkspaceProbeTargets()
+        : graphRuntimeProbeActions.getRuntimeProbeTargets(scope ?? 'root'),
+    getHighlightTarget: () => graphRuntimeProbeActions.getRuntimeHighlightTarget(),
+    getLastReveal: () => graphRuntimeProbeActions.getLastReveal(),
+    clearLastReveal: () => graphRuntimeProbeActions.clearLastReveal(),
+    getRowScrollState: (path?: PathSeg[] | null) => graphRuntimeProbeActions.getRuntimeRowScrollState(path),
+    getHitResult: (point: { x: number; y: number }) => graphRuntimeProbeActions.getRuntimeHitResult(point),
     getLastGraphData: () => graphSceneController.getLastGraphData(),
     getInteractionState: () => getGraphInteractionState(),
     getRuntimeReadiness: () => getRuntimeReadiness(),
     getStreamProgressState: () => streamProgressState,
     revealPath: (path: PathSeg[], options?: { target?: 'key' | 'value' | 'node'; navigate?: boolean }) =>
       revealPath(path, options),
-    activateProbe: (probeId: string) => activateRuntimeProbe(probeId),
-    commitProbe: (probeId: string, text: string) => commitRuntimeProbe(probeId, text),
+    activateProbe: (probeId: string) => graphRuntimeProbeActions.activateRuntimeProbe(probeId),
+    commitProbe: (probeId: string, text: string) => graphRuntimeProbeActions.commitRuntimeProbe(probeId, text),
     scrollTableToRow: (rowIndex: number) => graphSceneController.scrollTableToRow(rowIndex),
     refs: {
       get leafer() {
@@ -1500,9 +947,7 @@
   }
 
   export async function exportImage() {
-    if (!leafer) return;
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    await leafer.export(`treease-${timestamp}.png`, { trim: true, padding: [5, 5, 5, 5] });
+    await exportLeaferImage(leafer as object);
   }
 
   function setError(message: string) {
@@ -1537,8 +982,7 @@
     void graphRenderCoordinator.dispose();
     graphSceneController.dispose();
     resetActiveEditState();
-    disposeSubgraphWorkspaceRuntimes();
-    subgraphWorkspaceGraphCache.clear();
+    subgraphWorkspaceController.dispose();
     unsubscribeGraphStreamProgress();
     graphStreamProgressController.dispose();
     clearGraphBridge();
@@ -1561,8 +1005,8 @@
   }
 
   $: if ($settings) {
-    subgraphWorkspaceGraphCache.clear();
-    subgraphWorkspaceRenderSignature = '';
+    subgraphWorkspaceController.clearCache();
+    subgraphWorkspaceController.invalidateRender();
     void refreshSubgraphWorkspacePanes();
   }
 
@@ -1588,7 +1032,7 @@
     ].join('|');
     if (nextRefreshSignature !== subgraphWorkspaceRefreshSignature) {
       subgraphWorkspaceRefreshSignature = nextRefreshSignature;
-      subgraphWorkspaceRenderSignature = '';
+      subgraphWorkspaceController.invalidateRender();
       if (subgraphWorkspaceRefreshRevision !== $graphAppliedRevision) {
         subgraphWorkspaceRefreshRevision = $graphAppliedRevision;
         void refreshSubgraphWorkspacePanes();

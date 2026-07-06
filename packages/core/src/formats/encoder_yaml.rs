@@ -1,6 +1,8 @@
 use std::io::Write;
 
-use crate::core::{CoreError, NodeId, SemType, TreeNode, TreeNodeKind, TreeStore};
+use crate::errors::CoreError;
+use crate::language::SemType;
+use crate::tree::{NodeId, TreeNode, TreeNodeKind, TreeStore};
 
 use super::encoder::{Encode, print_yaml_document_separator, print_yaml_leading_content};
 use super::node;

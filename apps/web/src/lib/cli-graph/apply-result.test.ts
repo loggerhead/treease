@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { editorLanguageFallback } from '../monaco/language-support';
-import { editorStore } from '../store/editor-store';
+import { editorStore } from '../store/editor-store-internal';
 import {
   applyCliGraphResultToEditorStore,
   buildCliGraphDocumentKey,

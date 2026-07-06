@@ -1,7 +1,7 @@
-use crate::core::{
-    CompactTag, CoreError, LineIndex, ParseError, SemType, TreeNode, TreeNodeKind, TreeStore,
-    infer_scalar_tag,
-};
+use crate::analysis::LineIndex;
+use crate::errors::{CoreError, ParseError};
+use crate::language::SemType;
+use crate::tree::{CompactTag, TreeNode, TreeNodeKind, TreeStore, infer_scalar_tag};
 
 use super::preferences::FormatPreferences;
 use super::{
@@ -28,7 +28,9 @@ impl CsvObjectDecoder {
 
 impl Default for CsvObjectDecoder {
     fn default() -> Self {
-        Self::new(super::default_language_preferences().effective(crate::core::FormatLanguage::Csv))
+        Self::new(
+            super::default_language_preferences().effective(crate::language::FormatLanguage::Csv),
+        )
     }
 }
 
@@ -139,7 +141,7 @@ fn parse_csv_object_rows(input: &str, separator: char) -> Result<Vec<Vec<CsvCell
 
 fn set_csv_node_span(
     store: &mut TreeStore,
-    id: crate::core::NodeId,
+    id: crate::tree::NodeId,
     cell: &CsvCell,
     line_index: &LineIndex,
 ) {
@@ -153,7 +155,7 @@ fn set_csv_node_span(
     node.column = line_column.column as i32 + 1;
 }
 
-fn set_csv_container_span(store: &mut TreeStore, id: crate::core::NodeId, line_index: &LineIndex) {
+fn set_csv_container_span(store: &mut TreeStore, id: crate::tree::NodeId, line_index: &LineIndex) {
     let Some(children) = store.get(id).map(|node| node.content.clone()) else {
         return;
     };
@@ -184,7 +186,7 @@ fn set_csv_container_span(store: &mut TreeStore, id: crate::core::NodeId, line_i
 
 fn set_csv_root_span(
     store: &mut TreeStore,
-    root: crate::core::NodeId,
+    root: crate::tree::NodeId,
     source: &str,
     line_index: &LineIndex,
 ) {
@@ -198,7 +200,7 @@ fn set_csv_root_span(
     node.column = line_column.column as i32 + 1;
 }
 
-fn add_auto_scalar(store: &mut TreeStore, raw: &str, auto_parse: bool) -> crate::core::NodeId {
+fn add_auto_scalar(store: &mut TreeStore, raw: &str, auto_parse: bool) -> crate::tree::NodeId {
     if raw.is_empty() {
         return add_scalar(store, SemType::Nil, "");
     }
@@ -227,11 +229,12 @@ fn add_auto_scalar(store: &mut TreeStore, raw: &str, auto_parse: bool) -> crate:
 
 #[cfg(test)]
 mod tests {
-    use crate::core::{SemType, TreeNodeKind, get_map_entry};
+    use crate::language::SemType;
+    use crate::tree::{TreeNodeKind, get_map_entry};
 
     use super::CsvObjectDecoder;
-    use crate::core::FormatLanguage;
     use crate::formats::{Decode, Encode, YamlEncoder, default_language_preferences};
+    use crate::language::FormatLanguage;
 
     #[test]
     fn csv_object_decoder_builds_sequence_of_mappings() {

@@ -1,6 +1,7 @@
 use serde::Serialize;
 
-use super::{CliError, CommandKind, ConfiguredFormats, InputPayload, ParsedArgs};
+use super::execute::ConfiguredFormats;
+use crate::args::{CliError, CommandKind, InputPayload, ParsedArgs};
 
 // Used by follow-up web server wiring.
 #[allow(dead_code)]
@@ -36,7 +37,7 @@ pub(super) fn build_cli_graph_result_payload(
 
     let input = &inputs[0];
     if should_delegate_identity_to_web(parsed) {
-        let language = super::resolve_input_format(parsed, input)?;
+        let language = super::cli_io::input::resolve_input_format(parsed, input)?;
         let text = String::from_utf8(input.bytes.clone()).map_err(|error| {
             CliError::Eval(format!("source document is not valid UTF-8: {error}"))
         })?;
@@ -56,9 +57,10 @@ pub(super) fn build_cli_graph_result_payload(
         files: vec![input.name.clone()],
         ..parsed.clone()
     };
-    let ConfiguredFormats { output, .. } = super::configured_formats(&eval_parsed, Some(input))?;
+    let ConfiguredFormats { output, .. } =
+        super::execute::configured_formats(&eval_parsed, Some(input))?;
 
-    let output_bytes = super::execute_command(&eval_parsed, inputs)?;
+    let output_bytes = super::execute::execute_command(&eval_parsed, inputs)?;
 
     if let Some(text) = build_missing_result_placeholder(&eval_parsed, input)? {
         return Ok(CliGraphResultPayload {
@@ -94,7 +96,7 @@ fn build_missing_result_placeholder(
     parsed: &ParsedArgs,
     input: &InputPayload,
 ) -> Result<Option<String>, CliError> {
-    let input_format = super::resolve_input_format(parsed, input)?;
+    let input_format = super::cli_io::input::resolve_input_format(parsed, input)?;
     let source_text = String::from_utf8(input.bytes.clone())
         .map_err(|error| CliError::Eval(format!("source document is not valid UTF-8: {error}")))?;
     let codec = treease_core::core::CodecService::new();

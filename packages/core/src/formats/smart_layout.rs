@@ -1,4 +1,6 @@
-use crate::core::{CoreError, NodeId, SemType, TreeNode, TreeNodeKind, TreeStore};
+use crate::errors::CoreError;
+use crate::language::SemType;
+use crate::tree::{NodeId, TreeNode, TreeNodeKind, TreeStore};
 
 use super::encoder_javascript::{is_js_identifier, is_safe_integer_literal};
 use super::encoder_json::{
@@ -806,13 +808,13 @@ mod tests {
         let mut store = TreeStore::new();
         let root = store.add(TreeNode {
             kind: TreeNodeKind::Sequence,
-            tag: crate::core::CompactTag::from_text("!!seq"),
+            tag: crate::tree::CompactTag::from_text("!!seq"),
             ..TreeNode::default()
         });
         for index in 0..64 {
             let mapping = store.add(TreeNode {
                 kind: TreeNodeKind::Mapping,
-                tag: crate::core::CompactTag::from_text("!!map"),
+                tag: crate::tree::CompactTag::from_text("!!map"),
                 ..TreeNode::default()
             });
             store

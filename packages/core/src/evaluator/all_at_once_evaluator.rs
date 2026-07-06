@@ -1,17 +1,17 @@
 use std::collections::BTreeMap;
 
-use crate::core::codec_service::CodecService;
-use crate::core::context::Context as CoreContext;
-use crate::core::encoding::Reader;
-use crate::core::errors::CoreError;
-use crate::core::expression::{ExpressionNode, OperationId};
-use crate::core::format::format_string_from_filename;
-use crate::core::printer::{Encoder, Printer};
-use crate::core::printer_writer::PrinterWriter;
-use crate::core::sem_type::SemType;
-use crate::core::tree_navigator::TreeEngine;
-use crate::core::tree_node::{CompactTag, NodeId, TreeNode as CoreTreeNode, TreeNodeKind};
-use crate::core::tree_store::TreeStore as CoreTreeStore;
+use crate::context::Context as CoreContext;
+use crate::errors::CoreError;
+use crate::io::codec_service::CodecService;
+use crate::io::encoding::Reader;
+use crate::io::printer::{Encoder, Printer};
+use crate::io::printer_writer::PrinterWriter;
+use crate::language::SemType;
+use crate::registry::expression::{ExpressionNode, OperationId};
+use crate::registry::format::format_string_from_filename;
+use crate::tree::tree_navigator::TreeEngine;
+use crate::tree::tree_node::{CompactTag, NodeId, TreeNode as CoreTreeNode, TreeNodeKind};
+use crate::tree::tree_store::TreeStore as CoreTreeStore;
 
 use super::stream_evaluator::print_value_result;
 use super::{EvaluationError, Value as EvalValue};
@@ -148,9 +148,7 @@ impl AllAtOnceEvaluator {
                 .read_all()
                 .map_err(|e| EvaluationError::Core(e))?;
             let source = String::from_utf8(bytes).map_err(|_| {
-                EvaluationError::Core(CoreError::System(
-                    crate::core::errors::SystemError::InvalidUtf8,
-                ))
+                EvaluationError::Core(CoreError::System(crate::errors::SystemError::InvalidUtf8))
             })?;
             if source.trim().is_empty() {
                 continue;
@@ -1306,11 +1304,11 @@ impl<'a> InputValue<'a> {
             TreeNodeKind::Sequence => node.content.len(),
             TreeNodeKind::Mapping => node.content.len() / 2,
             TreeNodeKind::Scalar => match store.value_rep_for(id)? {
-                crate::core::tree_node::ValueRep::Nil => 0,
-                crate::core::tree_node::ValueRep::Boolean(_) => 1,
-                crate::core::tree_node::ValueRep::Int(value) => value.to_string().len(),
-                crate::core::tree_node::ValueRep::Float(value) => value.to_string().len(),
-                crate::core::tree_node::ValueRep::Str(value) => value.chars().count(),
+                crate::tree::tree_node::ValueRep::Nil => 0,
+                crate::tree::tree_node::ValueRep::Boolean(_) => 1,
+                crate::tree::tree_node::ValueRep::Int(value) => value.to_string().len(),
+                crate::tree::tree_node::ValueRep::Float(value) => value.to_string().len(),
+                crate::tree::tree_node::ValueRep::Str(value) => value.chars().count(),
             },
             TreeNodeKind::Alias | TreeNodeKind::Unknown => return Ok(None),
         };
@@ -1335,10 +1333,9 @@ impl<'a> InputValue<'a> {
                 let mut out = Vec::with_capacity(node.content.len() / 2);
                 for pair in node.content.chunks(2) {
                     if pair.len() != 2 {
-                        return Err(CoreError::Parse(
-                            crate::core::errors::ParseError::InvalidSyntax,
-                        )
-                        .into());
+                        return Err(
+                            CoreError::Parse(crate::errors::ParseError::InvalidSyntax).into()
+                        );
                     }
                     out.push(EvalValue::String(store.value_string_for(pair[0])?));
                 }
@@ -1398,7 +1395,7 @@ fn tree_mapping_child(
     }
     for pair in node.content.chunks(2) {
         if pair.len() != 2 {
-            return Err(CoreError::Parse(crate::core::errors::ParseError::InvalidSyntax).into());
+            return Err(CoreError::Parse(crate::errors::ParseError::InvalidSyntax).into());
         }
         if store.value_string_for(pair[0])? == key {
             return Ok(Some(pair[1]));
@@ -1716,9 +1713,9 @@ fn assign_path_value(
 /// This mirrors the `tree_to_value` pattern used by
 /// [`crate::evaluator::stream_evaluator`].
 fn tree_node_to_value(store: &CoreTreeStore, id: NodeId) -> Result<EvalValue, EvaluationError> {
-    let node = store.get(id).ok_or(CoreError::Eval(
-        crate::core::errors::EvalError::MissingTreeNode,
-    ))?;
+    let node = store
+        .get(id)
+        .ok_or(CoreError::Eval(crate::errors::EvalError::MissingTreeNode))?;
     match node.kind {
         TreeNodeKind::Sequence => node
             .content
@@ -1730,13 +1727,11 @@ fn tree_node_to_value(store: &CoreTreeStore, id: NodeId) -> Result<EvalValue, Ev
             let mut out = BTreeMap::new();
             for pair in node.content.chunks(2) {
                 if pair.len() != 2 {
-                    return Err(
-                        CoreError::Parse(crate::core::errors::ParseError::InvalidSyntax).into(),
-                    );
+                    return Err(CoreError::Parse(crate::errors::ParseError::InvalidSyntax).into());
                 }
-                store.get(pair[0]).ok_or(CoreError::Eval(
-                    crate::core::errors::EvalError::MissingTreeNode,
-                ))?;
+                store
+                    .get(pair[0])
+                    .ok_or(CoreError::Eval(crate::errors::EvalError::MissingTreeNode))?;
                 out.insert(
                     store.value_string_for(pair[0])?,
                     tree_node_to_value(store, pair[1])?,
@@ -1753,9 +1748,9 @@ fn tree_node_to_value(store: &CoreTreeStore, id: NodeId) -> Result<EvalValue, Ev
 
 /// Convert a scalar [`CoreTreeNode`] to an [`EvalValue`].
 fn scalar_node_to_value(store: &CoreTreeStore, id: NodeId) -> Result<EvalValue, EvaluationError> {
-    store.get(id).ok_or(CoreError::Eval(
-        crate::core::errors::EvalError::MissingTreeNode,
-    ))?;
+    store
+        .get(id)
+        .ok_or(CoreError::Eval(crate::errors::EvalError::MissingTreeNode))?;
     if store.resolved_sem_type_for(id)? == Some(SemType::Int)
         && store.value_for(id)?.parse::<i64>().is_err()
     {
@@ -1763,11 +1758,11 @@ fn scalar_node_to_value(store: &CoreTreeStore, id: NodeId) -> Result<EvalValue, 
     }
 
     match store.value_rep_for(id)? {
-        crate::core::tree_node::ValueRep::Nil => Ok(EvalValue::Null),
-        crate::core::tree_node::ValueRep::Boolean(value) => Ok(EvalValue::Bool(value)),
-        crate::core::tree_node::ValueRep::Int(value) => Ok(EvalValue::Number(value as f64)),
-        crate::core::tree_node::ValueRep::Float(value) => Ok(EvalValue::Number(value)),
-        crate::core::tree_node::ValueRep::Str(value) => {
+        crate::tree::tree_node::ValueRep::Nil => Ok(EvalValue::Null),
+        crate::tree::tree_node::ValueRep::Boolean(value) => Ok(EvalValue::Bool(value)),
+        crate::tree::tree_node::ValueRep::Int(value) => Ok(EvalValue::Number(value as f64)),
+        crate::tree::tree_node::ValueRep::Float(value) => Ok(EvalValue::Number(value)),
+        crate::tree::tree_node::ValueRep::Str(value) => {
             if store.resolved_sem_type_for(id)? == Some(SemType::Nil) {
                 Ok(EvalValue::Null)
             } else {
@@ -1849,13 +1844,13 @@ fn populate_tree_children(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::CodecService;
-    use crate::core::{
-        Context as CoreContext, CoreError, SystemError, VecPrinterWriter,
-        printer::Encoder as PrintEncoder,
-    };
+    use crate::context::Context as CoreContext;
+    use crate::errors::{CoreError, SystemError};
     use crate::evaluator::Value;
     use crate::formats::{Encode, JsonEncoder};
+    use crate::io::CodecService;
+    use crate::io::printer::Encoder as PrintEncoder;
+    use crate::io::VecPrinterWriter;
     use crate::parser::parse_expression;
     use std::collections::BTreeMap;
 

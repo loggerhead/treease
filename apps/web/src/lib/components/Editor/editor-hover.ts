@@ -4,7 +4,7 @@ import type { PathSeg, SnapshotReadResult } from '@core-wasm/index'
 import type { PreviewContext } from '../../preview/types';
 import type { SupportedEditorLanguageId } from '../../monaco/language-support';
 import { supportedEditorLanguageIds } from '../../monaco/language-support';
-import type { TreeSyncState } from '../../store/editor-store';
+import type { TreeSyncState } from '../../store/graph-selection-store';
 import { generatePreview } from '../../preview';
 import { isPreviewableNode, readTreeNodeString } from '../../preview/tree-node';
 import { resolvePathSpanResult, resolveTreePathResult } from '../../services/TreePathService';

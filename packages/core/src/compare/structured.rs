@@ -1,8 +1,8 @@
 use crate::compare::{
     Diff, DiffOptions, DiffPair, DiffType, array_diff, classify, myers_diff_with_options, new_diff,
 };
-use crate::core::core_helpers::recursive_node_compare;
 use crate::formats::DecodedDocument;
+use crate::operators::core_helpers::recursive_node_compare;
 use crate::operators::{NodeKind, SemType, TreeNode};
 use std::collections::{HashMap, HashSet};
 

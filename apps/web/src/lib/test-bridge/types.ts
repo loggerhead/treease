@@ -2,7 +2,8 @@
 import type { SupportedEditorLanguageId } from '../monaco/language-support';
 import type { Settings, SettingsDocument } from '../settings/ui-settings';
 import type { SettingsStatus } from '../settings/settings-store';
-import type { EditorState, GraphHighlightTarget } from '../store/editor-store';
+import type { EditorState } from '../store/editor-store';
+import type { GraphHighlightTarget } from '../store/graph-selection-store';
 import type { EditorWorkspaceState } from '../store/editor-workspace';
 import type { GraphEdge, GraphNode } from '../../shared/worker-protocol/protocol';
 import type { TreeaseRuntimeReadiness } from './runtime-readiness';

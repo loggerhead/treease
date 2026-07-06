@@ -12,13 +12,14 @@
 docs/dev-loop/loops
 docs/dev-loop/registry.yaml
 .agents/ralph-loop.local.md
-packages/core/target
+packages/core/target*
 apps/cli/target
 apps/web/benchmarks/graph-stream-baseline.json
 apps/web/.env
 apps/web/.tinify-manifest.json
 apps/web/static/**/*.png
 apps/web/static/**/*.mp4
+scripts/rewrite_*.py
 guess-failure.md
 # wasm-pack test build output
 wasm-pkg-*/

@@ -1,72 +1,14 @@
-pub mod authoritative_graph_service;
-pub mod codec_service;
-pub mod context;
-pub mod core_helpers;
-pub mod diagnostics;
-pub mod document_analysis;
-pub mod edit_rules;
-pub mod encoding;
-pub mod errors;
-pub mod expression;
-pub mod expression_builder;
-pub mod format;
-pub mod format_registry;
-pub mod full_layout_adapter;
-pub mod graph_builder;
-pub mod graph_builder_preorder;
-pub mod graph_delta;
-pub mod graph_delta_service;
-pub mod graph_fragment_index;
-pub mod graph_identity;
-pub mod graph_materialize;
-pub mod graph_model;
-pub mod graph_model_index;
-pub mod graph_projection_service;
-pub mod graph_relayout;
-pub mod graph_shape;
-pub mod graph_topology;
-pub mod guess_language;
-pub mod incremental_edit;
-pub mod io_adapters;
-pub mod json_block;
-pub mod lang_spec;
-pub mod language;
-pub mod layout_engine;
-pub mod line_index;
-pub mod literal_format;
-pub mod operation;
-pub mod operation_defs;
-pub mod operation_prefs;
-pub mod operator_registry;
-pub mod printer;
-pub mod printer_writer;
-pub mod registry;
-pub mod sem_type;
-pub mod semantic_tokens;
-pub mod span_index;
-pub mod streaming_delta_differ;
-pub mod streaming_graph_projector;
-pub mod traversal_builder;
-pub mod tree_navigator;
-pub mod tree_node;
-pub mod tree_ops;
-pub mod tree_path;
-pub mod tree_path_index;
-pub mod tree_sitter_support;
-pub mod tree_store;
-pub mod value_edit;
+pub use crate::context;
+pub use crate::errors;
+pub use crate::operators::core_helpers;
 
-pub use authoritative_graph_service::{AuthoritativeGraphService, graph_language_from_name};
-pub use codec_service::{CodecService, canonical_format_name, language_for_format};
-pub use context::{CodecState, Context};
-pub use core_helpers::{
-    DocumentWithMeta, read_documents_with_meta, recursive_node_compare, require_single_document,
-};
-pub use diagnostics::{
+pub use crate::analysis::diagnostics;
+pub use crate::analysis::diagnostics::{
     DiagnosticLocation, DiagnosticSnippet, DiagnosticStage, Diagnostics, ParseErrorInfo,
     compute_location_and_snippet,
 };
-pub use document_analysis::{
+pub use crate::analysis::document_analysis;
+pub use crate::analysis::document_analysis::{
     DocumentAnalysisDemand, ErrorSpan, StoredDocumentAnalysisDemand, StoredDocumentAnalysisOwned,
     TransientDocumentAnalysis, analyze_document_internal,
     analyze_document_internal_via_streaming_codec, analyze_document_internal_with_demand,
@@ -74,12 +16,104 @@ pub use document_analysis::{
     analyze_document_internal_with_prepared_tree_and_demand, collect_error_spans,
     error_spans_to_diagnostics_raw, store_transient_document_analysis,
 };
-pub use edit_rules::parse_scalar_edit_replacement;
-pub use encoding::{ContextEncoder, DecodedDocument, Decoder, Reader, ValueEncoder, Writer};
-pub use errors::{CoreError, EvalError, FormatError, ParseError, SystemError};
-pub use expression::{ExpressionNode, Operation, OperationId, OperationType};
-pub use expression_builder::{ExpressionBuildError, build_expression_tree_from_postfix_ops};
-pub use format::{FORMATS, Format, format_from_string, format_string_from_filename};
+pub use crate::analysis::line_index;
+pub use crate::analysis::line_index::{LineBounds, LineColumn, LineIndex};
+pub use crate::analysis::span_index;
+pub use crate::analysis::span_index::StructuralSpanIndex;
+pub use crate::context::{CodecState, Context};
+pub use crate::errors::{CoreError, EvalError, FormatError, ParseError, SystemError};
+pub use crate::graph::authoritative_graph_service;
+pub use crate::graph::graph_builder;
+pub use crate::graph::graph_builder_preorder;
+pub use crate::graph::graph_delta;
+pub use crate::graph::graph_delta_service;
+pub use crate::graph::graph_fragment_index;
+pub use crate::graph::graph_identity;
+pub use crate::graph::graph_materialize;
+pub use crate::graph::graph_model;
+pub use crate::graph::graph_model_index;
+pub use crate::graph::graph_projection_service;
+pub use crate::graph::graph_relayout;
+pub use crate::graph::graph_shape;
+pub use crate::graph::graph_topology;
+pub use crate::graph::streaming_delta_differ;
+pub use crate::graph::streaming_graph_projector;
+pub use crate::io::codec_service;
+pub use crate::io::codec_service::{CodecService, canonical_format_name, language_for_format};
+pub use crate::io::encoding;
+pub use crate::io::encoding::{
+    ContextEncoder, DecodedDocument, Decoder, Reader, ValueEncoder, Writer,
+};
+pub use crate::io::io_adapters;
+pub use crate::io::io_adapters::VecWriter;
+pub use crate::io::literal_format;
+pub use crate::io::literal_format::{
+    LiteralStyle, format_buffer_literal, format_json_string, format_literal, format_python_string,
+};
+pub use crate::io::printer;
+pub use crate::io::printer::{Encoder, Printer};
+pub use crate::io::printer_writer;
+pub use crate::io::printer_writer::{IoPrinterWriter, PrinterWriter, VecPrinterWriter};
+pub use crate::language::SemType;
+pub use crate::language::edit_rules;
+pub use crate::language::guess_language::guess_language;
+pub use crate::language::lang_spec;
+pub use crate::language::lang_spec::{
+    FormatLanguage, GraphValueEditRuleKind, JSON_SPEC, LANG_SPECS, LangSpec, NodeTypeSpec,
+    SmartFormatOptions, StreamKind, YAML_SPEC, find_cli_format_spec,
+    find_cli_format_spec_from_filename, find_format_spec, find_spec, format_name_from_filename,
+    has_streaming_token_spans_fallback, has_structured_path, is_array_node_type, is_pair_node_type,
+    lang_from_extension, lang_from_name, node_type_spec_for_language, parse_tree,
+    query_from_language, stream_kind_for_language, supports_incremental_edits,
+    supports_value_only_decode,
+};
+pub use crate::language::language;
+pub use crate::language::language::Language;
+pub use crate::language::parse_scalar_edit_replacement;
+pub use crate::language::sem_type;
+pub use crate::language::semantic_tokens;
+pub use crate::language::semantic_tokens::{
+    TOKEN_TYPES as SEMANTIC_TOKEN_TYPES, collect_token_spans_with_tree,
+    encode_and_cache_semantic_tokens, encode_semantic_tokens, semantic_tokens_inner,
+    streaming_language_adapter,
+};
+pub use crate::language::tree_sitter_support;
+pub use crate::language::tree_sitter_support::{
+    TreeSitterParseSummary, TreeSitterQueryCapture, TreeSitterQueryMatch, TreeSitterSpan,
+    parse_supported_language, parse_with_tree, query_capture_name_for_id, query_cursor_exec,
+    query_cursor_new, query_new, tree_sitter_language,
+};
+pub use crate::layout::LayoutEngine;
+pub use crate::layout::full_layout_adapter;
+pub use crate::layout::layout_engine;
+pub use crate::operators::core_helpers::{
+    DocumentWithMeta, read_documents_with_meta, recursive_node_compare, require_single_document,
+};
+pub use crate::registry::expression;
+pub use crate::registry::expression_builder;
+pub use crate::registry::format;
+pub use crate::registry::format_registry;
+pub use crate::registry::operation;
+pub use crate::registry::operation_defs;
+pub use crate::registry::operation_prefs;
+pub use crate::registry::operator_registry;
+pub use crate::registry::registry;
+pub use crate::registry::traversal_builder;
+pub use crate::registry::{
+    ExpressionBuildError, ExpressionNode, FORMATS, Format, Operation, OperationId, OperationType,
+    build_expression_tree_from_postfix_ops, build_recursive_descent_expression,
+    build_traversal_expression, format_from_string, format_string_from_filename,
+};
+pub use crate::tree::incremental_edit;
+pub use crate::tree::json_block;
+pub use crate::tree::tree_navigator;
+pub use crate::tree::tree_node;
+pub use crate::tree::tree_ops;
+pub use crate::tree::tree_path;
+pub use crate::tree::tree_path_index;
+pub use crate::tree::tree_store;
+pub use crate::tree::value_edit;
+pub use authoritative_graph_service::{AuthoritativeGraphService, graph_language_from_name};
 pub use format_registry::{
     FormatDefinition, FormatPreferences as RegistryFormatPreferences, FormatRegistry,
 };
@@ -99,7 +133,6 @@ pub use graph_model::{
 };
 pub use graph_model_index::GraphModelIndex;
 pub use graph_relayout::compute_ancestor_relayout_chain;
-pub use guess_language::guess_language;
 pub use incremental_edit::{
     DocumentTextEdit, StructuralOffsetUpdate, adjust_tree_store_offsets_from,
     adjust_tree_store_offsets_from_collecting, apply_delta, apply_edit_to_source,
@@ -109,22 +142,7 @@ pub use incremental_edit::{
     recompute_tree_store_locations, recompute_tree_store_locations_for,
     recompute_tree_store_locations_with_span_index, replaced_byte_count,
 };
-pub use io_adapters::VecWriter;
 pub use json_block::{JsonBlockSpan, find_json_block_at_position};
-pub use lang_spec::{
-    FormatLanguage, GraphValueEditRuleKind, JSON_SPEC, LANG_SPECS, LangSpec, NodeTypeSpec,
-    SmartFormatOptions, StreamKind, YAML_SPEC, find_cli_format_spec,
-    find_cli_format_spec_from_filename, find_format_spec, find_spec, format_name_from_filename,
-    has_streaming_token_spans_fallback, has_structured_path, is_array_node_type, is_pair_node_type,
-    lang_from_extension, lang_from_name, node_type_spec_for_language, parse_tree,
-    query_from_language, stream_kind_for_language, supports_incremental_edits,
-    supports_value_only_decode,
-};
-pub use language::Language;
-pub use line_index::{LineBounds, LineColumn, LineIndex};
-pub use literal_format::{
-    LiteralStyle, format_buffer_literal, format_json_string, format_literal, format_python_string,
-};
 pub use operation::{
     OperationHandler, OperationKind, OperationName, OperationNode,
     OperationPreferences as OperationModulePreferences, create_value_operation,
@@ -157,17 +175,7 @@ pub use operation_prefs::{
     get_flatten_preference, get_parent_preference, get_recursive_descent_preference,
     get_relational_preference, get_traverse_preference,
 };
-pub use printer::{Encoder, Printer};
-pub use printer_writer::{IoPrinterWriter, PrinterWriter, VecPrinterWriter};
 pub use registry::{Registry, RegistryHandle, RegistryOwner, from_handle, to_handle};
-pub use sem_type::SemType;
-pub use semantic_tokens::{
-    TOKEN_TYPES as SEMANTIC_TOKEN_TYPES, collect_token_spans_with_tree,
-    encode_and_cache_semantic_tokens, encode_semantic_tokens, semantic_tokens_inner,
-    streaming_language_adapter,
-};
-pub use span_index::StructuralSpanIndex;
-pub use traversal_builder::{build_recursive_descent_expression, build_traversal_expression};
 pub use tree_node::{
     CommentBlock, CompactTag, NodeExtra, NodeExtraId, NodeId, NodeInfo, NodeList, NodeValueRef,
     ParsedKey, TreeNode, TreeNodeKind, ValueId, ValueRep, infer_scalar_tag,
@@ -185,9 +193,4 @@ pub use tree_path::{
     path_seg_key_slice, unescape_json_string,
 };
 pub use tree_path_index::{OwnedPathSeg, PathLookup, TreePathIndex, TreePathIndexStructuralUpdate};
-pub use tree_sitter_support::{
-    TreeSitterParseSummary, TreeSitterQueryCapture, TreeSitterQueryMatch, TreeSitterSpan,
-    parse_supported_language, parse_with_tree, query_capture_name_for_id, query_cursor_exec,
-    query_cursor_new, query_new, tree_sitter_language,
-};
 pub use tree_store::{DocumentAnalysis, DocumentMeta, GraphEntry, TokenSpan, TreeEntry, TreeStore};

@@ -1,5 +1,7 @@
-use crate::core::tree_sitter_support::tree_sitter_language;
-use crate::core::{CompactTag, CoreError, ParseError, SemType, TreeNode, TreeNodeKind, TreeStore};
+use crate::errors::{CoreError, ParseError};
+use crate::language::SemType;
+use crate::language::tree_sitter_support::tree_sitter_language;
+use crate::tree::{CompactTag, TreeNode, TreeNodeKind, TreeStore};
 
 use super::formats_helpers::{set_node_range, ts_parse_checked_fail_fast};
 use super::{Decode, DecodedDocument};
@@ -433,7 +435,7 @@ fn build_candidate_from_ts_node(
     source: &[u8],
     node: tree_sitter::Node,
     base_offset: usize,
-) -> Result<crate::core::NodeId, CoreError> {
+) -> Result<crate::tree::NodeId, CoreError> {
     let ty = node.kind();
     let kind = py_ts_node_kind(ty).ok_or(CoreError::Parse(ParseError::InvalidPython))?;
 

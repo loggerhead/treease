@@ -12,7 +12,15 @@
   import { settings } from '../../settings/settings-store';
   import { callSharedWasmWorker, getSharedWasmWorkerClient } from '../../wasm/wasm-worker-singleton';
   import type { DocumentAnalysisResult } from '../../../shared/worker-protocol/protocol';
-  import { editorStore, editorWorkspace } from '../../store/editor-store';
+  import { getActiveTempModelSnapshot } from '../../store/graph-selection-store';
+  import {
+    editorWorkspace,
+    ensureDetachedSidecarWorkspaceTab,
+    ensureSidecarWorkspaceTab,
+    getWorkspaceTab,
+    removeDetachedSidecarWorkspaceTab,
+    updateWorkspaceTab,
+  } from '../../store/workspace-store';
   import { clearWorkspaceSnapshot, getWorkspaceSnapshotId } from '../../store/workspace-snapshot-bindings';
   import { queryRootValueKind } from '../../services/SnapshotProjectionService';
   import { monacoChangesToDocumentTextEdits, type MonacoTextChange } from '../../../shared/document-text-edits';
@@ -109,7 +117,7 @@
   });
 
   function sidecarDocumentKey(): string {
-    return editorStore.get().workspace.tabsById[tabId]?.documentKey ?? `sidecar:${tabId}:0`;
+    return getWorkspaceTab(tabId)?.documentKey ?? `sidecar:${tabId}:0`;
   }
 
   function setModelDocumentKey(target: Monaco.editor.ITextModel | null, documentKey: string): void {
@@ -125,23 +133,23 @@
   }
 
   function currentTempModel() {
-    return editorStore.get().workspace.tabsById[tabId]?.tempModel ?? editorStore.get().tempModel;
+    return getWorkspaceTab(tabId)?.tempModel ?? getActiveTempModelSnapshot();
   }
 
   function updateSidecarTempModel(updater: (current: any) => any): void {
-    editorStore.actions.updateWorkspaceTab(tabId, { tempModel: updater(currentTempModel()) });
+    updateWorkspaceTab(tabId, { tempModel: updater(currentTempModel()) });
   }
 
   function ensureWorkspaceSidecarTab(sourceText: string): void {
     if (attachToPane) {
-      editorStore.actions.ensureSidecarWorkspaceTab({
+      ensureSidecarWorkspaceTab({
         id: tabId,
         name: tabName,
         sourceText,
       });
       return;
     }
-    editorStore.actions.ensureDetachedSidecarWorkspaceTab({
+    ensureDetachedSidecarWorkspaceTab({
       id: tabId,
       name: tabName,
       sourceText,
@@ -149,7 +157,7 @@
   }
 
   function setWorkspaceSidecarLanguage(languageId: SupportedEditorLanguageId): void {
-    editorStore.actions.updateWorkspaceTab(tabId, { languageId });
+    updateWorkspaceTab(tabId, { languageId });
   }
 
   function applyRootScalarHighlight(
@@ -190,9 +198,9 @@
   }
 
   function commitSidecarEditorState(): number {
-    const current = editorStore.get().workspace.tabsById[tabId];
+    const current = getWorkspaceTab(tabId);
     const revision = (current?.revision ?? 0) + 1;
-    editorStore.actions.updateWorkspaceTab(tabId, {
+    updateWorkspaceTab(tabId, {
       languageId: activeLanguage,
       revision,
     });
@@ -219,7 +227,7 @@
         token,
       },
       () => {
-        const current = editorStore.get().workspace.tabsById[tabId];
+        const current = getWorkspaceTab(tabId);
         return {
           documentKey: sidecarDocumentKey(),
           languageId: activeLanguage,
@@ -248,7 +256,7 @@
   function updateSidecarSourceText(value: string, options: { clearSnapshot?: boolean } = {}): void {
     const documentKey = sidecarDocumentKey();
     const shouldClearSnapshot = options.clearSnapshot ?? true;
-    editorStore.actions.updateWorkspaceTab(tabId, {
+    updateWorkspaceTab(tabId, {
       languageId: activeLanguage,
       sourceText: value,
       ...(shouldClearSnapshot ? { snapshotId: null } : {}),
@@ -276,7 +284,7 @@
   }
 
   function settleSidecarReadinessRequest(request: { requestId: number; documentKey: string }, expectedText: string): void {
-    const currentTab = editorStore.get().workspace.tabsById[tabId];
+    const currentTab = getWorkspaceTab(tabId);
     const sourceTextValue = currentTab?.sourceText ?? '';
     const scratchTextValue = currentTab?.tempModel?.scratchText ?? '';
     const modelTextValue = model?.getValue() ?? sourceTextValue;
@@ -364,7 +372,7 @@
 
   async function ensureEditor(): Promise<void> {
     if (editor || !container) return;
-    const existingText = editorStore.get().workspace.tabsById[tabId]?.sourceText ?? '';
+    const existingText = getWorkspaceTab(tabId)?.sourceText ?? '';
     ensureWorkspaceSidecarTab(existingText);
     void getSharedWasmWorkerClient().catch(() => {});
     const token = ++runtimeToken;
@@ -386,7 +394,7 @@
     ensureSemanticTokensProvider(activeLanguage);
     ensureDocumentColorProvider(activeLanguage);
 
-    const tab = editorStore.get().workspace.tabsById[tabId];
+    const tab = getWorkspaceTab(tabId);
     externalSync.reset(tab?.sourceText ?? '');
     const uri = monaco.Uri.parse(`inmemory://sidecar/${tabId}`);
     model = monaco.editor.createModel(tab?.sourceText ?? '', activeLanguage, uri);
@@ -463,7 +471,7 @@
           }),
           builderConfig: buildGraphStreamBuilderConfig($settings.viewer.graphViewer),
           isFresh: ({ revision }) => {
-            const current = editorStore.get().workspace.tabsById[tabId];
+            const current = getWorkspaceTab(tabId);
             return (
               activeModel === model &&
               current?.documentKey === documentKey &&
@@ -593,12 +601,12 @@
       sourceWritebackPolicy: preserveSubmittedJsonString ? 'submitted' : 'intake',
       formatSourceOnClose: !preserveSubmittedJsonString,
       documentKey: sidecarDocumentKey(),
-      isFresh: () => editorStore.get().workspace.tabsById[tabId]?.sourceText === text,
+      isFresh: () => getWorkspaceTab(tabId)?.sourceText === text,
     });
   }
 
   export function getText(): string {
-    return model?.getValue() ?? editorStore.get().workspace.tabsById[tabId]?.sourceText ?? '';
+    return model?.getValue() ?? getWorkspaceTab(tabId)?.sourceText ?? '';
   }
 
   export function getLanguage(): SupportedEditorLanguageId {
@@ -655,7 +663,7 @@
     model = null;
     fullEditController.dispose();
     if (destroyOnUnmount) {
-      editorStore.actions.removeDetachedSidecarWorkspaceTab(tabId);
+      removeDetachedSidecarWorkspaceTab(tabId);
     }
   });
 </script>

@@ -1,4 +1,4 @@
-import type { GraphHighlightTarget } from '../../store/editor-store';
+import type { GraphHighlightTarget } from '../../store/graph-selection-store';
 import type { GraphCell, GraphCellKind, GraphNode } from '../../graph/graph-viewer-render';
 import { resolveGraphCellDisplayText } from '../../graph/literal-display';
 import { getCellEntry, getHighlightTarget, getScrollContext } from './graph-anchor-index';

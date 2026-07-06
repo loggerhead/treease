@@ -1,6 +1,7 @@
 use std::io::Write;
 
-use crate::core::{CoreError, NodeId, TreeStore};
+use crate::errors::CoreError;
+use crate::tree::{NodeId, TreeStore};
 
 use super::Encode;
 use super::encoder_json::{
@@ -24,7 +25,8 @@ impl PythonEncoder {
 impl Default for PythonEncoder {
     fn default() -> Self {
         Self::new(
-            super::default_language_preferences().effective(crate::core::FormatLanguage::Python),
+            super::default_language_preferences()
+                .effective(crate::language::FormatLanguage::Python),
         )
     }
 }
@@ -81,7 +83,7 @@ impl Encode for PythonEncoder {
 
 use super::formats_helpers::write_quoted_string;
 use super::is_truthy_literal;
-use crate::core::SemType;
+use crate::language::SemType;
 
 pub(crate) fn write_python_key(store: &TreeStore, node_id: NodeId, out: &mut String) {
     let Some(node) = store.get(node_id) else {

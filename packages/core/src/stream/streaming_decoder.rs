@@ -10,7 +10,7 @@ use super::{
     streaming_json, tree_builder,
 };
 
-pub use crate::core::StreamKind;
+pub use crate::language::StreamKind;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum StreamingDecodeError {

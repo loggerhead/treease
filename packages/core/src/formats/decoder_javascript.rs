@@ -1,4 +1,6 @@
-use crate::core::{CoreError, NodeId, ParseError, SemType, TreeStore, tree_sitter_support};
+use crate::errors::{CoreError, ParseError};
+use crate::language::{SemType, tree_sitter_support};
+use crate::tree::{NodeId, TreeStore};
 
 use super::formats_helpers::{
     self, missing_tree_node_error, new_map, new_scalar, new_seq, set_node_range,

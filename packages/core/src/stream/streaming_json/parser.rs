@@ -1,6 +1,6 @@
 use std::cell::Cell;
 
-use crate::core::SemType;
+use crate::language::SemType;
 
 use super::super::streaming_events::{Meta, StreamingEvent};
 use super::nested_json;

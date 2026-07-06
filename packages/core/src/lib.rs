@@ -1,14 +1,23 @@
+pub mod analysis;
 pub mod compare;
+pub mod context;
 pub mod core;
 pub mod document;
+pub mod errors;
 pub mod evaluator;
 pub mod expression_pipeline;
 pub mod formats;
+pub mod graph;
+pub mod io;
+pub mod language;
+pub mod layout;
 pub mod operators;
 pub mod parser;
+pub mod registry;
 pub mod stream;
 #[cfg(test)]
 pub mod test_timing;
+pub mod tree;
 pub mod wasm;
 pub mod wasm_document;
 pub mod wasm_types;
@@ -50,59 +59,58 @@ pub fn deinit(owner: &mut core::RegistryOwner) {
 
 pub mod internal {
     pub mod core {
-        pub use crate::core::authoritative_graph_service;
-        pub use crate::core::codec_service;
-        pub use crate::core::context;
-        pub use crate::core::core_helpers as utils;
-        pub use crate::core::diagnostics;
-        pub use crate::core::document_analysis;
-        pub use crate::core::encoding;
-        pub use crate::core::errors;
-        pub use crate::core::expression;
-        pub use crate::core::expression_builder;
-        pub use crate::core::format;
-        pub use crate::core::format_registry;
-        pub use crate::core::graph_builder;
-        pub use crate::core::graph_builder_preorder;
-        pub use crate::core::graph_delta;
-        pub use crate::core::graph_delta_service;
-        pub use crate::core::graph_fragment_index;
-        pub use crate::core::graph_identity;
-        pub use crate::core::graph_model;
-        pub use crate::core::graph_relayout;
-        pub use crate::core::incremental_edit;
-        pub use crate::core::io_adapters;
-        pub use crate::core::json_block;
-        pub use crate::core::lang_spec;
-        pub use crate::core::language;
-        pub use crate::core::line_index;
-        pub use crate::core::literal_format;
-        pub use crate::core::operation;
-        pub use crate::core::operation_defs;
-        pub use crate::core::operation_prefs;
-        pub use crate::core::operator_registry;
-        pub use crate::core::printer;
-        pub use crate::core::printer_writer;
-        pub use crate::core::registry;
-        pub use crate::core::sem_type;
-        pub use crate::core::semantic_tokens;
-        pub use crate::core::traversal_builder;
-        pub use crate::core::tree_navigator;
-        pub use crate::core::tree_node;
-        pub use crate::core::tree_ops;
-        pub use crate::core::tree_path;
-        pub use crate::core::tree_sitter_support;
-        pub use crate::core::tree_store;
+        pub use crate::analysis::diagnostics;
+        pub use crate::analysis::document_analysis;
+        pub use crate::analysis::line_index;
+        pub use crate::context;
+        pub use crate::graph::authoritative_graph_service;
+        pub use crate::registry::operation;
+        pub use crate::errors;
+        pub use crate::graph::graph_builder;
+        pub use crate::graph::graph_builder_preorder;
+        pub use crate::graph::graph_delta;
+        pub use crate::graph::graph_delta_service;
+        pub use crate::graph::graph_fragment_index;
+        pub use crate::graph::graph_identity;
+        pub use crate::graph::graph_model;
+        pub use crate::graph::graph_relayout;
+        pub use crate::io::codec_service;
+        pub use crate::io::encoding;
+        pub use crate::io::io_adapters;
+        pub use crate::io::literal_format;
+        pub use crate::io::printer;
+        pub use crate::io::printer_writer;
+        pub use crate::language::lang_spec;
+        pub use crate::language::language;
+        pub use crate::language::sem_type;
+        pub use crate::language::semantic_tokens;
+        pub use crate::language::tree_sitter_support;
+        pub use crate::operators::core_helpers as utils;
+        pub use crate::registry::expression;
+        pub use crate::registry::expression_builder;
+        pub use crate::registry::format;
+        pub use crate::registry::format_registry;
+        pub use crate::registry::operation_defs;
+        pub use crate::registry::operation_prefs;
+        pub use crate::registry::operator_registry;
+        pub use crate::registry::registry;
+        pub use crate::registry::traversal_builder;
+        pub use crate::tree::incremental_edit;
+        pub use crate::tree::json_block;
+        pub use crate::tree::tree_navigator;
+        pub use crate::tree::tree_node;
+        pub use crate::tree::tree_ops;
+        pub use crate::tree::tree_path;
+        pub use crate::tree::tree_store;
     }
 
     pub mod evaluator {
-        pub use crate::core::tree_navigator;
         pub use crate::evaluator::all_at_once_evaluator;
         pub use crate::evaluator::stream_evaluator;
+        pub use crate::tree::tree_navigator;
     }
 
     pub mod formats {
-        pub use crate::core::format;
         pub use crate::formats::decoder_csv;
         pub use crate::formats::decoder_csv_object;
         pub use crate::formats::decoder_json;
@@ -118,6 +126,7 @@ pub mod internal {
         pub use crate::formats::encoder_yaml;
         pub use crate::formats::formats_helpers as utils;
         pub use crate::formats::preferences;
+        pub use crate::registry::format;
     }
 
     pub mod parser {
@@ -135,12 +144,12 @@ pub mod internal {
     }
 
     pub mod wasm {
-        pub use crate::core::lang_spec as languages;
+        pub use crate::language::lang_spec as languages;
         pub use crate::wasm::document_analysis_shared;
         pub use crate::wasm::semantic_tokens_shared;
         pub use crate::wasm::value_json_shared;
     }
 
     pub use crate::compare;
-    pub use crate::core::tree_sitter_support as tree_sitter;
+    pub use crate::language::tree_sitter_support as tree_sitter;
 }

@@ -1,7 +1,6 @@
-use crate::core::{
-    CompactTag, CoreError, NodeId, ParseError, SemType, TreeNode, TreeNodeKind, TreeStore,
-    tree_sitter_support,
-};
+use crate::errors::{CoreError, ParseError};
+use crate::language::{SemType, tree_sitter_support};
+use crate::tree::{CompactTag, NodeId, TreeNode, TreeNodeKind, TreeStore};
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 
@@ -1258,7 +1257,8 @@ pub fn decode_yaml(input: &str) -> Result<DecodedDocument, CoreError> {
 #[cfg(test)]
 mod tests {
     use super::YamlDecoder;
-    use crate::core::{CoreError, ParseError, TreeNodeKind};
+    use crate::errors::{CoreError, ParseError};
+    use crate::tree::TreeNodeKind;
     use crate::evaluator::{AllAtOnceEvaluator, Value};
     use crate::formats::Decode;
 

@@ -1,6 +1,15 @@
 import { PathSegTag } from '@core-wasm/index'
-import { activeTempModel, editorStore, type GraphHighlightTarget } from '../store/editor-store';
+import { activeTempModel, type GraphHighlightTarget } from '../store/graph-selection-store';
+import {
+  documentKey,
+  getDocumentSessionState,
+  editorRevision,
+  setLanguageId,
+} from '../store/document-session-store';
+import { getEditorStateSnapshot } from '../store/editor-store';
+import { fullEditUiState } from '../store/full-edit-ui-store';
 import type { PathSeg } from '../store/tree-path';
+import { getWorkspaceState } from '../store/workspace-store';
 import { toWasmPathSeg } from '../../shared/brand-bridge';
 import type { TreeaseBridgePathSeg, TreeaseMonacoHook } from './types';
 import { syncRuntimeReadinessFromEditorState } from './runtime-readiness';
@@ -40,20 +49,25 @@ export function unregisterEditorHook(hookId: string): void {
 }
 
 export function installEditorStoreBridge(): void {
-  editorStore.subscribe((state) => {
+  const syncBridgeState = () => {
+    const state = getEditorStateSnapshot();
     syncRuntimeReadinessFromEditorState({
       documentKey: state.documentKey,
       editorRevision: state.editorRevision,
       fullEditUiState: state.fullEditUiState,
     });
-  });
+  };
+  syncBridgeState();
+  documentKey.subscribe(() => syncBridgeState());
+  editorRevision.subscribe(() => syncBridgeState());
+  fullEditUiState.subscribe(() => syncBridgeState());
   registerTreeaseEditorStoreBridge({
-    getState: () => editorStore.get(),
-    getWorkspace: () => editorStore.get().workspace,
-    setLanguageId: (value: string) => editorStore.actions.setLanguageId(value as any),
+    getState: () => getEditorStateSnapshot(),
+    getWorkspace: () => getWorkspaceState(),
+    setLanguageId: (value: string) => setLanguageId(value as any),
     setTempGraphSelection: (path: TreeaseBridgePathSeg[], target?: GraphHighlightTarget | 'node') => {
       const normalized = normalizeBridgePath(path);
-      const state = editorStore.get();
+      const state = getDocumentSessionState();
       const revision = Math.max(state.editorRevision, state.graphAppliedRevision);
       activeTempModel.update((current) => ({
         ...current,
@@ -65,6 +79,7 @@ export function installEditorStoreBridge(): void {
           source: 'graph',
         },
       }));
+      syncBridgeState();
     },
   });
 }

@@ -1,8 +1,8 @@
 use std::io::Write;
 
-use crate::core::{
-    CompactTag, CoreError, EvalError, NodeId, SemType, TreeNode, TreeNodeKind, TreeStore,
-};
+use crate::errors::{CoreError, EvalError};
+use crate::language::SemType;
+use crate::tree::{CompactTag, NodeId, TreeNode, TreeNodeKind, TreeStore};
 
 pub trait Encode {
     fn encode(
@@ -24,7 +24,7 @@ pub trait Encode {
         let mut bytes = Vec::new();
         self.encode(store, node, &mut bytes)?;
         String::from_utf8(bytes)
-            .map_err(|_| CoreError::System(crate::core::SystemError::InvalidUtf8))
+            .map_err(|_| CoreError::System(crate::errors::SystemError::InvalidUtf8))
     }
 }
 

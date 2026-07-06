@@ -1,12 +1,10 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use crate::core::diagnostics::{DiagnosticStage, Diagnostics, ParseErrorInfo};
-use crate::core::expression::{ExpressionNode, Operation, OperationId};
-use crate::core::{
-    ExpressionBuildError, ParsedKey, build_expression_tree_from_postfix_ops,
-    build_traversal_expression,
-};
+use crate::analysis::diagnostics::{DiagnosticStage, Diagnostics, ParseErrorInfo};
+use crate::registry::{ExpressionBuildError, build_expression_tree_from_postfix_ops, build_traversal_expression};
+use crate::tree::ParsedKey;
+use crate::registry::expression::{ExpressionNode, Operation, OperationId};
 
 use super::lexer::{LexerError, Token, TokenKind};
 use super::lexer_participle::{self, ParticipleLexerError};
@@ -676,7 +674,7 @@ fn is_ident_continue(ch: char) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::expression::OperationId;
+    use crate::registry::expression::OperationId;
 
     #[test]
     fn parses_precedence_with_pratt_parser() {

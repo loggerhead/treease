@@ -4,24 +4,36 @@
   import type { DocumentTextEdit } from '@core-wasm/index';
   import type { DiffPlan } from '../../graph/diff-plan';
   import {
-    sourceText,
     compareEditToken,
+    documentKey as documentKeyStore,
+    editorIO,
+    getDocumentSessionState,
+    editorMutation,
     editorRevision,
     graphAppliedRevision,
-    editorIO,
-    editorMutation,
-    jsonBlockSelection,
-    documentKey as documentKeyStore,
     languageId as languageIdStore,
-    activeTempModel,
-    editorStore,
-    treeState,
-    fullEditUiState,
+    setEditorIO,
+    sourceText,
     type EditorMutation,
-    type GraphHighlightTarget,
+  } from '../../store/document-session-store';
+  import { activeTempModel, treeState, type GraphHighlightTarget } from '../../store/graph-selection-store';
+  import {
+    cancelPreparedFullEditStream,
+    fullEditUiState,
+    getFullEditUiStateSnapshot,
+    jsonBlockSelection,
+    prepareFullEditStream,
     type JsonBlockSelection,
-    type PathSeg,
-  } from '../../store/editor-store';
+  } from '../../store/full-edit-ui-store';
+  import {
+    activateWorkspaceTabFromEditor,
+    addWorkspaceTabFromEditor,
+    closeWorkspaceTabFromEditor,
+    getWorkspaceState,
+    getWorkspaceTabSummaries,
+    initWorkspaceFromPrimaryTab,
+  } from '../../store/workspace-store';
+  import type { PathSeg } from '../../store/tree-path';
   import { getLanguageExample } from '../../monaco/language-examples';
   import {
     editorLanguageFallback,
@@ -190,10 +202,10 @@
   }
 
   function setActiveEditorIo(): void {
-    editorIO.set({
+    setEditorIO({
       context: 'editor',
       getModel: () => model,
-      getText: () => model?.getValue() ?? editorStore.get().sourceText,
+      getText: () => model?.getValue() ?? getDocumentSessionState().sourceText,
       setText: (value: string) => setEditorValue(value),
       applyTextEdits: (edits: DocumentTextEdit[]) => applyDocumentTextEdits(edits),
       getLanguage: () => languageIdValue,
@@ -550,7 +562,7 @@
     rootScalarDecorations = editor.createDecorationsCollection();
     ensureLanguageRegistered(languageIdValue);
     monaco.editor.setModelLanguage(model, languageIdValue);
-    editorStore.actions.initWorkspaceFromPrimaryTab({ id: firstTab.id, name: firstTab.name });
+    initWorkspaceFromPrimaryTab({ id: firstTab.id, name: firstTab.name });
     syncColorViewportState('init');
     return firstTab;
   }
@@ -657,7 +669,7 @@
           queuedReplacement?.shouldResolveLanguage ??
           (!shouldSkipWholeDocumentAutoGuess && wholeDocumentReplacement.text.trim().length >= 8);
         const shouldMarkUserInput = queuedReplacement?.markUserInput ?? true;
-        editorStore.actions.prepareFullEditStream({
+        prepareFullEditStream({
           documentKey: documentKeyValue,
           revision: preparedRevision,
           language: currentLanguage,
@@ -710,7 +722,7 @@
             toast.error('Graph rebuild failed');
           })
           .finally(() => {
-            editorStore.actions.cancelPreparedFullEditStream({
+            cancelPreparedFullEditStream({
               documentKey: documentKeyValue,
               revision: preparedRevision,
               reason: 'whole-document-replacement',
@@ -780,7 +792,7 @@
   function bindStoreSubscriptions() {
     storeUnsub = sourceText.subscribe((value) => {
       if (!model || isStoreUpdateSuppressed) return;
-      if (editorStore.get().fullEditUiState.active) return;
+      if (getFullEditUiStateSnapshot().active) return;
       if (value !== model.getValue()) {
         model.setValue(value);
       }
@@ -893,7 +905,7 @@
       model.setValue(value);
       syncLastModelSnapshot();
     }
-    if (editorStore.get().sourceText !== value) {
+    if (getDocumentSessionState().sourceText !== value) {
       sourceText.set(value);
     }
     releaseStoreUpdateSuppression();
@@ -991,7 +1003,7 @@
   }
 
   function workspacePayloadForTab(tab: EditorTab) {
-    const workspaceTab = editorStore.get().workspace.tabsById[tab.id];
+    const workspaceTab = getWorkspaceState().tabsById[tab.id];
     const isActiveEditorTab = tabManager?.getActiveTabId() === tab.id;
     const snapshotId = workspaceTab
       ? workspaceTab.snapshotId
@@ -1018,8 +1030,8 @@
   }
 
   function syncTabBindings() {
-    tabSummaries = editorStore.actions.getWorkspaceTabSummaries();
-    activeTabId = editorStore.get().workspace.activeTabId;
+    tabSummaries = getWorkspaceTabSummaries();
+    activeTabId = getWorkspaceState().activeTabId;
   }
 
   async function setActiveTab(
@@ -1040,7 +1052,7 @@
     syncColorViewportState('model');
     lastModelLength = tab.model.getValue().length;
     lastModelText = tab.model.getValue();
-    editorStore.actions.activateWorkspaceTabFromEditor(workspacePayloadForTab(tab));
+    activateWorkspaceTabFromEditor(workspacePayloadForTab(tab));
     setLanguageIdWithoutExample(tab.languageId);
     setActiveEditorIo();
     const tempModel = tabManager.getTempModel(tab.id) ?? {
@@ -1090,7 +1102,7 @@
     const tab = tabManager.addTab(languageIdValue, getLanguageExample(languageIdValue));
     if (tab) {
       userInputByTabId.set(tab.id, false);
-      editorStore.actions.addWorkspaceTabFromEditor(workspacePayloadForTab(tab));
+      addWorkspaceTabFromEditor(workspacePayloadForTab(tab));
       void setActiveTab(tab);
       return;
     }
@@ -1105,11 +1117,11 @@
       userInputByTabId.set(nextTab.id, false);
     }
     if (nextTab) {
-      editorStore.actions.closeWorkspaceTabFromEditor(id, workspacePayloadForTab(nextTab));
+      closeWorkspaceTabFromEditor(id, workspacePayloadForTab(nextTab));
       void setActiveTab(nextTab);
       return;
     }
-    editorStore.actions.closeWorkspaceTabFromEditor(id);
+    closeWorkspaceTabFromEditor(id);
     syncTabBindings();
   }
 
@@ -1491,14 +1503,14 @@
   $: if (!fullEditUiStateValue.active && queuedProgrammaticSourceText !== null) {
     const nextValue = queuedProgrammaticSourceText;
     queuedProgrammaticSourceText = null;
-    if (nextValue !== editorStore.get().sourceText) {
+    if (nextValue !== getDocumentSessionState().sourceText) {
       sourceText.set(nextValue);
     }
   }
 
   $: if (tabManager) {
-    tabSummaries = editorStore.actions.getWorkspaceTabSummaries();
-    activeTabId = editorStore.get().workspace.activeTabId;
+    tabSummaries = getWorkspaceTabSummaries();
+    activeTabId = getWorkspaceState().activeTabId;
   }
 
   export async function ensureReady(): Promise<void> {

@@ -1,6 +1,6 @@
 use std::convert::Infallible;
 
-use crate::core::SemType;
+use crate::language::SemType;
 
 /// Trait for supplying a path string. Unlike a plain `fn() -> String`,
 /// this trait can carry state (e.g. a captured allocator or context).

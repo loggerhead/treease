@@ -1,5 +1,6 @@
 use treease_core::core::CodecService;
-use treease_core::document::materialize::materialize;
+use treease_core::document::job::{advance_job, start_job};
+use treease_core::document::materialize;
 use treease_core::document::protocol::{DocumentInputPlan, OutputPlan};
 use treease_core::document::snapshot::{DocumentSnapshot, build_decoded_analysis};
 use treease_core::wasm_types::SemType;
@@ -88,7 +89,7 @@ fn snapshot_analysis_payload_preserves_tree_sem_types_and_value_json() {
 fn parse_failed_event_preserves_analysis_payload_shape() {
     let mut runtime = treease_core::document::DocumentRuntime::default();
     let mut metrics = treease_core::document::metrics::DocumentEngineMetrics::default();
-    let handle = treease_core::document::engine::start_job(
+    let handle = start_job(
         &mut runtime,
         &mut metrics,
         treease_core::document::DocumentJobSpec {
@@ -106,7 +107,7 @@ fn parse_failed_event_preserves_analysis_payload_shape() {
         },
     );
 
-    let first_batch = treease_core::document::engine::advance_job(
+    let first_batch = advance_job(
         &mut runtime,
         &mut metrics,
         handle,
@@ -114,7 +115,7 @@ fn parse_failed_event_preserves_analysis_payload_shape() {
     );
     assert!(first_batch.terminal.is_none());
 
-    let close_batch = treease_core::document::engine::advance_job(
+    let close_batch = advance_job(
         &mut runtime,
         &mut metrics,
         handle,

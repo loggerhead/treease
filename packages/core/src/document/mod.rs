@@ -1,17 +1,18 @@
-pub mod engine;
-mod graph_value_edit;
 pub mod input;
-pub mod job_entry;
-pub mod materialize;
+pub mod job;
 pub mod metrics;
 pub mod projection;
 pub mod protocol;
+pub mod reads;
 pub mod runtime;
 pub mod snapshot;
 pub mod stream_state;
-
-pub use job_entry::{DocumentJobHandle, JobEntry};
-pub use materialize::{MaterializeResult, materialize};
+pub mod value_edit;
+pub use job::entry::{DocumentJobHandle, JobEntry};
+pub use projection::{
+    MaterializeBaseContext, MaterializeResult, materialize, materialize_with_base,
+    materialize_with_base_context,
+};
 pub use protocol::{
     AdvanceInput, CommitMode, DocumentAnalysisPayload, DocumentAnchor, DocumentDiagnostic,
     DocumentEvent, DocumentFormattingSettings, DocumentInputPlan, DocumentJobKind,

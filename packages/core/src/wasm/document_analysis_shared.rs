@@ -1,4 +1,4 @@
-use crate::core::LineIndex;
+use crate::analysis::LineIndex;
 use crate::formats::DecodedDocument;
 use crate::wasm_types::AnalysisSharedArtifacts;
 
@@ -26,7 +26,7 @@ fn diagnostics_for_decoded_source(language: &str, source: &str) -> Vec<u32> {
     if language == "json" {
         return Vec::new();
     }
-    let tree_sitter_ok = crate::core::parse_supported_language(language, source, None)
+    let tree_sitter_ok = crate::language::parse_supported_language(language, source, None)
         .map(|summary| !summary.has_error)
         .unwrap_or(true);
     if tree_sitter_ok {
@@ -50,11 +50,11 @@ pub fn build_analysis_shared(
 ) -> (AnalysisSharedArtifacts, Vec<u32>) {
     // Use the full analysis pipeline from core which does tree-sitter parsing,
     // error span collection, token span collection, and semantic token encoding.
-    let mut analysis = crate::core::document_analysis::analyze_document_internal_with_demand(
+    let mut analysis = crate::analysis::document_analysis::analyze_document_internal_with_demand(
         language,
         source.as_bytes(),
         false,
-        crate::core::document_analysis::DocumentAnalysisDemand::full(),
+        crate::analysis::document_analysis::DocumentAnalysisDemand::full(),
     );
 
     if let Some(stored) = analysis.stored.take() {

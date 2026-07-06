@@ -1,4 +1,6 @@
-use crate::core::{CoreError, ParseError, SemType, TreeStore};
+use crate::errors::{CoreError, ParseError};
+use crate::language::SemType;
+use crate::tree::TreeStore;
 
 use super::{Decode, DecodedDocument, add_scalar, add_sequence, append_child};
 

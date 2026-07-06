@@ -3,7 +3,7 @@ use crate::operators::*;
 /// Find the position of an item in an array node using recursive equality.
 fn find_in_array(array: &TreeNode, item: &TreeNode) -> i32 {
     for (i, child) in array.content.iter().enumerate() {
-        if crate::core::recursive_node_compare(child, item) {
+        if crate::operators::core_helpers::recursive_node_compare(child, item) {
             return i as i32;
         }
     }

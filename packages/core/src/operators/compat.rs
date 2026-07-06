@@ -218,7 +218,7 @@ pub enum SemType {
 
 impl SemType {
     /// Strict parsing: only accepts YAML-standard "!!" prefixed tags.
-    /// Mirrors `crate::core::SemType::from_string`.
+    /// Mirrors `crate::language::SemType::from_string`.
     pub fn from_string(s: &str) -> Option<SemType> {
         match s {
             "!!null" => Some(SemType::Nil),
@@ -270,9 +270,9 @@ impl SemType {
 }
 
 // Bridge to/from the core sem_type::SemType.
-impl From<crate::core::sem_type::SemType> for SemType {
-    fn from(s: crate::core::sem_type::SemType) -> Self {
-        use crate::core::sem_type::SemType as Core;
+impl From<crate::language::sem_type::SemType> for SemType {
+    fn from(s: crate::language::sem_type::SemType) -> Self {
+        use crate::language::sem_type::SemType as Core;
         match s {
             Core::Map => SemType::Map,
             Core::Seq => SemType::Seq,
@@ -285,9 +285,9 @@ impl From<crate::core::sem_type::SemType> for SemType {
     }
 }
 
-impl From<SemType> for crate::core::sem_type::SemType {
+impl From<SemType> for crate::language::sem_type::SemType {
     fn from(s: SemType) -> Self {
-        use crate::core::sem_type::SemType as Core;
+        use crate::language::sem_type::SemType as Core;
         match s {
             SemType::Map => Core::Map,
             SemType::Seq => Core::Seq,

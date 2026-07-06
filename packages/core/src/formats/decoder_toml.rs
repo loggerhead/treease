@@ -1,9 +1,8 @@
 use std::{collections::HashMap, path::Path};
 
-use crate::core::{
-    CompactTag, CoreError, NodeId, ParseError, SemType, TreeStore, ensure_map, ensure_seq,
-    get_or_create_map_value,
-};
+use crate::errors::{CoreError, ParseError};
+use crate::language::SemType;
+use crate::tree::{CompactTag, NodeId, TreeStore, ensure_map, ensure_seq, get_or_create_map_value};
 
 use super::{
     Decode, DecodedDocument, add_mapping, add_scalar, add_sequence, append_child, append_key_value,
@@ -122,7 +121,7 @@ fn ensure_table(store: &mut TreeStore, root: NodeId, path: &[String]) -> Result<
         let next = get_or_create_map_value(store, current, key)?;
         if store
             .get(next)
-            .is_some_and(|node| node.kind == crate::core::TreeNodeKind::Sequence)
+            .is_some_and(|node| node.kind == crate::tree::TreeNodeKind::Sequence)
         {
             current = store
                 .get(next)
@@ -353,7 +352,7 @@ fn register_value_path(
     register_implicit_tables(defs, path, ignore_prefix_len);
     let state = if store
         .get(value)
-        .is_some_and(|node| node.kind == crate::core::TreeNodeKind::Mapping)
+        .is_some_and(|node| node.kind == crate::tree::TreeNodeKind::Mapping)
     {
         DefState {
             kind: Some(DefKind::Table),

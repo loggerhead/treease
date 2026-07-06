@@ -1,6 +1,7 @@
 <script lang="ts">
   import { Wand2, Shrink } from 'lucide-svelte';
-  import { languageId as languageIdStore, activeTempModel } from '../store/editor-store';
+  import { languageId as languageIdStore } from '../store/document-session-store';
+  import { activeTempModel } from '../store/diagnostics-store';
   import type { PathSeg } from '../store/tree-path';
   import { supportedEditorLanguages } from '../monaco/language-support';
   import type { CommandId } from '../command-registry';

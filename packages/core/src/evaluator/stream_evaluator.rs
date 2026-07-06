@@ -222,7 +222,7 @@ impl StreamEvaluator {
                 let bytes = reader.read_all().map_err(EvaluationError::Core)?;
                 let source = String::from_utf8(bytes).map_err(|_| {
                     EvaluationError::Core(CoreError::System(
-                        crate::core::errors::SystemError::InvalidUtf8,
+                        crate::errors::SystemError::InvalidUtf8,
                     ))
                 })?;
 
@@ -259,9 +259,7 @@ impl StreamEvaluator {
     {
         let Some(mut decoded) = decode_streaming_document_reader(reader).map_err(|err| {
             self.emit_bad_file_diagnostic(ctx, filename, &err);
-            EvaluationError::Core(CoreError::Parse(
-                crate::core::errors::ParseError::InvalidSyntax,
-            ))
+            EvaluationError::Core(CoreError::Parse(crate::errors::ParseError::InvalidSyntax))
         })?
         else {
             return Ok(0);
@@ -552,9 +550,9 @@ fn merge_document_meta(
     document: u32,
 ) -> Result<(), EvaluationError> {
     let children = {
-        let node = store.get_mut(id).ok_or(CoreError::Eval(
-            crate::core::errors::EvalError::MissingTreeNode,
-        ))?;
+        let node = store
+            .get_mut(id)
+            .ok_or(CoreError::Eval(crate::errors::EvalError::MissingTreeNode))?;
         if document != 0 || node.document == 0 {
             node.document = document;
         }
@@ -571,9 +569,9 @@ fn merge_document_meta(
 
 #[cfg(test)]
 fn tree_to_value(store: &TreeStore, id: NodeId) -> Result<Value, EvaluationError> {
-    let node = store.get(id).ok_or(CoreError::Eval(
-        crate::core::errors::EvalError::MissingTreeNode,
-    ))?;
+    let node = store
+        .get(id)
+        .ok_or(CoreError::Eval(crate::errors::EvalError::MissingTreeNode))?;
     match node.kind {
         TreeNodeKind::Sequence => node
             .content
@@ -585,13 +583,11 @@ fn tree_to_value(store: &TreeStore, id: NodeId) -> Result<Value, EvaluationError
             let mut out = std::collections::BTreeMap::new();
             for pair in node.content.chunks(2) {
                 if pair.len() != 2 {
-                    return Err(
-                        CoreError::Parse(crate::core::errors::ParseError::InvalidSyntax).into(),
-                    );
+                    return Err(CoreError::Parse(crate::errors::ParseError::InvalidSyntax).into());
                 }
-                store.get(pair[0]).ok_or(CoreError::Eval(
-                    crate::core::errors::EvalError::MissingTreeNode,
-                ))?;
+                store
+                    .get(pair[0])
+                    .ok_or(CoreError::Eval(crate::errors::EvalError::MissingTreeNode))?;
                 out.insert(
                     store.value_string_for(pair[0])?,
                     tree_to_value(store, pair[1])?,
@@ -608,19 +604,19 @@ fn tree_to_value(store: &TreeStore, id: NodeId) -> Result<Value, EvaluationError
 
 #[cfg(test)]
 fn scalar_node_to_value(store: &TreeStore, id: NodeId) -> Result<Value, EvaluationError> {
-    if store.resolved_sem_type_for(id)? == Some(crate::core::SemType::Int)
+    if store.resolved_sem_type_for(id)? == Some(crate::language::SemType::Int)
         && store.value_for(id)?.parse::<i64>().is_err()
     {
         return Ok(Value::String(store.value_string_for(id)?));
     }
 
     match store.value_rep_for(id)? {
-        crate::core::ValueRep::Nil => Ok(Value::Null),
-        crate::core::ValueRep::Boolean(value) => Ok(Value::Bool(value)),
-        crate::core::ValueRep::Int(value) => Ok(Value::Number(value as f64)),
-        crate::core::ValueRep::Float(value) => Ok(Value::Number(value)),
-        crate::core::ValueRep::Str(value) => {
-            if store.resolved_sem_type_for(id)? == Some(crate::core::SemType::Nil) {
+        crate::tree::ValueRep::Nil => Ok(Value::Null),
+        crate::tree::ValueRep::Boolean(value) => Ok(Value::Bool(value)),
+        crate::tree::ValueRep::Int(value) => Ok(Value::Number(value as f64)),
+        crate::tree::ValueRep::Float(value) => Ok(Value::Number(value)),
+        crate::tree::ValueRep::Str(value) => {
+            if store.resolved_sem_type_for(id)? == Some(crate::language::SemType::Nil) {
                 Ok(Value::Null)
             } else {
                 Ok(Value::String(value))
@@ -713,11 +709,11 @@ fn direct_length_values_for_nodes(
             TreeNodeKind::Sequence => node.content.len(),
             TreeNodeKind::Mapping => node.content.len() / 2,
             TreeNodeKind::Scalar => match store.value_rep_for(node_id)? {
-                crate::core::ValueRep::Nil => 0,
-                crate::core::ValueRep::Boolean(_) => 1,
-                crate::core::ValueRep::Int(value) => value.to_string().len(),
-                crate::core::ValueRep::Float(value) => value.to_string().len(),
-                crate::core::ValueRep::Str(value) => value.chars().count(),
+                crate::tree::ValueRep::Nil => 0,
+                crate::tree::ValueRep::Boolean(_) => 1,
+                crate::tree::ValueRep::Int(value) => value.to_string().len(),
+                crate::tree::ValueRep::Float(value) => value.to_string().len(),
+                crate::tree::ValueRep::Str(value) => value.chars().count(),
             },
             TreeNodeKind::Alias | TreeNodeKind::Unknown => return Ok(Vec::new()),
         };
@@ -1569,8 +1565,8 @@ mod tests {
         crate::test_timing::report();
 
         let stats = document.store.stats();
-        let estimated_node_bytes = stats.node_capacity * size_of::<crate::core::TreeNode>();
-        let estimated_content_bytes = stats.total_content_slots * size_of::<crate::core::NodeId>();
+        let estimated_node_bytes = stats.node_capacity * size_of::<crate::tree::TreeNode>();
+        let estimated_content_bytes = stats.total_content_slots * size_of::<crate::tree::NodeId>();
         eprintln!("--- decode profile ---");
         eprintln!("input_bytes={input_bytes}");
         eprintln!("node_count={}", stats.node_count);
@@ -1599,32 +1595,32 @@ mod tests {
         eprintln!("node_extra_count={}", stats.node_extra_count);
         eprintln!("document_meta_count={}", stats.document_meta_count);
         eprintln!("value_index_entry_count={}", stats.value_index_entry_count);
-        eprintln!("sizeof<TreeNode>={}", size_of::<crate::core::TreeNode>());
-        eprintln!("sizeof<NodeId>={}", size_of::<crate::core::NodeId>());
+        eprintln!("sizeof<TreeNode>={}", size_of::<crate::tree::TreeNode>());
+        eprintln!("sizeof<NodeId>={}", size_of::<crate::tree::NodeId>());
         eprintln!(
             "sizeof<Option<NodeId>>={}",
-            size_of::<Option<crate::core::NodeId>>()
+            size_of::<Option<crate::tree::NodeId>>()
         );
         eprintln!(
             "sizeof<NodeValueRef>={}",
-            size_of::<crate::core::NodeValueRef>()
+            size_of::<crate::tree::NodeValueRef>()
         );
         eprintln!(
             "sizeof<CompactTag>={}",
-            size_of::<crate::core::CompactTag>()
+            size_of::<crate::tree::CompactTag>()
         );
         eprintln!(
             "sizeof<Option<SemType>>={}",
-            size_of::<Option<crate::core::SemType>>()
+            size_of::<Option<crate::language::SemType>>()
         );
         eprintln!(
             "sizeof<Vec<NodeId>>={}",
-            size_of::<Vec<crate::core::NodeId>>()
+            size_of::<Vec<crate::tree::NodeId>>()
         );
-        eprintln!("sizeof<NodeExtra>={}", size_of::<crate::core::NodeExtra>());
+        eprintln!("sizeof<NodeExtra>={}", size_of::<crate::tree::NodeExtra>());
         eprintln!(
             "sizeof<DocumentMeta>={}",
-            size_of::<crate::core::tree_store::DocumentMeta>()
+            size_of::<crate::tree::tree_store::DocumentMeta>()
         );
         eprintln!("estimated_node_bytes={estimated_node_bytes}");
         eprintln!("estimated_content_bytes={estimated_content_bytes}");
@@ -1673,9 +1669,8 @@ mod tests {
 
             for (file_index, input) in inputs.iter_mut().enumerate() {
                 let bytes = input.reader.read_all()?;
-                let source = String::from_utf8(bytes).map_err(|_| {
-                    CoreError::System(crate::core::errors::SystemError::InvalidUtf8)
-                })?;
+                let source = String::from_utf8(bytes)
+                    .map_err(|_| CoreError::System(crate::errors::SystemError::InvalidUtf8))?;
                 if source.trim().is_empty() {
                     continue;
                 }
@@ -1684,7 +1679,7 @@ mod tests {
                 match streaming_decoder::stream_kind(format) {
                     streaming_decoder::StreamKind::Json => {
                         let mut decoded = streaming_decoder::decode_to_tree(
-                            &crate::core::RegistryOwner::init_owned(),
+                            &crate::registry::RegistryOwner::init_owned(),
                             format,
                             &source,
                             crate::stream::DecodeOptions::default(),

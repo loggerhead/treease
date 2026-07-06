@@ -1,20 +1,20 @@
 use super::protocol::{
-    DocumentAnalysisPayload, DocumentAnchor, DocumentDiagnostic, DocumentNodePreview,
-    DocumentPathValue, DocumentSearchItem, DocumentTreeNode, GraphValueEditFallbackReason,
-    GraphValueEditPlan, GraphValueEditRequest, QueryKind, QueryResult, QueryTargetKind,
-    SemanticTokensPayload, SnapshotId, SnapshotQuery,
+    DocumentAnalysisPayload, DocumentDiagnostic, DocumentTreeNode, GraphValueEditFallbackReason,
+    GraphValueEditPlan, GraphValueEditRequest, QueryResult, SemanticTokensPayload, SnapshotId,
+    SnapshotQuery,
 };
-use crate::core::document_analysis::{
+use crate::analysis::document_analysis::{
     DocumentAnalysisDemand, analyze_decoded_document_with_prepared_tree_and_demand,
     analyze_document_internal_with_demand, encode_document_value_json,
 };
-use crate::core::{
-    LineIndex, NodeId, SemType, TokenSpan, encode_semantic_tokens,
-    tree_node::{ParsedKey, TreeNodeKind},
-};
+use crate::analysis::line_index::LineIndex;
+use crate::analysis::span_index::StructuralSpanIndex;
 use crate::formats::DecodedDocument;
-use crate::wasm_types::{AnalysisSharedArtifacts, PathSegTag, PathSpan, WasmProtocol};
-use std::collections::BTreeSet;
+use crate::language::semantic_tokens::encode_semantic_tokens;
+use crate::tree::tree_node::NodeId;
+use crate::tree::tree_store::TokenSpan;
+use crate::wasm_types::{AnalysisSharedArtifacts, PathSpan, WasmProtocol};
+use crate::{core::SemType, graph, layout, tree};
 
 #[derive(Debug, Clone, Default)]
 pub struct DocumentSnapshot {
@@ -72,14 +72,14 @@ pub struct DecodedAnalysisArtifacts {
 #[derive(Debug, Clone, Default)]
 pub struct IncrementalState {
     pub can_resume: bool,
-    pub graph_model_snapshot: Option<crate::core::GraphModelSnapshot>,
-    pub graph_model_index: Option<crate::core::GraphModelIndex>,
+    pub graph_model_snapshot: Option<graph::graph_builder::GraphModelSnapshot>,
+    pub graph_model_index: Option<graph::graph_model_index::GraphModelIndex>,
     pub structural_safe: bool,
     pub fallback_reason: Option<String>,
-    pub structural_span_index: Option<crate::core::StructuralSpanIndex>,
-    pub tree_path_index: Option<crate::core::TreePathIndex>,
-    pub(crate) graph_topology: Option<crate::core::graph_topology::GraphTopology>,
-    pub(crate) layout_state: Option<crate::core::layout_engine::LayoutState>,
+    pub structural_span_index: Option<StructuralSpanIndex>,
+    pub tree_path_index: Option<tree::tree_path_index::TreePathIndex>,
+    pub(crate) graph_topology: Option<graph::graph_topology::GraphTopology>,
+    pub(crate) layout_state: Option<layout::layout_engine::LayoutState>,
 }
 
 impl IncrementalState {
@@ -92,8 +92,8 @@ impl IncrementalState {
 
     pub fn with_graph_state(
         mut self,
-        graph_model_snapshot: crate::core::GraphModelSnapshot,
-        graph_model_index: crate::core::GraphModelIndex,
+        graph_model_snapshot: graph::graph_builder::GraphModelSnapshot,
+        graph_model_index: graph::graph_model_index::GraphModelIndex,
     ) -> Self {
         self.graph_model_snapshot = Some(graph_model_snapshot);
         self.graph_model_index = Some(graph_model_index);
@@ -101,26 +101,29 @@ impl IncrementalState {
         self
     }
 
-    pub fn with_tree_path_index(mut self, tree_path_index: crate::core::TreePathIndex) -> Self {
+    pub fn with_tree_path_index(
+        mut self,
+        tree_path_index: tree::tree_path_index::TreePathIndex,
+    ) -> Self {
         self.tree_path_index = Some(tree_path_index);
         self
     }
 
     pub(crate) fn with_graph_runtime_state(
         mut self,
-        topology: crate::core::graph_topology::GraphTopology,
-        layout_state: crate::core::layout_engine::LayoutState,
+        topology: graph::graph_topology::GraphTopology,
+        layout_state: layout::layout_engine::LayoutState,
     ) -> Self {
         self.graph_topology = Some(topology);
         self.layout_state = Some(layout_state);
         self
     }
 
-    pub(crate) fn graph_topology(&self) -> Option<&crate::core::graph_topology::GraphTopology> {
+    pub(crate) fn graph_topology(&self) -> Option<&graph::graph_topology::GraphTopology> {
         self.graph_topology.as_ref()
     }
 
-    pub(crate) fn layout_state(&self) -> Option<&crate::core::layout_engine::LayoutState> {
+    pub(crate) fn layout_state(&self) -> Option<&layout::layout_engine::LayoutState> {
         self.layout_state.as_ref()
     }
 
@@ -215,8 +218,8 @@ pub fn analysis_payload_from_bundle(
 }
 
 fn document_tree_node_from_store(
-    store: &crate::core::TreeStore,
-    id: crate::core::NodeId,
+    store: &crate::tree::TreeStore,
+    id: crate::tree::NodeId,
 ) -> Option<DocumentTreeNode> {
     let node = store.get(id)?;
     Some(DocumentTreeNode {
@@ -232,16 +235,16 @@ fn document_tree_node_from_store(
     })
 }
 
-fn tree_kind_code(kind: crate::core::TreeNodeKind) -> i32 {
+pub(crate) fn tree_kind_code(kind: crate::tree::TreeNodeKind) -> i32 {
     match kind {
-        crate::core::TreeNodeKind::Sequence => 0,
-        crate::core::TreeNodeKind::Mapping => 1,
-        crate::core::TreeNodeKind::Scalar => 2,
-        crate::core::TreeNodeKind::Alias => 3,
-        crate::core::TreeNodeKind::Unknown => 4,
+        crate::tree::TreeNodeKind::Sequence => 0,
+        crate::tree::TreeNodeKind::Mapping => 1,
+        crate::tree::TreeNodeKind::Scalar => 2,
+        crate::tree::TreeNodeKind::Alias => 3,
+        crate::tree::TreeNodeKind::Unknown => 4,
     }
 }
-fn sem_type_code(sem_type: Option<SemType>) -> i32 {
+pub(crate) fn sem_type_code(sem_type: Option<SemType>) -> i32 {
     match sem_type {
         Some(SemType::Map) => 0,
         Some(SemType::Seq) => 1,
@@ -291,90 +294,24 @@ impl DocumentSnapshot {
     /// Queries are read-only: they never produce new authoritative state.
     /// Returns a result bound to this snapshot's identity.
     pub fn query(&self, query: &SnapshotQuery) -> QueryResult {
-        let Some(analysis) = &self.analysis else {
-            return QueryResult::default();
-        };
-        let Some(document) = &analysis.document else {
-            return QueryResult::default();
-        };
-
-        match query.kind {
-            QueryKind::ResolvePath | QueryKind::ResolveHover => {
-                let Some((start, end)) = query.span else {
-                    return QueryResult::default();
-                };
-                resolve_anchor_for_span(self.snapshot_id, analysis, document, start, end)
-                    .map(|anchor| QueryResult {
-                        anchors: vec![anchor],
-                        ..Default::default()
-                    })
-                    .unwrap_or_default()
-            }
-            QueryKind::FindAnchors => query
-                .path_pattern
-                .as_deref()
-                .and_then(|path| {
-                    resolve_anchor_for_path(
-                        self.snapshot_id,
-                        analysis,
-                        document,
-                        path,
-                        query.target.unwrap_or_default(),
-                    )
-                })
-                .map(|anchor| QueryResult {
-                    anchors: vec![anchor],
-                    ..Default::default()
-                })
-                .unwrap_or_default(),
-            QueryKind::RootValueKind => QueryResult {
-                root_value_kind: document.store.get(document.root).map(node_value_kind),
-                ..Default::default()
-            },
-            QueryKind::NodePreview => query
-                .path_pattern
-                .as_deref()
-                .and_then(|path| node_preview_for_path(document, path))
-                .map(|node_preview| QueryResult {
-                    node_preview: Some(node_preview),
-                    ..Default::default()
-                })
-                .unwrap_or_default(),
-            QueryKind::PathValue => query
-                .path_pattern
-                .as_deref()
-                .and_then(|path| path_value_for_path(analysis, document, path))
-                .map(|path_value| QueryResult {
-                    path_value: Some(path_value),
-                    ..Default::default()
-                })
-                .unwrap_or_default(),
-            QueryKind::FieldLabels => QueryResult {
-                field_labels: collect_field_labels(document),
-                ..Default::default()
-            },
-            QueryKind::SearchIndex => QueryResult {
-                search_items: collect_search_items(document),
-                ..Default::default()
-            },
-        }
+        super::reads::query_snapshot(self, query)
     }
 }
 
 impl DocumentSnapshot {
     pub fn plan_graph_value_edit(&self, request: &GraphValueEditRequest) -> GraphValueEditPlan {
         if self.snapshot_id != request.snapshot_id || self.document_key != request.document_key {
-            return super::graph_value_edit::graph_value_edit_fallback(
+            return super::value_edit::graph_value_edit_fallback(
                 GraphValueEditFallbackReason::SnapshotNotReady,
             );
         }
         let Some(analysis) = self.analysis.as_ref() else {
-            return super::graph_value_edit::graph_value_edit_fallback(
+            return super::value_edit::graph_value_edit_fallback(
                 GraphValueEditFallbackReason::MissingAnalysis,
             );
         };
         let Some(document) = analysis.document.as_ref() else {
-            return super::graph_value_edit::graph_value_edit_fallback(
+            return super::value_edit::graph_value_edit_fallback(
                 GraphValueEditFallbackReason::MissingDocument,
             );
         };
@@ -382,383 +319,8 @@ impl DocumentSnapshot {
             .incremental
             .as_ref()
             .and_then(|state| state.tree_path_index.as_ref());
-        super::graph_value_edit::plan_graph_value_edit(analysis, document, request, path_index)
+        super::value_edit::plan_graph_value_edit(analysis, document, request, path_index)
     }
-}
-
-fn resolve_anchor_for_span(
-    snapshot_id: SnapshotId,
-    analysis: &AnalysisBundle,
-    document: &DecodedDocument,
-    start: u32,
-    end: u32,
-) -> Option<DocumentAnchor> {
-    let line_column = analysis.line_index.offset_to_line_column(start as usize);
-    let path = crate::core::compute_tree_path_segments_for_document(
-        &document.store,
-        document.root,
-        analysis.ts_tree.as_ref(),
-        &analysis.diagnostics,
-        &analysis.language,
-        &analysis.source,
-        &analysis.line_index,
-        line_column.line,
-        line_column.column,
-    );
-    if path.is_empty() {
-        return None;
-    }
-    let span = crate::core::compute_path_span_for_document(
-        &document.store,
-        document.root,
-        analysis.ts_tree.as_ref(),
-        &analysis.diagnostics,
-        &analysis.language,
-        &analysis.source,
-        &path,
-        false,
-    );
-    if span.start_byte < 0 || span.end_byte < span.start_byte {
-        return None;
-    }
-    Some(DocumentAnchor {
-        snapshot_id,
-        path: crate::core::format_tree_path(&path),
-        span_start: span.start_byte as u32,
-        span_end: (span.end_byte as u32).max(end),
-    })
-}
-
-fn resolve_anchor_for_path(
-    snapshot_id: SnapshotId,
-    analysis: &AnalysisBundle,
-    document: &DecodedDocument,
-    path_pattern: &str,
-    target: QueryTargetKind,
-) -> Option<DocumentAnchor> {
-    let path = parse_snapshot_path(path_pattern)?;
-    let span = crate::core::compute_path_span_for_document(
-        &document.store,
-        document.root,
-        analysis.ts_tree.as_ref(),
-        &analysis.diagnostics,
-        &analysis.language,
-        &analysis.source,
-        &path,
-        matches!(target, QueryTargetKind::Key),
-    );
-    if span.start_byte < 0 || span.end_byte < span.start_byte {
-        return None;
-    }
-    Some(DocumentAnchor {
-        snapshot_id,
-        path: crate::core::format_tree_path(&path),
-        span_start: span.start_byte as u32,
-        span_end: span.end_byte as u32,
-    })
-}
-
-fn parse_snapshot_path(path: &str) -> Option<Vec<crate::wasm_types::PathSeg<'static>>> {
-    if path.is_empty() || path == "$" {
-        return Some(Vec::new());
-    }
-    let bytes = path.as_bytes();
-    let mut index = 0usize;
-    if bytes.first() == Some(&b'$') {
-        index = 1;
-    }
-    let mut segments = Vec::new();
-    while index < bytes.len() {
-        match bytes[index] {
-            b'.' => {
-                index += 1;
-                let start = index;
-                while index < bytes.len()
-                    && matches!(bytes[index], b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'_' | b'$')
-                {
-                    index += 1;
-                }
-                if start == index {
-                    return None;
-                }
-                segments.push(crate::core::path_seg_key(Box::leak(
-                    path[start..index].to_owned().into_boxed_str(),
-                )));
-            }
-            b'[' => {
-                let start = index + 1;
-                let end = path[start..].find(']')? + start;
-                let inner = path[start..end].trim();
-                if inner.starts_with('"') {
-                    let key = crate::core::unescape_json_string(inner)?;
-                    segments.push(crate::core::path_seg_key(Box::leak(key.into_boxed_str())));
-                } else {
-                    let value = inner.parse::<i32>().ok()?;
-                    segments.push(crate::core::path_seg_index(value));
-                }
-                index = end + 1;
-            }
-            _ => return None,
-        }
-    }
-    Some(segments)
-}
-
-fn parsed_keys_from_snapshot_path(path: &str) -> Option<Vec<ParsedKey>> {
-    parse_snapshot_path(path).map(|segments| {
-        segments
-            .iter()
-            .map(|segment| match segment.tag {
-                PathSegTag::Key => ParsedKey::Str(segment.key.to_owned()),
-                PathSegTag::Index => ParsedKey::Int(i64::from(segment.index)),
-            })
-            .collect()
-    })
-}
-
-fn node_id_for_path(
-    document: &DecodedDocument,
-    path_pattern: &str,
-    prefer_key: bool,
-) -> Option<NodeId> {
-    let path = parsed_keys_from_snapshot_path(path_pattern)?;
-    if path.is_empty() {
-        return Some(document.root);
-    }
-    document
-        .store
-        .find_descendant_by_path(document.root, &path, prefer_key)
-        .ok()
-        .flatten()
-}
-
-fn node_value_kind(node: &crate::core::tree_node::TreeNode) -> String {
-    match node.kind {
-        TreeNodeKind::Mapping => "object",
-        TreeNodeKind::Sequence => "array",
-        TreeNodeKind::Scalar | TreeNodeKind::Alias | TreeNodeKind::Unknown => {
-            match node.resolved_sem_type() {
-                Some(SemType::Str) => "string",
-                Some(SemType::Int) => "int",
-                Some(SemType::Float) => "float",
-                Some(SemType::Boolean) => "boolean",
-                Some(SemType::Nil) => "null",
-                Some(SemType::Map) => "object",
-                Some(SemType::Seq) => "array",
-                None => "unknown",
-            }
-        }
-    }
-    .to_owned()
-}
-
-fn node_value_type(node: &crate::core::tree_node::TreeNode) -> String {
-    match node_value_kind(node).as_str() {
-        "int" | "float" => "number".to_owned(),
-        other => other.to_owned(),
-    }
-}
-
-fn node_preview_from_node(
-    store: &crate::core::TreeStore,
-    node_id: NodeId,
-    node: &crate::core::tree_node::TreeNode,
-) -> DocumentNodePreview {
-    let value_type = node_value_type(node);
-    DocumentNodePreview {
-        kind: tree_kind_code(node.kind),
-        sem_type: sem_type_code(node.resolved_sem_type()),
-        tag: node.tag.to_string_value(),
-        value: store.value_string_for(node_id).unwrap_or_default(),
-        value_type,
-        is_scalar: matches!(node.kind, TreeNodeKind::Scalar),
-    }
-}
-
-fn node_preview_for_path(
-    document: &DecodedDocument,
-    path_pattern: &str,
-) -> Option<DocumentNodePreview> {
-    let node_id = node_id_for_path(document, path_pattern, false)?;
-    document
-        .store
-        .get(node_id)
-        .map(|node| node_preview_from_node(&document.store, node_id, node))
-}
-
-fn source_slice_by_bytes(source: &str, start: u32, end: u32) -> String {
-    let start = usize::try_from(start).ok();
-    let end = usize::try_from(end).ok();
-    match (start, end) {
-        (Some(start), Some(end)) if start <= end && end <= source.len() => {
-            source.get(start..end).unwrap_or_default().to_owned()
-        }
-        _ => String::new(),
-    }
-}
-
-fn path_value_for_path(
-    analysis: &AnalysisBundle,
-    document: &DecodedDocument,
-    path_pattern: &str,
-) -> Option<DocumentPathValue> {
-    let node_id = node_id_for_path(document, path_pattern, false)?;
-    let node = document.store.get(node_id)?;
-    let value = document.store.value_string_for(node_id).ok()?;
-    let source_text = source_slice_by_bytes(&analysis.source, node.start_byte, node.end_byte);
-    let display_text = if source_text.is_empty() {
-        value.clone()
-    } else {
-        source_text.clone()
-    };
-    Some(DocumentPathValue {
-        value_type: node_value_type(node),
-        value,
-        source_text,
-        display_text,
-    })
-}
-
-fn collect_field_labels(document: &DecodedDocument) -> Vec<String> {
-    fn visit(
-        store: &crate::core::tree_store::TreeStore,
-        node_id: NodeId,
-        labels: &mut BTreeSet<String>,
-    ) {
-        let Some(node) = store.get(node_id) else {
-            return;
-        };
-        if node.kind == TreeNodeKind::Mapping {
-            let mut index = 0usize;
-            while index + 1 < node.content.len() {
-                if let Some(key_node) = store.get(node.content[index]) {
-                    if key_node.is_map_key {
-                        let key = store.value_for(node.content[index]).unwrap_or_default();
-                        if !key.is_empty() {
-                            labels.insert(key.to_owned());
-                        }
-                    }
-                }
-                visit(store, node.content[index + 1], labels);
-                index += 2;
-            }
-            return;
-        }
-        for child in &node.content {
-            visit(store, *child, labels);
-        }
-    }
-
-    let mut labels = BTreeSet::new();
-    visit(&document.store, document.root, &mut labels);
-    labels.into_iter().collect()
-}
-
-fn format_parsed_path(path: &[ParsedKey]) -> String {
-    let segments = path
-        .iter()
-        .map(|segment| match segment {
-            ParsedKey::Str(key) => crate::core::path_seg_key(key),
-            ParsedKey::Int(index) => {
-                crate::core::path_seg_index(i32::try_from(*index).unwrap_or(0))
-            }
-        })
-        .collect::<Vec<_>>();
-    crate::core::format_tree_path(&segments)
-}
-
-fn scalar_search_text(store: &crate::core::TreeStore, node_id: NodeId) -> String {
-    store
-        .value_for(node_id)
-        .unwrap_or_default()
-        .trim()
-        .to_owned()
-}
-
-fn collect_search_items(document: &DecodedDocument) -> Vec<DocumentSearchItem> {
-    fn push_value_item(
-        store: &crate::core::tree_store::TreeStore,
-        node_id: NodeId,
-        path: &[ParsedKey],
-        items: &mut Vec<DocumentSearchItem>,
-    ) {
-        let Some(_node) = store.get(node_id) else {
-            return;
-        };
-        let value_text = scalar_search_text(store, node_id);
-        if value_text.is_empty() {
-            return;
-        }
-        let path_text = format_parsed_path(path);
-        items.push(DocumentSearchItem {
-            path: path_text.clone(),
-            path_text,
-            label: value_text.clone(),
-            key_text: String::new(),
-            value_text,
-            target: QueryTargetKind::Value,
-        });
-    }
-
-    fn visit(
-        store: &crate::core::tree_store::TreeStore,
-        node_id: NodeId,
-        path: &mut Vec<ParsedKey>,
-        items: &mut Vec<DocumentSearchItem>,
-    ) {
-        let Some(node) = store.get(node_id) else {
-            return;
-        };
-        match node.kind {
-            TreeNodeKind::Mapping => {
-                let mut index = 0usize;
-                while index + 1 < node.content.len() {
-                    let key_id = node.content[index];
-                    let value_id = node.content[index + 1];
-                    let Some(_key_node) = store.get(key_id) else {
-                        index += 2;
-                        continue;
-                    };
-                    let key_text = scalar_search_text(store, key_id);
-                    path.push(ParsedKey::Str(
-                        store.value_string_for(key_id).unwrap_or_default(),
-                    ));
-                    if !key_text.is_empty() {
-                        let value_text = store
-                            .get(value_id)
-                            .map(|_| scalar_search_text(store, value_id))
-                            .unwrap_or_default();
-                        let path_text = format_parsed_path(path);
-                        items.push(DocumentSearchItem {
-                            path: path_text.clone(),
-                            path_text,
-                            label: key_text.clone(),
-                            key_text,
-                            value_text,
-                            target: QueryTargetKind::Key,
-                        });
-                    }
-                    visit(store, value_id, path, items);
-                    path.pop();
-                    index += 2;
-                }
-            }
-            TreeNodeKind::Sequence => {
-                for (index, child_id) in node.content.iter().copied().enumerate() {
-                    path.push(ParsedKey::Int(index as i64));
-                    visit(store, child_id, path, items);
-                    path.pop();
-                }
-            }
-            TreeNodeKind::Scalar | TreeNodeKind::Alias | TreeNodeKind::Unknown => {
-                push_value_item(store, node_id, path, items);
-            }
-        }
-    }
-
-    let mut items = Vec::new();
-    visit(&document.store, document.root, &mut Vec::new(), &mut items);
-    items
 }
 
 // ── Analysis builders (existing) ───────────────────────────────────────
@@ -1016,7 +578,7 @@ fn annotate_decoded_document_spans_with_line_index(
         }
     }
 
-    let mut resolver = crate::core::PathSpanResolver::new(
+    let mut resolver = crate::tree::PathSpanResolver::new(
         &document.store,
         document.root,
         ts_tree,
@@ -1044,7 +606,7 @@ fn annotate_decoded_document_spans_for_nodes(
         .iter()
         .filter_map(|id| document.store.get(*id).map(|node| (*id, node.is_map_key)))
         .collect::<Vec<_>>();
-    let mut resolver = crate::core::PathSpanResolver::new(
+    let mut resolver = crate::tree::PathSpanResolver::new(
         &document.store,
         document.root,
         ts_tree,
@@ -1187,7 +749,7 @@ pub(super) fn build_lightweight_analysis_shared(
     build_ts_tree: bool,
 ) -> AnalysisSharedArtifacts {
     let ts_tree = if build_ts_tree {
-        crate::core::parse_tree(language, source.as_bytes())
+        crate::language::parse_tree(language, source.as_bytes())
     } else {
         None
     };
@@ -1249,7 +811,7 @@ pub(super) fn diagnostics_for_decoded_source(language: &str, source: &str) -> Ve
     if language == "json" {
         return Vec::new();
     }
-    let tree_sitter_ok = crate::core::parse_supported_language(language, source, None)
+    let tree_sitter_ok = crate::language::parse_supported_language(language, source, None)
         .map(|summary| !summary.has_error)
         .unwrap_or(true);
     if tree_sitter_ok {
@@ -1263,7 +825,7 @@ fn diagnostics_for_source(language: &str, source: &str) -> Vec<u32> {
     if language == "json" {
         return Vec::new();
     }
-    let tree_sitter_ok = crate::core::parse_supported_language(language, source, None)
+    let tree_sitter_ok = crate::language::parse_supported_language(language, source, None)
         .map(|summary| !summary.has_error)
         .unwrap_or(true);
     if tree_sitter_ok {
@@ -1276,9 +838,11 @@ fn diagnostics_for_source(language: &str, source: &str) -> Vec<u32> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::codec_service::CodecService;
+    use crate::io::codec_service::CodecService;
 
-    use crate::document::protocol::{GraphPathSeg, GraphValueEditPlanMode};
+    use crate::document::protocol::{
+        GraphPathSeg, GraphValueEditPlanMode, QueryKind, QueryTargetKind,
+    };
     #[test]
     fn snapshot_query_resolves_path_from_analysis_bundle_without_store_tree_entry() {
         let source = "user:\n  name: Ada\n  age: 37\n";
@@ -1589,7 +1153,7 @@ mod tests {
         let mut snapshot = DocumentSnapshot::with_analysis("wide-doc", analysis);
         snapshot.snapshot_id = SnapshotId(41);
         snapshot.incremental = Some(IncrementalState::resumable().with_tree_path_index(
-            crate::core::TreePathIndex::build(&decoded.store, decoded.root),
+            crate::tree::TreePathIndex::build(&decoded.store, decoded.root),
         ));
         let plan = snapshot.plan_graph_value_edit(&GraphValueEditRequest {
             document_key: "wide-doc".to_owned(),
@@ -1622,7 +1186,7 @@ mod tests {
         let mut snapshot = DocumentSnapshot::with_analysis("csv-doc", analysis);
         snapshot.snapshot_id = SnapshotId(51);
         snapshot.incremental = Some(IncrementalState::resumable().with_tree_path_index(
-            crate::core::TreePathIndex::build(&decoded.store, decoded.root),
+            crate::tree::TreePathIndex::build(&decoded.store, decoded.root),
         ));
         let plan = snapshot.plan_graph_value_edit(&GraphValueEditRequest {
             document_key: "csv-doc".to_owned(),
@@ -1659,8 +1223,8 @@ mod tests {
         let mut decoded = CodecService::new()
             .decode("json", source)
             .expect("json fixture should decode");
-        let path = [crate::core::path_seg_key("b")];
-        let b_value = crate::core::find_node_by_path_with_index(
+        let path = [crate::tree::path_seg_key("b")];
+        let b_value = crate::tree::find_node_by_path_with_index(
             decoded.root,
             &path,
             false,
@@ -1687,10 +1251,10 @@ mod tests {
             source,
             decoded,
             DecodedAnalysisArtifacts {
-                ts_tree: crate::core::parse_tree("json", source.as_bytes()),
+                ts_tree: crate::language::parse_tree("json", source.as_bytes()),
                 token_spans: Vec::new(),
                 diagnostics: Vec::new(),
-                semantic_tokens: crate::core::encode_semantic_tokens("json", source),
+                semantic_tokens: crate::language::encode_semantic_tokens("json", source),
                 value_json: r#"{"a":1,"b":2}"#.to_owned(),
                 line_index,
                 span_authority: DecodedSpanAuthority::UnresolvedNodes(vec![b_value]),

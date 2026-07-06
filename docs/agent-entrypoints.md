@@ -22,6 +22,7 @@ read_when:
 | Server / auth / billing / share / AI / usage | `../apps/server/AGENTS.md` → `../CONTEXT.md` |
 | Core Rust / WASM / protocol | `../packages/core/AGENTS.md` → `./CORE.md` |
 | runtime / snapshot / protocol / mainGraph | `./CORE.md` 或 `./FRONTEND.md` → `../CONTEXT.md` |
+| WASM language pack / YAML 按需加载 | `./CORE.md` → `./FRONTEND.md` → `./wasm-language-packs.md` |
 | editor / workspace / sourceText / snapshot authority | `./editor-data-flow.md` |
 | graph edit / planner / fallback / workspace content pane | `./bidirectional-edit-pipeline.md` |
 | subgraph workspace / pane chain / content pane / workspace graph pane | `./FRONTEND.md` → `./subgraph-workspace.md` |

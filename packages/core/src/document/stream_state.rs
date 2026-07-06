@@ -1,5 +1,6 @@
-use crate::core::streaming_graph_projector::StreamingGraphProjector;
-use crate::core::{LineIndex, StreamKind, stream_kind_for_language};
+use crate::analysis::LineIndex;
+use crate::graph::streaming_graph_projector::StreamingGraphProjector;
+use crate::language::{StreamKind, stream_kind_for_language};
 use crate::stream::streaming_events::{Meta, StreamingEvent};
 use crate::stream::streaming_json::SourceRewrite;
 use crate::stream::streaming_json::streaming_parse::clamp_offset_to_u32;
@@ -214,14 +215,14 @@ impl StreamingSourceDoc {
         let mapped = raw as i64 + rewrite.cumulative_delta_after;
         clamp_offset_to_u32(mapped)
     }
-    fn offset_to_line_column(&self, offset: usize) -> crate::core::LineColumn {
+    fn offset_to_line_column(&self, offset: usize) -> crate::analysis::LineColumn {
         let clamped = offset.min(self.source.len());
         let line_index = match self.line_starts.binary_search(&clamped) {
             Ok(index) => index,
             Err(index) => index.saturating_sub(1),
         };
         let line_start = self.line_starts.get(line_index).copied().unwrap_or(0);
-        crate::core::LineColumn {
+        crate::analysis::LineColumn {
             line: line_index as u32,
             column: (clamped - line_start) as u32,
         }
@@ -335,7 +336,7 @@ pub(crate) enum StreamState {
         first_chunk: bool,
         projector: Option<Box<StreamingGraphProjector>>,
         source_doc: StreamingSourceDoc,
-        token_spans: Vec<crate::core::TokenSpan>,
+        token_spans: Vec<crate::tree::TokenSpan>,
     },
 }
 
@@ -387,7 +388,7 @@ impl StreamState {
             }
         }
     }
-    pub(crate) fn take_token_spans(&mut self) -> Vec<crate::core::TokenSpan> {
+    pub(crate) fn take_token_spans(&mut self) -> Vec<crate::tree::TokenSpan> {
         match self {
             Self::Json { token_spans, .. } => std::mem::take(token_spans),
         }

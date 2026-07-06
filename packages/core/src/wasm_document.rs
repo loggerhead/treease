@@ -2,8 +2,8 @@
 
 // ── Document Job WASM Façade (wasm-bindgen) ──────────────────────────────
 
-use crate::document::engine::{advance_global_job, cancel_global_job, start_global_job};
-use crate::document::job_entry::DocumentJobHandle;
+use crate::document::job::entry::DocumentJobHandle;
+use crate::document::job::{advance_global_job, cancel_global_job, start_global_job};
 use crate::document::protocol::{
     AdvanceInput, DocumentInputPlan, DocumentJobKind, DocumentJobSettings, DocumentJobSpec,
     EventBatch, GraphValueEditPlan, GraphValueEditRequest, OutputPlan, ProjectionRequest,
@@ -22,7 +22,7 @@ pub(super) struct StartDocumentJobRequest {
     pub(super) output_analysis: bool,
     pub(super) builder_config: Option<BuilderConfigInput>,
     pub(super) base_snapshot_id: Option<SnapshotId>,
-    pub(super) edits: Vec<crate::core::incremental_edit::DocumentTextEdit>,
+    pub(super) edits: Vec<crate::tree::incremental_edit::DocumentTextEdit>,
     pub(super) settings: DocumentJobSettings,
 }
 
@@ -79,7 +79,7 @@ struct StartDocumentJobInput {
     #[serde(default)]
     base_snapshot_id: Option<SnapshotId>,
     #[serde(default)]
-    edits: Vec<crate::core::incremental_edit::DocumentTextEdit>,
+    edits: Vec<crate::tree::incremental_edit::DocumentTextEdit>,
     #[serde(default)]
     settings: Option<DocumentJobSettings>,
 }
@@ -204,8 +204,8 @@ pub fn build_hover_subgraph_projection(spec: JsValue) -> Result<JsValue, JsValue
         snapshot_id: SnapshotId(input.snapshot_id as u64),
         path: input.path,
     };
-    let result = crate::document::projection::build_hover_subgraph_projection(&req)
-        .map_err(JsValue::from_str)?;
+    let result =
+        crate::document::reads::build_hover_subgraph_projection(&req).map_err(JsValue::from_str)?;
     Ok(serde_wasm_bindgen::to_value(&result).map_err(|e| JsValue::from_str(&e.to_string()))?)
 }
 
@@ -221,7 +221,7 @@ pub fn plan_graph_value_edit(spec: JsValue) -> Result<JsValue, JsValue> {
 
 fn apply_builder_config(config: Option<&BuilderConfigInput>) {
     if let Some(c) = config {
-        use crate::core::graph_projection_service::BuilderConfigState;
+        use crate::graph::graph_projection_service::BuilderConfigState;
         let merged = BuilderConfigState::default();
         let state = BuilderConfigState {
             key_width: c.key_width.unwrap_or(merged.key_width),
@@ -248,7 +248,7 @@ fn apply_builder_config(config: Option<&BuilderConfigInput>) {
             corner_radius: c.corner_radius.unwrap_or(merged.corner_radius),
             expand_header_table_rows: merged.expand_header_table_rows,
         };
-        crate::core::graph_projection_service::set_builder_config(state);
+        crate::graph::graph_projection_service::set_builder_config(state);
     }
 }
 

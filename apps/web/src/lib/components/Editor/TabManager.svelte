@@ -2,7 +2,7 @@
   import type * as Monaco from 'monaco-editor';
   import { createEventDispatcher } from 'svelte';
   import type { SupportedEditorLanguageId } from '../../monaco/language-support';
-  import type { TempModel } from '../../store/editor-store';
+  import type { TempModel } from '../../store/graph-selection-store';
   import type { EditorModelWithDocumentKey, EditorTab, TabSummary } from './types';
   import { EDITOR_CONFIG } from '../../config/constants';
   import { ensureModelDocumentKey, rotateModelDocumentKey } from './document-key';

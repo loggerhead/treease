@@ -1419,7 +1419,7 @@ fn materialize_source_rewrites(
 
     source.push_str(input.get(cursor..).ok_or(JsonStreamError::UnexpectedEnd)?);
 
-    let line_index = crate::core::LineIndex::build(&source);
+    let line_index = crate::analysis::LineIndex::build(&source);
     let rebased_events = events
         .into_iter()
         .map(|event| rebase_materialized_event(event, &applied, &line_index))
@@ -1430,7 +1430,7 @@ fn materialize_source_rewrites(
 fn rebase_materialized_event(
     event: StreamingEvent,
     applied: &[AppliedSourceRewrite],
-    line_index: &crate::core::LineIndex,
+    line_index: &crate::analysis::LineIndex,
 ) -> StreamingEvent {
     match event {
         StreamingEvent::DocStart(meta) => {
@@ -1473,7 +1473,7 @@ fn rebase_materialized_event(
 fn rebase_materialized_meta(
     mut meta: Meta,
     applied: &[AppliedSourceRewrite],
-    line_index: &crate::core::LineIndex,
+    line_index: &crate::analysis::LineIndex,
 ) -> Meta {
     meta.start_byte = map_materialized_offset(meta.start_byte, applied);
     meta.end_byte = map_materialized_offset(meta.end_byte, applied);

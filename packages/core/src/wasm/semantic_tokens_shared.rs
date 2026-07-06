@@ -1,6 +1,6 @@
 use std::cmp::Ordering;
 
-use crate::core::tree_store::TokenSpan;
+use crate::tree::tree_store::TokenSpan;
 use crate::wasm_types::WasmProtocol;
 
 // ---------------------------------------------------------------------------
@@ -42,7 +42,7 @@ pub fn encode_document_semantic_tokens(language: &str, source: &str) -> Vec<u32>
     let Some(protocol) = WasmProtocol::from_name(language) else {
         return Vec::new();
     };
-    crate::core::encode_semantic_tokens(protocol.canonical_name(), source)
+    crate::language::encode_semantic_tokens(protocol.canonical_name(), source)
 }
 
 // ---------------------------------------------------------------------------
@@ -403,7 +403,7 @@ mod tests {
         ErrorSpan, build_line_infos, clip_span_start, encode_error_spans_raw,
         encode_token_spans_to_u32, span_contains,
     };
-    use crate::core::tree_store::TokenSpan;
+    use crate::tree::tree_store::TokenSpan;
 
     #[test]
     fn build_line_infos_tracks_utf16_columns_for_multibyte_text() {

@@ -4,7 +4,7 @@
   import { callSharedWasmWorker } from '../wasm/wasm-worker-singleton'
   import { settings } from '../settings/settings-store'
   import type { PathSeg } from '../store/tree-path'
-  import { editorRevision, graphAppliedRevision } from '../store/editor-store'
+  import { editorRevision, graphAppliedRevision } from '../store/document-session-store'
   import { getWorkspaceSnapshotId } from '../store/workspace-snapshot-bindings'
 
   type GraphSearchResult = {

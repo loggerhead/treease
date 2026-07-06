@@ -1,8 +1,9 @@
 use std::cell::RefCell;
 
-use crate::core::registry::RegistryOwner;
-use crate::core::{LineIndex, TokenSpan, TreeStore};
+use crate::analysis::LineIndex;
 use crate::formats::DecodedDocument;
+use crate::registry::registry::RegistryOwner;
+use crate::tree::{TokenSpan, TreeStore};
 
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
@@ -22,7 +23,7 @@ pub(crate) struct StoredAnalysis {
 // ---------------------------------------------------------------------------
 // ---------------------------------------------------------------------------
 //
-// The canonical RegistryOwner lives in `crate::core::registry::RegistryOwner`.
+// The canonical RegistryOwner lives in `crate::registry::registry::RegistryOwner`.
 // We re-export it here so the WASM layer has a single import surface for all
 // runtime types.
 

@@ -1,6 +1,16 @@
 import type { SnapshotId } from '@core-wasm/index';
 import { bindWorkspaceSnapshotIfPresent } from '../../store/workspace-snapshot-bindings';
-import { editorStore, type FullEditTransportKind, type FullEditUiState } from '../../store/editor-store';
+import {
+  appendFullEditStreamChunkMeta,
+  beginFullEditStream,
+  cancelFullEditStream,
+  finishFullEditStream,
+  getFullEditUiStateSnapshot,
+  markFullEditStreamFinalizing,
+  type FullEditTransportKind,
+  type FullEditUiState,
+} from '../../store/full-edit-ui-store';
+import { getWorkspaceTab, updateWorkspaceTab } from '../../store/workspace-store';
 
 type FullEditReason = FullEditUiState['reason'];
 
@@ -67,35 +77,35 @@ function applyIfCurrent(
   payload: FullEditSessionPayload,
   next: (current: FullEditUiState) => FullEditUiState,
 ) {
-  const tab = editorStore.get().workspace.tabsById[tabId];
+  const tab = getWorkspaceTab(tabId);
   const current = tab?.fullEditUiState;
   if (!tab || !current.active || current.sessionId !== payload.sessionId || current.ownerKey !== payload.ownerKey) {
     return;
   }
   const nextFullEditUiState = next(current);
   if (nextFullEditUiState === current) return;
-  editorStore.actions.updateWorkspaceTab(tabId, {
+  updateWorkspaceTab(tabId, {
     fullEditUiState: nextFullEditUiState,
   });
 }
 
 export function createPrimaryFullEditSink(): FullEditSink {
   return {
-    getState: () => editorStore.get().fullEditUiState,
-    begin: (payload) => editorStore.actions.beginFullEditStream(payload),
-    appendChunkMeta: (payload) => editorStore.actions.appendFullEditStreamChunkMeta(payload),
-    markFinalizing: (payload) => editorStore.actions.markFullEditStreamFinalizing(payload),
-    finish: (payload) => editorStore.actions.finishFullEditStream(payload),
-    cancel: (payload) => editorStore.actions.cancelFullEditStream(payload),
+    getState: () => getFullEditUiStateSnapshot(),
+    begin: (payload) => beginFullEditStream(payload),
+    appendChunkMeta: (payload) => appendFullEditStreamChunkMeta(payload),
+    markFinalizing: (payload) => markFullEditStreamFinalizing(payload),
+    finish: (payload) => finishFullEditStream(payload),
+    cancel: (payload) => cancelFullEditStream(payload),
     bindSnapshot: (payload) => bindWorkspaceSnapshotIfPresent(payload),
   };
 }
 
 export function createWorkspaceTabFullEditSink(tabId: string): FullEditSink {
   return {
-    getState: () => editorStore.get().workspace.tabsById[tabId]?.fullEditUiState ?? createIdleFullEditState(),
+    getState: () => getWorkspaceTab(tabId)?.fullEditUiState ?? createIdleFullEditState(),
     begin: (payload) => {
-      editorStore.actions.updateWorkspaceTab(tabId, {
+      updateWorkspaceTab(tabId, {
         revision: payload.revision,
         fullEditUiState: {
           active: true,
@@ -135,12 +145,12 @@ export function createWorkspaceTabFullEditSink(tabId: string): FullEditSink {
     finish: (payload) => applyIfCurrent(tabId, payload, () => createIdleFullEditState()),
     cancel: (payload) => applyIfCurrent(tabId, payload, () => createIdleFullEditState()),
     bindSnapshot: (payload) => {
-      const tab = editorStore.get().workspace.tabsById[tabId];
+      const tab = getWorkspaceTab(tabId);
       if (!tab) return;
       if (payload.snapshotId == null) return;
       if (tab.documentKey !== payload.documentKey) return;
       if (payload.revision < tab.revision) return;
-      editorStore.actions.updateWorkspaceTab(tabId, {
+      updateWorkspaceTab(tabId, {
         revision: payload.revision,
         snapshotId: payload.snapshotId,
       });

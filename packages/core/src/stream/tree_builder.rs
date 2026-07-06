@@ -1,9 +1,11 @@
 use std::collections::HashMap;
 
 use super::tree_patch::TreePatch;
-use crate::core::{
-    CommentBlock, CompactTag, CoreError, NodeExtra, NodeId, ParseError, SemType,
-    StructuralSpanIndex, TreeNode, TreeNodeKind, TreeStore,
+use crate::analysis::StructuralSpanIndex;
+use crate::errors::{CoreError, ParseError};
+use crate::language::SemType;
+use crate::tree::{
+    CommentBlock, CompactTag, NodeExtra, NodeId, TreeNode, TreeNodeKind, TreeStore,
 };
 use crate::formats::DecodedDocument;
 
@@ -542,7 +544,8 @@ fn compact_tag_or_default(meta: &Meta, sem_type: SemType) -> CompactTag {
 
 #[cfg(test)]
 mod tests {
-    use crate::core::{SemType, TreeNodeKind, get_map_entry};
+    use crate::language::SemType;
+    use crate::tree::{TreeNodeKind, get_map_entry};
     use crate::stream::decode;
     use crate::stream::tree_patch::TreePatch;
 

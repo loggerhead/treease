@@ -1,9 +1,16 @@
 #[cfg(not(target_arch = "wasm32"))]
 use clap::{Arg, ArgAction, ArgMatches, Command, error::ErrorKind};
 
-use super::{CliError, CommandKind, ParsedArgs, spec};
+use crate::args::{CliError, CommandKind, ParsedArgs};
+use crate::spec;
 
-pub(super) fn parse_args_with_clap(argv: &[String]) -> Result<ParsedArgs, CliError> {
+pub(super) fn parse_cli_args(argv: &[String]) -> Result<ParsedArgs, CliError> {
+    let parsed = parse_args_with_clap(argv)?;
+    validate_args(&parsed)?;
+    Ok(parsed)
+}
+
+fn parse_args_with_clap(argv: &[String]) -> Result<ParsedArgs, CliError> {
     reject_removed_legacy_eval_commands(argv)?;
     reject_removed_discovery_commands(argv)?;
     reject_invalid_web_invocation(argv)?;
@@ -181,6 +188,40 @@ fn should_parse_as_root_invocation(argv: &[String]) -> bool {
 
 fn is_root_subcommand(value: &str) -> bool {
     matches!(value, "web" | "help" | "operators" | "formats")
+}
+
+fn validate_args(parsed: &ParsedArgs) -> Result<(), CliError> {
+    if parsed.command == CommandKind::Web {
+        if parsed.null_input {
+            return Err(CliError::UnsupportedWebFlag("--null-input"));
+        }
+        if parsed.exit_status {
+            return Err(CliError::UnsupportedWebFlag("--exit-status"));
+        }
+        if parsed.inplace {
+            return Err(CliError::UnsupportedWebFlag("--inplace"));
+        }
+        if parsed.files.len() != 1 {
+            return Err(CliError::InvalidWebInputCount);
+        }
+    }
+
+    if parsed.command == CommandKind::Run && parsed.files.len() > 1 {
+        return Err(CliError::MultipleInputFiles);
+    }
+
+    if parsed.inplace {
+        if parsed.null_input {
+            return Err(CliError::InvalidFlagCombination);
+        }
+        if parsed.files.len() != 1 {
+            return Err(CliError::MultipleInputFilesForInplace);
+        }
+        if parsed.files[0] == "-" {
+            return Err(CliError::InvalidFlagCombination);
+        }
+    }
+    Ok(())
 }
 
 #[cfg(not(target_arch = "wasm32"))]

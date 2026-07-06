@@ -1,6 +1,7 @@
 use std::io::Write;
 
-use crate::core::{CoreError, NodeId, TreeNodeKind, TreeStore};
+use crate::errors::CoreError;
+use crate::tree::{NodeId, TreeNodeKind, TreeStore};
 
 use super::encoder_json::{
     self, LanguageStyle, eval_scalar_unquoted_text, write_eval_value_into, write_eval_value_smart,
@@ -29,7 +30,7 @@ impl Default for JavascriptEncoder {
     fn default() -> Self {
         Self::new(
             super::default_language_preferences()
-                .effective(crate::core::FormatLanguage::Javascript),
+                .effective(crate::language::FormatLanguage::Javascript),
         )
     }
 }

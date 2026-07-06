@@ -1,9 +1,8 @@
 use std::io::Write;
 
-use crate::core::{
-    CompactTag, CoreError, EvalError, NodeId, ParseError, SemType, TreeNode, TreeNodeKind,
-    TreeStore,
-};
+use crate::errors::{CoreError, EvalError, ParseError};
+use crate::language::SemType;
+use crate::tree::{CompactTag, NodeId, TreeNode, TreeNodeKind, TreeStore};
 
 use super::node;
 
@@ -16,7 +15,7 @@ pub(crate) fn resolve_alias_for_encode(
 
     loop {
         let slow_node = node(store, slow)?;
-        if slow_node.kind != crate::core::TreeNodeKind::Alias {
+        if slow_node.kind != crate::tree::TreeNodeKind::Alias {
             return Ok(Some(slow));
         }
         let Some(next_slow) = slow_node.alias() else {
@@ -25,7 +24,7 @@ pub(crate) fn resolve_alias_for_encode(
         slow = next_slow;
 
         let fast_node = node(store, fast)?;
-        if fast_node.kind != crate::core::TreeNodeKind::Alias {
+        if fast_node.kind != crate::tree::TreeNodeKind::Alias {
             return Ok(Some(fast));
         }
         let Some(next_fast) = fast_node.alias() else {
@@ -34,7 +33,7 @@ pub(crate) fn resolve_alias_for_encode(
         fast = next_fast;
 
         let fast_node = node(store, fast)?;
-        if fast_node.kind != crate::core::TreeNodeKind::Alias {
+        if fast_node.kind != crate::tree::TreeNodeKind::Alias {
             return Ok(Some(fast));
         }
         let Some(next_fast) = fast_node.alias() else {
@@ -323,7 +322,7 @@ pub fn ts_parse_checked(
     language: tree_sitter::Language,
     source: &[u8],
 ) -> Result<tree_sitter::Tree, CoreError> {
-    crate::core::tree_sitter_support::ensure_tree_sitter_runtime();
+    crate::language::tree_sitter_support::ensure_tree_sitter_runtime();
     let mut parser = tree_sitter::Parser::new();
     parser
         .set_language(&language)
@@ -344,7 +343,7 @@ pub fn ts_parse_checked_fail_fast(
     language: tree_sitter::Language,
     source: &[u8],
 ) -> Result<tree_sitter::Tree, CoreError> {
-    crate::core::tree_sitter_support::ensure_tree_sitter_runtime();
+    crate::language::tree_sitter_support::ensure_tree_sitter_runtime();
     reject_stable_prefix_syntax_error(language.clone(), source)?;
 
     let mut parser = tree_sitter::Parser::new();
@@ -367,7 +366,7 @@ fn reject_stable_prefix_syntax_error(
     language: tree_sitter::Language,
     source: &[u8],
 ) -> Result<(), CoreError> {
-    crate::core::tree_sitter_support::ensure_tree_sitter_runtime();
+    crate::language::tree_sitter_support::ensure_tree_sitter_runtime();
     let prefix_len = source.len().min(FAIL_FAST_PREFIX_LEN);
     if prefix_len == source.len() {
         return Ok(());

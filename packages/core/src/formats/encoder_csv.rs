@@ -1,6 +1,7 @@
 use std::io::Write;
 
-use crate::core::{CoreError, NodeId, TreeNodeKind, TreeStore};
+use crate::errors::{CoreError, ParseError};
+use crate::tree::{NodeId, TreeNodeKind, TreeStore, get_map_entry};
 
 use super::preferences::FormatPreferences;
 use super::{Encode, missing_tree_node};
@@ -20,7 +21,9 @@ impl CsvEncoder {
 
 impl Default for CsvEncoder {
     fn default() -> Self {
-        Self::new(super::default_language_preferences().effective(crate::core::FormatLanguage::Csv))
+        Self::new(
+            super::default_language_preferences().effective(crate::language::FormatLanguage::Csv),
+        )
     }
 }
 
@@ -63,10 +66,10 @@ impl Encode for CsvEncoder {
                             )?;
                         }
                     }
-                    _ => return Err(CoreError::Parse(crate::core::ParseError::BadCsv)),
+                    _ => return Err(CoreError::Parse(ParseError::BadCsv)),
                 }
             }
-            _ => return Err(CoreError::Parse(crate::core::ParseError::BadCsv)),
+            _ => return Err(CoreError::Parse(ParseError::BadCsv)),
         }
         Ok(())
     }
@@ -94,12 +97,12 @@ fn write_mapping_row(
 ) -> Result<(), CoreError> {
     let row_node = store.get(row).ok_or_else(missing_tree_node)?;
     if row_node.kind != TreeNodeKind::Mapping {
-        return Err(CoreError::Parse(crate::core::ParseError::BadCsv));
+        return Err(CoreError::Parse(ParseError::BadCsv));
     }
     let values = headers
         .iter()
         .map(|header| {
-            let value = match crate::core::get_map_entry(store, row, header)? {
+            let value = match get_map_entry(store, row, header)? {
                 Some(entry) => scalar_text(store, entry.value)?,
                 None => String::new(),
             };
@@ -112,7 +115,7 @@ fn write_mapping_row(
 fn extract_headers(store: &TreeStore, row: NodeId) -> Result<Vec<String>, CoreError> {
     let row_node = store.get(row).ok_or_else(missing_tree_node)?;
     if row_node.kind != TreeNodeKind::Mapping {
-        return Err(CoreError::Parse(crate::core::ParseError::BadCsv));
+        return Err(CoreError::Parse(ParseError::BadCsv));
     }
     row_node
         .content
@@ -124,7 +127,7 @@ fn extract_headers(store: &TreeStore, row: NodeId) -> Result<Vec<String>, CoreEr
 fn scalar_text(store: &TreeStore, node_id: NodeId) -> Result<String, CoreError> {
     let node = store.get(node_id).ok_or_else(missing_tree_node)?;
     if node.kind != TreeNodeKind::Scalar {
-        return Err(CoreError::Parse(crate::core::ParseError::BadCsv));
+        return Err(CoreError::Parse(ParseError::BadCsv));
     }
     Ok(store.value_string_for(node_id)?)
 }

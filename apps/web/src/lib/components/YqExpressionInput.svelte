@@ -6,7 +6,7 @@
   import { initMonacoRuntime } from '../monaco/editor-runtime'
   import { hasYqCompletionMatches, YQ_LANGUAGE_ID } from '../monaco/yq-language-support'
   import { attachMonacoTestHook } from '../monaco/test-hook'
-  import { documentKey } from '../store/editor-store'
+  import { documentKey } from '../store/document-session-store'
   import { getWorkspaceSnapshotId } from '../store/workspace-snapshot-bindings'
   import { queryFieldLabels } from '../services/SnapshotProjectionService'
   import { callSharedWasmWorker } from '../wasm/wasm-worker-singleton'

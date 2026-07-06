@@ -1,7 +1,8 @@
 use crate::{
-    core::expression::ExpressionNode as CoreExpressionNode,
-    core::expression::OperationId as CoreOperationId,
-    core::operation_prefs::OperationPreferences as CoreOperationPreferences,
+    errors::{
+        CoreError as ApiCoreError, EvalError as ApiEvalError, FormatError as ApiFormatError,
+        ParseError as ApiParseError, SystemError as ApiSystemError,
+    },
     evaluator::{AllAtOnceEvaluator, EvaluationError, Value},
     operators::{
         self, ADD_ASSIGN_OP_TYPE, ADD_OP_TYPE, ALL_CONDITION_OP_TYPE, ALL_OP_TYPE,
@@ -27,10 +28,14 @@ use crate::{
         WITH_ENTRIES_OP_TYPE, WITH_OP_TYPE,
     },
     parser::{ParserError, parse_expression},
+    registry::{
+        ExpressionNode as CoreExpressionNode, OperationId as CoreOperationId,
+        OperationPreferences as CoreOperationPreferences,
+    },
 };
 
 // Re-export for callers that need the core ExpressionNode type.
-pub use crate::core::expression::ExpressionNode;
+pub use crate::registry::ExpressionNode;
 
 #[derive(Debug)]
 pub enum PipelineError {
@@ -371,62 +376,54 @@ fn append_compat_node(
     Ok(id)
 }
 
-fn map_compat_error_to_core(error: CoreError) -> crate::core::CoreError {
+fn map_compat_error_to_core(error: CoreError) -> ApiCoreError {
     match error {
-        CoreError::System(system) => crate::core::CoreError::System(match system {
-            operators::SystemError::EndOfStream => crate::core::SystemError::EndOfStream,
-            operators::SystemError::StreamTooLong => crate::core::SystemError::StreamTooLong,
-            operators::SystemError::Io(message) => crate::core::SystemError::Io(message),
+        CoreError::System(system) => ApiCoreError::System(match system {
+            operators::SystemError::EndOfStream => ApiSystemError::EndOfStream,
+            operators::SystemError::StreamTooLong => ApiSystemError::StreamTooLong,
+            operators::SystemError::Io(message) => ApiSystemError::Io(message),
         }),
-        CoreError::Parse(parse) => crate::core::CoreError::Parse(match parse {
-            operators::ParseError::InvalidSyntax => crate::core::ParseError::InvalidSyntax,
-            operators::ParseError::InvalidYaml => crate::core::ParseError::InvalidYaml,
-            operators::ParseError::InvalidJson => crate::core::ParseError::InvalidJson,
-            operators::ParseError::InvalidPython => crate::core::ParseError::InvalidPython,
-            operators::ParseError::InvalidJavaScript => crate::core::ParseError::InvalidJavaScript,
-            operators::ParseError::InvalidToml { .. } => crate::core::ParseError::InvalidSyntax,
-            operators::ParseError::TreeSitterFailed => {
-                crate::core::ParseError::TreeSitterParseFailed
-            }
-            operators::ParseError::UnknownToken => crate::core::ParseError::UnknownToken,
-            operators::ParseError::UnterminatedString => {
-                crate::core::ParseError::UnterminatedString
-            }
-            operators::ParseError::BadCsv => crate::core::ParseError::BadCsv,
-            operators::ParseError::BadParameter => crate::core::ParseError::BadParameter,
-            operators::ParseError::InvalidCharacter => crate::core::ParseError::InvalidCharacter,
-            operators::ParseError::InvalidPadding => crate::core::ParseError::InvalidPadding,
-            operators::ParseError::NegativeIndex => crate::core::ParseError::NegativeIndex,
+        CoreError::Parse(parse) => ApiCoreError::Parse(match parse {
+            operators::ParseError::InvalidSyntax => ApiParseError::InvalidSyntax,
+            operators::ParseError::InvalidYaml => ApiParseError::InvalidYaml,
+            operators::ParseError::InvalidJson => ApiParseError::InvalidJson,
+            operators::ParseError::InvalidPython => ApiParseError::InvalidPython,
+            operators::ParseError::InvalidJavaScript => ApiParseError::InvalidJavaScript,
+            operators::ParseError::InvalidToml { .. } => ApiParseError::InvalidSyntax,
+            operators::ParseError::TreeSitterFailed => ApiParseError::TreeSitterParseFailed,
+            operators::ParseError::UnknownToken => ApiParseError::UnknownToken,
+            operators::ParseError::UnterminatedString => ApiParseError::UnterminatedString,
+            operators::ParseError::BadCsv => ApiParseError::BadCsv,
+            operators::ParseError::BadParameter => ApiParseError::BadParameter,
+            operators::ParseError::InvalidCharacter => ApiParseError::InvalidCharacter,
+            operators::ParseError::InvalidPadding => ApiParseError::InvalidPadding,
+            operators::ParseError::NegativeIndex => ApiParseError::NegativeIndex,
             operators::ParseError::Utf8CannotEncodeSurrogateHalf => {
-                crate::core::ParseError::Utf8CannotEncodeSurrogateHalf
+                ApiParseError::Utf8CannotEncodeSurrogateHalf
             }
-            operators::ParseError::CodepointTooLarge => crate::core::ParseError::CodepointTooLarge,
+            operators::ParseError::CodepointTooLarge => ApiParseError::CodepointTooLarge,
         }),
-        CoreError::Format(format) => crate::core::CoreError::Format(match format {
-            operators::FormatError::UnknownFormat => crate::core::FormatError::UnknownFormat,
-            operators::FormatError::TomlRequiresMap => crate::core::FormatError::TomlRequiresMap,
-            operators::FormatError::TomlEmptyPath => crate::core::FormatError::TomlEmptyPath,
-            operators::FormatError::TomlNoAliases => crate::core::FormatError::TomlNoAliases,
-            operators::FormatError::TomlUnsupportedKind => {
-                crate::core::FormatError::TomlUnsupportedKind
-            }
+        CoreError::Format(format) => ApiCoreError::Format(match format {
+            operators::FormatError::UnknownFormat => ApiFormatError::UnknownFormat,
+            operators::FormatError::TomlRequiresMap => ApiFormatError::TomlRequiresMap,
+            operators::FormatError::TomlEmptyPath => ApiFormatError::TomlEmptyPath,
+            operators::FormatError::TomlNoAliases => ApiFormatError::TomlNoAliases,
+            operators::FormatError::TomlUnsupportedKind => ApiFormatError::TomlUnsupportedKind,
         }),
-        CoreError::Eval(_) => crate::core::CoreError::Eval(crate::core::EvalError::Unsupported),
+        CoreError::Eval(_) => ApiCoreError::Eval(ApiEvalError::Unsupported),
         CoreError::ParseMessage {
             line,
             column,
             message,
-        } => crate::core::CoreError::ParseMessage {
+        } => ApiCoreError::ParseMessage {
             line,
             column,
             message,
         },
-        CoreError::OperatorMessage { op, message } => {
-            crate::core::CoreError::OperatorMessage { op, message }
-        }
-        CoreError::WasmProtocol { code } => crate::core::CoreError::WasmProtocol { code },
-        CoreError::Io(message) => crate::core::CoreError::Io(message),
-        CoreError::OutOfMemory => crate::core::CoreError::OutOfMemory,
+        CoreError::OperatorMessage { op, message } => ApiCoreError::OperatorMessage { op, message },
+        CoreError::WasmProtocol { code } => ApiCoreError::WasmProtocol { code },
+        CoreError::Io(message) => ApiCoreError::Io(message),
+        CoreError::OutOfMemory => ApiCoreError::OutOfMemory,
     }
 }
 

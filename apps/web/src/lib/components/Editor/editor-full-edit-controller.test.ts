@@ -54,7 +54,7 @@ import {
   clearWorkspaceSnapshot,
   getWorkspaceSnapshotId,
 } from '../../store/workspace-snapshot-bindings';
-import { editorStore, type FullEditUiState } from '../../store/editor-store';
+import { editorStore, type FullEditUiState } from '../../store/editor-store-internal';
 import { createEditorFullEditController } from './editor-full-edit-controller';
 import type { FullEditSink } from './editor-full-edit-sink';
 

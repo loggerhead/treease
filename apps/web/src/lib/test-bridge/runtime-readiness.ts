@@ -1,4 +1,4 @@
-import type { FullEditUiState } from '../store/editor-store';
+import type { FullEditUiState } from '../store/full-edit-ui-store';
 
 export type RuntimeReadinessGraphMode = 'committed' | 'streaming' | 'json-block';
 

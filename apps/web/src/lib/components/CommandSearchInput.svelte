@@ -5,7 +5,7 @@
   import { commandItems, type CommandId } from '../command-registry'
   import { Wand2, Shrink, ArrowDownWideNarrow, ListFilter, WrapText, Code, Check } from 'lucide-svelte'
   import { settings, settingsStore } from '../settings/settings-store'
-  import { languageId } from '../store/editor-store'
+  import { languageId } from '../store/document-session-store'
 
   export let value = ''
   export let onExecute: (id: CommandId) => void | Promise<void> = () => {}

@@ -13,13 +13,15 @@
   import { settings, settingsStore } from '../../lib/settings/settings-store';
   import {
     activeTempModel,
-    editorRevision,
-    graphAppliedRevision,
-    languageId as languageIdStore,
-    sourceText as sourceTextStore,
     type GraphHighlightTarget,
     type TreeSelectionSource,
-  } from '../../lib/store/editor-store';
+  } from '../../lib/store/graph-selection-store';
+  import {
+    languageId as languageIdStore,
+    sourceText as sourceTextStore,
+    editorRevision,
+    graphAppliedRevision,
+  } from '../../lib/store/document-session-store';
   import { toast } from 'svelte-sonner';
   import { fetchUrlPresetSource } from './fetch-url-preset-source';
   import { readImportSourceSample, resolveImportSourceFormat } from '../../lib/import/resolve-import-source';

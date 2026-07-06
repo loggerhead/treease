@@ -1,4 +1,4 @@
-use crate::core::CoreError;
+use crate::errors::CoreError;
 
 use super::decoder_python::PythonDecoder;
 use super::{Decode, DecodedDocument};

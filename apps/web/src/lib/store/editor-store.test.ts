@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { get } from 'svelte/store';
+import { editorStore } from './editor-store-internal';
 import {
-  editorStore,
   sourceText,
   documentKey,
   languageId,

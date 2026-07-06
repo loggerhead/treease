@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use crate::core::CoreError;
+use crate::errors::CoreError;
 
 pub mod all_at_once_evaluator;
 pub mod stream_evaluator;

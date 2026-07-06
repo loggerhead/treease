@@ -1,4 +1,4 @@
-use crate::core::FormatLanguage;
+use crate::language::FormatLanguage;
 
 pub const DEFAULT_MAX_LINE_LENGTH: i32 = 100;
 pub const DEFAULT_MAX_INLINE_COMPLEXITY: i32 = 1;

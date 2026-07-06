@@ -1,4 +1,4 @@
-use crate::core::lang_spec::{StreamKind, lang_from_name};
+use crate::language::lang_spec::{StreamKind, lang_from_name};
 use serde::{Deserialize, Serialize};
 use tsify::Tsify;
 
@@ -114,7 +114,7 @@ impl WasmProtocol {
     }
 
     pub fn supports_incremental_edits(self) -> bool {
-        crate::core::lang_spec::supports_incremental_edits(self.canonical_name())
+        crate::language::lang_spec::supports_incremental_edits(self.canonical_name())
     }
 
     pub const fn supports_value_only_decode(self) -> bool {
@@ -219,8 +219,8 @@ pub struct AnalysisSharedArtifacts {
     pub semantic_tokens: Vec<u32>,
     pub value_json: String,
     pub ts_tree: Option<tree_sitter::Tree>,
-    pub token_spans: Vec<crate::core::TokenSpan>,
-    pub line_index: crate::core::LineIndex,
+    pub token_spans: Vec<crate::tree::TokenSpan>,
+    pub line_index: crate::analysis::LineIndex,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

@@ -1,7 +1,8 @@
 import type * as Monaco from 'monaco-editor';
 import type { SnapshotId } from '@core-wasm/index';
-import { editorStore } from '../store/editor-store';
 import type { SupportedEditorLanguageId } from '../monaco/language-support';
+import { getDocumentSessionState } from '../store/document-session-store';
+import { getWorkspaceState } from '../store/workspace-store';
 
 export type ActiveDocumentTextSource = 'monacoModel' | 'editorIO' | 'workspaceTab' | 'store';
 
@@ -16,29 +17,30 @@ export type ActiveDocumentContext = {
 };
 
 export function getActiveDocumentContext(): ActiveDocumentContext {
-  const state = editorStore.get();
-  const activeTab = state.workspace.tabsById[state.workspace.activeTabId] ?? null;
-  const documentKey = activeTab?.documentKey ?? state.documentKey;
-  const snapshotId = activeTab?.snapshotId ?? state.workspace.snapshotBindingsByDocumentKey[documentKey]?.snapshotId ?? null;
-  const model = state.editorIO?.getModel() ?? null;
+  const session = getDocumentSessionState();
+  const workspace = getWorkspaceState();
+  const activeTab = workspace.tabsById[workspace.activeTabId] ?? null;
+  const documentKey = activeTab?.documentKey ?? session.documentKey;
+  const snapshotId = activeTab?.snapshotId ?? workspace.snapshotBindingsByDocumentKey[documentKey]?.snapshotId ?? null;
+  const model = session.editorIO?.getModel() ?? null;
   const modelText = model?.getValue();
   if (modelText != null) {
     return {
       documentKey,
-      languageId: activeTab?.languageId ?? state.languageId,
-      revision: state.editorRevision,
+      languageId: activeTab?.languageId ?? session.languageId,
+      revision: session.editorRevision,
       snapshotId,
       text: modelText,
       textSource: 'monacoModel',
       model,
     };
   }
-  const ioText = state.editorIO?.getText?.();
+  const ioText = session.editorIO?.getText?.();
   if (ioText != null) {
     return {
       documentKey,
-      languageId: state.editorIO?.getLanguage?.() ?? activeTab?.languageId ?? state.languageId,
-      revision: state.editorRevision,
+      languageId: session.editorIO?.getLanguage?.() ?? activeTab?.languageId ?? session.languageId,
+      revision: session.editorRevision,
       snapshotId,
       text: ioText,
       textSource: 'editorIO',
@@ -49,7 +51,7 @@ export function getActiveDocumentContext(): ActiveDocumentContext {
     return {
       documentKey: activeTab.documentKey,
       languageId: activeTab.languageId,
-      revision: state.editorRevision,
+      revision: session.editorRevision,
       snapshotId: activeTab.snapshotId,
       text: activeTab.sourceText,
       textSource: 'workspaceTab',
@@ -57,11 +59,11 @@ export function getActiveDocumentContext(): ActiveDocumentContext {
     };
   }
   return {
-    documentKey: state.documentKey,
-    languageId: state.languageId,
-    revision: state.editorRevision,
-    snapshotId: state.workspace.snapshotBindingsByDocumentKey[state.documentKey]?.snapshotId ?? null,
-    text: state.sourceText,
+    documentKey: session.documentKey,
+    languageId: session.languageId,
+    revision: session.editorRevision,
+    snapshotId: workspace.snapshotBindingsByDocumentKey[session.documentKey]?.snapshotId ?? null,
+    text: session.sourceText,
     textSource: 'store',
     model: null,
   };

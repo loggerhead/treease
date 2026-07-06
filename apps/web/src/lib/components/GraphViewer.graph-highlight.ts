@@ -1,4 +1,4 @@
-import type { TempModel } from '../store/editor-store';
+import type { TempModel } from '../store/graph-selection-store';
 import type { PathSeg } from '../store/tree-path';
 
 export function clearGraphSelectionAfterEdit(current: TempModel, _editPath: PathSeg[]): TempModel {

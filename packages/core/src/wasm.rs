@@ -1,9 +1,11 @@
 use std::{cell::RefCell, collections::HashMap};
 
-use crate::core::{NodeId, SemType, TreeNodeKind, TreeStore, graph_projection_service};
 #[cfg(not(feature = "lite"))]
 use crate::formats::{CsvEncoder, JavascriptEncoder, PythonEncoder, TomlEncoder, YamlEncoder};
 use crate::formats::{Encode, FormatPreferences, JsonEncoder, default_language_preferences};
+use crate::graph::graph_projection_service;
+use crate::language::SemType;
+use crate::tree::{NodeId, TreeNodeKind, TreeStore};
 use crate::wasm_types::CommonFormatOptions;
 use wasm_bindgen::prelude::*;
 
@@ -202,13 +204,13 @@ fn encode_document_to_format(
 
 fn format_preferences_for(format: &str, options: CommonFormatOptions) -> FormatPreferences {
     let language = match format {
-        "json" => crate::core::FormatLanguage::Json,
-        "yaml" => crate::core::FormatLanguage::Yaml,
-        "toml" => crate::core::FormatLanguage::Toml,
-        "python" => crate::core::FormatLanguage::Python,
-        "javascript" => crate::core::FormatLanguage::Javascript,
-        "csv" => crate::core::FormatLanguage::Csv,
-        _ => crate::core::FormatLanguage::Json,
+        "json" => crate::language::FormatLanguage::Json,
+        "yaml" => crate::language::FormatLanguage::Yaml,
+        "toml" => crate::language::FormatLanguage::Toml,
+        "python" => crate::language::FormatLanguage::Python,
+        "javascript" => crate::language::FormatLanguage::Javascript,
+        "csv" => crate::language::FormatLanguage::Csv,
+        _ => crate::language::FormatLanguage::Json,
     };
     let mut prefs = default_language_preferences().effective(language);
     prefs.indent = options.indent;
@@ -257,11 +259,11 @@ fn clone_tree_into_store(
     let source = source_store
         .get(source_id)
         .ok_or_else(|| "missing node".to_string())?;
-    let mut out = crate::core::TreeNode {
+    let mut out = crate::tree::TreeNode {
         kind: source.kind,
         sem_type: source.sem_type,
         tag: source.tag.clone(),
-        value: crate::core::NodeValueRef::Missing,
+        value: crate::tree::NodeValueRef::Missing,
         start_byte: source.start_byte,
         end_byte: source.end_byte,
         document: source.document,
@@ -269,7 +271,7 @@ fn clone_tree_into_store(
         column: source.column,
         is_map_key: source.is_map_key,
         sequence_index: source.sequence_index,
-        ..crate::core::TreeNode::default()
+        ..crate::tree::TreeNode::default()
     };
     out.set_encode_separate(source.encode_separate());
     out.set_evaluate_together(source.evaluate_together());

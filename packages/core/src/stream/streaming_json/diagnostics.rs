@@ -1,4 +1,4 @@
-use crate::core::ParseError;
+use crate::errors::ParseError;
 
 use super::parser::JsonStreamError;
 use super::scanner::{Position, Scanner, Token, TokenTag};

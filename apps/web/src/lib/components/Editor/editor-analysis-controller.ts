@@ -10,7 +10,7 @@ import { supportedEditorLanguageSet, type SupportedEditorLanguageId } from '../.
 import { callSharedWasmWorker } from '../../wasm/wasm-worker-singleton';
 import type { DocumentAnalysisResult, JsonBlockAtPositionResult } from '../../../shared/worker-protocol/protocol';
 import { getWorkspaceSnapshotId } from '../../store/workspace-snapshot-bindings';
-import type { JsonBlockSelection } from '../../store/editor-store';
+import type { JsonBlockSelection } from '../../store/full-edit-ui-store';
 import { applyDocumentAnalysisToEditor, type EditorAnalysisLike } from './editor-analysis-apply';
 import { offsetSemanticTokens } from '../../monaco/semantic-token-offset';
 import { buildDocumentJobSettings, runTextDocumentJobForGraph } from '../../graph-stream/document-job-runner';

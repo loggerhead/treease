@@ -1,4 +1,4 @@
-use treease_core::document::materialize::materialize;
+use treease_core::document::materialize;
 use treease_core::document::protocol::{
     DocumentInputPlan, GraphDelta, GraphPathSeg, OutputPlan, ProjectionRequest, SnapshotId,
     SnapshotReadResult,

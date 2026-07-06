@@ -1,6 +1,4 @@
 use super::*;
-use crate::core::graph_projection_service::reset_builder_config;
-use crate::core::incremental_edit::DocumentTextEdit;
 use crate::document::metrics::reset_global_document_engine_metrics_for_tests;
 use crate::document::protocol::{
     DocumentEvent, DocumentInputPlan, DocumentJobKind, DocumentJobSettings, GraphPathSeg,
@@ -10,6 +8,8 @@ use crate::document::runtime::{
     document_runtime_job_count_for_tests, document_runtime_latest_job_spec_for_document_for_tests,
     reset_runtime_for_tests, stored_snapshot_for_document,
 };
+use crate::graph::graph_projection_service::reset_builder_config;
+use crate::tree::incremental_edit::DocumentTextEdit;
 use crate::wasm::reset_test_runtime;
 use serde_json::json;
 use std::cell::RefCell;
@@ -393,7 +393,7 @@ fn streaming_smart_close_semantic_tokens_match_formatted_source() {
     // full re-encode of the same (formatted) source would produce.  Any
     // mismatch means the streaming token spans were not correctly remapped
     // to the formatted text.
-    let fresh_tokens = crate::core::encode_semantic_tokens("json", &analysis.source);
+    let fresh_tokens = crate::language::encode_semantic_tokens("json", &analysis.source);
     assert!(
         !fresh_tokens.is_empty(),
         "fresh encode should produce tokens for the formatted source"
@@ -450,7 +450,7 @@ fn streaming_nested_close_semantic_tokens_match_expanded_source_when_nest_enable
         "source should be rewritten to the expanded nested JSON"
     );
 
-    let fresh_tokens = crate::core::encode_semantic_tokens("json", &analysis.source);
+    let fresh_tokens = crate::language::encode_semantic_tokens("json", &analysis.source);
     assert!(
         !fresh_tokens.is_empty(),
         "fresh encode should produce tokens for the expanded source"

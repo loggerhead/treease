@@ -1,6 +1,6 @@
 import type * as Monaco from 'monaco-editor';
 import type { SnapshotReadResult } from '@core-wasm/index';
-import type { GraphHighlightTarget } from '../../store/editor-store';
+import type { GraphHighlightTarget } from '../../store/graph-selection-store';
 import type { PathSeg } from '../../store/tree-path';
 import type { SupportedEditorLanguageId } from '../../monaco/language-support';
 import { resolvePathSpanResult, toByteColumn } from '../../services/TreePathService';

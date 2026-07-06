@@ -3,7 +3,7 @@ import {
   clearWorkspaceSnapshot,
   getWorkspaceSnapshotId,
 } from '../../store/workspace-snapshot-bindings';
-import { editorStore, type FullEditUiState } from '../../store/editor-store';
+import { editorStore, type FullEditUiState } from '../../store/editor-store-internal';
 import { createPrimaryFullEditSink, createWorkspaceTabFullEditSink } from './editor-full-edit-sink';
 
 const primaryTabId = 'tab-primary';
