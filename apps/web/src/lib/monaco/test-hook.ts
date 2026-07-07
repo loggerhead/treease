@@ -31,6 +31,50 @@ export function attachMonacoTestHook(editor: TestHookEditor, hookId: string, tok
   let node = editor.getDomNode?.() ?? null;
   let domMarkFrame: number | null = null;
   let disposed = false;
+  const normalizeMonacoText = (value: string) => value.replace(/\u00a0/g, ' ');
+  const readTokenColor = (target: HTMLElement | null, line: HTMLElement | null) => {
+    if (!target) return null;
+    const lineColor = line ? getComputedStyle(line).color : null;
+    let current: HTMLElement | null = target;
+    while (current) {
+      const color = getComputedStyle(current).color;
+      if (
+        color &&
+        color !== 'rgb(0, 0, 0)' &&
+        color !== 'rgba(0, 0, 0, 0)' &&
+        color !== lineColor
+      ) {
+        return color;
+      }
+      if (current === line) break;
+      current = current.parentElement;
+    }
+    return lineColor ?? getComputedStyle(target).color;
+  };
+  const resolveModelLineSegments = (currentNode: HTMLElement, lineNumber: number) => {
+    const model = editor.getModel?.();
+    const modelLineCount = model?.getLineCount?.() ?? 0;
+    if (!Number.isInteger(lineNumber) || lineNumber < 1 || lineNumber > modelLineCount) {
+      return { line: null, segments: [] as HTMLElement[] };
+    }
+    const allLines = Array.from(currentNode.querySelectorAll('.view-lines .view-line')) as HTMLElement[];
+    const modelLineText = normalizeMonacoText(model?.getLineContent?.(lineNumber) ?? '');
+    const candidateLines = modelLineText
+      ? allLines.filter((line) => {
+          const renderedText = normalizeMonacoText(line.textContent ?? '');
+          return renderedText.length > 0 && modelLineText.includes(renderedText);
+        })
+      : [];
+    const segments = candidateLines.flatMap((candidateLine) =>
+      Array.from(candidateLine.querySelectorAll('span')).filter(
+        (element): element is HTMLElement =>
+          element instanceof HTMLElement &&
+          element.childElementCount === 0 &&
+          normalizeMonacoText(element.textContent ?? '').length > 0,
+      ),
+    );
+    return { line: candidateLines[0] ?? null, segments };
+  };
 
   const markDomNode = () => {
     if (disposed) return false;
@@ -89,30 +133,53 @@ export function attachMonacoTestHook(editor: TestHookEditor, hookId: string, tok
     getRenderedTokenColor: (tokenText: string, lineNumber?: number) => {
       const currentNode = editor.getDomNode?.() ?? node;
       if (!currentNode) return null;
-      const lineSelector = lineNumber != null ? `.view-line:nth-child(${lineNumber})` : '.view-line';
-      const line = currentNode.querySelector(`.view-lines ${lineSelector}`) as HTMLElement | null;
-      const spans = Array.from(
-        currentNode.querySelectorAll(`.view-lines ${lineSelector} span, .view-lines ${lineSelector} *`),
-      ) as HTMLElement[];
+      const allLines = Array.from(currentNode.querySelectorAll('.view-lines .view-line')) as HTMLElement[];
+      const model = editor.getModel?.();
+      const modelLineCount = model?.getLineCount?.() ?? 0;
+      const hasValidModelLine =
+        lineNumber != null && Number.isInteger(lineNumber) && lineNumber >= 1 && lineNumber <= modelLineCount;
+      const modelLineText =
+        hasValidModelLine ? normalizeMonacoText(model?.getLineContent?.(lineNumber) ?? '') : '';
+      const candidateLines =
+        hasValidModelLine && modelLineText
+          ? allLines.filter((line) => {
+              const renderedText = normalizeMonacoText(line.textContent ?? '');
+              return renderedText.length > 0 && modelLineText.includes(renderedText);
+            })
+          : lineNumber != null && Number.isInteger(lineNumber) && lineNumber >= 1
+            ? [allLines[lineNumber - 1]].filter((line): line is HTMLElement => Boolean(line))
+          : allLines;
+      const line = candidateLines[0] ?? null;
+      const spans = candidateLines.flatMap((candidateLine) =>
+        Array.from(candidateLine.querySelectorAll('span, *')) as HTMLElement[],
+      );
       const candidates = spans.filter((span) => (span.textContent ?? '').includes(tokenText));
       const target = candidates.sort((a, b) => (a.textContent ?? '').length - (b.textContent ?? '').length)[0];
-      if (!target) return null;
-      const lineColor = line ? getComputedStyle(line).color : null;
-      let current: HTMLElement | null = target;
-      while (current) {
-        const color = getComputedStyle(current).color;
-        if (
-          color &&
-          color !== 'rgb(0, 0, 0)' &&
-          color !== 'rgba(0, 0, 0, 0)' &&
-          color !== lineColor
-        ) {
-          return color;
+      return readTokenColor(target ?? null, line);
+    },
+    getRenderedTokenColorAtPosition: (lineNumber: number, column: number, tokenText?: string) => {
+      const currentNode = editor.getDomNode?.() ?? node;
+      if (!currentNode) return null;
+      const { line, segments } = resolveModelLineSegments(currentNode, lineNumber);
+      if (segments.length === 0) return null;
+      const offset = Math.max(0, column - 1);
+      let cursor = 0;
+      let fallbackTarget: HTMLElement | null = null;
+      let textMatchedTarget: HTMLElement | null = null;
+      for (const segment of segments) {
+        const text = normalizeMonacoText(segment.textContent ?? '');
+        if (!text) continue;
+        const nextCursor = cursor + text.length;
+        if (offset >= cursor && offset < nextCursor) {
+          fallbackTarget = segment;
+          if (!tokenText || text.includes(tokenText)) {
+            textMatchedTarget = segment;
+            break;
+          }
         }
-        if (current === line) break;
-        current = current.parentElement;
+        cursor = nextCursor;
       }
-      return lineColor ?? getComputedStyle(target).color;
+      return readTokenColor(textMatchedTarget ?? fallbackTarget, line);
     },
     getTokenTypeAt: (lineNumber: number, column: number) => {
       if (!tokenize) return 'no-tokenize';

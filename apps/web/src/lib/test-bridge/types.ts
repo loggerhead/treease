@@ -31,6 +31,7 @@ export type TreeaseMonacoHook = {
   getLanguage?: () => string | null;
   getMarkers?: () => Array<{ owner?: string; message?: string; severity?: number }>;
   getRenderedTokenColor?: (tokenText: string, lineNumber?: number) => string | null;
+  getRenderedTokenColorAtPosition?: (lineNumber: number, column: number, tokenText?: string) => string | null;
   getTokenTypeAt?: (lineNumber: number, column: number) => string | null;
   applyEdits?: (edits: Array<{ range: { startLineNumber: number; startColumn: number; endLineNumber: number; endColumn: number }; text: string }>) => void;
 };
@@ -264,6 +265,7 @@ export type WindowTreease = {
     getLanguage: (hookId: string) => string | null;
     getMarkers?: (hookId: string) => Array<{ owner?: string; message?: string; severity?: number }>;
     getRenderedTokenColor: (hookId: string, tokenText: string, lineNumber?: number) => string | null;
+    getRenderedTokenColorAtPosition: (hookId: string, lineNumber: number, column: number, tokenText?: string) => string | null;
     getTokenTypeAt: (hookId: string, lineNumber: number, column: number) => string | null;
     applyEdits: (hookId: string, edits: Array<{ range: { startLineNumber: number; startColumn: number; endLineNumber: number; endColumn: number }; text: string }>) => void;
   };

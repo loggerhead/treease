@@ -1,0 +1,35 @@
+name: Server Deploy
+
+on:
+  push:
+    branches:
+      - '**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: server-deploy-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: recursive
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 20
+      - name: Verify server deploy prerequisites
+        run: node scripts/server-deploy-check.mjs
+      - name: Deploy preview
+        if: github.ref_name != 'main'
+        run: node scripts/server-vercel-deploy.mjs
+      - name: Deploy production
+        if: github.ref_name == 'main'
+        run: node scripts/server-vercel-deploy.mjs --prod

@@ -32,6 +32,7 @@
     getWorkspaceState,
     getWorkspaceTabSummaries,
     initWorkspaceFromPrimaryTab,
+    updateWorkspaceTab,
   } from '../../store/workspace-store';
   import type { PathSeg } from '../../store/tree-path';
   import { getLanguageExample } from '../../monaco/language-examples';
@@ -358,7 +359,10 @@
     setModelDocumentKey,
     setActiveTabDocumentKey: (documentKey) => {
       const activeId = tabManager?.getActiveTabId();
-      if (activeId) tabManager.setTabDocumentKey(activeId, documentKey);
+      if (activeId) {
+        tabManager.setTabDocumentKey(activeId, documentKey);
+        updateWorkspaceTab(activeId, { documentKey });
+      }
     },
     clearSemanticTokensForDocument: clearDocumentSemanticTokens,
     setEditorValue,

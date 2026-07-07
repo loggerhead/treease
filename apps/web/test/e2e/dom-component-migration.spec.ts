@@ -3,7 +3,7 @@ import {
   clearGraphLastReveal,
   clickGraphProbe,
   getLatestGraphProbes,
-  getMonacoRenderedTokenColor,
+  getMonacoRenderedTokenColorAtPosition,
   installClipboardCapture,
   readEditorState,
   readGraphClickProbes,
@@ -62,12 +62,26 @@ async function dispatchWindowShortcut(page: Page, key: string, modifier: 'Meta' 
   );
 }
 
-async function readEditorTokenColor(page: Page, tokenText: string, lineNumber?: number): Promise<string | null> {
-  return getMonacoRenderedTokenColor(page, 'source-editor', tokenText, lineNumber);
+function resolvePosition(sourceText: string, marker: string): { lineNumber: number; column: number } {
+  const offset = sourceText.indexOf(marker);
+  if (offset < 0) {
+    throw new Error(`Marker "${marker}" not found`);
+  }
+  const before = sourceText.slice(0, offset);
+  const lines = before.split('\n');
+  return {
+    lineNumber: lines.length,
+    column: (lines.at(-1)?.length ?? 0) + 1,
+  };
 }
 
-async function expectEditorTokenColor(page: Page, tokenText: string, color: string, lineNumber?: number) {
-  await expect.poll(() => readEditorTokenColor(page, tokenText, lineNumber), { timeout: 5_000 }).toBe(color);
+async function readEditorTokenColorAtMarker(page: Page, sourceText: string, marker: string): Promise<string | null> {
+  const position = resolvePosition(sourceText, marker);
+  return getMonacoRenderedTokenColorAtPosition(page, 'source-editor', position.lineNumber, position.column, marker);
+}
+
+async function expectEditorTokenColorAtMarker(page: Page, sourceText: string, marker: string, color: string) {
+  await expect.poll(() => readEditorTokenColorAtMarker(page, sourceText, marker), { timeout: 5_000 }).toBe(color);
 }
 
 test('tree path breadcrumb copies the full path and crumb click reveals parent path', async ({ page }) => {
@@ -151,58 +165,62 @@ test('graph search supports shortcut open, keyboard selection, and escape close'
 });
 
 test('editor semantic colors keep key and value tokens aligned with current theme', async ({ page }) => {
+  const sourceText = '{\n  "previewEnabled": true,\n  "exampleCount": 42,\n  "emptyValue": null\n}';
   await page.goto('/editor');
   await waitForEditorReady(page);
   await setEditorContent(page, {
-    sourceText: '{\n  "previewEnabled": true,\n  "exampleCount": 42,\n  "emptyValue": null\n}',
+    sourceText,
     language: 'json',
   });
 
-  await expectEditorTokenColor(page, '"previewEnabled"', 'rgb(163, 21, 21)', 2);
-  await expectEditorTokenColor(page, 'true', 'rgb(4, 81, 165)', 2);
-  await expectEditorTokenColor(page, '42', 'rgb(9, 134, 88)', 3);
-  await expectEditorTokenColor(page, 'null', 'rgb(4, 81, 165)', 4);
+  await expectEditorTokenColorAtMarker(page, sourceText, '"previewEnabled"', 'rgb(163, 21, 21)');
+  await expectEditorTokenColorAtMarker(page, sourceText, 'true', 'rgb(4, 81, 165)');
+  await expectEditorTokenColorAtMarker(page, sourceText, '42', 'rgb(9, 134, 88)');
+  await expectEditorTokenColorAtMarker(page, sourceText, 'null', 'rgb(4, 81, 165)');
 });
 
 test('yaml editor semantic colors keep key and value tokens aligned with current theme', async ({ page }) => {
+  const sourceText = 'previewEnabled: true\nemptyValue: null\n';
   await page.goto('/editor');
   await waitForEditorReady(page);
 
   await setEditorContent(page, {
-    sourceText: 'previewEnabled: true\nemptyValue: null\n',
+    sourceText,
     language: 'yaml',
   });
 
-  await expectEditorTokenColor(page, 'previewEnabled', 'rgb(163, 21, 21)', 1);
-  await expectEditorTokenColor(page, 'true', 'rgb(4, 81, 165)', 1);
-  await expectEditorTokenColor(page, 'null', 'rgb(4, 81, 165)', 2);
+  await expectEditorTokenColorAtMarker(page, sourceText, 'previewEnabled', 'rgb(163, 21, 21)');
+  await expectEditorTokenColorAtMarker(page, sourceText, 'true', 'rgb(4, 81, 165)');
+  await expectEditorTokenColorAtMarker(page, sourceText, 'null', 'rgb(4, 81, 165)');
 });
 
 test('javascript editor semantic colors keep key and value tokens aligned with current theme', async ({ page }) => {
+  const sourceText = '({ previewEnabled: true, exampleCount: 42, emptyValue: null })';
   await page.goto('/editor');
   await waitForEditorReady(page);
   await setEditorContent(page, {
-    sourceText: '({ previewEnabled: true, exampleCount: 42, emptyValue: null })',
+    sourceText,
     language: 'javascript',
   });
 
-  await expectEditorTokenColor(page, 'previewEnabled', 'rgb(163, 21, 21)');
-  await expectEditorTokenColor(page, 'true', 'rgb(4, 81, 165)');
-  await expectEditorTokenColor(page, '42', 'rgb(9, 134, 88)');
-  await expectEditorTokenColor(page, 'null', 'rgb(4, 81, 165)');
+  await expectEditorTokenColorAtMarker(page, sourceText, 'previewEnabled', 'rgb(163, 21, 21)');
+  await expectEditorTokenColorAtMarker(page, sourceText, 'true', 'rgb(4, 81, 165)');
+  await expectEditorTokenColorAtMarker(page, sourceText, '42', 'rgb(9, 134, 88)');
+  await expectEditorTokenColorAtMarker(page, sourceText, 'null', 'rgb(4, 81, 165)');
 });
 
 test('python editor semantic colors keep key and value tokens aligned with current theme', async ({ page }) => {
+  const sourceText = '{"previewEnabled": True, "emptyValue": None}';
   await page.goto('/editor');
   await waitForEditorReady(page);
   await setEditorContent(page, {
-    sourceText: '{"previewEnabled": True, "emptyValue": None}',
+    sourceText,
     language: 'python',
   });
 
-  await expectEditorTokenColor(page, '"previewEnabled"', 'rgb(163, 21, 21)', 1);
-  await expectEditorTokenColor(page, 'True', 'rgb(4, 81, 165)', 1);
-  await expectEditorTokenColor(page, 'None', 'rgb(4, 81, 165)', 1);
+  await expectEditorTokenColorAtMarker(page, sourceText, '"previewEnabled"', 'rgb(163, 21, 21)');
+  await expectEditorTokenColorAtMarker(page, sourceText, 'True', 'rgb(4, 81, 165)');
+  await expectEditorTokenColorAtMarker(page, sourceText, 'None', 'rgb(4, 81, 165)');
 });
 
 

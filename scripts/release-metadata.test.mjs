@@ -66,7 +66,7 @@ test('loadReleaseMetadata returns normalized release information', async () => {
     coreName: 'treease-core',
     coreVersion: '1.2.3',
     coreWasmReleaseDate: '26063009',
-    releaseTag: 'treease-v2.3.4',
+    releaseTag: 'v2.3.4',
   });
 });
 

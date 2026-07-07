@@ -406,10 +406,9 @@ export function createEditorFullEditController(options: CreateEditorFullEditCont
     }
 
     const documentKey = params.documentKey || options.rotateActiveDocumentKey();
-    if (params.documentKey) {
-      options.setActiveTabDocumentKey?.(params.documentKey);
-      options.setDocumentKey(params.documentKey);
-    }
+    options.setActiveTabDocumentKey?.(documentKey);
+    options.setDocumentKey(documentKey);
+    options.setModelDocumentKey(model, documentKey);
     const revision = options.commitEditorState();
     const nextLanguage = params.language;
     if (params.isFresh && !params.isFresh()) return null;
@@ -443,7 +442,6 @@ export function createEditorFullEditController(options: CreateEditorFullEditCont
       sessionId: `${documentKey}:${revision}`,
       graphJobSession: null,
     };
-    options.setModelDocumentKey(model, documentKey);
     options.clearSemanticTokensForDocument(documentKey);
     fullEditSink.begin({
       sessionId: `${documentKey}:${revision}`,

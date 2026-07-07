@@ -3,7 +3,7 @@ name: Unified Release
 on:
   push:
     tags:
-      - "treease-v*"
+      - "v*"
   workflow_dispatch:
 
 env:

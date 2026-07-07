@@ -157,7 +157,21 @@ async function waitForRuntimeReadiness(
 
 export async function setEditorContent(page: Page, payload: { sourceText: string; language?: string }) {
   await waitForMonacoHook(page, 'source-editor');
-  await waitForRuntimeReadiness(page, (readiness) => readiness.import.settled && readiness.editorRevision > 0);
+  await expect
+    .poll(
+      async () => {
+        const [modelText, state] = await Promise.all([
+          getMonacoValue(page, 'source-editor'),
+          readEditorState(page),
+        ]);
+        return {
+          editorReady: state.editorRevision > 0,
+          modelSynced: state.sourceText === modelText,
+        };
+      },
+      { timeout: DEFAULT_UI_TIMEOUT },
+    )
+    .toEqual({ editorReady: true, modelSynced: true });
 
   if (payload.language) {
     await evaluateTreease(page, (treease, language) => {
@@ -345,6 +359,24 @@ export async function getMonacoRenderedTokenColor(
     (treease, payload: { hookId: string; tokenText: string; lineNumber?: number }) =>
       treease.editor.getRenderedTokenColor(payload.hookId, payload.tokenText, payload.lineNumber),
     { hookId, tokenText, lineNumber },
+  );
+}
+
+export async function getMonacoRenderedTokenColorAtPosition(
+  page: Page,
+  hookId: string,
+  lineNumber: number,
+  column: number,
+  tokenText?: string,
+) {
+  await waitForMonacoHook(page, hookId);
+  return evaluateTreease(
+    page,
+    (
+      treease,
+      payload: { hookId: string; lineNumber: number; column: number; tokenText?: string },
+    ) => treease.editor.getRenderedTokenColorAtPosition(payload.hookId, payload.lineNumber, payload.column, payload.tokenText),
+    { hookId, lineNumber, column, tokenText },
   );
 }
 

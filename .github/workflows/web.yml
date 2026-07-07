@@ -48,19 +48,35 @@ jobs:
       - name: Build WASM
         run: pnpm wasm:bindgen && pnpm wasm:sync
         working-directory: ${{ github.workspace }}/apps/web
+      - name: Detect Playwright version
+        id: playwright-version
+        working-directory: ${{ github.workspace }}/apps/web
+        run: |
+          PLAYWRIGHT_VERSION="$(pnpm exec playwright --version | awk '{print $2}')"
+          echo "version=$PLAYWRIGHT_VERSION" >> "$GITHUB_OUTPUT"
       - name: Cache Playwright browsers
         id: playwright-cache
         uses: actions/cache@v4
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ hashFiles('apps/web/pnpm-lock.yaml') }}
+          key: playwright-${{ runner.os }}-${{ steps.playwright-version.outputs.version }}-${{ hashFiles('apps/web/pnpm-lock.yaml') }}
           restore-keys: |
-            playwright-${{ runner.os }}-
+            playwright-${{ runner.os }}-${{ steps.playwright-version.outputs.version }}-
       - name: Install Playwright system dependencies
         run: pnpm exec playwright install-deps chromium
         working-directory: ${{ github.workspace }}/apps/web
+      - name: Check Playwright browser executable
+        id: playwright-browser-check
+        working-directory: ${{ github.workspace }}/apps/web
+        run: |
+          EXECUTABLE_PATH="$(pnpm exec node -e "const { chromium } = require('@playwright/test'); process.stdout.write(chromium.executablePath())")"
+          if [ -x "$EXECUTABLE_PATH" ]; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
       - name: Install Playwright browsers
-        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        if: steps.playwright-browser-check.outputs.exists != 'true'
         run: pnpm exec playwright install chromium
         working-directory: ${{ github.workspace }}/apps/web
       - name: Run E2E core tests

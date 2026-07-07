@@ -6,7 +6,7 @@ import {
   evaluateTreease,
   getMonacoMarkers,
   getMonacoValue,
-  getMonacoRenderedTokenColor,
+  getMonacoRenderedTokenColorAtPosition,
   readEditorState,
   readGraphClickProbes,
   setEditorContent,
@@ -92,8 +92,32 @@ async function waitForSyntaxError(page: Page) {
     ]);
 }
 
-async function readEditorTokenColor(page: Page, tokenText: string, lineNumber: number): Promise<string | null> {
-  return getMonacoRenderedTokenColor(page, 'source-editor', tokenText, lineNumber);
+function resolveNthPosition(sourceText: string, marker: string, occurrence = 1): { lineNumber: number; column: number } {
+  let offset = -1;
+  let searchFrom = 0;
+  for (let index = 0; index < occurrence; index += 1) {
+    offset = sourceText.indexOf(marker, searchFrom);
+    if (offset < 0) {
+      throw new Error(`Marker "${marker}" occurrence ${occurrence} not found`);
+    }
+    searchFrom = offset + marker.length;
+  }
+  const before = sourceText.slice(0, offset);
+  const lines = before.split('\n');
+  return {
+    lineNumber: lines.length,
+    column: (lines.at(-1)?.length ?? 0) + 1,
+  };
+}
+
+async function readEditorTokenColorAtMarker(
+  page: Page,
+  sourceText: string,
+  marker: string,
+  occurrence = 1,
+): Promise<string | null> {
+  const position = resolveNthPosition(sourceText, marker, occurrence);
+  return getMonacoRenderedTokenColorAtPosition(page, 'source-editor', position.lineNumber, position.column, marker);
 }
 
 test.describe('invalid json graph diagnostics', () => {
@@ -172,8 +196,8 @@ test.describe('invalid json graph diagnostics', () => {
     await expect
       .poll(
         async () => ({
-          keyColor: await readEditorTokenColor(page, '"type"', 1),
-          stringColor: await readEditorTokenColor(page, '"Mcrguz"', 1),
+          keyColor: await readEditorTokenColorAtMarker(page, promptDiffEventsFixture, '"type"'),
+          stringColor: await readEditorTokenColorAtMarker(page, promptDiffEventsFixture, '"Mcrguz"'),
         }),
         { timeout: 5_000 },
       )
@@ -226,8 +250,8 @@ test.describe('invalid json graph diagnostics', () => {
 
     await setMonacoPosition(page, 'source-editor', position.lineNumber, position.column);
     await waitForJsonBlockRender(page, expectedBlockText, ['line', 'nested']);
-    await expect.poll(() => readEditorTokenColor(page, '"line"', 2), { timeout: 5_000 }).toBe('rgb(163, 21, 21)');
-    await expect.poll(() => readEditorTokenColor(page, '"line"', 3), { timeout: 5_000 }).not.toBe('rgb(163, 21, 21)');
+    await expect.poll(() => readEditorTokenColorAtMarker(page, sourceText, '"line"', 2), { timeout: 5_000 }).toBe('rgb(163, 21, 21)');
+    await expect.poll(() => readEditorTokenColorAtMarker(page, sourceText, '"line"', 3), { timeout: 5_000 }).not.toBe('rgb(163, 21, 21)');
 
     const { selection } = await readJsonBlockRuntime(page);
     expect(selection).toEqual(
@@ -314,11 +338,11 @@ test.describe('invalid json graph diagnostics', () => {
     await setMonacoPosition(page, 'source-editor', position.lineNumber, position.column);
     await waitForJsonBlockRender(page, expectedBlockText, ['title', 'file']);
 
-    await expect.poll(() => readEditorTokenColor(page, '"title"', 1), { timeout: 5_000 }).toBe('rgb(163, 21, 21)');
-    await expect.poll(() => readEditorTokenColor(page, '"file"', 2), { timeout: 5_000 }).toBe('rgb(163, 21, 21)');
+    await expect.poll(() => readEditorTokenColorAtMarker(page, sourceText, '"title"'), { timeout: 5_000 }).toBe('rgb(163, 21, 21)');
+    await expect.poll(() => readEditorTokenColorAtMarker(page, sourceText, '"file"'), { timeout: 5_000 }).toBe('rgb(163, 21, 21)');
     await expect
-      .poll(() => readEditorTokenColor(page, '"2023-04-03.0009"', 2), { timeout: 5_000 })
+      .poll(() => readEditorTokenColorAtMarker(page, sourceText, '"2023-04-03.0009"'), { timeout: 5_000 })
       .toBe('rgb(4, 81, 165)');
-    await expect.poll(() => readEditorTokenColor(page, '0009', 2), { timeout: 5_000 }).toBe('rgb(4, 81, 165)');
+    await expect.poll(() => readEditorTokenColorAtMarker(page, sourceText, '0009'), { timeout: 5_000 }).toBe('rgb(4, 81, 165)');
   });
 });

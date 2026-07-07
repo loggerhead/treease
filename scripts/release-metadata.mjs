@@ -65,7 +65,7 @@ export function loadReleaseMetadata(rootDir = defaultRootDir) {
     coreName,
     coreVersion,
     coreWasmReleaseDate,
-    releaseTag: `treease-v${cliVersion}`,
+    releaseTag: `v${cliVersion}`,
   };
 }
 

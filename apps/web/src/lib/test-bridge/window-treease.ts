@@ -97,6 +97,8 @@ export function ensureWindowTreease(): WindowTreease | null {
       getMarkers: (hookId) => getEditorHook(hookId).getMarkers?.() ?? [],
       getRenderedTokenColor: (hookId, tokenText, lineNumber) =>
         getEditorHook(hookId).getRenderedTokenColor?.(tokenText, lineNumber) ?? null,
+      getRenderedTokenColorAtPosition: (hookId, lineNumber, column, tokenText) =>
+        getEditorHook(hookId).getRenderedTokenColorAtPosition?.(lineNumber, column, tokenText) ?? null,
       getTokenTypeAt: (hookId, lineNumber, column) =>
         getEditorHook(hookId).getTokenTypeAt?.(lineNumber, column) ?? null,
       applyEdits: (hookId, edits) => {

@@ -120,3 +120,4 @@ yq3
 .gomodcache/
 .gocache/
 .rsworktree/
+.vercel
