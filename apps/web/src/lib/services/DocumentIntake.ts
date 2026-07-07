@@ -49,6 +49,7 @@ function createFailedIntakeResult(params: {
 function createDiagnosticsOnlyIntakeResult(params: {
   documentKey: string;
   revision: number;
+  snapshotId?: SnapshotId | null;
   analysis?: DocumentAnalysisResult | null;
   sourceText?: string | null;
 }): IntakeResult {
@@ -57,7 +58,7 @@ function createDiagnosticsOnlyIntakeResult(params: {
     resultStatus: 'parseFailed',
     documentKey: params.documentKey,
     revision: params.revision,
-    snapshotId: null,
+    snapshotId: params.snapshotId ?? null,
     analysis: params.analysis ?? null,
     sourceText: params.sourceText ?? null,
   };
@@ -117,6 +118,7 @@ export async function runIntakeJob(params: RunIntakeJobParams): Promise<IntakeRe
     return createDiagnosticsOnlyIntakeResult({
       documentKey,
       revision,
+      snapshotId: result.snapshotId,
       analysis: result.analysis,
       sourceText: result.sourceText,
     });

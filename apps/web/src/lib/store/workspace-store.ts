@@ -1,6 +1,5 @@
 import type { SnapshotId } from '@core-wasm/index';
 import { get, writable, type Readable } from 'svelte/store';
-
 import { editorLanguageFallback } from '../monaco/language-support';
 import { getDocumentSessionState, initialDocumentSessionState } from './document-session-store';
 import { getFullEditUiStateSnapshot, initialFullEditUiState } from './full-edit-ui-store';
@@ -214,11 +213,11 @@ export function bindWorkspaceSnapshot(payload: {
   const workspace = get(workspaceStore);
   if (!payload.documentKey || payload.snapshotId == null) return;
   const current = workspace.snapshotBindingsByDocumentKey[payload.documentKey];
-  if (current && payload.revision < current.revision) return;
   const newestTabRevision = Object.values(workspace.tabsById).reduce(
     (newest, tab) => (tab.documentKey === payload.documentKey ? Math.max(newest, tab.revision) : newest),
     -1,
   );
+  if (current && payload.revision < current.revision) return;
   if (newestTabRevision >= 0 && payload.revision < newestTabRevision) return;
   let tabsById = workspace.tabsById;
   for (const [tabId, tab] of Object.entries(workspace.tabsById)) {

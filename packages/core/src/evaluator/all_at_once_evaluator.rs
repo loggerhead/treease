@@ -1849,8 +1849,8 @@ mod tests {
     use crate::evaluator::Value;
     use crate::formats::{Encode, JsonEncoder};
     use crate::io::CodecService;
-    use crate::io::printer::Encoder as PrintEncoder;
     use crate::io::VecPrinterWriter;
+    use crate::io::printer::Encoder as PrintEncoder;
     use crate::parser::parse_expression;
     use std::collections::BTreeMap;
 

@@ -14,6 +14,12 @@ import type { JsonBlockSelection } from '../../store/full-edit-ui-store';
 import { applyDocumentAnalysisToEditor, type EditorAnalysisLike } from './editor-analysis-apply';
 import { offsetSemanticTokens } from '../../monaco/semantic-token-offset';
 import { buildDocumentJobSettings, runTextDocumentJobForGraph } from '../../graph-stream/document-job-runner';
+import {
+  isActiveDocumentSemanticPending,
+  isActiveDocumentSemanticValid,
+  shouldSuppressJsonBlockFallback,
+} from '../../store/active-document-semantic-state';
+import { resolveReadableSnapshotId } from '../../services/ActiveDocumentContext';
 
 type EditorFreshnessScope = ReturnType<typeof createFreshnessScope>;
 type CachedAuthoritativeAnalysis = {
@@ -157,6 +163,7 @@ export function createEditorAnalysisController(options: CreateEditorAnalysisCont
     analysis: EditorAnalysisLike | null | undefined,
   ): boolean {
     const diagnostics = analysis?.diagnostics ?? [];
+    if (isActiveDocumentSemanticValid(documentKey, currentRevision())) return true;
     return getWorkspaceSnapshotId(documentKey) != null && diagnostics.length === 0;
   }
 
@@ -169,6 +176,18 @@ export function createEditorAnalysisController(options: CreateEditorAnalysisCont
   ): Promise<void> {
     if (requestLanguage !== 'json') {
       clearJsonBlockSelectionForDocument(requestDocumentKey);
+      return;
+    }
+
+    if (isActiveDocumentSemanticValid(requestDocumentKey, currentRevision())) {
+      clearJsonBlockSelectionForDocument(requestDocumentKey, false);
+      return;
+    }
+    if (shouldSuppressJsonBlockFallback(requestDocumentKey, currentRevision())) {
+      clearJsonBlockSelectionForDocument(requestDocumentKey);
+      return;
+    }
+    if (isActiveDocumentSemanticPending(requestDocumentKey, currentRevision())) {
       return;
     }
 
@@ -294,9 +313,10 @@ export function createEditorAnalysisController(options: CreateEditorAnalysisCont
         token: treePathToken,
       }),
     );
-    const requestSnapshotId = getWorkspaceSnapshotId(requestDocumentKey);
+    const requestSnapshotId = resolveReadableSnapshotId(requestDocumentKey, requestRevision);
+    const hasJsonBlockSelection = getJsonBlockSelectionForDocument(requestDocumentKey) != null;
     const shouldUpdateJsonBlockSelection =
-      requestLanguage === 'json' && (syncGraphHighlight || requestSnapshotId == null);
+      requestLanguage === 'json' && (syncGraphHighlight || requestSnapshotId == null || hasJsonBlockSelection);
     if (shouldUpdateJsonBlockSelection) {
       await updateJsonBlockSelection(
         requestModel,

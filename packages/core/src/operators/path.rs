@@ -1,5 +1,5 @@
-use crate::tree::ParsedKey;
 use crate::operators::*;
+use crate::tree::ParsedKey;
 
 fn is_empty_placeholder(node: &TreeNode) -> bool {
     node.kind == NodeKind::Scalar

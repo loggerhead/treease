@@ -1,5 +1,5 @@
-use crate::tree::ParsedKey;
 use crate::operators::*;
+use crate::tree::ParsedKey;
 
 #[derive(Debug, Clone)]
 enum AssignPathSegment {

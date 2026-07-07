@@ -2,17 +2,25 @@ import { readFileSync } from 'node:fs';
 import type { Page } from '@playwright/test';
 import { expect, test } from './fixtures';
 import {
+  countMonacoElements,
   evaluateTreease,
+  getMonacoMarkers,
+  getMonacoValue,
   getMonacoRenderedTokenColor,
   readEditorState,
   readGraphClickProbes,
   setEditorContent,
   setMonacoPosition,
   waitForEditorReady,
+  waitForGraphRendered,
 } from './utils';
 
 const invalidJsonFixture = readFileSync(
   new URL('../../../../test/fixtures/json/adversarial__issue150__1000.0.json', import.meta.url),
+  'utf8',
+);
+const promptDiffEventsFixture = readFileSync(
+  new URL('../../../../test/fixtures/json/prompt_diff_events.1.json', import.meta.url),
   'utf8',
 );
 
@@ -89,6 +97,95 @@ async function readEditorTokenColor(page: Page, tokenText: string, lineNumber: n
 }
 
 test.describe('invalid json graph diagnostics', () => {
+  test('recovers whole-document JSON after deleting and restoring the closing brace', async ({ page }) => {
+    const sourceText = promptDiffEventsFixture;
+    const lastBraceOffset = sourceText.lastIndexOf('}');
+    const beforeLastBrace = sourceText.slice(0, lastBraceOffset);
+    const lastBraceLineNumber = beforeLastBrace.split('\n').length;
+    const lastBraceColumn = beforeLastBrace.length - beforeLastBrace.lastIndexOf('\n');
+
+    await page.goto('/editor');
+    await waitForEditorReady(page);
+    await setEditorContent(page, {
+      sourceText,
+      language: 'json',
+    });
+    await waitForGraphRendered(page);
+
+    await expect
+      .poll(async () => (await readGraphClickProbes(page)).map((probe) => probe.path.join('.')), { timeout: 5_000 })
+      .toEqual(expect.arrayContaining(['[0].type', '[1].type']));
+
+    await setMonacoPosition(page, 'source-editor', lastBraceLineNumber, lastBraceColumn + 1);
+    await page.keyboard.press('Backspace');
+
+    await waitForSyntaxError(page);
+    await expect
+      .poll(async () => (await getMonacoMarkers(page, 'source-editor')).map((marker) => marker.message), {
+        timeout: 5_000,
+      })
+      .toContain('Syntax error');
+    await expect.poll(async () => (await readJsonBlockRuntime(page)).selection, { timeout: 5_000 }).toBeNull();
+    await expect.poll(async () => (await readGraphClickProbes(page)).length, { timeout: 5_000 }).toBe(0);
+    await setMonacoPosition(page, 'source-editor', 1, sourceText.indexOf('"prompt_key"') + 2);
+    await expect.poll(async () => (await readJsonBlockRuntime(page)).selection, { timeout: 5_000 }).toBeNull();
+    await expect
+      .poll(async () => (await readJsonBlockRuntime(page)).streamState?.mode ?? null, { timeout: 5_000 })
+      .not.toBe('json-block');
+
+    await setMonacoPosition(page, 'source-editor', lastBraceLineNumber, lastBraceColumn);
+    await page.keyboard.type('}');
+
+    await expect.poll(async () => getMonacoValue(page, 'source-editor'), { timeout: 5_000 }).toBe(sourceText);
+    await expect.poll(async () => (await readEditorState(page)).tempModel.diagnostics, { timeout: 5_000 }).toEqual([]);
+    await expect.poll(async () => getMonacoMarkers(page, 'source-editor'), { timeout: 5_000 }).toEqual([]);
+    await waitForGraphRendered(page);
+    await expect.poll(async () => (await readJsonBlockRuntime(page)).selection, { timeout: 5_000 }).toBeNull();
+    await expect
+      .poll(async () => countMonacoElements(page, 'source-editor', '.treease-json-block-highlight'), {
+        timeout: 5_000,
+      })
+      .toBe(0);
+    await setMonacoPosition(page, 'source-editor', 1, sourceText.indexOf('"prompt_key"') + 2);
+    await expect.poll(async () => (await readJsonBlockRuntime(page)).selection, { timeout: 5_000 }).toBeNull();
+    await expect
+      .poll(async () => countMonacoElements(page, 'source-editor', '.treease-json-block-highlight'), {
+        timeout: 5_000,
+      })
+      .toBe(0);
+    await expect
+      .poll(async () => (await readGraphClickProbes(page)).map((probe) => probe.path.join('.')), { timeout: 5_000 })
+      .toEqual(expect.arrayContaining(['[0].type', '[1].type']));
+  });
+
+  test('loads prompt diff events fixture with graph and semantic tokens intact', async ({ page }) => {
+    await page.goto('/editor');
+    await waitForEditorReady(page);
+    await setEditorContent(page, {
+      sourceText: promptDiffEventsFixture,
+      language: 'json',
+    });
+
+    await waitForGraphRendered(page);
+    await expect.poll(async () => (await readEditorState(page)).tempModel.diagnostics, { timeout: 5_000 }).toEqual([]);
+    await expect.poll(async () => getMonacoMarkers(page, 'source-editor'), { timeout: 5_000 }).toEqual([]);
+    await expect
+      .poll(
+        async () => ({
+          keyColor: await readEditorTokenColor(page, '"type"', 1),
+          stringColor: await readEditorTokenColor(page, '"Mcrguz"', 1),
+        }),
+        { timeout: 5_000 },
+      )
+      .toEqual({
+        keyColor: expect.not.stringMatching(/^rgb\(15,\s*23,\s*42\)$/),
+        stringColor: expect.not.stringMatching(/^rgb\(15,\s*23,\s*42\)$/),
+      });
+    await expect
+      .poll(async () => (await readGraphClickProbes(page)).map((probe) => probe.path.join('.')), { timeout: 5_000 })
+      .toEqual(expect.arrayContaining(['[0].type', '[1].type']));
+  });
+
   test('shows one syntax error without leaking raw graph status', async ({ page }) => {
     await page.goto('/editor');
     await waitForEditorReady(page);
@@ -218,10 +315,10 @@ test.describe('invalid json graph diagnostics', () => {
     await waitForJsonBlockRender(page, expectedBlockText, ['title', 'file']);
 
     await expect.poll(() => readEditorTokenColor(page, '"title"', 1), { timeout: 5_000 }).toBe('rgb(163, 21, 21)');
-    await expect.poll(() => readEditorTokenColor(page, '"file"', 1), { timeout: 5_000 }).toBe('rgb(163, 21, 21)');
+    await expect.poll(() => readEditorTokenColor(page, '"file"', 2), { timeout: 5_000 }).toBe('rgb(163, 21, 21)');
     await expect
-      .poll(() => readEditorTokenColor(page, '"2023-04-03.0009"', 1), { timeout: 5_000 })
+      .poll(() => readEditorTokenColor(page, '"2023-04-03.0009"', 2), { timeout: 5_000 })
       .toBe('rgb(4, 81, 165)');
-    await expect.poll(() => readEditorTokenColor(page, '0009', 1), { timeout: 5_000 }).toBe('rgb(4, 81, 165)');
+    await expect.poll(() => readEditorTokenColor(page, '0009', 2), { timeout: 5_000 }).toBe('rgb(4, 81, 165)');
   });
 });

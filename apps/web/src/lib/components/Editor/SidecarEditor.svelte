@@ -35,6 +35,7 @@
     resolveRootScalarHighlightKindFromSnapshotKind,
   } from './root-scalar-highlight';
   import { createSidecarExternalSync } from './sidecar-external-sync';
+  import { createTreeaseMonacoEditorOptions } from './editor-options';
 
   export let tabId = 'tab-sidecar';
   export let tabName = 'Right Editor';
@@ -47,6 +48,16 @@
   export let onScroll: (payload: { scrollTop: number; scrollLeft: number }) => void = () => {};
   export let onContentChange: (text: string) => void = () => {};
   export let onEditorBlur: (text: string) => void = () => {};
+
+  const themeName = 'tree-sitter-light';
+  const editorOptions = {
+    ...createTreeaseMonacoEditorOptions(themeName),
+    scrollbar: { alwaysConsumeMouseWheel: false },
+    overviewRulerBorder: true,
+    colorDecorators: true,
+    colorDecoratorsActivatedOn: 'clickAndHover',
+    'semanticHighlighting.enabled': true,
+  };
 
   let container: HTMLDivElement;
   let monaco: typeof import('monaco-editor') | undefined;
@@ -405,14 +416,7 @@
     setModelDocumentKey(model, tab?.documentKey ?? sidecarDocumentKey());
     editor = monaco.editor.create(container, {
       model,
-      theme: 'tree-sitter-light',
-      minimap: { enabled: false },
-      automaticLayout: true,
-      scrollbar: { alwaysConsumeMouseWheel: false },
-      overviewRulerBorder: true,
-      colorDecorators: true,
-      colorDecoratorsActivatedOn: 'clickAndHover',
-      'semanticHighlighting.enabled': true,
+      ...editorOptions,
     });
     rootScalarDecorations = editor.createDecorationsCollection();
     applyRootScalarHighlightFromText(tab?.sourceText ?? '', activeLanguage);

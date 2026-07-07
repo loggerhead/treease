@@ -42,6 +42,10 @@ function snapshotNotReady<T>(): SnapshotReadResult<T> {
   return { status: 'snapshotNotReady' };
 }
 
+function readyTreePath(data: PathSeg[]): TreePathReadResult {
+  return { status: 'ready', data };
+}
+
 async function callTreePathResult(
   text: string,
   row: number,
@@ -61,7 +65,7 @@ async function callTreePathResult(
     spanEnd: byteOffset,
   });
   if (result.status !== 'ready') return snapshotNotReady();
-  return { status: 'ready', data: parseAnchorPath(result.data.anchors[0]?.path) };
+  return readyTreePath(parseAnchorPath(result.data.anchors[0]?.path));
 }
 
 function byteOffsetFromRowColumn(text: string, row: number, column: number): number {

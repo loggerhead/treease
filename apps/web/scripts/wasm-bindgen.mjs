@@ -54,6 +54,14 @@ export function runBindgen() {
     fs.renameSync(bgWasmDts, outWasmDts);
   }
 
+  // 4.5. wasm-pack may also emit a helper file named core_bg.js even though
+  //      our rewritten entry point no longer needs it. Remove it so pkg/ only
+  //      exposes the normalized core.* surface.
+  const bgJs = path.resolve(wasmPkgDir, 'core_bg.js');
+  if (fs.existsSync(bgJs)) {
+    fs.rmSync(bgJs, { force: true });
+  }
+
   // 5. 去掉 core.js 中的静态 new URL('...wasm', import.meta.url) 引用，
   //    并用 core.wasm 替换所有 core_bg.wasm 引用。
   const generatedJs = path.resolve(wasmPkgDir, 'core.js');

@@ -1,16 +1,11 @@
----
-summary: "Repository 的硬性约束与跨目录治理入口。"
-read_when:
-  - 需要确认任务边界、跨层职责与文档读取顺序时
----
+电报式规范，仅根节点规则。处理子目录前先阅读范围代理文档。技能负责流程；根节点管控硬性策略与路由。
 
-# Repository Guidelines
+# Start
 
-## 0. 最高优先级：任何操作前先执行 `pnpm docs:list`
-- 这是本仓库的硬性前置规则。
-- 进入仓库后的第一条工作命令必须是 `pnpm docs:list`。
-- 在执行 `pnpm docs:list` 之前，不要搜索、读业务文件、改代码、跑测试、执行其他命令，或基于仓库内容回答问题。
-- 跑完 `pnpm docs:list` 后，先按输出中的 `Read when` 读取命中的文档；默认先读 `docs/index.md` 选择最短阅读路径，只有任务直接触及 Document Runtime、snapshot、protocol、mainGraph 语义时再补 `CONTEXT.md`。
+- 文档 / 用户可见操作：执行 pnpm docs:list 命令，之后仅读取相关文档。
+- 现有方案前置核查：在提出或开发自定义系统、功能、工作流、工具、集成方案或自动化脚本前，先快速核查是否已有成熟开源项目、持续维护类库、现成 OpenClaw 插件或免费平台可满足需求。现有方案够用则优先选用；仅当现有方案存在适配性差、成本过高、停止维护、存在安全隐患、不合规，或用户明确要求定制开发时，才自主开发定制内容。除非用户明确同意付费，否则不推荐付费服务。该环节仅做简短前置校验，不开展大范围深度调研。
+
+
 
 ## Project Overview
 - Treease 是一个多格式结构化文档工具链：`packages/core/` 负责 Rust 解析/格式化/算子/评估/建图，`apps/web/` 负责编辑器与图形界面，`apps/server/` 负责账号 / 计费 / 分享 / AI server 能力，`apps/cli/` 负责独立 CLI crate、acceptance 测试与文档入口。
@@ -35,6 +30,7 @@ read_when:
 - 不要跨层绕行：Web 不直接引用 `packages/core/src`，Core 不承载 Svelte/DOM/浏览器逻辑，CLI 不复制 Core 实现。
 - 稳定入口文件保持薄壳：`apps/web/src/lib/components/GraphViewer.svelte`、`apps/web/src/workers/wasm-runtime.worker.ts`、`packages/core/src/wasm_document.rs`。
 - Web 只负责展示、交互、前端状态；解析、格式化、算子、评估、graph build 必须下沉到 `packages/core/`。
+- 文档、注释、示例命令与截图说明中禁止写入本机身份信息；统一避免使用 shell 用户变量名、home 目录绝对路径或可反推用户名的本地路径。
 - 任何逻辑或 bug fix 都禁止通过 fallback、补丁式分支、静默降级、双写语义或“只修当前 case”的特判落地；必须直接修主链、协议真源或真实职责边界。
 - Worker 新能力先改 `apps/web/src/workers/runtime/protocol.ts`，再落 handler；跨边界错误统一走 `ok/error`。
 - snapshot-bound 读取必须显式带 `snapshotId`；不要在读取 API 内偷偷建 snapshot。

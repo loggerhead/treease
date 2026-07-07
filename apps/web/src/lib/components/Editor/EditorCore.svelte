@@ -48,7 +48,7 @@
   import { callSharedWasmWorker, getSharedWasmWorkerClient } from '../../wasm/wasm-worker-singleton';
   import { attachMonacoTestHook } from '../../monaco/test-hook';
   import { toast } from 'svelte-sonner';
-  import { getActiveDocumentText } from '../../services/ActiveDocumentContext';
+  import { getActiveDocumentText, resolveCommitBaseSnapshotId } from '../../services/ActiveDocumentContext';
   import { resolvePathSelectionRangeResult } from '../../services/TreePathService';
   import { bindWorkspaceSnapshotIfPresent, getWorkspaceSnapshotId } from '../../store/workspace-snapshot-bindings';
   import { resolveEditorRuntimeOverlay, type RuntimeStateEventDetail } from '../../runtime-loading';
@@ -79,6 +79,7 @@
   import { EDITOR_CONFIG } from '../../config/constants';
   import { monacoChangesToDocumentTextEdits, type MonacoTextChange } from '../../../shared/document-text-edits';
   import { serializePath } from '../../../shared/document-anchor-utils';
+  import { createTreeaseMonacoEditorOptions } from './editor-options';
 
   export let tabSummaries: TabSummary[] = [];
   export let activeTabId = '';
@@ -277,6 +278,15 @@
 
   const treePathLanguages = supportedEditorLanguageSet;
   const themeName = 'tree-sitter-light';
+  const editorOptions = {
+    ...createTreeaseMonacoEditorOptions(themeName),
+    scrollbar: { alwaysConsumeMouseWheel: false },
+    overviewRulerBorder: true,
+    colorDecorators: true,
+    colorDecoratorsActivatedOn: 'clickAndHover',
+    'semanticHighlighting.enabled': true,
+    readOnly: true,
+  };
   const maxTabs = EDITOR_CONFIG.maxTabs;
   const initialCode = getLanguageExample('json');
   $: rootScalarStyle = [
@@ -525,15 +535,7 @@
     const container = dropZone.getContainer();
     editor = monaco.editor.create(container, {
       model,
-      theme: themeName,
-      minimap: { enabled: false },
-      automaticLayout: true,
-      scrollbar: { alwaysConsumeMouseWheel: false },
-      overviewRulerBorder: true,
-      colorDecorators: true,
-      colorDecoratorsActivatedOn: 'clickAndHover',
-      'semanticHighlighting.enabled': true,
-      readOnly: true,
+      ...editorOptions,
     });
     cleanupSourceEditorTestHook = attachMonacoTestHook(
       {
@@ -559,6 +561,7 @@
         executeEdits: (source, edits) =>
           editor?.executeEdits(source, edits as Monaco.editor.IIdentifiedSingleEditOperation[]),
         onDidChangeModel: (listener) => editor?.onDidChangeModel(listener) ?? { dispose: () => {} },
+        getMarkers: () => (model ? monaco.editor.getModelMarkers({ resource: model.uri }) : []),
         getModel: () => editor?.getModel() ?? null,
       },
       'source-editor',
@@ -616,9 +619,10 @@
       const previousLength = lastModelLength;
       const previousText = lastModelText;
       const nextText = activeModel.getValue();
+      const changes = (event as unknown as { changes?: MonacoTextChange[] }).changes ?? [];
+      const isFlush = (event as unknown as { isFlush?: boolean }).isFlush ?? false;
       applyRootScalarHighlight(null);
       syncColorViewportState('content');
-      const changes = (event as unknown as { changes?: MonacoTextChange[] }).changes ?? [];
       isStoreUpdateSuppressed = true;
       notifyCompareEdit();
       if (editorFullEditController.isImportActive()) {
@@ -738,7 +742,6 @@
       }
       sourceText.set(nextText);
       const documentKeyValue = getDocumentKey();
-      const isFlush = (event as unknown as { isFlush?: boolean }).isFlush ?? false;
       if (documentKeyValue && changes.length > 0 && !isFlush) {
         const documentTextEdits = monacoChangesToDocumentTextEdits(
           new TextEncoder().encode(previousText),
@@ -844,7 +847,7 @@
       requestDocumentKey,
       nextText,
       documentTextEdits,
-      baseSnapshotId: getWorkspaceSnapshotId(requestDocumentKey),
+      baseSnapshotId: resolveCommitBaseSnapshotId(requestDocumentKey),
       commitRevision: commitEditorState,
       settings: buildDocumentJobSettings({
         enableNest: $settings.parser.enableNest,

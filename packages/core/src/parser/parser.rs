@@ -2,9 +2,11 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use crate::analysis::diagnostics::{DiagnosticStage, Diagnostics, ParseErrorInfo};
-use crate::registry::{ExpressionBuildError, build_expression_tree_from_postfix_ops, build_traversal_expression};
-use crate::tree::ParsedKey;
 use crate::registry::expression::{ExpressionNode, Operation, OperationId};
+use crate::registry::{
+    ExpressionBuildError, build_expression_tree_from_postfix_ops, build_traversal_expression,
+};
+use crate::tree::ParsedKey;
 
 use super::lexer::{LexerError, Token, TokenKind};
 use super::lexer_participle::{self, ParticipleLexerError};

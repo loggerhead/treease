@@ -4,6 +4,12 @@ import type * as Monaco from 'monaco-editor';
 import { commitApplyEdits } from '../../services/DocumentCommitService';
 import type { SupportedEditorLanguageId } from '../../monaco/language-support';
 import type { DocumentAnalysisResult } from '../../../shared/worker-protocol/protocol';
+import {
+  markActiveDocumentSemanticInvalid,
+  markActiveDocumentSemanticPending,
+  markActiveDocumentSemanticTerminal,
+  markActiveDocumentSemanticValid,
+} from '../../store/active-document-semantic-state';
 
 export type EditorTabSnapshotBinding = {
   documentKey: string;
@@ -35,6 +41,11 @@ type CommitEditorTabTextChangeOptions = {
 
 export function commitEditorTabTextChange(options: CommitEditorTabTextChangeOptions): number {
   const revision = options.commitRevision();
+  markActiveDocumentSemanticPending({
+    documentKey: options.requestDocumentKey,
+    language: options.requestLanguage,
+    revision,
+  });
   void commitApplyEdits({
     documentKey: options.requestDocumentKey,
     language: options.requestLanguage,
@@ -45,6 +56,30 @@ export function commitEditorTabTextChange(options: CommitEditorTabTextChangeOpti
     builderConfig: options.builderConfig,
   }).then((result) => {
     const fresh = options.isFresh({ revision });
+    if (fresh) {
+      if (result.status === 'snapshotReady' && result.snapshotId != null) {
+        markActiveDocumentSemanticValid({
+          documentKey: options.requestDocumentKey,
+          language: options.requestLanguage,
+          revision,
+          snapshotId: result.snapshotId,
+        });
+      } else if (result.status === 'parseFailed') {
+        markActiveDocumentSemanticInvalid({
+          documentKey: options.requestDocumentKey,
+          language: options.requestLanguage,
+          revision,
+          snapshotId: result.snapshotId,
+        });
+      } else if (result.status === 'rejected' || result.status === 'noSnapshot') {
+        markActiveDocumentSemanticTerminal({
+          documentKey: options.requestDocumentKey,
+          language: options.requestLanguage,
+          revision,
+          status: result.status,
+        });
+      }
+    }
     if (
       result.sourceText != null &&
       options.documentTextEdits.length === 0 &&

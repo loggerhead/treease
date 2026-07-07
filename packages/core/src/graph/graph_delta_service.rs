@@ -8,10 +8,10 @@ use super::graph_builder_preorder::{GraphDelta, GraphTableCellPatch};
 use super::graph_fragment_index::FragmentInfo;
 use super::graph_model_index::{GraphModelIndex, node_stable_id};
 use super::graph_relayout::compute_ancestor_relayout_chain;
-use crate::tree::{NodeId, TreeNode, TreeNodeKind, TreeStore};
 use crate::tree::incremental_edit::{
     DocumentTextEdit, find_affected_node_id_for_edit, find_reparse_boundary_id,
 };
+use crate::tree::{NodeId, TreeNode, TreeNodeKind, TreeStore};
 
 // ---------------------------------------------------------------------------
 // ---------------------------------------------------------------------------

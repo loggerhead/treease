@@ -3,6 +3,11 @@ import type { SnapshotId } from '@core-wasm/index';
 import type { SupportedEditorLanguageId } from '../monaco/language-support';
 import { getDocumentSessionState } from '../store/document-session-store';
 import { getWorkspaceState } from '../store/workspace-store';
+import {
+  getActiveDocumentCommitBaseSnapshotId,
+  getActiveDocumentSuccessfulSnapshotId,
+} from '../store/active-document-semantic-state';
+import { getWorkspaceSnapshotId } from '../store/workspace-snapshot-bindings';
 
 export type ActiveDocumentTextSource = 'monacoModel' | 'editorIO' | 'workspaceTab' | 'store';
 
@@ -16,12 +21,24 @@ export type ActiveDocumentContext = {
   model: Monaco.editor.ITextModel | null;
 };
 
+export function resolveReadableSnapshotId(documentKey: string, revision: number, fallbackSnapshotId?: SnapshotId | null): SnapshotId | null {
+  return getActiveDocumentSuccessfulSnapshotId(documentKey, revision) ?? fallbackSnapshotId ?? getWorkspaceSnapshotId(documentKey);
+}
+
+export function resolveCommitBaseSnapshotId(documentKey: string, fallbackSnapshotId?: SnapshotId | null): SnapshotId | null {
+  return getActiveDocumentCommitBaseSnapshotId(documentKey) ?? fallbackSnapshotId ?? getWorkspaceSnapshotId(documentKey);
+}
+
 export function getActiveDocumentContext(): ActiveDocumentContext {
   const session = getDocumentSessionState();
   const workspace = getWorkspaceState();
   const activeTab = workspace.tabsById[workspace.activeTabId] ?? null;
   const documentKey = activeTab?.documentKey ?? session.documentKey;
-  const snapshotId = activeTab?.snapshotId ?? workspace.snapshotBindingsByDocumentKey[documentKey]?.snapshotId ?? null;
+  const snapshotId = resolveReadableSnapshotId(
+    documentKey,
+    session.editorRevision,
+    activeTab?.snapshotId ?? workspace.snapshotBindingsByDocumentKey[documentKey]?.snapshotId ?? null,
+  );
   const model = session.editorIO?.getModel() ?? null;
   const modelText = model?.getValue();
   if (modelText != null) {
@@ -52,7 +69,7 @@ export function getActiveDocumentContext(): ActiveDocumentContext {
       documentKey: activeTab.documentKey,
       languageId: activeTab.languageId,
       revision: session.editorRevision,
-      snapshotId: activeTab.snapshotId,
+      snapshotId,
       text: activeTab.sourceText,
       textSource: 'workspaceTab',
       model: null,
@@ -62,7 +79,7 @@ export function getActiveDocumentContext(): ActiveDocumentContext {
     documentKey: session.documentKey,
     languageId: session.languageId,
     revision: session.editorRevision,
-    snapshotId: workspace.snapshotBindingsByDocumentKey[session.documentKey]?.snapshotId ?? null,
+    snapshotId,
     text: session.sourceText,
     textSource: 'store',
     model: null,

@@ -28,6 +28,7 @@ read_when:
 - 入口页规则以 `docs/AGENTS.md` 和 `docs/docs.json` 为准，脚本只做生成与校验，不另行发明一套导航真源。
 - 脚本若依赖主题域入口命名，统一按 `index.md` 处理，而不是依赖 `README.md`。
 - 生成产物只能落在约定路径，如 `docs/docs_map.md`、`docs/generated/*`。
+- `check-docs.mjs` 需要拦截文档里的本机身份泄露，包括 shell 用户变量名、home 目录绝对路径和可反推用户名的本地路径。
 - 修改脚本后，必须至少复核：
   - `pnpm docs:list`
   - `pnpm docs:map:check`

@@ -104,7 +104,7 @@ describe('runIntakeJob', () => {
 
     expect(result.status).toBe('diagnosticsOnly');
     expect(result.resultStatus).toBe('parseFailed');
-    expect(result.snapshotId).toBeNull();
+    expect(result.snapshotId).toBe(mockSnapshotId);
     expect(result.analysis).toBe(mockAnalysis);
     expect(result.error).toBeUndefined();
   });
@@ -143,6 +143,7 @@ describe('runIntakeJob', () => {
     });
 
     expect(runTextDocumentJobForGraph).toHaveBeenCalledWith({
+      builderConfig: undefined,
       documentKey: 'doc-1',
       language: 'yaml',
       text: 'key: value',

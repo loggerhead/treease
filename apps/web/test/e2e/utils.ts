@@ -323,6 +323,16 @@ export async function getMonacoLanguage(page: Page, hookId: string) {
   return evaluateTreease(page, (treease, nextHookId) => treease.editor.getLanguage(nextHookId), hookId);
 }
 
+export async function getMonacoMarkers(page: Page, hookId: string) {
+  await waitForMonacoHook(page, hookId);
+  return evaluateTreease(page, (treease, nextHookId) => treease.editor.getMarkers?.(nextHookId) ?? [], hookId);
+}
+
+export async function countMonacoElements(page: Page, hookId: string, selector: string) {
+  const locator = await waitForMonacoHook(page, hookId);
+  return locator.locator(selector).count();
+}
+
 export async function getMonacoRenderedTokenColor(
   page: Page,
   hookId: string,

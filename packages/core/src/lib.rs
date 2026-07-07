@@ -63,9 +63,8 @@ pub mod internal {
         pub use crate::analysis::document_analysis;
         pub use crate::analysis::line_index;
         pub use crate::context;
-        pub use crate::graph::authoritative_graph_service;
-        pub use crate::registry::operation;
         pub use crate::errors;
+        pub use crate::graph::authoritative_graph_service;
         pub use crate::graph::graph_builder;
         pub use crate::graph::graph_builder_preorder;
         pub use crate::graph::graph_delta;
@@ -90,6 +89,7 @@ pub mod internal {
         pub use crate::registry::expression_builder;
         pub use crate::registry::format;
         pub use crate::registry::format_registry;
+        pub use crate::registry::operation;
         pub use crate::registry::operation_defs;
         pub use crate::registry::operation_prefs;
         pub use crate::registry::operator_registry;

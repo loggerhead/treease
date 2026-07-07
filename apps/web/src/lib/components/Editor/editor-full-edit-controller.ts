@@ -22,6 +22,11 @@ import {
 } from '../../monaco/language-support';
 import type { DocumentAnalysisResult } from '../../../shared/worker-protocol/protocol';
 import { createPrimaryFullEditSink, type FullEditSink } from './editor-full-edit-sink';
+import {
+  markActiveDocumentSemanticInvalid,
+  markActiveDocumentSemanticPending,
+  markActiveDocumentSemanticValid,
+} from '../../store/active-document-semantic-state';
 
 type FullEditReason =
   | 'initial-example'
@@ -213,6 +218,7 @@ export function createEditorFullEditController(options: CreateEditorFullEditCont
     language: SupportedEditorLanguageId;
     revision: number;
     snapshotId: SnapshotId | null;
+    resultStatus: Extract<DocumentJobGraphResult['status'], 'snapshotReady' | 'parseFailed'>;
     analysis: DocumentAnalysisResult | null;
     sourceText?: string | null;
   }): Promise<void> | void {
@@ -223,9 +229,22 @@ export function createEditorFullEditController(options: CreateEditorFullEditCont
     if (typeof params.sourceText === 'string') {
       options.setSourceText(params.sourceText);
     }
-    if (params.snapshotId != null) {
+    if (params.resultStatus === 'snapshotReady' && params.snapshotId != null) {
+      markActiveDocumentSemanticValid({
+        documentKey: params.documentKey,
+        language: params.language,
+        revision: params.revision,
+        snapshotId: params.snapshotId,
+      });
       fullEditSink.bindSnapshot({
         documentKey: params.documentKey,
+        revision: params.revision,
+        snapshotId: params.snapshotId,
+      });
+    } else if (params.resultStatus === 'parseFailed') {
+      markActiveDocumentSemanticInvalid({
+        documentKey: params.documentKey,
+        language: params.language,
         revision: params.revision,
         snapshotId: params.snapshotId,
       });
@@ -394,6 +413,11 @@ export function createEditorFullEditController(options: CreateEditorFullEditCont
     const revision = options.commitEditorState();
     const nextLanguage = params.language;
     if (params.isFresh && !params.isFresh()) return null;
+    markActiveDocumentSemanticPending({
+      documentKey,
+      language: nextLanguage,
+      revision,
+    });
 
     importSession = {
       active: true,
@@ -612,6 +636,7 @@ export function createEditorFullEditController(options: CreateEditorFullEditCont
           language: session.language,
           revision: session.revision,
           snapshotId: intakeResult.snapshotId,
+          resultStatus: 'snapshotReady',
           analysis: intakeResult.analysis,
           sourceText: shouldApplyAuthoritativeSourceText ? authoritativeSourceText : undefined,
         });
@@ -621,7 +646,8 @@ export function createEditorFullEditController(options: CreateEditorFullEditCont
           documentKey: session.documentKey,
           language: session.language,
           revision: session.revision,
-          snapshotId: null,
+          snapshotId: intakeResult.snapshotId,
+          resultStatus: 'parseFailed',
           analysis: intakeResult.analysis,
           sourceText: intakeResult.sourceText,
         });
@@ -737,7 +763,8 @@ export function createEditorFullEditController(options: CreateEditorFullEditCont
         documentKey,
         language: session.language,
         revision: session.revision,
-        snapshotId: null,
+        snapshotId: intakeResult.snapshotId,
+        resultStatus: 'parseFailed',
         analysis: intakeResult.analysis,
         sourceText: formattedSourceText,
       });
@@ -767,6 +794,7 @@ export function createEditorFullEditController(options: CreateEditorFullEditCont
       language: session.language,
       revision: session.revision,
       snapshotId: intakeResult.snapshotId,
+      resultStatus: 'snapshotReady',
       analysis: intakeResult.analysis,
       sourceText: formattedSourceText,
     });

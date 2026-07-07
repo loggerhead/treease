@@ -94,6 +94,7 @@ export function ensureWindowTreease(): WindowTreease | null {
         fn(scrollTop, scrollLeft);
       },
       getLanguage: (hookId) => getEditorHook(hookId).getLanguage?.() ?? null,
+      getMarkers: (hookId) => getEditorHook(hookId).getMarkers?.() ?? [],
       getRenderedTokenColor: (hookId, tokenText, lineNumber) =>
         getEditorHook(hookId).getRenderedTokenColor?.(tokenText, lineNumber) ?? null,
       getTokenTypeAt: (hookId, lineNumber, column) =>

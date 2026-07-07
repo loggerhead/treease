@@ -2,6 +2,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createEditorAnalysisController } from './editor-analysis-controller';
 import type { JsonBlockSelection } from '../../store/editor-store';
 import { getWorkspaceSnapshotId } from '../../store/workspace-snapshot-bindings';
+import {
+  clearActiveDocumentSemanticState,
+  markActiveDocumentSemanticInvalid,
+  markActiveDocumentSemanticPending,
+  markActiveDocumentSemanticValid,
+} from '../../store/active-document-semantic-state';
 
 type ControllerOptions = Parameters<typeof createEditorAnalysisController>[0];
 type CursorPathRequestMarker = NonNullable<ControllerOptions['markCursorPathRequested']>;
@@ -134,6 +140,7 @@ function resolvedAnalysis(overrides: Record<string, unknown> = {}) {
 describe('editor analysis controller json block selection', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    clearActiveDocumentSemanticState();
     mocked.resolveTreePathResult.mockResolvedValue({ status: 'ready', data: [] });
     mocked.resolveDocumentAnalysis.mockResolvedValue(resolvedAnalysis());
     mocked.callSharedWasmWorker.mockResolvedValue({
@@ -268,6 +275,111 @@ describe('editor analysis controller json block selection', () => {
 
     expect(getSelection()?.blockDocumentKey).toBe('doc-json:json-block:3:7:14');
     expect(primeSemanticTokensForDocument).toHaveBeenCalledWith('doc-json', expect.any(ArrayBuffer));
+    expect(refreshSemanticTokensForLanguage).toHaveBeenCalledWith('json');
+    expect(mocked.resolveTreePathResult).toHaveBeenCalledWith(
+      expect.anything(),
+      { lineNumber: 2, column: 3 },
+      'doc-json',
+      'json',
+      false,
+      null,
+    );
+  });
+
+  it('uses the current valid semantic snapshot instead of JSON block fallback', async () => {
+    vi.mocked(getWorkspaceSnapshotId).mockReturnValueOnce(null);
+    markActiveDocumentSemanticValid({
+      documentKey: 'doc-json',
+      language: 'json',
+      revision: 3,
+      snapshotId: 42 as any,
+    });
+    const existingSelection = {
+      sourceDocumentKey: 'doc-json',
+      blockDocumentKey: 'doc-json:json-block:2:0:7',
+      revision: 2,
+      language: 'json',
+      text: '{"a":1}',
+      startByte: 0,
+      endByte: 7,
+      startLineNumber: 1,
+      startColumn: 1,
+      endLineNumber: 1,
+      endColumn: 8,
+    } satisfies JsonBlockSelection;
+    const { controller, setJsonBlockSelection } = createController({ selection: existingSelection });
+
+    await controller.updateTreePath({ lineNumber: 2, column: 3 }, { syncGraphHighlight: false });
+
+    expect(mocked.callSharedWasmWorker).not.toHaveBeenCalled();
+    expect(setJsonBlockSelection).toHaveBeenCalledWith(null);
+    expect(mocked.resolveTreePathResult).toHaveBeenCalledWith(
+      expect.anything(),
+      { lineNumber: 2, column: 3 },
+      'doc-json',
+      'json',
+      false,
+      42,
+    );
+  });
+
+  it('does not run JSON block fallback while the current revision is pending', async () => {
+    vi.mocked(getWorkspaceSnapshotId).mockReturnValueOnce(null);
+    markActiveDocumentSemanticPending({
+      documentKey: 'doc-json',
+      language: 'json',
+      revision: 3,
+    });
+    const { controller } = createController();
+
+    await controller.updateTreePath({ lineNumber: 2, column: 3 }, { syncGraphHighlight: false });
+
+    expect(mocked.callSharedWasmWorker).not.toHaveBeenCalled();
+    expect(mocked.resolveTreePathResult).toHaveBeenCalledWith(
+      expect.anything(),
+      { lineNumber: 2, column: 3 },
+      'doc-json',
+      'json',
+      false,
+      null,
+    );
+  });
+
+  it('does not downgrade a temporarily invalid whole-document JSON into JSON block fallback', async () => {
+    vi.mocked(getWorkspaceSnapshotId).mockReturnValueOnce(null);
+    markActiveDocumentSemanticValid({
+      documentKey: 'doc-json',
+      language: 'json',
+      revision: 2,
+      snapshotId: 41 as any,
+    });
+    markActiveDocumentSemanticInvalid({
+      documentKey: 'doc-json',
+      language: 'json',
+      revision: 3,
+      snapshotId: 42 as any,
+    });
+    const existingSelection = {
+      sourceDocumentKey: 'doc-json',
+      blockDocumentKey: 'doc-json:json-block:2:0:7',
+      revision: 2,
+      language: 'json',
+      text: '{"a":1}',
+      startByte: 0,
+      endByte: 7,
+      startLineNumber: 1,
+      startColumn: 1,
+      endLineNumber: 1,
+      endColumn: 8,
+    } satisfies JsonBlockSelection;
+    const { controller, setJsonBlockSelection, clearSemanticTokensForDocument, refreshSemanticTokensForLanguage } =
+      createController({ selection: existingSelection });
+
+    await controller.updateTreePath({ lineNumber: 2, column: 3 }, { syncGraphHighlight: true });
+
+    expect(mocked.callSharedWasmWorker).not.toHaveBeenCalled();
+    expect(setJsonBlockSelection).toHaveBeenCalledWith(null);
+    expect(clearSemanticTokensForDocument).toHaveBeenCalledWith('doc-json');
     expect(refreshSemanticTokensForLanguage).toHaveBeenCalledWith('json');
     expect(mocked.resolveTreePathResult).toHaveBeenCalledWith(
       expect.anything(),

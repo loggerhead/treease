@@ -78,16 +78,10 @@ export function createGraphViewerRenderEffects(deps: RenderEffectsDeps) {
     const documentKey = fullEditUiState?.documentKey ?? snapshot.documentKey;
     const language = fullEditUiState?.language || snapshot.language;
     const renderSignature = `${documentKey}|${fullEditUiState?.revision ?? -1}|${language}|${snapshot.sourceText}`;
-    if (!snapshot.hasRenderRuntime || snapshot.documentKey === '' || fullEditUiState?.active !== true) {
-      return;
-    }
-    if (fullEditUiState.phase === 'preparing' || fullEditUiState.phase === 'idle') {
-      return;
-    }
+    if (!snapshot.hasRenderRuntime || snapshot.documentKey === '' || fullEditUiState?.active !== true) return;
+    if (fullEditUiState.phase === 'preparing' || fullEditUiState.phase === 'idle') return;
     if (fullEditUiState.transportKind === 'file') {
-      if (!fullEditUiState.sessionId) {
-        return;
-      }
+      if (!fullEditUiState.sessionId) return;
       deps.markGraphRequested({
         documentKey,
         revision: fullEditUiState.revision,
@@ -99,9 +93,7 @@ export function createGraphViewerRenderEffects(deps: RenderEffectsDeps) {
         language,
         revision: fullEditUiState.revision,
       });
-      if (!externalRender) {
-        return;
-      }
+      if (!externalRender) return;
       void deps
         .attachFullEditDocumentJobSession(externalRender)
         .then((result) => {
@@ -115,9 +107,7 @@ export function createGraphViewerRenderEffects(deps: RenderEffectsDeps) {
         });
       return;
     }
-    if (renderSignature === lastFullEditRenderSignature) {
-      return;
-    }
+    if (renderSignature === lastFullEditRenderSignature) return;
     lastFullEditRenderSignature = renderSignature;
     deps.markGraphRequested({
       documentKey,
@@ -140,16 +130,12 @@ export function createGraphViewerRenderEffects(deps: RenderEffectsDeps) {
       pendingRenderSignature = '';
       lastJsonBlockActive = false;
     }
-    if (!snapshot.hasRenderRuntime || snapshot.documentKey === '' || snapshot.isBlocked) {
-      return;
-    }
+    if (!snapshot.hasRenderRuntime || snapshot.documentKey === '' || snapshot.isBlocked) return;
     const renderText = snapshot.sourceText;
     const documentKey = snapshot.documentKey;
     const revision = snapshot.editorRevision;
     const language = snapshot.language;
-    if (externalFullEditRenderAuthority.hasActiveRender(documentKey, revision, language)) {
-      return;
-    }
+    if (externalFullEditRenderAuthority.hasActiveRender(documentKey, revision, language)) return;
     if (externalFullEditRenderAuthority.hasCompletedRender(documentKey, revision, language)) {
       markRendered(documentKey, revision, renderText, language);
       return;
@@ -171,9 +157,7 @@ export function createGraphViewerRenderEffects(deps: RenderEffectsDeps) {
       revision === lastEditorRevisionRendered &&
       renderText === lastRenderedSourceText &&
       language === lastRenderedLanguageId
-    ) {
-      return;
-    }
+    ) return;
     const renderSignature = `${documentKey}|${revision}|${language}|${renderText}`;
     const graphAlreadyUpToDate =
       snapshot.graphAppliedRevision >= revision &&
@@ -185,9 +169,7 @@ export function createGraphViewerRenderEffects(deps: RenderEffectsDeps) {
       markRendered(documentKey, revision, renderText, language);
       return;
     }
-    if (pendingRenderSignature === renderSignature) {
-      return;
-    }
+    if (pendingRenderSignature === renderSignature) return;
     pendingRenderSignature = renderSignature;
     deps.markGraphRequested({
       documentKey,
@@ -218,9 +200,7 @@ export function createGraphViewerRenderEffects(deps: RenderEffectsDeps) {
           latestAfterAttach.language === language &&
           latestAfterAttach.sourceText === renderText &&
           pendingRenderSignature === renderSignature
-        ) {
-          pendingRenderSignature = '';
-        }
+        ) pendingRenderSignature = '';
       });
     });
   }

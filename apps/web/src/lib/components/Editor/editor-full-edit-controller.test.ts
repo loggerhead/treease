@@ -57,6 +57,11 @@ import {
 import { editorStore, type FullEditUiState } from '../../store/editor-store-internal';
 import { createEditorFullEditController } from './editor-full-edit-controller';
 import type { FullEditSink } from './editor-full-edit-sink';
+import {
+  clearActiveDocumentSemanticState,
+  getActiveDocumentCommitBaseSnapshotId,
+  getActiveDocumentSemanticState,
+} from '../../store/active-document-semantic-state';
 
 describe('editor-full-edit-controller', () => {
   const originalRequestAnimationFrame = globalThis.requestAnimationFrame;
@@ -65,6 +70,7 @@ describe('editor-full-edit-controller', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     editorStore.reset();
+    clearActiveDocumentSemanticState();
     clearWorkspaceSnapshot('doc-test');
     clearWorkspaceSnapshot('sidecar:tab-sidecar:0');
     globalThis.requestAnimationFrame = ((callback: FrameRequestCallback) => {
@@ -391,6 +397,14 @@ describe('editor-full-edit-controller', () => {
       );
     });
     expect(sinkEvents.some((event) => event.kind === 'bindSnapshot')).toBe(false);
+    expect(getActiveDocumentSemanticState('doc-test')).toEqual(
+      expect.objectContaining({
+        status: 'invalidJsonBlockEligible',
+        snapshotId: 10,
+        revision: 5,
+      }),
+    );
+    expect(getActiveDocumentCommitBaseSnapshotId('doc-test')).toBe(10);
     expect(options.updateActiveTempModel).not.toHaveBeenCalled();
   });
 

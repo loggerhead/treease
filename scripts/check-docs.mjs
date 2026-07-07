@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 const governanceDocs = collectGovernanceDocs();
+const markdownDocs = collectMarkdownFiles('.');
 const cargoBinsByDir = collectCargoBinNamesByDir();
 const cargoBins = new Set([...cargoBinsByDir.values()].flatMap((bins) => [...bins]));
 const packageScriptsByDir = collectPackageScriptsByDir();
@@ -305,6 +306,23 @@ function validateCommands(docPath, content) {
   }
 }
 
+function validateSensitiveContent(docPath, content) {
+  const lines = content.split('\n');
+  for (const [index, line] of lines.entries()) {
+    if (/\$USER\b/.test(line)) {
+      fail(`${docPath}:${index + 1}: 禁止出现 shell 用户变量名，请改用脱敏占位符`);
+    }
+
+    if (/(^|[^A-Za-z0-9_])\/Users\/[^\s)\]"'`>]+/.test(line)) {
+      fail(`${docPath}:${index + 1}: 禁止出现 macOS home 目录绝对路径，请改用相对路径或脱敏占位符`);
+    }
+
+    if (/(^|[^A-Za-z0-9_])\/home\/[^\s)\]"'`>]+/.test(line)) {
+      fail(`${docPath}:${index + 1}: 禁止出现 home 目录绝对路径，请改用相对路径或脱敏占位符`);
+    }
+  }
+}
+
 function resolveCommandPath(cwd, targetPath) {
   return path.resolve(cwd, targetPath);
 }
@@ -468,6 +486,11 @@ function main() {
     validateDocMetadata(docPath, content);
     validateDocPaths(docPath, content);
     validateCommands(docPath, content);
+  }
+
+  for (const docPath of markdownDocs) {
+    const content = readRepoFile(docPath);
+    validateSensitiveContent(docPath, content);
   }
 
   validateAgentRoutingContract();

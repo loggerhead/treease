@@ -5,11 +5,11 @@ use crate::formats::{
 };
 
 use crate::errors::{CoreError, FormatError, ParseError};
+use crate::language::tree_sitter_support;
 use crate::language::{FormatLanguage, Language};
+use crate::registry::format_registry;
 use crate::registry::{FormatRegistry, format_from_string};
 use crate::tree::{NodeId, TreeStore};
-use crate::language::tree_sitter_support;
-use crate::registry::format_registry;
 
 #[derive(Debug, Clone)]
 pub struct CodecService {

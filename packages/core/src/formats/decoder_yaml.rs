@@ -1258,9 +1258,9 @@ pub fn decode_yaml(input: &str) -> Result<DecodedDocument, CoreError> {
 mod tests {
     use super::YamlDecoder;
     use crate::errors::{CoreError, ParseError};
-    use crate::tree::TreeNodeKind;
     use crate::evaluator::{AllAtOnceEvaluator, Value};
     use crate::formats::Decode;
+    use crate::tree::TreeNodeKind;
 
     #[test]
     fn yaml_decoder_rejects_duplicate_yaml_directive_before_document_start() {

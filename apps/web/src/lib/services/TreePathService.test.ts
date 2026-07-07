@@ -17,7 +17,7 @@ import {
 
 describe('TreePathService', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
   });
   const readyResult = (anchors: Array<Record<string, unknown>>) => ({
     status: 'ready' as const,

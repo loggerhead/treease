@@ -695,7 +695,9 @@ fn find_nearest_tree_path_segments(
     if line_start >= line_end || byte_offset >= source.len() {
         return None;
     }
-    let max_delta = std::cmp::max(byte_offset - line_start, line_end - byte_offset - 1);
+    let left_delta = byte_offset.saturating_sub(line_start);
+    let right_delta = line_end.saturating_sub(byte_offset.saturating_add(1));
+    let max_delta = std::cmp::max(left_delta, right_delta);
     let mut delta: usize = 1;
     while delta <= max_delta {
         if byte_offset + delta < line_end {

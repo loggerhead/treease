@@ -720,7 +720,6 @@ export function createGraphRenderSession(deps: GraphRenderSessionDeps) {
       revision: session.revision,
       mode: 'streaming',
     });
-
     try {
       await consumeGraphBatchStream({
         batches: session.batches(),

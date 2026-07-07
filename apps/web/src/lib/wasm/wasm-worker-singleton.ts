@@ -15,7 +15,6 @@ type PendingRequest = {
   type?: string;
   handle?: number | null;
   chunkBytes?: number | null;
-  postedAtMs?: number;
 };
 
 type WorkerLike = {
@@ -394,7 +393,6 @@ export function createWorkerClient(worker: WorkerLike): WorkerClient {
         type,
         handle: typeof payload?.handle === 'number' ? payload.handle : null,
         chunkBytes: chunk instanceof ArrayBuffer ? chunk.byteLength : null,
-        postedAtMs: performance.now(),
       };
       pending.set(id, pendingRequest);
       pendingRequest.watchdog = setInterval(() => {}, 5000);

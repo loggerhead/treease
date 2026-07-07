@@ -13,6 +13,7 @@ type TestHookEditor = {
   setScrollPosition?: (position: { scrollTop: number; scrollLeft: number }) => void;
   executeEdits?: (source: string, edits: Array<{ range: unknown; text: string; forceMoveMarkers?: boolean }>) => void;
   onDidChangeModel?: (listener: () => void) => { dispose: () => void };
+  getMarkers?: () => Array<{ owner?: string; message?: string; severity?: number }>;
   getModel?: () => {
     getLanguageId?: () => string | null;
     getLineContent?: (lineNumber: number) => string;
@@ -84,6 +85,7 @@ export function attachMonacoTestHook(editor: TestHookEditor, hookId: string, tok
       editor.focus?.();
     },
     getLanguage: () => editor.getModel?.()?.getLanguageId?.() ?? null,
+    getMarkers: () => editor.getMarkers?.() ?? [],
     getRenderedTokenColor: (tokenText: string, lineNumber?: number) => {
       const currentNode = editor.getDomNode?.() ?? node;
       if (!currentNode) return null;
