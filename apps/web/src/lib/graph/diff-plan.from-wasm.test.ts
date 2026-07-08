@@ -23,6 +23,13 @@ beforeAll(async () => {
 }, 5_000);
 
 describe('diff-plan with real wasm compare output', () => {
+  function extractRangeText(text: string, range: { startLineNumber: number; startColumn: number; endLineNumber: number; endColumn: number }) {
+    const lines = text.split('\n');
+    if (range.startLineNumber !== range.endLineNumber) return null;
+    const line = lines[range.startLineNumber - 1] ?? '';
+    return line.slice(range.startColumn - 1, range.endColumn - 1);
+  }
+
   it('maps inline diff vectors to Monaco inline decorations', async () => {
     const left = '  "foo": "abc" }';
     const right = '{ "foo": "adc" }';
@@ -122,5 +129,28 @@ describe('diff-plan with real wasm compare output', () => {
         },
       },
     ]);
+  });
+
+  it('keeps structured unicode inline ranges off unchanged sibling tokens', async () => {
+    const left = `{
+  "value": {"message": "存在差异：新增 577 行，删除 382 行", "type": "info"}
+}`;
+    const right = `{
+  "value": {"message": "就你就于：们时 525 有，人那 168 就", "type": "dsjk"}
+}`;
+    const result = await diffStructured('json', left, right);
+    const plans = buildDiffPlans(monaco, result.pairs ?? [], left, right);
+
+    const rightInlineTexts = plans.right.decorations
+      .filter((item) => item.options.inlineClassName === 'diff-inline-ins')
+      .map((item) => extractRangeText(right, item.range))
+      .filter((value): value is string => value !== null);
+
+    expect(rightInlineTexts).not.toContain('type');
+    expect(rightInlineTexts).not.toContain('type"');
+    expect(rightInlineTexts).not.toContain(':');
+    expect(rightInlineTexts).not.toContain('}');
+    expect(rightInlineTexts.some((value) => value.includes('168'))).toBe(true);
+    expect(rightInlineTexts.some((value) => value.includes('dsjk'))).toBe(true);
   });
 });

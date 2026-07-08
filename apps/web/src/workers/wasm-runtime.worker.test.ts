@@ -5,7 +5,9 @@ const mocked = vi.hoisted(() => ({
   AUXILIARY_TOKEN_TYPES: ['punctuation', 'comment', 'operator', 'function', 'variable', 'tag', 'attribute'],
   TREE_NODE_TOKEN_TYPES: ['map', 'key', 'seq', 'str', 'int', 'float', 'boolean', 'nil'],
   initWasm: vi.fn(async () => {}),
+  isStructurallyEqual: vi.fn(async () => false),
   compareStructured: vi.fn(async () => false),
+  diffStructured: vi.fn(async () => ({ pairs: [] })),
   diffText: vi.fn(async () => ({ pairs: [] })),
   parseToTree: vi.fn(async () => ({ kind: 0, semType: 3, tag: 'str', value: 'x', children: [] })),
   formatJson: vi.fn(async () => ({ text: 'formatted' })),
@@ -53,7 +55,9 @@ const mocked = vi.hoisted(() => ({
 
 vi.mock('@core-wasm/index', () => ({
   initWasm: mocked.initWasm,
+  isStructurallyEqual: mocked.isStructurallyEqual,
   compareStructured: mocked.compareStructured,
+  diffStructured: mocked.diffStructured,
   diffText: mocked.diffText,
   parseToTree: mocked.parseToTree,
   formatJson: mocked.formatJson,
@@ -167,7 +171,9 @@ describe('wasm-runtime worker', () => {
 
     // Restore default implementations
     mocked.initWasm.mockImplementation(async () => {});
+    mocked.isStructurallyEqual.mockImplementation(async () => false);
     mocked.compareStructured.mockImplementation(async () => false);
+    mocked.diffStructured.mockImplementation(async () => ({ pairs: [] }));
     mocked.diffText.mockImplementation(async () => ({ pairs: [] }));
     mocked.parseToTree.mockImplementation(async () => scalarNode('x'));
     mocked.formatJson.mockImplementation(async () => ({ text: 'formatted', cursor: 0 }));
@@ -233,25 +239,26 @@ describe('wasm-runtime worker', () => {
 
       expect(res.ok).toBe(true);
       expect(res.data).toEqual({ mode: 'tree', equal: true, result: { pairs: [] } });
-      expect(mocked.compareStructured).not.toHaveBeenCalled();
+      expect(mocked.isStructurallyEqual).not.toHaveBeenCalled();
     });
 
-    it('uses same-language fast path when compareStructured returns true', async () => {
-      mocked.compareStructured.mockImplementation(async () => true);
+    it('uses same-language fast path when isStructurallyEqual returns true', async () => {
+      mocked.isStructurallyEqual.mockImplementation(async () => true);
 
       const res = await send({ id: 3, type: 'compare', language: 'json', left: '{"a":1}', right: '{"a": 1}' });
 
       expect(res.ok).toBe(true);
       expect(res.data).toEqual({ mode: 'tree', equal: true, result: { pairs: [] } });
-      expect(mocked.compareStructured).toHaveBeenCalledWith('json', '{"a":1}', '{"a": 1}');
+      expect(mocked.isStructurallyEqual).toHaveBeenCalledWith('json', '{"a":1}', '{"a": 1}');
       expect(mocked.parseToTree).not.toHaveBeenCalled();
+      expect(mocked.diffStructured).not.toHaveBeenCalled();
       expect(mocked.diffText).not.toHaveBeenCalled();
     });
 
-it('falls back to text diff directly when compareStructured throws', async () => {
-      mocked.compareStructured.mockRejectedValueOnce(new Error('fast path failed'));
+it('falls back to text diff directly when isStructurallyEqual throws', async () => {
+      mocked.isStructurallyEqual.mockRejectedValueOnce(new Error('fast path failed'));
       const diffResult = {
-        pairs: [{ hasLeft: true, hasRight: true, left: { offset: 0, length: 1 }, right: { offset: 0, length: 1 } }],
+        pairs: [{ hasLeft: true, hasRight: true, left: { byteOffset: 0, byteLength: 1 }, right: { byteOffset: 0, byteLength: 1 } }],
       };
       mocked.diffText.mockImplementation(async () => diffResult);
 
@@ -265,7 +272,7 @@ it('falls back to text diff directly when compareStructured throws', async () =>
 
     it('uses text compare directly when languages differ', async () => {
       const diffResult = {
-        pairs: [{ hasLeft: true, hasRight: true, left: { offset: 0, length: 1 }, right: { offset: 0, length: 1 } }],
+        pairs: [{ hasLeft: true, hasRight: true, left: { byteOffset: 0, byteLength: 1 }, right: { byteOffset: 0, byteLength: 1 } }],
       };
       mocked.diffText.mockImplementation(async () => diffResult);
 
@@ -281,14 +288,14 @@ it('falls back to text diff directly when compareStructured throws', async () =>
 
       expect(res.ok).toBe(true);
       expect(res.data).toEqual({ mode: 'text', equal: false, result: diffResult });
-      expect(mocked.compareStructured).not.toHaveBeenCalled();
+      expect(mocked.isStructurallyEqual).not.toHaveBeenCalled();
       expect(mocked.parseToTree).not.toHaveBeenCalled();
     });
 
-it('falls back to text mode with unified whitespace handling when compareStructured fails', async () => {
-      mocked.compareStructured.mockRejectedValueOnce(new Error('fast path failed'));
+it('falls back to text mode with unified whitespace handling when isStructurallyEqual fails', async () => {
+      mocked.isStructurallyEqual.mockRejectedValueOnce(new Error('fast path failed'));
       mocked.diffText.mockImplementation(async () => ({
-        pairs: [{ hasLeft: true, hasRight: true, left: { offset: 1, length: 1 }, right: { offset: 1, length: 3 } }],
+        pairs: [{ hasLeft: true, hasRight: true, left: { byteOffset: 1, byteLength: 1 }, right: { byteOffset: 1, byteLength: 3 } }],
       }));
 
       const res = await send({
@@ -303,18 +310,18 @@ it('falls back to text mode with unified whitespace handling when compareStructu
       expect(res.data).toEqual({ mode: 'text', equal: true, result: { pairs: [] } });
     });
 
-it('falls back to text diff when compareStructured returns false for structurally different texts', async () => {
+it('returns structured diff when isStructurallyEqual returns false for structurally different texts', async () => {
       const diffResult = {
         pairs: [
           {
             hasLeft: true,
             hasRight: true,
-            left: { offset: 1, length: 2 },
-            right: { offset: 1, length: 4 },
+            left: { byteOffset: 1, byteLength: 2 },
+            right: { byteOffset: 1, byteLength: 4 },
           },
         ],
       };
-      mocked.diffText.mockImplementation(async () => diffResult);
+      mocked.diffStructured.mockImplementation(async () => diffResult);
 
       const res = await send({
         id: 7,
@@ -325,7 +332,9 @@ it('falls back to text diff when compareStructured returns false for structurall
       });
 
       expect(res.ok).toBe(true);
-      expect(res.data).toEqual({ mode: 'text', equal: false, result: diffResult });
+      expect(res.data).toEqual({ mode: 'tree', equal: false, result: diffResult });
+      expect(mocked.diffStructured).toHaveBeenCalledWith('json', '{ }', '{    }');
+      expect(mocked.diffText).not.toHaveBeenCalled();
     });
 
 

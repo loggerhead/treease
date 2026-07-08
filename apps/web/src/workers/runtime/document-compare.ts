@@ -1,5 +1,5 @@
-// 职责：Worker 侧文档比较 handler：compareStructured、diffText
-import { compareStructured, diffText, type DiffResult } from '@core-wasm/index';
+// 职责：Worker 侧文档比较 handler：结构化判等、结构化 diff、文本 diff
+import { diffStructured, diffText, isStructurallyEqual, type DiffResult } from '@core-wasm/index';
 import { createEmptyDiffResult } from '../../shared/brand-bridge';
 import { postOk } from './logging';
 import type { CompareResponse, WorkerContext, WorkerRequest } from './protocol';
@@ -10,8 +10,8 @@ function createEqualCompareResponse(mode: CompareResponse['mode']): CompareRespo
 
 function createTextCompareResponse(left: string, right: string, result: DiffResult): CompareResponse {
   const hasOnlyWhitespaceChanges = result.pairs.every((pair) => {
-    const leftSlice = pair.hasLeft ? left.slice(pair.left.offset, pair.left.offset + pair.left.length) : '';
-    const rightSlice = pair.hasRight ? right.slice(pair.right.offset, pair.right.offset + pair.right.length) : '';
+    const leftSlice = pair.hasLeft ? left.slice(pair.left.byteOffset, pair.left.byteOffset + pair.left.byteLength) : '';
+    const rightSlice = pair.hasRight ? right.slice(pair.right.byteOffset, pair.right.byteOffset + pair.right.byteLength) : '';
     return leftSlice.trim().length === 0 && rightSlice.trim().length === 0;
   });
 
@@ -56,11 +56,13 @@ export async function handleCompare(
   }
 
   try {
-    const structuredEqual = await compareStructured(leftLanguage, left, right);
+    const structuredEqual = await isStructurallyEqual(leftLanguage, left, right);
     if (structuredEqual) {
       postOk(ctx, message.id, createEqualCompareResponse('tree'));
       return;
     }
+    postOk(ctx, message.id, { mode: 'tree', equal: false, result: await diffStructured(leftLanguage, left, right) });
+    return;
   } catch (error) {
     console.warn('[compare] structured compare failed, falling back to text mode', {
       leftLanguage,

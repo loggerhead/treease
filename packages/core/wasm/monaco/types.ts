@@ -119,8 +119,9 @@ export const TOKEN_TYPE_THEME_KEY: Record<TokenType, TreeNodeTokenType | Auxilia
 
 
 export type RawDiff = {
-  offset: number;
-  length: number;
+  // UTF-8 byte span in the original source text.
+  byteOffset: number;
+  byteLength: number;
   type: number;
   inlineDiffs: RawDiff[];
 };
@@ -166,8 +167,6 @@ export type FormatOptions = {
   nest?: boolean;
   sortKeys?: boolean;
 };
-
-
 
 
 

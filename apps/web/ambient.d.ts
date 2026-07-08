@@ -25,6 +25,7 @@ declare module '@core-wasm/index' {
   export function getTreePath(...args: any[]): any;
   export function getPathSpan(...args: any[]): any;
   export function parseToTree(...args: any[]): any;
+  export function isStructurallyEqual(...args: any[]): any;
   export function compareStructured(...args: any[]): any;
   export function diffStructured(...args: any[]): any;
   export function advanceDocumentJob(...args: any[]): any;

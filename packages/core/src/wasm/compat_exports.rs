@@ -324,8 +324,8 @@ struct DiffPairOutput {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct DiffOutput {
-    offset: i32,
-    length: i32,
+    byte_offset: i32,
+    byte_length: i32,
     #[serde(rename = "type")]
     diff_type: u8,
     inline_diffs: Vec<DiffOutput>,
@@ -347,8 +347,8 @@ fn diff_type_to_output(diff_type: DiffType) -> u8 {
 fn diff_to_output(diff: Option<&Diff>) -> DiffOutput {
     match diff {
         Some(value) => DiffOutput {
-            offset: value.offset,
-            length: value.length,
+            byte_offset: value.offset,
+            byte_length: value.length,
             diff_type: diff_type_to_output(value.diff_type),
             inline_diffs: value
                 .inline_diffs
@@ -357,8 +357,8 @@ fn diff_to_output(diff: Option<&Diff>) -> DiffOutput {
                 .collect(),
         },
         None => DiffOutput {
-            offset: 0,
-            length: 0,
+            byte_offset: 0,
+            byte_length: 0,
             diff_type: diff_type_to_output(DiffType::Insert),
             inline_diffs: Vec::new(),
         },

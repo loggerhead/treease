@@ -9,14 +9,14 @@ const DiffType = {
 } as const;
 
 type FlatDiff = {
-  offset: number;
-  length: number;
+  byteOffset: number;
+  byteLength: number;
   type: number | undefined;
 };
 
 type RawDiff = {
-  offset: number;
-  length: number;
+  byteOffset: number;
+  byteLength: number;
   type?: number;
   inlineDiffs?: RawDiff[];
 };
@@ -38,8 +38,8 @@ function cloneWasmBytes(path: string): ArrayBuffer {
   return u8.buffer.slice(u8.byteOffset, u8.byteOffset + u8.byteLength);
 }
 
-function newDiff(offset: number, length: number, type: number): FlatDiff {
-  return { offset, length, type };
+function newDiff(byteOffset: number, byteLength: number, type: number): FlatDiff {
+  return { byteOffset, byteLength, type };
 }
 
 function sortDiffs(diffs: FlatDiff[]): FlatDiff[] {
@@ -48,16 +48,16 @@ function sortDiffs(diffs: FlatDiff[]): FlatDiff[] {
     const rightPriority =
       right.type === DiffType.Delete ? 0 : right.type === DiffType.Insert ? 1 : Number.MAX_SAFE_INTEGER;
     if (leftPriority !== rightPriority) return leftPriority - rightPriority;
-    if (left.offset !== right.offset) return left.offset - right.offset;
-    return left.length - right.length;
+    if (left.byteOffset !== right.byteOffset) return left.byteOffset - right.byteOffset;
+    return left.byteLength - right.byteLength;
   });
 }
 
 function collectHunks(result: RawDiffResult): FlatDiff[] {
   const hunks: FlatDiff[] = [];
   for (const pair of result.pairs ?? []) {
-    if (pair.hasLeft && pair.left) hunks.push({ offset: pair.left.offset, length: pair.left.length, type: pair.left.type });
-    if (pair.hasRight && pair.right) hunks.push({ offset: pair.right.offset, length: pair.right.length, type: pair.right.type });
+    if (pair.hasLeft && pair.left) hunks.push({ byteOffset: pair.left.byteOffset, byteLength: pair.left.byteLength, type: pair.left.type });
+    if (pair.hasRight && pair.right) hunks.push({ byteOffset: pair.right.byteOffset, byteLength: pair.right.byteLength, type: pair.right.type });
   }
   return sortDiffs(hunks);
 }
@@ -67,7 +67,7 @@ function collectInlines(result: RawDiffResult): FlatDiff[] {
   for (const pair of result.pairs ?? []) {
     for (const side of [pair.left, pair.right]) {
       for (const inline of side?.inlineDiffs ?? []) {
-        inlines.push({ offset: inline.offset, length: inline.length, type: inline.type });
+        inlines.push({ byteOffset: inline.byteOffset, byteLength: inline.byteLength, type: inline.type });
       }
     }
   }

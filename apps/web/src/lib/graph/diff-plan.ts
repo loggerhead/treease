@@ -1,6 +1,8 @@
+import { buildUtf8ByteSegments, byteOffsetToUtf16Position, type Utf8ByteSegment } from '../../shared/document-anchor-utils';
+
 export type DiffChunk = {
-  offset: number;
-  length: number;
+  byteOffset: number;
+  byteLength: number;
   type: number;
   inlineDiffs: DiffChunk[];
 };
@@ -47,54 +49,35 @@ type DiffPairRanges = {
   right?: DiffRange;
 };
 
-function buildLineOffsets(text: string): number[] {
-  const offsets = [0];
-  for (let i = 0; i < text.length; i += 1) {
-    if (text[i] === '\n') offsets.push(i + 1);
-  }
-  return offsets;
+function byteOffsetToLineColumn(
+  segments: Utf8ByteSegment[],
+  byteOffset: number,
+  bias: 'start' | 'end',
+): { line: number; column: number } {
+  const position = byteOffsetToUtf16Position(segments, byteOffset, bias);
+  return { line: position.row + 1, column: position.column + 1 };
 }
 
-function findLineIndex(offsets: number[], offset: number): number {
-  let low = 0;
-  let high = offsets.length - 1;
-  while (low <= high) {
-    const mid = Math.floor((low + high) / 2);
-    const start = offsets[mid];
-    const next = offsets[mid + 1] ?? Number.POSITIVE_INFINITY;
-    if (offset >= start && offset < next) return mid;
-    if (offset < start) high = mid - 1;
-    else low = mid + 1;
-  }
-  return Math.max(0, offsets.length - 1);
-}
-
-function offsetToLineColumn(offsets: number[], offset: number): { line: number; column: number } {
-  const lineIndex = findLineIndex(offsets, Math.max(0, offset));
-  const lineStart = offsets[lineIndex] ?? 0;
-  return { line: lineIndex + 1, column: Math.max(1, offset - lineStart + 1) };
-}
-
-function diffToRange(offsets: number[], diff: DiffChunk): DiffRange {
-  const start = offsetToLineColumn(offsets, diff.offset);
-  const end = offsetToLineColumn(offsets, diff.offset + Math.max(diff.length, 1));
-  const isSingleNewline = diff.length === 1 && start.column === 1 && end.column === 1;
+function diffToRange(segments: Utf8ByteSegment[], diff: DiffChunk): DiffRange {
+  const start = byteOffsetToLineColumn(segments, diff.byteOffset, 'start');
+  const end = byteOffsetToLineColumn(segments, diff.byteOffset + Math.max(diff.byteLength, 1), 'end');
+  const isSingleNewline = diff.byteLength === 1 && start.column === 1 && end.column === 1;
   return {
     startLineNumber: start.line,
     startColumn: start.column,
     endLineNumber: isSingleNewline ? start.line : end.line,
     endColumn: isSingleNewline ? start.column : end.column,
     type: diff.type,
-    inlineDiffs: diff.inlineDiffs?.map((inline) => diffToRange(offsets, inline)) ?? [],
+    inlineDiffs: diff.inlineDiffs?.map((inline) => diffToRange(segments, inline)) ?? [],
   };
 }
 
 function buildPairRanges(pairs: DiffPair[], leftText: string, rightText: string): DiffPairRanges[] {
-  const leftOffsets = buildLineOffsets(leftText);
-  const rightOffsets = buildLineOffsets(rightText);
+  const leftSegments = buildUtf8ByteSegments(leftText);
+  const rightSegments = buildUtf8ByteSegments(rightText);
   return pairs.map((pair) => {
-    const left = pair.hasLeft ? diffToRange(leftOffsets, pair.left) : undefined;
-    const right = pair.hasRight ? diffToRange(rightOffsets, pair.right) : undefined;
+    const left = pair.hasLeft ? diffToRange(leftSegments, pair.left) : undefined;
+    const right = pair.hasRight ? diffToRange(rightSegments, pair.right) : undefined;
     return { left, right };
   });
 }

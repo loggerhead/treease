@@ -93,6 +93,7 @@ export {
   applyValueEdit,
   applyValueEditCanonical,
   type ApplyValueEditCanonicalResult,
+  isStructurallyEqual,
   compareStructured,
   diffStructured,
   diffText,

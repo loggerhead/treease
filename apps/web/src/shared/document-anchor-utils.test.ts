@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { serializePath, byteOffsetToRowColumn, byteOffsetToUtf16Offset } from './document-anchor-utils';
+import { buildUtf8ByteSegments, byteOffsetToRowColumn, byteOffsetToUtf16Offset, byteOffsetToUtf16Position, serializePath } from './document-anchor-utils';
 
 const COMPLEX_LONG_KEY =
   'we___are___such___stuff___as___dreams___are___made___on___and___our___little___life___is___rounded___with___sleep';
@@ -116,5 +116,21 @@ describe('byteOffsetToUtf16Offset', () => {
 
   it('clamps to valid range', () => {
     expect(byteOffsetToUtf16Offset('hi', 100)).toBe(2);
+  });
+});
+
+describe('byteOffsetToUtf16Position', () => {
+  it('keeps start/end bias stable inside multibyte characters', () => {
+    const segments = buildUtf8ByteSegments('中a');
+
+    expect(byteOffsetToUtf16Position(segments, 1, 'start')).toEqual({ row: 0, column: 0 });
+    expect(byteOffsetToUtf16Position(segments, 1, 'end')).toEqual({ row: 0, column: 1 });
+  });
+
+  it('resets utf16 column after newline boundaries', () => {
+    const segments = buildUtf8ByteSegments('中\n😀');
+
+    expect(byteOffsetToUtf16Position(segments, 4, 'start')).toEqual({ row: 1, column: 0 });
+    expect(byteOffsetToUtf16Position(segments, 8, 'end')).toEqual({ row: 1, column: 2 });
   });
 });

@@ -1,4 +1,4 @@
-import type { FormatOptions, ParseOptions, WasmError } from './types';
+import type { DiffResult, FormatOptions, ParseOptions, WasmError } from './types';
 import type { PathSeg, TreeNode } from '../serde-types';
 import { callWasm } from './shared-api';
 
@@ -121,16 +121,21 @@ export async function applyValueEditCanonical(
     throw new Error('applyValueEditCanonical failed: ' + (error instanceof Error ? error.message : String(error)));
   }
 }
-export async function compareStructured(language: string, left: string, right: string): Promise<boolean> {
+export async function isStructurallyEqual(language: string, left: string, right: string): Promise<boolean> {
   return callWasm((mod) => mod.compare_structured_wasm({ language, left, right } as any));
 }
 
-export async function diffStructured(language: string, left: string, right: string): Promise<{ pairs: any[] }> {
-  return callWasm((mod) => mod.diff_structured_wasm({ language, left, right } as any));
+// Backward-compatible alias. Prefer `isStructurallyEqual` for new call sites.
+export async function compareStructured(language: string, left: string, right: string): Promise<boolean> {
+  return isStructurallyEqual(language, left, right);
 }
 
-export async function diffText(left: string, right: string): Promise<{ pairs: any[] }> {
-  return callWasm((mod) => mod.diff_text_wasm({ left, right } as any));
+export async function diffStructured(language: string, left: string, right: string): Promise<DiffResult> {
+  return callWasm((mod) => mod.diff_structured_wasm({ language, left, right } as any)) as Promise<DiffResult>;
+}
+
+export async function diffText(left: string, right: string): Promise<DiffResult> {
+  return callWasm((mod) => mod.diff_text_wasm({ left, right } as any)) as Promise<DiffResult>;
 }
 
 export async function runYqText(

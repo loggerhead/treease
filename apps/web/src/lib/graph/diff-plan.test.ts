@@ -22,9 +22,9 @@ describe('diff-plan', () => {
       const pairs: DiffPair[] = [
         {
           hasLeft: 1,
-          left: { offset: 0, length: 3, type: 1, inlineDiffs: [] },
+          left: { byteOffset: 0, byteLength: 3, type: 1, inlineDiffs: [] },
           hasRight: 0,
-          right: { offset: 0, length: 0, type: 0, inlineDiffs: [] },
+          right: { byteOffset: 0, byteLength: 0, type: 0, inlineDiffs: [] },
         },
       ];
       const result = buildDiffPlans(monaco, pairs, 'abc', '');
@@ -39,17 +39,17 @@ describe('diff-plan', () => {
         {
           hasLeft: 1,
           left: {
-            offset: 0,
-            length: 1,
+            byteOffset: 0,
+            byteLength: 1,
             type: 1,
-            inlineDiffs: [{ offset: 0, length: 1, type: 1, inlineDiffs: [] }],
+            inlineDiffs: [{ byteOffset: 0, byteLength: 1, type: 1, inlineDiffs: [] }],
           },
           hasRight: 1,
           right: {
-            offset: 0,
-            length: 1,
+            byteOffset: 0,
+            byteLength: 1,
             type: 0,
-            inlineDiffs: [{ offset: 0, length: 1, type: 0, inlineDiffs: [] }],
+            inlineDiffs: [{ byteOffset: 0, byteLength: 1, type: 0, inlineDiffs: [] }],
           },
         },
       ];
@@ -63,15 +63,15 @@ describe('diff-plan', () => {
         {
           hasLeft: 1,
           left: {
-            offset: 8,
-            length: 5,
+            byteOffset: 8,
+            byteLength: 5,
             type: 1,
-            inlineDiffs: [{ offset: 11, length: 1, type: 1, inlineDiffs: [] }],
+            inlineDiffs: [{ byteOffset: 11, byteLength: 1, type: 1, inlineDiffs: [] }],
           },
           hasRight: 1,
           right: {
-            offset: 8,
-            length: 4,
+            byteOffset: 8,
+            byteLength: 4,
             type: 0,
             inlineDiffs: [],
           },
@@ -94,9 +94,9 @@ describe('diff-plan', () => {
       const pairs: DiffPair[] = [
         {
           hasLeft: 1,
-          left: { offset: 0, length: 12, type: 1, inlineDiffs: [] },
+          left: { byteOffset: 0, byteLength: 12, type: 1, inlineDiffs: [] },
           hasRight: 0,
-          right: { offset: 0, length: 0, type: 0, inlineDiffs: [] },
+          right: { byteOffset: 0, byteLength: 0, type: 0, inlineDiffs: [] },
         },
       ];
       const result = buildDiffPlans(monaco, pairs, 'line1\nline2\n', '');
@@ -114,9 +114,9 @@ describe('diff-plan', () => {
       const pairs: DiffPair[] = [
         {
           hasLeft: 1,
-          left: { offset: 2, length: 1, type: 1, inlineDiffs: [] },
+          left: { byteOffset: 2, byteLength: 1, type: 1, inlineDiffs: [] },
           hasRight: 0,
-          right: { offset: 0, length: 0, type: 0, inlineDiffs: [] },
+          right: { byteOffset: 0, byteLength: 0, type: 0, inlineDiffs: [] },
         },
       ];
       const result = buildDiffPlans(monaco, pairs, '{\n\n  return tokens;\n}', '{\n  return tokens;\n}');
@@ -129,9 +129,9 @@ describe('diff-plan', () => {
       const pairs: DiffPair[] = [
         {
           hasLeft: 0,
-          left: { offset: 0, length: 0, type: 0, inlineDiffs: [] },
+          left: { byteOffset: 0, byteLength: 0, type: 0, inlineDiffs: [] },
           hasRight: 1,
-          right: { offset: 0, length: 10, type: 0, inlineDiffs: [] },
+          right: { byteOffset: 0, byteLength: 10, type: 0, inlineDiffs: [] },
         },
       ];
       const result = buildDiffPlans(monaco, pairs, '', 'new1\nnew2\n');
@@ -149,9 +149,9 @@ describe('diff-plan', () => {
       const pairs: DiffPair[] = [
         {
           hasLeft: 1,
-          left: { offset: 0, length: 3, type: 1, inlineDiffs: [] },
+          left: { byteOffset: 0, byteLength: 3, type: 1, inlineDiffs: [] },
           hasRight: 0,
-          right: { offset: 0, length: 0, type: 0, inlineDiffs: [] },
+          right: { byteOffset: 0, byteLength: 0, type: 0, inlineDiffs: [] },
         },
       ];
       const result = buildDiffPlans(monaco, pairs, 'abc', '');
@@ -165,15 +165,15 @@ describe('diff-plan', () => {
       const pairs: DiffPair[] = [
         {
           hasLeft: 1,
-          left: { offset: 0, length: 17, type: 1, inlineDiffs: [] },
+          left: { byteOffset: 0, byteLength: 17, type: 1, inlineDiffs: [] },
           hasRight: 1,
-          right: { offset: 0, length: 9, type: 0, inlineDiffs: [] },
+          right: { byteOffset: 0, byteLength: 9, type: 0, inlineDiffs: [] },
         },
         {
           hasLeft: 1,
-          left: { offset: 18, length: 5, type: 1, inlineDiffs: [] },
+          left: { byteOffset: 18, byteLength: 5, type: 1, inlineDiffs: [] },
           hasRight: 1,
-          right: { offset: 10, length: 23, type: 0, inlineDiffs: [] },
+          right: { byteOffset: 10, byteLength: 23, type: 0, inlineDiffs: [] },
         },
       ];
 
@@ -190,9 +190,9 @@ describe('diff-plan', () => {
       const pairs: DiffPair[] = [
         {
           hasLeft: 1,
-          left: { offset: 0, length: 5, type: 1, inlineDiffs: [] },
+          left: { byteOffset: 0, byteLength: 5, type: 1, inlineDiffs: [] },
           hasRight: 0,
-          right: { offset: 0, length: 0, type: 0, inlineDiffs: [] },
+          right: { byteOffset: 0, byteLength: 0, type: 0, inlineDiffs: [] },
         },
       ];
       const result = buildDiffPlans(monaco, pairs, 'hello', '');
@@ -257,44 +257,44 @@ describe('diff-plan', () => {
         {
           hasLeft: 1,
           left: {
-            offset: 2,
-            length: 422,
+            byteOffset: 2,
+            byteLength: 422,
             type: 1,
-            inlineDiffs: [{ offset: 5, length: 419, type: 1, inlineDiffs: [] }],
+            inlineDiffs: [{ byteOffset: 5, byteLength: 419, type: 1, inlineDiffs: [] }],
           },
           hasRight: 1,
           right: {
-            offset: 2,
-            length: 289,
+            byteOffset: 2,
+            byteLength: 289,
             type: 0,
-            inlineDiffs: [{ offset: 5, length: 286, type: 0, inlineDiffs: [] }],
+            inlineDiffs: [{ byteOffset: 5, byteLength: 286, type: 0, inlineDiffs: [] }],
           },
         },
         {
           hasLeft: 0,
-          left: { offset: 0, length: 0, type: 1, inlineDiffs: [] },
+          left: { byteOffset: 0, byteLength: 0, type: 1, inlineDiffs: [] },
           hasRight: 1,
-          right: { offset: 302, length: 99, type: 0, inlineDiffs: [] },
+          right: { byteOffset: 302, byteLength: 99, type: 0, inlineDiffs: [] },
         },
         {
           hasLeft: 1,
           left: {
-            offset: 443,
-            length: 9,
+            byteOffset: 443,
+            byteLength: 9,
             type: 1,
             inlineDiffs: [
-              { offset: 445, length: 3, type: 1, inlineDiffs: [] },
-              { offset: 451, length: 1, type: 1, inlineDiffs: [] },
+              { byteOffset: 445, byteLength: 3, type: 1, inlineDiffs: [] },
+              { byteOffset: 451, byteLength: 1, type: 1, inlineDiffs: [] },
             ],
           },
           hasRight: 1,
           right: {
-            offset: 408,
-            length: 17,
+            byteOffset: 408,
+            byteLength: 17,
             type: 0,
             inlineDiffs: [
-              { offset: 410, length: 2, type: 0, inlineDiffs: [] },
-              { offset: 415, length: 10, type: 0, inlineDiffs: [] },
+              { byteOffset: 410, byteLength: 2, type: 0, inlineDiffs: [] },
+              { byteOffset: 415, byteLength: 10, type: 0, inlineDiffs: [] },
             ],
           },
         },

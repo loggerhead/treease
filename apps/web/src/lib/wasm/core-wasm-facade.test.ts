@@ -38,6 +38,7 @@ describe('core wasm facade split', () => {
     expect(entrypoint.startDocumentJob).toBe(documentApi.startDocumentJob);
     expect(entrypoint.buildHoverSubgraphProjection).toBe(documentApi.buildHoverSubgraphProjection);
     expect(entrypoint.formatText).toBe(compatApi.formatText);
+    expect(entrypoint.isStructurallyEqual).toBe(compatApi.isStructurallyEqual);
     expect(entrypoint.compareStructured).toBe(compatApi.compareStructured);
 
     const settings = {
@@ -100,7 +101,7 @@ describe('core wasm facade split', () => {
       sortKeys: true,
     });
 
-    await compatApi.compareStructured('json', '{"a":1}', '{"a":1}');
+    await compatApi.isStructurallyEqual('json', '{"a":1}', '{"a":1}');
     expect(mockedPkg.compare_structured_wasm).toHaveBeenCalledWith({
       language: 'json',
       left: '{"a":1}',

@@ -26,6 +26,19 @@ async function runCompare(page: Page) {
   await page.getByRole('button', { name: 'Compare', exact: true }).click();
 }
 
+async function readInlineDiffTexts(page: Page, hookId: string, className: string): Promise<string[]> {
+  return page.evaluate(
+    ({ hookId, className: nextClassName }) => {
+      const root = document.querySelector(`[data-testid="monaco-${hookId}"]`);
+      if (!root) return [];
+      return Array.from(root.querySelectorAll(`.view-lines .${nextClassName}`))
+        .map((node) => (node.textContent ?? '').trim())
+        .filter((text) => text.length > 0);
+    },
+    { hookId, className },
+  );
+}
+
 test('shows equal toast and no decorations when right text equals source', async ({ page }) => {
   await page.goto('/editor');
   await waitForEditorReady(page);
@@ -95,6 +108,41 @@ test('structured compare keeps string whitespace diffs', async ({ page }) => {
   await expect
     .poll(async () => Number((await page.getByTestId('right-panel-dropzone').getAttribute('data-compare-highlight-count')) ?? '0'))
     .toBeGreaterThan(0);
+});
+
+test('structured compare with unicode strings does not drift into unchanged sibling tokens', async ({ page }) => {
+  await page.goto('/editor');
+  await waitForEditorReady(page);
+  await setEditorContent(
+    page,
+    {
+      sourceText: '{"value":{"message":"存在差异：新增 577 行，删除 382 行","type":"info"}}',
+      language: 'json',
+    },
+  );
+  await openTextMode(page);
+
+  await setMonacoValue(
+    page,
+    'right-editor',
+    '{"value":{"message":"就你就于：们时 525 有，人那 168 就","type":"dsjk"}}',
+  );
+  await runCompare(page);
+
+  await expect
+    .poll(async () => Number((await page.getByTestId('right-panel-dropzone').getAttribute('data-compare-highlight-count')) ?? '0'))
+    .toBeGreaterThan(0);
+
+  await expect
+    .poll(async () => readInlineDiffTexts(page, 'right-editor', 'diff-inline-ins'))
+    .not.toEqual([]);
+
+  const inlineTexts = await readInlineDiffTexts(page, 'right-editor', 'diff-inline-ins');
+
+  expect(inlineTexts.join('')).not.toContain('type');
+  expect(inlineTexts.join('')).not.toContain('}');
+  expect(inlineTexts.some((text) => text.includes('168'))).toBe(true);
+  expect(inlineTexts.some((text) => text.includes('dsjk'))).toBe(true);
 });
 
 

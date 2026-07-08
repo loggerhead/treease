@@ -109,22 +109,15 @@
   }
 
   async function waitForSidecarStoreSync(): Promise<void> {
-    const readySidecarEditor = await ensureSidecarEditorReady()
-    if (!readySidecarEditor) return
-    for (let attempt = 0; attempt < 10; attempt += 1) {
-      const textSynced = scratchText === readySidecarEditor.getText()
-      const languageSynced = scratchLanguage === readySidecarEditor.getLanguage()
-      if (textSynced && languageSynced) return
-      await tick()
-    }
+    await ensureSidecarEditorReady()
   }
 
   function getSidecarText(): string {
-    return scratchText
+    return sidecarEditor?.getText() ?? scratchText
   }
 
   function getSidecarLanguage(): SupportedEditorLanguageId {
-    return scratchLanguage
+    return sidecarEditor?.getLanguage() ?? scratchLanguage
   }
 
   function clearRightDiff() {
