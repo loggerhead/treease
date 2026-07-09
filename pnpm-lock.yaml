@@ -41,6 +41,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@supabase/supabase-js':
+        specifier: ^2.57.4
+        version: 2.110.0
       '@leafer-in/editor':
         specifier: ^2.0.1
         version: 2.1.10(@leafer-in/interface@2.1.10(@leafer-ui/interface@2.1.10)(@leafer/interface@2.1.10))(@leafer-in/resize@2.1.10(@leafer-in/interface@2.1.10(@leafer-ui/interface@2.1.10)(@leafer/interface@2.1.10))(@leafer-ui/draw@2.1.10)(@leafer-ui/interface@2.1.10))(@leafer-ui/core@2.1.10)(@leafer-ui/draw@2.1.10)(@leafer-ui/interface@2.1.10)

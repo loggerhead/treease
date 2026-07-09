@@ -3,10 +3,23 @@
   import { assetUrl } from '$lib/assets';
   import { Toaster } from '$lib/components/ui/sonner/index.js';
   import { installTestBridge } from '$lib/test-bridge/bootstrap';
+  import { afterNavigate } from '$app/navigation';
+  import { onMount } from 'svelte';
+  import { initializeAnalytics, trackPageView } from '$lib/analytics/ga4';
 
   if (typeof window !== 'undefined' && (import.meta.env.DEV || import.meta.env.MODE === 'test')) {
     installTestBridge();
   }
+
+  onMount(() => {
+    void initializeAnalytics().then(() => {
+      trackPageView(window.location.pathname);
+    });
+  });
+
+  afterNavigate(({ to }) => {
+    trackPageView(to?.url.pathname ?? window.location.pathname);
+  });
 </script>
 
 <svelte:head>

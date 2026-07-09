@@ -11,6 +11,7 @@
   import CommandSearchInput from './CommandSearchInput.svelte';
   import { settings, settingsStore } from '../settings/settings-store';
   import TreePathBreadcrumb from './TreePathBreadcrumb.svelte';
+  import { trackEvent } from '../analytics/ga4';
   export let onFormat: () => void | Promise<void> = () => {};
   export let onMinify: () => void | Promise<void> = () => {};
   export let onSort: () => void | Promise<void> = () => {};
@@ -36,6 +37,12 @@
     },
   };
   let commandQuery = '';
+  let previousLanguage = '';
+  $: if (!previousLanguage) previousLanguage = $languageIdStore;
+  $: if (previousLanguage && previousLanguage !== $languageIdStore) {
+    trackEvent('language_selected', { from: previousLanguage, to: $languageIdStore });
+    previousLanguage = $languageIdStore;
+  }
   $: hasTreePath = ($activeTempModel?.treePath ?? []).length > 0;
   $: if ($activeTempModel && $activeTempModel.commandQuery !== commandQuery)
     commandQuery = $activeTempModel.commandQuery;

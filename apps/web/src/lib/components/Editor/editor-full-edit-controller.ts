@@ -22,6 +22,7 @@ import {
 } from '../../monaco/language-support';
 import type { DocumentAnalysisResult } from '../../../shared/worker-protocol/protocol';
 import { createPrimaryFullEditSink, type FullEditSink } from './editor-full-edit-sink';
+import { trackEvent } from '../../analytics/ga4';
 import {
   markActiveDocumentSemanticInvalid,
   markActiveDocumentSemanticPending,
@@ -242,6 +243,7 @@ export function createEditorFullEditController(options: CreateEditorFullEditCont
         snapshotId: params.snapshotId,
       });
     } else if (params.resultStatus === 'parseFailed') {
+      trackEvent('parse_failed', { language: params.language, source: 'document_runtime' });
       markActiveDocumentSemanticInvalid({
         documentKey: params.documentKey,
         language: params.language,

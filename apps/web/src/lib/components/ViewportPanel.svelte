@@ -34,6 +34,7 @@
   import * as ButtonGroup from './ui/button-group'
   import { Button, IconButton } from './ui/button'
   import { escapeHtml } from '../preview/utils'
+  import { trackEvent } from '../analytics/ga4'
 
   export let viewMode: 'graph' | 'text' = 'graph'
   export let onRevealError: (line: number, column: number) => void = () => {}
@@ -165,9 +166,11 @@
       } else {
         toast.warning('Compare completed (differences found)')
       }
+      trackEvent('compare_document', { mode: data.mode, result: 'success' });
     } catch {
       diffError = 'Compare failed'
       clearCompareHighlights()
+      trackEvent('compare_document', { result: 'failure' });
     }
   }
 
@@ -262,6 +265,7 @@
 
   function handleGraphSearchSelect(event: CustomEvent<any>): void {
     graphViewer?.revealSearchResult?.(event.detail)
+    trackEvent('graph_search', { surface: 'graph', result_count: 1 })
   }
 
   function handleGraphReveal(event: CustomEvent<any>): void {

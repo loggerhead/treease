@@ -303,10 +303,10 @@ async function startViteServer({ chunkSize, wasmVersion, port }) {
     cwd: webDir,
     env: {
       ...process.env,
-      VITE_WASM_VERSION: wasmVersion,
-      VITE_TREEASE_WASM_IMPL: 'rust',
-      VITE_TREEASE_WASM_STREAM_CHUNK_PRODUCTION: String(chunkSize),
-      VITE_BENCHMARK_MODE: '1',
+      WASM_VERSION: wasmVersion,
+      TREEASE_WASM_IMPL: 'rust',
+      TREEASE_WASM_STREAM_CHUNK_PRODUCTION: String(chunkSize),
+      BENCHMARK_MODE: '1',
     },
   });
 

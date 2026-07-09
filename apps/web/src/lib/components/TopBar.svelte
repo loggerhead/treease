@@ -3,6 +3,7 @@
   import { cubicOut } from 'svelte/easing'
   import { fly } from 'svelte/transition'
   import { Plus, X, FileInput, FileOutput, BookOpen, MessageCircle, Share2, User, ArrowRight } from 'lucide-svelte'
+  import { trackEvent } from '../analytics/ga4'
   import { languageId as languageIdStore } from '../store/document-session-store'
   import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from './ui/dropdown-menu'
   import * as Select from './ui/select'
@@ -26,6 +27,7 @@
   export let onFeedback: () => void = () => {}
   export let onShare: () => void = () => {}
   export let onOpenSettings: () => void = () => {}
+  export let onLogin: () => void = () => {}
 
   let importOpen = false
   let exportOpen = false
@@ -337,7 +339,10 @@
         <IconButton
           aria-label="Share"
           title="Share"
-          on:click={onShare}
+          on:click={() => {
+            trackEvent('share_started', { surface: 'topbar' });
+            onShare();
+          }}
         >
           <Share2 size={12} />
         </IconButton>
@@ -351,6 +356,7 @@
               <User size={12} />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
+              <DropdownMenuItem data-testid="account-login-menu-item" onSelect={onLogin}>Login</DropdownMenuItem>
               <DropdownMenuItem data-testid="account-settings-menu-item" onSelect={onOpenSettings}>Settings</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>

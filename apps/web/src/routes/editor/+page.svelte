@@ -9,6 +9,8 @@
   import BottomBar from '../../lib/components/BottomBar.svelte';
   import ViewportPanel from '../../lib/components/ViewportPanel.svelte';
   import SettingsDialog from '../../lib/components/SettingsDialog.svelte';
+  import ShareDialog from '../../lib/components/ShareDialog.svelte';
+  import LoginDialog from '../../lib/components/LoginDialog.svelte';
   import YqExpressionInput from '../../lib/components/YqExpressionInput.svelte';
   import { settings, settingsStore } from '../../lib/settings/settings-store';
   import {
@@ -69,6 +71,7 @@
   } from 'lucide-svelte';
   import * as ButtonGroup from '../../lib/components/ui/button-group';
   import { IconButton } from '../../lib/components/ui/button';
+  import { trackEvent } from '../../lib/analytics/ga4';
 
   let editorRef: Editor | null = null;
   let viewerRef: ViewportPanel | null = null;
@@ -92,6 +95,8 @@
   let isDraggingSplitter = false;
   let splitterDragRect: DOMRect | null = null;
   let settingsOpen = false;
+  let shareOpen = false;
+  let loginOpen = false;
   let viewerViewMode: 'graph' | 'text' = 'graph';
   let editorRuntimeLoading = true;
   let viewerRuntimeLoading = true;
@@ -109,6 +114,7 @@
   let urlPreset: ResolvedEditorUrlPreset | null = null;
   let mirrorViewerFromSource = false;
   let lastMirroredViewerText = '';
+  let lastTrackedGraphViewRevision = -1;
   const maxTabs = 9;
   const wasmUrl = getDefaultWasmURL();
   type ScrollPosition = { scrollTop: number; scrollLeft: number };
@@ -305,6 +311,10 @@
 
   function handleViewerRuntimeState(payload: RuntimeStateEventDetail) {
     viewerRuntimeLoading = payload.loading;
+    if (!payload.loading && !payload.error && viewerViewMode === 'graph' && $editorRevision !== lastTrackedGraphViewRevision) {
+      lastTrackedGraphViewRevision = $editorRevision;
+      trackEvent('graph_view', { language: editorRef?.getActiveLanguage() ?? $languageIdStore });
+    }
   }
 
   $: runtimeGateViewMode = showViewerPane ? viewerViewMode : 'text';
@@ -346,10 +356,12 @@
           ? (effectiveSource as SupportedEditorLanguageId)
           : (payload.targetFormat as SupportedEditorLanguageId);
       await editorRef?.importStream(payload.file, effectiveSource, targetFormat);
+      trackEvent('document_import', { source: 'file', language: targetFormat, result: 'success' });
       toast.success(`Imported ${payload.fileName}`);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       console.error('[import] file import failed', { fileName: payload.fileName, error: message });
+      trackEvent('document_import', { source: 'file', result: 'failure' });
       toast.error(`Import failed: ${message}`);
     }
   }
@@ -368,6 +380,7 @@
       formatOptions,
     });
     await showViewerTextPreviewForRevision(text, $editorRevision);
+    trackEvent('document_export', { source: 'preview', format, result: 'success' });
     toast.success(preview.toastMessage);
   }
 
@@ -381,6 +394,7 @@
       formatOptions,
     });
     downloadText(text, download.fileName);
+    trackEvent('document_export', { source: 'download', format, result: 'success' });
     for (const message of download.toastMessages) {
       toast.success(message);
     }
@@ -629,7 +643,7 @@
         {activeTabId}
         canAddTab={tabSummaries.length < maxTabs}
         showTabs={true}
-        showRightActions={false}
+        showRightActions={true}
         {formatOptions}
         onAddTab={handleAddTab}
         onCloseTab={handleCloseTab}
@@ -637,6 +651,8 @@
         onImportFileStream={handleImportFileStream}
         onExportPreview={handleExportPreview}
         onExportDownload={handleExportDownload}
+        onShare={() => (shareOpen = true)}
+        onLogin={() => (loginOpen = true)}
         onOpenSettings={() => (settingsOpen = true)}
       />
     {/if}
@@ -832,3 +848,5 @@
   </div>
 {/if}
 <SettingsDialog bind:open={settingsOpen} />
+<ShareDialog bind:open={shareOpen} text={getActiveDocumentText()} languageId={$languageIdStore} />
+<LoginDialog bind:open={loginOpen} />

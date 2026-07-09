@@ -107,7 +107,7 @@ function startVite(version) {
   return spawn('pnpm', ['dev:vite'], {
     cwd: webDir,
     stdio: 'inherit',
-    env: { ...process.env, VITE_WASM_VERSION: version, VITE_TREEASE_WASM_IMPL: 'rust' }
+    env: { ...process.env, WASM_VERSION: version, TREEASE_WASM_IMPL: 'rust' }
   });
 }
 

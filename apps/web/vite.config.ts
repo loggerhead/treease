@@ -27,19 +27,19 @@ function readPositiveIntEnv(name: string, fallback: number): number {
 // 这批 define 是 Web 侧 benchmark 旋钮：构建时固定数值，业务代码只消费编译结果，不直接读环境变量。
 const buildDefines = {
   // 基于 benchmark（src 5 候选 [16KB,32KB,64KB,128KB,256KB]），128KB 是全规模文档最优均衡值。
-  __TREEASE_WASM_STREAM_CHUNK_PRODUCTION__: readPositiveIntEnv('VITE_TREEASE_WASM_STREAM_CHUNK_PRODUCTION', 128 * 1024),
+  __TREEASE_WASM_STREAM_CHUNK_PRODUCTION__: readPositiveIntEnv('TREEASE_WASM_STREAM_CHUNK_PRODUCTION', 128 * 1024),
   // 测试专用小分片，便于覆盖多块输出路径。
-  __TREEASE_WASM_STREAM_CHUNK_TEST__: readPositiveIntEnv('VITE_TREEASE_WASM_STREAM_CHUNK_TEST', 16 * 1024),
+  __TREEASE_WASM_STREAM_CHUNK_TEST__: readPositiveIntEnv('TREEASE_WASM_STREAM_CHUNK_TEST', 16 * 1024),
   // 浏览器读取导入文件时的切片大小。
-  __TREEASE_IMPORT_FILE_CHUNK_BYTE_SIZE__: readPositiveIntEnv('VITE_TREEASE_IMPORT_FILE_CHUNK_BYTE_SIZE', 64 * 1024),
+  __TREEASE_IMPORT_FILE_CHUNK_BYTE_SIZE__: readPositiveIntEnv('TREEASE_IMPORT_FILE_CHUNK_BYTE_SIZE', 64 * 1024),
   // graph import 累积到该体积后立即 flush。
   __TREEASE_IMPORT_GRAPH_STREAM_FLUSH_BYTE_THRESHOLD__: readPositiveIntEnv(
-    'VITE_TREEASE_IMPORT_GRAPH_STREAM_FLUSH_BYTE_THRESHOLD',
+    'TREEASE_IMPORT_GRAPH_STREAM_FLUSH_BYTE_THRESHOLD',
     64 * 1024,
   ),
   // 导入文本累计到该体积后立刻刷入编辑器。
   __TREEASE_IMPORT_EDITOR_FLUSH_BYTE_THRESHOLD__: readPositiveIntEnv(
-    'VITE_TREEASE_IMPORT_EDITOR_FLUSH_BYTE_THRESHOLD',
+    'TREEASE_IMPORT_EDITOR_FLUSH_BYTE_THRESHOLD',
     256 * 1024,
   ),
 };
@@ -60,7 +60,14 @@ export default defineConfig({
       : []),
   ],
   // 以编译期常量注入，保证 benchmark 可复现，避免运行时代码各自解析环境变量。
-  define: Object.fromEntries(Object.entries(buildDefines).map(([key, value]) => [key, JSON.stringify(value)])),
+  define: {
+    ...Object.fromEntries(Object.entries(buildDefines).map(([key, value]) => [key, JSON.stringify(value)])),
+    // Keep the public Supabase names aligned with apps/server and Vercel production.
+    'import.meta.env.SUPABASE_URL': JSON.stringify(process.env.SUPABASE_URL ?? ''),
+    'import.meta.env.SUPABASE_ANON_KEY': JSON.stringify(process.env.SUPABASE_ANON_KEY ?? ''),
+    'import.meta.env.GA_MEASUREMENT_ID': JSON.stringify(process.env.GA_MEASUREMENT_ID ?? ''),
+    'import.meta.env.GA_CONSENT_REQUIRED': JSON.stringify(process.env.GA_CONSENT_REQUIRED ?? '0'),
+  },
   build: bundleAnalyzeEnabled
     ? {
         sourcemap: 'hidden',
@@ -79,7 +86,7 @@ export default defineConfig({
   },
   server: {
     port: 8080,
-    hmr: process.env.VITE_BENCHMARK_MODE ? false : undefined,
+    hmr: process.env.BENCHMARK_MODE ? false : undefined,
     fs: {
       allow: allowFsDirs,
     },

@@ -12,6 +12,7 @@ import type { TreeNode } from '@core-wasm/index'
 import type { LeaferEditor, LeaferText } from './model';
 import { resolveCellPath } from './graph-anchor-index';
 import { createFreshnessScope } from '../../guards/freshness-scope';
+import { trackEvent } from '../../analytics/ga4';
 
 type GraphEditEventType = 'graph-edit-open' | 'graph-edit-commit' | 'graph-edit-replace-fallback';
 
@@ -274,9 +275,11 @@ export function createGraphValueEditController(deps: GraphValueEditControllerDep
           graphEditFallback,
         },
       });
+      trackEvent('graph_edit', { edit_type: editKind, result: 'success' });
       return true;
     }
     const applied = editorIO.applyTextEdits(planned.edits);
+    if (applied) trackEvent('graph_edit', { edit_type: editKind, result: 'success' });
     return applied;
   }
 
