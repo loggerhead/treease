@@ -3,6 +3,7 @@ summary: "Document Runtime、snapshot、protocol 与领域术语的权威语境�
 read_when:
   - 任务直接涉及 Document Runtime、snapshot、protocol、mainGraph
   - 需要解释跨文档共享的核心术语
+  - 任务涉及 Web Workspace 或 Desktop Workspace 的产品边界
 ---
 # CONTEXT.md
 
@@ -149,6 +150,40 @@ Treease 的主文档链路只有在以下条件同时成立时才算成立：
 4. Worker 不再拥有 authority 二次裁决。
 5. 主图来自 streaming events 与 `SnapshotReady.mainGraph`。
 6. diagnostics-only、clear graph、subgraph projection、planner 都绑定同一份 snapshot 语义。
+
+## 产品工作区
+
+### Web Workspace
+
+通过浏览器提供的 Treease 核心工作区，用于编辑、理解、比较和转换结构化文本。它不是营销站点、教程、定价或公开分享页的统称。
+
+### Desktop Workspace
+
+通过桌面应用提供的 Treease 核心工作区，与 `Web Workspace` 共享同一套用户任务和交互语义，并可承载桌面环境特有的文件与系统集成。它不是 Treease 整个网站的桌面镜像。
+
+### File-Linked Document
+
+已关联一个本地文件的 `Document`。关联仅表示其默认保存目标，而不改变 `Editor Model` 作为当前草稿文本 authority 的地位。
+
+### Workspace Tab
+
+`Web Workspace` 或 `Desktop Workspace` 内承载一个主 `Document` 的独立工作单元。每个 Tab 保有自己的文本、语义绑定与本地文件关联；它不等同于 Compare 的辅助内容栏。
+
+### Hot Exit
+
+`Desktop Workspace` 对未保存 `Workspace Tab` 的本地保护与恢复语义。它保证应用正常退出或异常终止后都能恢复编辑现场，但不等同于把草稿静默写入关联文件。
+
+### File Access Grant
+
+用户明确交给 `Desktop Workspace` 的本地文件访问范围。它只覆盖具体文件的读取、保存与外部变更检测，不代表对其所在目录或用户文件系统的通用授权。
+
+### Desktop Sign-in Return
+
+用户在系统浏览器完成 `Authentication` 后回到 `Desktop Workspace` 的单次登录交接。它将已建立的 `User` 会话交回已运行的桌面工作区，而不代表在工作区内再托管一套登录页。
+
+### Desktop Analytics
+
+`Desktop Workspace` 为产品改进自动发送的最小化使用信号。它只可描述操作类型及结果，不得包含本地文件名、路径、文本、图语义、认证信息或本地唯一标识。
 
 ## Server-facing terms
 

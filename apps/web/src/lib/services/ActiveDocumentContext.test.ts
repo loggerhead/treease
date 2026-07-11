@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { initialDocumentSessionState, setDocumentSessionState } from '../store/document-session-store';
-import { clearActiveDocumentSemanticState, markActiveDocumentSemanticInvalid, markActiveDocumentSemanticValid } from '../store/active-document-semantic-state';
+import { clearActiveDocumentSemanticState, markActiveDocumentSemanticInvalid, markActiveDocumentSemanticValid } from '../store/active-document-authority';
 import { initialWorkspaceState, setWorkspaceState } from '../store/workspace-store';
-import { getActiveDocumentContext, resolveCommitBaseSnapshotId, resolveReadableSnapshotId } from './ActiveDocumentContext';
+import { getActiveDocumentContext, resolveCommitBaseSnapshotId, resolveReadableSnapshotId } from '../store/active-document-authority';
 
 function createWorkspaceForDocument(documentKey: string, snapshotId: number | null, revision = 3) {
   return {
@@ -42,7 +42,7 @@ describe('ActiveDocumentContext snapshot resolution', () => {
       editorRevision: 3,
       sourceText: '{"a":1}',
     });
-    setWorkspaceState(createWorkspaceForDocument('doc-json', 11, 2));
+    setWorkspaceState(createWorkspaceForDocument('doc-json', 11, 3));
     markActiveDocumentSemanticValid({
       documentKey: 'doc-json',
       language: 'json',

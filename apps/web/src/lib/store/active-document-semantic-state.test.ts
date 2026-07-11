@@ -7,9 +7,9 @@ import {
   markActiveDocumentSemanticPending,
   markActiveDocumentSemanticValid,
   shouldSuppressJsonBlockFallback,
-} from './active-document-semantic-state';
+} from './active-document-authority';
 
-describe('active-document-semantic-state helpers', () => {
+describe('active document authority fallback helpers', () => {
   beforeEach(() => {
     clearActiveDocumentSemanticState();
   });

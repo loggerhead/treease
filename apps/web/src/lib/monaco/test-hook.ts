@@ -16,6 +16,7 @@ type TestHookEditor = {
   getMarkers?: () => Array<{ owner?: string; message?: string; severity?: number }>;
   getModel?: () => {
     getLanguageId?: () => string | null;
+    getLineCount?: () => number;
     getLineContent?: (lineNumber: number) => string;
   } | null;
 };

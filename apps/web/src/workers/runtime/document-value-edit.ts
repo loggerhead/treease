@@ -4,8 +4,7 @@ import {
   parseValueForPath,
   planGraphValueEdit as planGraphValueEditFromSnapshot,
 } from '@core-wasm/index';
-import { postOk } from './logging';
-import type { PlanGraphValueEditResponse, ReplaceReason, WorkerContext, WorkerRequest } from './protocol';
+import type { PlanGraphValueEditResponse, ReplaceReason, WorkerRequest } from './protocol';
 import { normalizePathSegs } from './tree-path';
 import { treeNodeToValue, valueToTreeNode } from '../../shared/tree-node-value';
 
@@ -41,10 +40,9 @@ async function createCanonicalReplaceResult(
   };
 }
 export async function handleParseValueForPath(
-  ctx: WorkerContext,
   message: Extract<WorkerRequest, { type: 'parseValueForPath' }>,
-): Promise<void> {
-  const tree = await parseValueForPath(
+): Promise<Awaited<ReturnType<typeof parseValueForPath>>> {
+  return parseValueForPath(
     message.language,
     message.documentKey,
     message.text,
@@ -55,20 +53,17 @@ export async function handleParseValueForPath(
       nest: message.nest,
     },
   );
-  postOk(ctx, message.id, tree);
 }
 
 export async function handleValueToTreeNode(
-  ctx: WorkerContext,
   message: Extract<WorkerRequest, { type: 'valueToTreeNode' }>,
-): Promise<void> {
-  postOk(ctx, message.id, await valueToTreeNode(message.value));
+): Promise<Awaited<ReturnType<typeof valueToTreeNode>>> {
+  return valueToTreeNode(message.value);
 }
 
 export async function handleApplyValueEditCanonical(
-  ctx: WorkerContext,
   message: Extract<WorkerRequest, { type: 'applyValueEditCanonical' }>,
-): Promise<void> {
+): Promise<Awaited<ReturnType<typeof applyValueEditCanonicalText>>> {
   const normalizedValue = normalizeEditValue(message.value);
   const result = await applyValueEditCanonicalText(
     message.language,
@@ -77,13 +72,12 @@ export async function handleApplyValueEditCanonical(
     message.preferKey,
     normalizedValue.plainValue,
   );
-  postOk(ctx, message.id, result);
+  return result;
 }
 
 export async function handlePlanGraphValueEdit(
-  ctx: WorkerContext,
   message: Extract<WorkerRequest, { type: 'planGraphValueEdit' }>,
-): Promise<void> {
+): Promise<PlanGraphValueEditResponse> {
   const normalizedPath = normalizePathSegs(message.path);
   const normalizedValue = normalizeEditValue(message.value);
   const { plainValue } = normalizedValue;
@@ -98,51 +92,38 @@ export async function handlePlanGraphValueEdit(
       value: plainValue,
     });
     if (planned.status === 'ready' && planned.data.mode === 'edits' && planned.data.edits.length > 0) {
-      postOk(ctx, message.id, {
+      return {
         mode: 'edits',
         edits: planned.data.edits,
         tree: normalizedValue.tree,
         value: plainValue,
         text: message.text,
-      } satisfies PlanGraphValueEditResponse);
-      return;
+      } satisfies PlanGraphValueEditResponse;
     }
     if (planned.status !== 'ready') {
-      postOk(ctx, message.id, { mode: 'snapshotNotReady' } satisfies PlanGraphValueEditResponse);
-      return;
+      return { mode: 'snapshotNotReady' } satisfies PlanGraphValueEditResponse;
     }
     if (planned.data.reason === 'snapshotNotReady') {
-      postOk(ctx, message.id, { mode: 'snapshotNotReady' } satisfies PlanGraphValueEditResponse);
-      return;
+      return { mode: 'snapshotNotReady' } satisfies PlanGraphValueEditResponse;
     }
     const fallbackReason: ReplaceReason = planned.data.reason ?? 'unsupportedEdit';
-    postOk(
-      ctx,
-      message.id,
-      await createCanonicalReplaceResult(
+    return createCanonicalReplaceResult(
         message.language,
         message.text,
         normalizedPath,
         message.preferKey,
         plainValue,
         fallbackReason,
-      ),
     );
-    return;
   } else if (message.snapshotId == null) {
-    postOk(ctx, message.id, { mode: 'snapshotNotReady' } satisfies PlanGraphValueEditResponse);
-    return;
+    return { mode: 'snapshotNotReady' } satisfies PlanGraphValueEditResponse;
   }
-  postOk(
-    ctx,
-    message.id,
-    await createCanonicalReplaceResult(
+  return createCanonicalReplaceResult(
       message.language,
       message.text,
       normalizedPath,
       message.preferKey,
       plainValue,
       'unsupportedEdit',
-    ),
   );
 }

@@ -12,8 +12,8 @@ import type {
 import { isRawGraphDelta } from '../../../shared/worker-protocol/graph-delta-normalize';
 import { buildGraphStreamBuilderConfig } from '../../graph-stream/graph-stream-builder-config';
 import { processGraphBatchEvents, projectionToRawGraphDelta } from '../../../shared/document-job-graph-stream';
-import { bindWorkspaceSnapshotIfPresent, clearWorkspaceSnapshot } from '../../store/workspace-snapshot-bindings';
-import { createFreshnessScope } from '../../guards/freshness-scope';
+import { bindWorkspaceSnapshot, clearWorkspaceSnapshotBinding } from '../../store/workspace-store';
+import { createViewRuntimeOperation } from '../../guards/view-runtime-operation';
 import { streamDocumentJobText, type AdvanceDocumentJobRequest } from '../../../shared/document-job-stream';
 import type { FullEditDocumentJobSession } from '../../graph-stream/full-edit-document-job-session';
 import { buildDocumentJobSettings, collectGraphDocumentJobResult, startSharedGraphDocumentJob } from '../../graph-stream/document-job-runner';
@@ -368,7 +368,7 @@ export function createGraphRenderSession(deps: GraphRenderSessionDeps) {
 
   async function consumeGraphBatchStream(params: {
     batches: AsyncIterable<EventBatch>;
-    freshness: ReturnType<typeof createFreshnessScope>;
+    freshness: { isCurrent: () => boolean };
     applyProjectionEvents: (batch: EventBatch) => Promise<void>;
     onBatch?: (batch: EventBatch) => void;
   }): Promise<void> {
@@ -391,7 +391,7 @@ export function createGraphRenderSession(deps: GraphRenderSessionDeps) {
     analysis: DocumentAnalysisResult | null;
     snapshotId: SnapshotId | null;
     renderToken: number;
-    freshness: ReturnType<typeof createFreshnessScope>;
+    freshness: { isCurrent: () => boolean };
   }): Promise<GraphRenderResult | null> {
     const finalEvent = finalDocumentEvent(params.batch);
     if (finalEvent == null) {
@@ -430,7 +430,7 @@ export function createGraphRenderSession(deps: GraphRenderSessionDeps) {
       renderedRevision = params.revision;
       renderedLanguage = params.language;
       renderedText = params.renderedText;
-      bindWorkspaceSnapshotIfPresent({
+      bindWorkspaceSnapshot({
         documentKey: params.documentKey,
         revision: params.revision,
         snapshotId,
@@ -534,7 +534,7 @@ export function createGraphRenderSession(deps: GraphRenderSessionDeps) {
       }
     }
     if (renderedDocumentKey) {
-      clearWorkspaceSnapshot(renderedDocumentKey, activeSnapshotId);
+      clearWorkspaceSnapshotBinding(renderedDocumentKey, activeSnapshotId);
     }
     renderedDocumentKey = null;
     renderedRevision = null;
@@ -573,16 +573,21 @@ export function createGraphRenderSession(deps: GraphRenderSessionDeps) {
     const renderToken = ++activeRenderToken;
     deps.resetStreamProgress();
 
-    const freshness = createFreshnessScope(
-      {
+    const freshness = createViewRuntimeOperation({
+      captured: {
         documentKey: request.documentKey,
+        revision: request.revision,
+        languageId: request.language,
         token: renderToken,
       },
-      () => ({
+      getCurrent: () => ({
         documentKey: deps.getDocumentKey(),
+        revision: request.revision,
+        languageId: request.language,
         token: activeRenderToken,
       }),
-    );
+      onStale: () => cancelStartedJob(activeJobHandle),
+    });
 
     try {
       const totalBytes = textEncoder.encode(request.text).length;
@@ -615,8 +620,8 @@ export function createGraphRenderSession(deps: GraphRenderSessionDeps) {
         outputGraph: true,
         builderConfig,
       });
-      if (!freshness.isCurrent()) return cancelStartedJob(started.jobHandle);
       activeJobHandle = started.jobHandle;
+      if (!freshness.isCurrent()) return null;
 
       const streamedBatches = await streamDocumentJobText({
         jobHandle: started.jobHandle,
@@ -633,7 +638,7 @@ export function createGraphRenderSession(deps: GraphRenderSessionDeps) {
           await applyProjectionEvents(batch);
         },
       });
-      if (!freshness.isCurrent()) return cancelStartedJob(started.jobHandle);
+      if (!freshness.isCurrent()) return null;
       if (activeJobHandle === started.jobHandle) activeJobHandle = null;
 
       const result = collectGraphDocumentJobResult({
@@ -690,20 +695,21 @@ export function createGraphRenderSession(deps: GraphRenderSessionDeps) {
     deps.resetStreamProgress();
     deps.clearErrorMessage();
 
-    const freshness = createFreshnessScope(
-      {
+    const freshness = createViewRuntimeOperation({
+      captured: {
         documentKey: session.documentKey,
         revision: session.revision,
         sessionId: session.sessionId,
         token: renderToken,
       },
-      () => ({
+      getCurrent: () => ({
         documentKey: deps.getDocumentKey(),
         revision: session.revision,
         sessionId: activeExternalSessionId,
         token: activeRenderToken,
       }),
-    );
+      onStale: () => session.cancel(),
+    });
 
     const totalBytes = session.totalBytes;
     const streamRunId = session.streamRunId || nextStreamRunId(session.documentKey, session.revision);
@@ -773,19 +779,19 @@ export function createGraphRenderSession(deps: GraphRenderSessionDeps) {
 
     await dispose();
     const renderToken = ++activeRenderToken;
-    clearWorkspaceSnapshot(selection.sourceDocumentKey, activeSnapshotId);
+    clearWorkspaceSnapshotBinding(selection.sourceDocumentKey, activeSnapshotId);
     activeSnapshotId = null;
     deps.clearErrorMessage();
     deps.resetStreamProgress();
 
-    const freshness = createFreshnessScope(
-      {
+    const freshness = createViewRuntimeOperation({
+      captured: {
         documentKey: selection.blockDocumentKey,
         revision: selection.revision,
         sessionId: `${selection.blockDocumentKey}|${selection.revision}|${selection.startByte}|${selection.endByte}`,
         token: renderToken,
       },
-      () => {
+      getCurrent: () => {
         const current = deps.getJsonBlockSelection();
         return {
           documentKey: current?.blockDocumentKey ?? null,
@@ -797,7 +803,8 @@ export function createGraphRenderSession(deps: GraphRenderSessionDeps) {
           token: activeRenderToken,
         };
       },
-    );
+      onStale: () => cancelStartedJob(activeJobHandle),
+    });
     const totalBytes = textEncoder.encode(selection.text).length;
     const chunkSize = selectGraphStreamChunkSize(totalBytes);
     const streamRunId = nextStreamRunId(selection.blockDocumentKey, selection.revision);
@@ -828,8 +835,8 @@ export function createGraphRenderSession(deps: GraphRenderSessionDeps) {
         outputGraph: true,
         builderConfig: getBuilderConfig(),
       });
-      if (!freshness.isCurrent()) return cancelStartedJob(started.jobHandle);
       activeJobHandle = started.jobHandle;
+      if (!freshness.isCurrent()) return null;
 
       const streamedBatches = await streamDocumentJobText({
         jobHandle: started.jobHandle,
@@ -846,7 +853,7 @@ export function createGraphRenderSession(deps: GraphRenderSessionDeps) {
           await applyProjectionEvents(batch);
         },
       });
-      if (!freshness.isCurrent()) return cancelStartedJob(started.jobHandle);
+      if (!freshness.isCurrent()) return null;
       if (activeJobHandle === started.jobHandle) activeJobHandle = null;
 
       const result = collectGraphDocumentJobResult({
@@ -865,7 +872,7 @@ export function createGraphRenderSession(deps: GraphRenderSessionDeps) {
         const snapshotId = (result.snapshotId ?? finalEvent.snapshotId) as SnapshotId;
         finalSnapshotId = snapshotId;
         activeSnapshotId = snapshotId;
-        bindWorkspaceSnapshotIfPresent({
+        bindWorkspaceSnapshot({
           documentKey: selection.blockDocumentKey,
           revision: selection.revision,
           snapshotId,

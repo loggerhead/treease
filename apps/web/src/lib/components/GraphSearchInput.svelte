@@ -5,7 +5,7 @@
   import { settings } from '../settings/settings-store'
   import type { PathSeg } from '../store/tree-path'
   import { editorRevision, graphAppliedRevision } from '../store/document-session-store'
-  import { getWorkspaceSnapshotId } from '../store/workspace-snapshot-bindings'
+  import { getWorkspaceSnapshotId } from '../store/workspace-store'
 
   type GraphSearchResult = {
     nodeId?: number

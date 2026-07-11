@@ -49,9 +49,9 @@
   import { callSharedWasmWorker, getSharedWasmWorkerClient } from '../../wasm/wasm-worker-singleton';
   import { attachMonacoTestHook } from '../../monaco/test-hook';
   import { toast } from 'svelte-sonner';
-  import { getActiveDocumentText, resolveCommitBaseSnapshotId } from '../../services/ActiveDocumentContext';
+  import { getActiveDocumentText, resolveCommitBaseSnapshotId } from '../../store/active-document-authority';
   import { resolvePathSelectionRangeResult } from '../../services/TreePathService';
-  import { bindWorkspaceSnapshotIfPresent, getWorkspaceSnapshotId } from '../../store/workspace-snapshot-bindings';
+  import { getWorkspaceSnapshotId } from '../../store/workspace-store';
   import { resolveEditorRuntimeOverlay, type RuntimeStateEventDetail } from '../../runtime-loading';
   import {
     markCursorPathRequested,
@@ -284,7 +284,7 @@
     scrollbar: { alwaysConsumeMouseWheel: false },
     overviewRulerBorder: true,
     colorDecorators: true,
-    colorDecoratorsActivatedOn: 'clickAndHover',
+    colorDecoratorsActivatedOn: 'clickAndHover' as const,
     'semanticHighlighting.enabled': true,
     readOnly: true,
   };
@@ -868,7 +868,6 @@
           sourceText.set(sourceTextValue)
         }
       },
-      bindSnapshot: bindWorkspaceSnapshotIfPresent,
       applyGraphAnalysis: (modelValue, languageValue, documentKeyValue, revisionValue, analysis) =>
         editorAnalysisController.applyGraphAnalysis(
           modelValue,

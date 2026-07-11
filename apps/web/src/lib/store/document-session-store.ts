@@ -1,14 +1,17 @@
 import { derived, get, writable, type Readable, type Writable } from 'svelte/store';
 
 import { editorLanguageFallback, type SupportedEditorLanguageId } from '../monaco/language-support';
+import {
+  activeDocumentAuthorityStore,
+  getAuthorityDocumentSessionState,
+  patchAuthorityActiveDocument,
+  resetActiveDocumentAuthority,
+  setAuthorityCompareEditToken,
+  setAuthorityDocumentSession,
+  setAuthorityEditorIO,
+} from './active-document-authority';
 import type { PathSeg } from './tree-path';
-import type {
-  DocumentSessionState,
-  EditorIO,
-  EditorIoContext,
-  EditorMutation,
-  EditorMutationEnvelope,
-} from './editor-store-types';
+import type { DocumentSessionState, EditorIO, EditorIoContext, EditorMutation, EditorMutationEnvelope } from './editor-store-types';
 
 function clonePathSegs(path: PathSeg[]) {
   return path.map((segment) => ({ ...segment }));
@@ -20,46 +23,24 @@ function cloneEditorMutationForWrite(mutation: EditorMutation): EditorMutation {
     payload: {
       ...mutation.payload,
       graphEditFallback: mutation.payload.graphEditFallback
-        ? {
-            ...mutation.payload.graphEditFallback,
-            path: clonePathSegs(mutation.payload.graphEditFallback.path),
-          }
+        ? { ...mutation.payload.graphEditFallback, path: clonePathSegs(mutation.payload.graphEditFallback.path) }
         : undefined,
     },
   };
 }
 
 function deepFreezeForRead<T>(value: T): T {
-  if (!value || typeof value !== 'object') return value;
-  if (Object.isFrozen(value)) return value;
+  if (!value || typeof value !== 'object' || Object.isFrozen(value)) return value;
   Object.freeze(value);
-  if (Array.isArray(value)) {
-    for (const item of value) deepFreezeForRead(item);
-    return value;
-  }
-  for (const nestedValue of Object.values(value as Record<string, unknown>)) {
-    deepFreezeForRead(nestedValue);
-  }
+  for (const nestedValue of Object.values(value as Record<string, unknown>)) deepFreezeForRead(nestedValue);
   return value;
 }
 
 function cloneEditorMutationForRead(editorMutation: EditorMutationEnvelope | null): EditorMutationEnvelope | null {
   if (!editorMutation) return null;
-  const mutation = editorMutation.mutation;
   return deepFreezeForRead({
     ...editorMutation,
-    mutation: {
-      ...mutation,
-      payload: {
-        ...mutation.payload,
-        graphEditFallback: mutation.payload.graphEditFallback
-          ? {
-              ...mutation.payload.graphEditFallback,
-              path: clonePathSegs(mutation.payload.graphEditFallback.path),
-            }
-          : undefined,
-      },
-    },
+    mutation: cloneEditorMutationForWrite(editorMutation.mutation),
   });
 }
 
@@ -75,18 +56,23 @@ export const initialDocumentSessionState: DocumentSessionState = {
 };
 
 let editorMutationId = 0;
-
-type DocumentSessionCoordinator = {
-  onStateChange?: (next: DocumentSessionState, previous: DocumentSessionState) => void;
-};
-
-let documentSessionCoordinator: DocumentSessionCoordinator | null = null;
-
-export const documentSessionStore = writable<DocumentSessionState>(initialDocumentSessionState);
 export const editorMutationRawStore = writable<EditorMutationEnvelope | null>(null);
 
+const authoritySessionStore = derived(activeDocumentAuthorityStore, () => getAuthorityDocumentSessionState());
+
+/** Document Session is an Adapter: writes are routed to Active Document authority. */
+export const documentSessionStore: Writable<DocumentSessionState> = {
+  subscribe: authoritySessionStore.subscribe,
+  set: setAuthorityDocumentSession,
+  update: (updater) => setAuthorityDocumentSession(updater(getAuthorityDocumentSessionStore())),
+};
+
+function getAuthorityDocumentSessionStore(): DocumentSessionState {
+  return get(authoritySessionStore);
+}
+
 export function getDocumentSessionState(): DocumentSessionState {
-  return get(documentSessionStore);
+  return getAuthorityDocumentSessionStore();
 }
 
 export function getEditorMutationState(): EditorMutationEnvelope | null {
@@ -98,88 +84,52 @@ export function getEditorMutationRawState(): EditorMutationEnvelope | null {
 }
 
 export function setDocumentSessionState(state: DocumentSessionState): void {
-  const previous = get(documentSessionStore);
-  documentSessionStore.set(state);
-  documentSessionCoordinator?.onStateChange?.(state, previous);
+  setAuthorityDocumentSession(state);
 }
 
 export function setEditorMutationState(state: EditorMutationEnvelope | null): void {
   editorMutationRawStore.set(state);
 }
 
-export function setSourceText(value: string): void {
-  const previous = get(documentSessionStore);
-  const next = {
-    ...previous,
-    previousSourceText: previous.sourceText,
-    sourceText: value,
-  };
-  documentSessionStore.set(next);
-  documentSessionCoordinator?.onStateChange?.(next, previous);
+export function setSourceText(sourceText: string): void {
+  patchAuthorityActiveDocument({ sourceText });
 }
 
-export function setDocumentKey(value: string): void {
-  const previous = get(documentSessionStore);
-  const next = { ...previous, documentKey: value };
-  documentSessionStore.set(next);
-  documentSessionCoordinator?.onStateChange?.(next, previous);
+export function setDocumentKey(documentKey: string): void {
+  patchAuthorityActiveDocument({ documentKey });
 }
 
-export function setLanguageId(value: SupportedEditorLanguageId): void {
-  const previous = get(documentSessionStore);
-  const next = { ...previous, languageId: value };
-  documentSessionStore.set(next);
-  documentSessionCoordinator?.onStateChange?.(next, previous);
+export function setLanguageId(languageId: SupportedEditorLanguageId): void {
+  patchAuthorityActiveDocument({ languageId });
 }
 
 export function incrementEditorRevision(): void {
-  const previous = get(documentSessionStore);
-  const next = { ...previous, editorRevision: previous.editorRevision + 1 };
-  documentSessionStore.set(next);
-  documentSessionCoordinator?.onStateChange?.(next, previous);
+  patchAuthorityActiveDocument({ revision: getDocumentSessionState().editorRevision + 1 });
 }
 
-export function setEditorRevision(value: number): void {
-  const previous = get(documentSessionStore);
-  const next = { ...previous, editorRevision: value };
-  documentSessionStore.set(next);
-  documentSessionCoordinator?.onStateChange?.(next, previous);
+export function setEditorRevision(editorRevision: number): void {
+  patchAuthorityActiveDocument({ revision: editorRevision });
 }
 
-export function setCompareEditToken(value: number): void {
-  const previous = get(documentSessionStore);
-  const next = { ...previous, compareEditToken: value };
-  documentSessionStore.set(next);
-  documentSessionCoordinator?.onStateChange?.(next, previous);
+export function setCompareEditToken(compareEditToken: number): void {
+  setAuthorityCompareEditToken(compareEditToken);
 }
 
-export function updateCompareEditToken(fn: (value: number) => number): void {
-  const previous = get(documentSessionStore);
-  const next = { ...previous, compareEditToken: fn(previous.compareEditToken) };
-  documentSessionStore.set(next);
-  documentSessionCoordinator?.onStateChange?.(next, previous);
+export function updateCompareEditToken(updater: (value: number) => number): void {
+  setAuthorityCompareEditToken(updater(getDocumentSessionState().compareEditToken));
 }
 
-export function setGraphAppliedRevision(value: number): void {
-  const previous = get(documentSessionStore);
-  const next = { ...previous, graphAppliedRevision: value };
-  documentSessionStore.set(next);
-  documentSessionCoordinator?.onStateChange?.(next, previous);
+export function setGraphAppliedRevision(graphAppliedRevision: number): void {
+  patchAuthorityActiveDocument({ graphAppliedRevision });
 }
 
-export function setEditorIO(value: EditorIO | null): void {
-  const previous = get(documentSessionStore);
-  const next = { ...previous, editorIO: value };
-  documentSessionStore.set(next);
-  documentSessionCoordinator?.onStateChange?.(next, previous);
+export function setEditorIO(editorIO: EditorIO | null): void {
+  setAuthorityEditorIO(editorIO);
 }
 
-export function emitEditorMutation(value: EditorMutation): void {
+export function emitEditorMutation(mutation: EditorMutation): void {
   editorMutationId += 1;
-  editorMutationRawStore.set({
-    id: editorMutationId,
-    mutation: cloneEditorMutationForWrite(value),
-  });
+  editorMutationRawStore.set({ id: editorMutationId, mutation: cloneEditorMutationForWrite(mutation) });
 }
 
 export function clearEditorMutation(): void {
@@ -187,15 +137,9 @@ export function clearEditorMutation(): void {
 }
 
 export function resetDocumentSession(): void {
-  const previous = get(documentSessionStore);
-  documentSessionStore.set(initialDocumentSessionState);
-  documentSessionCoordinator?.onStateChange?.(initialDocumentSessionState, previous);
+  resetActiveDocumentAuthority();
   editorMutationId = 0;
   editorMutationRawStore.set(null);
-}
-
-export function registerDocumentSessionCoordinator(coordinator: DocumentSessionCoordinator | null): void {
-  documentSessionCoordinator = coordinator;
 }
 
 function createDocumentSessionFieldStore<K extends keyof DocumentSessionState>(
@@ -203,37 +147,22 @@ function createDocumentSessionFieldStore<K extends keyof DocumentSessionState>(
   setter: (value: DocumentSessionState[K]) => void,
 ): Writable<DocumentSessionState[K]> {
   return {
-    subscribe: (run) => derived(documentSessionStore, ($state) => $state[key]).subscribe(run),
+    subscribe: (run) => derived(authoritySessionStore, ($state) => $state[key]).subscribe(run),
     set: setter,
-    update: (fn) => setter(fn(get(documentSessionStore)[key])),
+    update: (updater) => setter(updater(getDocumentSessionState()[key])),
   };
 }
 
 export const sourceText = createDocumentSessionFieldStore('sourceText', setSourceText);
-export const previousSourceText: Readable<string> = {
-  subscribe: (run) => derived(documentSessionStore, ($state) => $state.previousSourceText).subscribe(run),
-};
+export const previousSourceText: Readable<string> = { subscribe: (run) => derived(authoritySessionStore, ($state) => $state.previousSourceText).subscribe(run) };
 export const documentKey = createDocumentSessionFieldStore('documentKey', setDocumentKey);
 export const languageId = createDocumentSessionFieldStore('languageId', setLanguageId);
-export const compareEditToken: Writable<number> = {
-  subscribe: (run) => derived(documentSessionStore, ($state) => $state.compareEditToken).subscribe(run),
-  set: setCompareEditToken,
-  update: updateCompareEditToken,
-};
-export const editorRevision: Writable<number> = {
-  subscribe: (run) => derived(documentSessionStore, ($state) => $state.editorRevision).subscribe(run),
-  set: setEditorRevision,
-  update: (fn) => setEditorRevision(fn(get(documentSessionStore).editorRevision)),
-};
+export const compareEditToken = createDocumentSessionFieldStore('compareEditToken', setCompareEditToken);
+export const editorRevision = createDocumentSessionFieldStore('editorRevision', setEditorRevision);
 export const graphAppliedRevision = createDocumentSessionFieldStore('graphAppliedRevision', setGraphAppliedRevision);
 export const editorIO = createDocumentSessionFieldStore('editorIO', setEditorIO);
 export const editorMutation: Readable<EditorMutationEnvelope | null> = {
   subscribe: (run) => derived(editorMutationRawStore, ($state) => cloneEditorMutationForRead($state)).subscribe(run),
 };
 
-export type {
-  EditorIO,
-  EditorIoContext,
-  EditorMutation,
-  EditorMutationEnvelope,
-} from './editor-store-types';
+export type { EditorIO, EditorIoContext, EditorMutation, EditorMutationEnvelope } from './editor-store-types';

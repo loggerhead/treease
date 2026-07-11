@@ -1,9 +1,15 @@
 import type { SnapshotId } from '@core-wasm/index';
-import { get, writable, type Readable } from 'svelte/store';
-import { editorLanguageFallback } from '../monaco/language-support';
-import { getDocumentSessionState, initialDocumentSessionState } from './document-session-store';
-import { getFullEditUiStateSnapshot, initialFullEditUiState } from './full-edit-ui-store';
-import { getActiveTempModelSnapshot, initialTempModel } from './graph-selection-store';
+import { derived, get, type Readable, type Writable } from 'svelte/store';
+import {
+  activeDocumentAuthorityStore,
+  bindAuthoritySnapshot,
+  clearAuthoritySnapshot,
+  getAuthorityWorkspaceState,
+  getAuthorityDocumentSessionState,
+  patchAuthorityActiveDocument,
+  resetActiveDocumentAuthority,
+  setAuthorityWorkspaceState,
+} from './active-document-authority';
 import {
   activateWorkspaceTab,
   addWorkspaceTab,
@@ -31,19 +37,14 @@ type WorkspaceCoordinator = {
 let workspaceCoordinator: WorkspaceCoordinator | null = null;
 
 function createWorkspacePrimaryTab(payload: { id: string; name: string }): EditorWorkspaceTab {
-  const session = getDocumentSessionState();
+  const current = getAuthorityWorkspaceState();
+  const active = current.tabsById[current.activeTabId] ?? current.tabsById[current.primaryTabId];
   return {
+    ...active,
     id: payload.id,
     role: 'primary',
     name: payload.name,
-    documentKey: session.documentKey,
-    languageId: session.languageId || editorLanguageFallback,
-    sourceText: session.sourceText,
-    revision: session.editorRevision,
-    graphAppliedRevision: session.graphAppliedRevision,
     snapshotId: null,
-    tempModel: getActiveTempModelSnapshot(),
-    fullEditUiState: getFullEditUiStateSnapshot(),
   };
 }
 
@@ -51,7 +52,14 @@ export const initialWorkspaceState: EditorWorkspaceState = createEditorWorkspace
   createWorkspacePrimaryTab({ id: 'primary', name: 'Primary' }),
 );
 
-export const workspaceStore = writable<EditorWorkspaceState>(initialWorkspaceState);
+const authorityWorkspaceStore = derived(activeDocumentAuthorityStore, ($authority) => $authority.workspace);
+
+/** Workspace Store is an Adapter over Active Document authority. */
+export const workspaceStore: Writable<EditorWorkspaceState> = {
+  subscribe: authorityWorkspaceStore.subscribe,
+  set: setAuthorityWorkspaceState,
+  update: (updater) => setAuthorityWorkspaceState(updater(getAuthorityWorkspaceState())),
+};
 
 function deepFreezeForRead<T>(value: T): T {
   if (!value || typeof value !== 'object') return value;
@@ -123,16 +131,17 @@ export function getWorkspaceState(): EditorWorkspaceState {
 }
 
 export function getWorkspaceRawState(): EditorWorkspaceState {
-  return get(workspaceStore);
+  return getAuthorityWorkspaceState();
 }
 
 export function setWorkspaceState(state: EditorWorkspaceState): void {
-  const previous = get(workspaceStore);
+  const previous = getAuthorityWorkspaceState();
   if (previous === state) return;
-  workspaceStore.set(state);
+  setAuthorityWorkspaceState(state);
   workspaceCoordinator?.onWorkspaceChange?.(state, previous);
 }
 
+/** Workspace may notify non-authoritative View Runtime adapters only. */
 export function registerWorkspaceCoordinator(coordinator: WorkspaceCoordinator | null): void {
   workspaceCoordinator = coordinator;
 }
@@ -143,7 +152,7 @@ export function getWorkspaceTab(tabId: string) {
 
 export function getWorkspaceSnapshotId(documentKey: string): SnapshotId | null {
   if (!documentKey) return null;
-  return get(workspaceStore).snapshotBindingsByDocumentKey[documentKey]?.snapshotId ?? null;
+  return getAuthorityWorkspaceState().snapshotBindingsByDocumentKey[documentKey]?.snapshotId ?? null;
 }
 
 export function initWorkspaceFromPrimaryTab(payload: { id: string; name: string }): void {
@@ -170,7 +179,7 @@ export function getWorkspaceTabSummaries(): EditorWorkspaceTabSummary[] {
 }
 
 export function ensureSidecarWorkspaceTab(payload: { id: string; name: string; sourceText: string }): void {
-  const session = getDocumentSessionState();
+  const session = getAuthorityDocumentSessionState();
   setWorkspaceState(
     ensureSidecarTab(get(workspaceStore), {
       id: payload.id,
@@ -182,7 +191,7 @@ export function ensureSidecarWorkspaceTab(payload: { id: string; name: string; s
 }
 
 export function ensureDetachedSidecarWorkspaceTab(payload: { id: string; name: string; sourceText: string }): void {
-  const session = getDocumentSessionState();
+  const session = getAuthorityDocumentSessionState();
   setWorkspaceState(
     ensureDetachedSidecarTab(get(workspaceStore), {
       id: payload.id,
@@ -199,6 +208,10 @@ export function removeDetachedSidecarWorkspaceTab(tabId: string): void {
 
 export function updateWorkspaceTab(tabId: string, patch: EditorWorkspaceTabPatch): void {
   const workspace = get(workspaceStore);
+  if (tabId === workspace.primaryTabId && patch.documentKey !== undefined) {
+    patchAuthorityActiveDocument({ documentKey: patch.documentKey });
+    return;
+  }
   if (tabId === workspace.primaryTabId) return;
   const isSidecarTab = workspace.tabsById[tabId]?.role === 'sidecar';
   const { languageId: _ignoredLanguageId, ...patchWithoutLanguage } = patch;
@@ -210,60 +223,11 @@ export function bindWorkspaceSnapshot(payload: {
   revision: number;
   snapshotId: SnapshotId | null | undefined;
 }): void {
-  const workspace = get(workspaceStore);
-  if (!payload.documentKey || payload.snapshotId == null) return;
-  const current = workspace.snapshotBindingsByDocumentKey[payload.documentKey];
-  const newestTabRevision = Object.values(workspace.tabsById).reduce(
-    (newest, tab) => (tab.documentKey === payload.documentKey ? Math.max(newest, tab.revision) : newest),
-    -1,
-  );
-  if (current && payload.revision < current.revision) return;
-  if (newestTabRevision >= 0 && payload.revision < newestTabRevision) return;
-  let tabsById = workspace.tabsById;
-  for (const [tabId, tab] of Object.entries(workspace.tabsById)) {
-    if (tab.documentKey !== payload.documentKey) continue;
-    if (payload.revision < tab.revision) continue;
-    if (tabsById === workspace.tabsById) tabsById = { ...tabsById };
-    tabsById[tabId] = {
-      ...tab,
-      revision: Math.max(tab.revision, payload.revision),
-      snapshotId: payload.snapshotId,
-    };
-  }
-  setWorkspaceState({
-    ...workspace,
-    tabsById,
-    snapshotBindingsByDocumentKey: {
-      ...workspace.snapshotBindingsByDocumentKey,
-      [payload.documentKey]: {
-        documentKey: payload.documentKey,
-        revision: payload.revision,
-        snapshotId: payload.snapshotId,
-      },
-    },
-  });
+  bindAuthoritySnapshot(payload);
 }
 
 export function clearWorkspaceSnapshotBinding(documentKey: string, snapshotId?: SnapshotId | null): void {
-  const workspace = get(workspaceStore);
-  if (!documentKey) return;
-  const current = workspace.snapshotBindingsByDocumentKey[documentKey];
-  if (!current) return;
-  if (snapshotId != null && current.snapshotId !== snapshotId) return;
-  const snapshotBindingsByDocumentKey = { ...workspace.snapshotBindingsByDocumentKey };
-  delete snapshotBindingsByDocumentKey[documentKey];
-  let tabsById = workspace.tabsById;
-  for (const [tabId, tab] of Object.entries(workspace.tabsById)) {
-    if (tab.documentKey !== documentKey) continue;
-    if (snapshotId != null && tab.snapshotId !== snapshotId) continue;
-    if (tabsById === workspace.tabsById) tabsById = { ...tabsById };
-    tabsById[tabId] = { ...tab, snapshotId: null };
-  }
-  setWorkspaceState({
-    ...workspace,
-    tabsById,
-    snapshotBindingsByDocumentKey,
-  });
+  clearAuthoritySnapshot(documentKey, snapshotId);
 }
 
 export function syncSidecarWorkspaceLanguageFromPrimary(): void {
@@ -271,7 +235,7 @@ export function syncSidecarWorkspaceLanguageFromPrimary(): void {
 }
 
 export function resetWorkspaceState(): void {
-  setWorkspaceState(initialWorkspaceState);
+  resetActiveDocumentAuthority();
 }
 
 export const editorWorkspace: Readable<EditorWorkspaceState> = {

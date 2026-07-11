@@ -6,7 +6,7 @@ import {
   getActiveDocumentCommitBaseSnapshotId,
   getActiveDocumentSemanticState,
   markActiveDocumentSemanticValid,
-} from '../../store/active-document-semantic-state';
+} from '../../store/active-document-authority';
 
 vi.mock('../../services/DocumentCommitService', () => ({
   commitApplyEdits: vi.fn(),
@@ -17,6 +17,7 @@ function createOptions(overrides: Partial<Parameters<typeof commitEditorTabTextC
   return {
     requestModel: {
       getValue: () => '{"a":',
+      getVersionId: () => 1,
     } as any,
     requestLanguage: 'json' as any,
     requestDocumentKey: 'doc-json',
@@ -30,7 +31,6 @@ function createOptions(overrides: Partial<Parameters<typeof commitEditorTabTextC
       return revision;
     },
     isFresh: () => true,
-    bindSnapshot: vi.fn(),
     applyGraphAnalysis: vi.fn(),
     ...overrides,
   } satisfies Parameters<typeof commitEditorTabTextChange>[0];
@@ -85,7 +85,6 @@ describe('commitEditorTabTextChange', () => {
       );
     });
     expect(getActiveDocumentCommitBaseSnapshotId('doc-json')).toBe(11);
-    expect(options.bindSnapshot).not.toHaveBeenCalled();
     expect(options.applyGraphAnalysis).toHaveBeenCalledWith(
       options.requestModel,
       'json',

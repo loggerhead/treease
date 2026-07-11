@@ -5,11 +5,17 @@ import { toast } from 'svelte-sonner';
 
 import { runIntakeJob, type IntakeResult } from '../../services/DocumentIntake';
 import {
+  beginEditorCommitTransaction,
+  settleEditorCommitTransaction,
+  type EditorCommitLanding,
+} from '../../services/EditorCommitTransaction';
+import {
   clearFullEditDocumentJobSession,
   startReadableDocumentJobSessionForGraph,
   type FullEditDocumentJobSession,
 } from '../../graph-stream/full-edit-document-job-session';
 import { createFreshnessScope } from '../../guards/freshness-scope';
+import { createViewRuntimeOperation, type ViewRuntimeOperation } from '../../guards/view-runtime-operation';
 
 import { readImportSourceSample, resolveImportSourceFormat } from '../../import/resolve-import-source';
 import { IMPORT_EDITOR_FLUSH_BYTE_THRESHOLD, IMPORT_FILE_CHUNK_BYTE_SIZE } from '../../import/import-config';
@@ -23,11 +29,6 @@ import {
 import type { DocumentAnalysisResult } from '../../../shared/worker-protocol/protocol';
 import { createPrimaryFullEditSink, type FullEditSink } from './editor-full-edit-sink';
 import { trackEvent } from '../../analytics/ga4';
-import {
-  markActiveDocumentSemanticInvalid,
-  markActiveDocumentSemanticPending,
-  markActiveDocumentSemanticValid,
-} from '../../store/active-document-semantic-state';
 
 type FullEditReason =
   | 'initial-example'
@@ -141,7 +142,7 @@ type CreateEditorFullEditControllerOptions = {
 
 export function createEditorFullEditController(options: CreateEditorFullEditControllerOptions) {
   let importSession: FullEditSession | null = null;
-  let importOnlyToken = 0;
+  let importConversionOperation: ViewRuntimeOperation | null = null;
   let suppressNextWholeDocumentIntake = false;
   const fullEditSink = options.fullEditSink ?? createPrimaryFullEditSink();
 
@@ -223,44 +224,75 @@ export function createEditorFullEditController(options: CreateEditorFullEditCont
     analysis: DocumentAnalysisResult | null;
     sourceText?: string | null;
   }): Promise<void> | void {
-    // setSourceText is safe here: the sourceText subscriber guards on
-    // fullEditUiState.active (EditorCore.svelte:591), which is true during
-    // an active full-edit session, preventing the subscriber from firing
-    // model.setValue and triggering a new session loop.
-    if (typeof params.sourceText === 'string') {
-      options.setSourceText(params.sourceText);
-    }
+    // Document Runtime terminal state, canonical source text, and analysis land
+    // in EditorCommitTransaction. Full Edit only mirrors its visible session UI.
     if (params.resultStatus === 'snapshotReady' && params.snapshotId != null) {
-      markActiveDocumentSemanticValid({
-        documentKey: params.documentKey,
-        language: params.language,
-        revision: params.revision,
-        snapshotId: params.snapshotId,
-      });
       fullEditSink.bindSnapshot({
         documentKey: params.documentKey,
         revision: params.revision,
         snapshotId: params.snapshotId,
       });
-    } else if (params.resultStatus === 'parseFailed') {
-      trackEvent('parse_failed', { language: params.language, source: 'document_runtime' });
-      markActiveDocumentSemanticInvalid({
-        documentKey: params.documentKey,
-        language: params.language,
-        revision: params.revision,
-        snapshotId: params.snapshotId,
-      });
     }
-    if (params.analysis == null) return;
-    const activeModel = options.getModel();
-    if (!activeModel) return;
-    return options.applyGraphAnalysis(
-      activeModel,
-      params.language,
-      params.documentKey,
-      params.revision,
-      params.analysis,
+    if (params.resultStatus === 'parseFailed') {
+      trackEvent('parse_failed', { language: params.language, source: 'document_runtime' });
+    }
+  }
+
+  function createIntakeLanding(session: FullEditSession): EditorCommitLanding {
+    return {
+      writeSourceText: (sourceText) => {
+        if (session.sourceWritebackPolicy !== 'intake') return;
+        session.visibleText = sourceText;
+        options.setEditorValueForFullEdit(sourceText);
+      },
+      applyAnalysis: (analysis) => {
+        const activeModel = options.getModel();
+        if (!activeModel) return;
+        return options.applyGraphAnalysis(activeModel, session.language, session.documentKey, session.revision, analysis);
+      },
+    };
+  }
+
+  async function settleReadableImportResult(
+    session: FullEditSession,
+    result: DocumentJobGraphResult,
+  ): Promise<DocumentJobGraphResult | null> {
+    const model = options.getModel();
+    const freshness = createFreshnessScope(
+      {
+        documentKey: session.documentKey,
+        languageId: session.language,
+        revision: session.revision,
+        sessionId: session.sessionId,
+        model,
+      },
+      () => ({
+        documentKey: importSession?.documentKey,
+        languageId: importSession?.language,
+        revision: importSession?.revision,
+        sessionId: importSession?.sessionId,
+        model: options.getModel(),
+      }),
     );
+    const settled = await settleEditorCommitTransaction(
+      {
+        documentKey: session.documentKey,
+        language: session.language,
+        revision: session.revision,
+        settings: documentJobSettingsFor(session.formatSourceOnClose),
+        builderConfig: options.getGraphBuilderConfig(),
+        intent: { kind: 'analyzeSource', text: session.visibleText },
+        freshness,
+        landing: createIntakeLanding(session),
+      },
+      {
+        ...result,
+        documentKey: session.documentKey,
+        language: session.language,
+        revision: session.revision,
+      },
+    );
+    return settled.status === 'cancelled' ? null : result;
   }
 
   function detachImportGraphJobSession(session: FullEditSession): void {
@@ -414,11 +446,22 @@ export function createEditorFullEditController(options: CreateEditorFullEditCont
     const revision = options.commitEditorState();
     const nextLanguage = params.language;
     if (params.isFresh && !params.isFresh()) return null;
-    markActiveDocumentSemanticPending({
+    const beginFreshness = createFreshnessScope(
+      { documentKey, languageId: nextLanguage, revision, token: revision, model },
+      () => ({
+        documentKey: importSession?.documentKey ?? documentKey,
+        languageId: importSession?.language ?? nextLanguage,
+        revision: importSession?.revision ?? revision,
+        token: params.isFresh?.() === false ? -1 : revision,
+        model: options.getModel(),
+      }),
+    );
+    if (!beginEditorCommitTransaction({
       documentKey,
       language: nextLanguage,
       revision,
-    });
+      freshness: beginFreshness,
+    })) return null;
 
     importSession = {
       active: true,
@@ -614,6 +657,7 @@ export function createEditorFullEditController(options: CreateEditorFullEditCont
         revision: session.revision,
         builderConfig: options.getGraphBuilderConfig(),
         isFresh: isSessionCurrent,
+        landing: createIntakeLanding(session),
       });
       if (!isSessionCurrent()) {
         return {
@@ -624,13 +668,6 @@ export function createEditorFullEditController(options: CreateEditorFullEditCont
         };
       }
       if (intakeResult.status === 'completed') {
-        const authoritativeSourceText = getImportResultSourceText(intakeResult);
-        const shouldApplyAuthoritativeSourceText =
-          session.sourceWritebackPolicy === 'intake' && authoritativeSourceText != null;
-        if (shouldApplyAuthoritativeSourceText) {
-          session.visibleText = authoritativeSourceText;
-          options.setEditorValueForFullEdit(authoritativeSourceText);
-        }
         await applyIntakeDocumentEffects({
           documentKey: session.documentKey,
           language: session.language,
@@ -638,7 +675,7 @@ export function createEditorFullEditController(options: CreateEditorFullEditCont
           snapshotId: intakeResult.snapshotId,
           resultStatus: 'snapshotReady',
           analysis: intakeResult.analysis,
-          sourceText: shouldApplyAuthoritativeSourceText ? authoritativeSourceText : undefined,
+          sourceText: intakeResult.sourceText,
         });
       }
       if (intakeResult.status === 'diagnosticsOnly') {
@@ -731,81 +768,85 @@ export function createEditorFullEditController(options: CreateEditorFullEditCont
     if (!session?.active) return;
     const { sessionId, ownerKey, documentKey } = session;
     fullEditSink.markFinalizing({ sessionId, ownerKey });
-    const flushText = session.decoder.decode();
-    if (flushText) {
-      bufferImportText(sessionId, flushText, 0);
-    }
-    flushPendingText(sessionId, { force: true });
-    const currentModelValue = model?.getValue() ?? '';
-    options.setSourceText(currentModelValue);
-    if (documentKey) {
-      options.setModelDocumentKey(options.getModel(), documentKey);
-      options.setDocumentKey(documentKey);
-    }
-    const intakeResult =
-      intakeOverride ??
-      (await runIntakeJob({
-        documentKey,
-        language: session.language,
-        text: currentModelValue,
-        settings: documentJobSettingsFor(),
-        revision: session.revision,
-        builderConfig: options.getGraphBuilderConfig(),
-      }));
-    const formattedSourceText = getImportResultSourceText(intakeResult);
-    if (importSession && formattedSourceText != null) {
-      importSession.visibleText = formattedSourceText;
-    }
+    try {
+      const flushText = session.decoder.decode();
+      if (flushText) {
+        bufferImportText(sessionId, flushText, 0);
+      }
+      flushPendingText(sessionId, { force: true });
+      const currentModelValue = model?.getValue() ?? '';
+      options.setSourceText(currentModelValue);
+      if (documentKey) {
+        options.setModelDocumentKey(options.getModel(), documentKey);
+        options.setDocumentKey(documentKey);
+      }
+      const intakeResult =
+        intakeOverride ??
+        (await runIntakeJob({
+          documentKey,
+          language: session.language,
+          text: currentModelValue,
+          settings: documentJobSettingsFor(),
+          revision: session.revision,
+          builderConfig: options.getGraphBuilderConfig(),
+          isFresh: () => isCurrentImportSession(sessionId),
+          landing: createIntakeLanding(session),
+        }));
+      if (isDocumentJobGraphResult(intakeResult)) {
+        const settled = await settleReadableImportResult(session, intakeResult);
+        if (!settled) return;
+      }
+      const formattedSourceText = getImportResultSourceText(intakeResult);
+      if (importSession && formattedSourceText != null) {
+        importSession.visibleText = formattedSourceText;
+      }
 
-    if (isDiagnosticsOnlyIntakeResult(intakeResult)) {
-      detachImportGraphJobSession(session);
+      if (isDiagnosticsOnlyIntakeResult(intakeResult)) {
+        detachImportGraphJobSession(session);
+        await applyIntakeDocumentEffects({
+          documentKey,
+          language: session.language,
+          revision: session.revision,
+          snapshotId: intakeResult.snapshotId,
+          resultStatus: 'parseFailed',
+          analysis: intakeResult.analysis,
+          sourceText: formattedSourceText,
+        });
+        return;
+      }
+
+      if (isFailedImportIntakeResult(intakeResult)) {
+        detachImportGraphJobSession(session);
+        const error = isIntakeResult(intakeResult) ? intakeResult.error : 'Graph import failed';
+        options.updateActiveTempModel((current) => ({ ...current, error: error ?? 'Graph import failed' }));
+        toast.error('Graph import failed');
+        return;
+      }
+
+      if (typeof formattedSourceText === 'string') {
+        session.visibleText = formattedSourceText;
+        options.setEditorValueForFullEdit(formattedSourceText);
+        setImportModelEolToLf();
+      }
+
       await applyIntakeDocumentEffects({
         documentKey,
         language: session.language,
         revision: session.revision,
         snapshotId: intakeResult.snapshotId,
-        resultStatus: 'parseFailed',
+        resultStatus: 'snapshotReady',
         analysis: intakeResult.analysis,
         sourceText: formattedSourceText,
       });
-      if (!isCurrentImportSession(sessionId)) return;
-      settleImportSessionUi(session, 'finish');
-      return;
-    }
 
-    if (isFailedImportIntakeResult(intakeResult)) {
       detachImportGraphJobSession(session);
-      if (!isCurrentImportSession(sessionId)) return;
+    } finally {
       settleImportSessionUi(session, 'finish');
-      const error = isIntakeResult(intakeResult) ? intakeResult.error : 'Graph import failed';
-      options.updateActiveTempModel((current) => ({ ...current, error: error ?? 'Graph import failed' }));
-      toast.error('Graph import failed');
-      return;
     }
-
-    if (typeof formattedSourceText === 'string') {
-      session.visibleText = formattedSourceText;
-      options.setEditorValueForFullEdit(formattedSourceText);
-      setImportModelEolToLf();
-    }
-
-    await applyIntakeDocumentEffects({
-      documentKey,
-      language: session.language,
-      revision: session.revision,
-      snapshotId: intakeResult.snapshotId,
-      resultStatus: 'snapshotReady',
-      analysis: intakeResult.analysis,
-      sourceText: formattedSourceText,
-    });
-
-    detachImportGraphJobSession(session);
-    if (!isCurrentImportSession(sessionId)) return;
-    settleImportSessionUi(session, 'finish');
-
   }
 
   function cancelImportStream(): void {
+    void importConversionOperation?.cancel();
     if (!importSession?.active) return;
     const session = importSession;
     cancelImportTextFlush(session);
@@ -833,39 +874,39 @@ export function createEditorFullEditController(options: CreateEditorFullEditCont
     }
     if (!model) return;
 
-    const token = (importOnlyToken += 1);
-    const freshness = createFreshnessScope(
-      {
+    void importConversionOperation?.cancel();
+    const operation = createViewRuntimeOperation({
+      captured: {
         languageId: targetLanguage,
         model,
-        token,
       },
-      () => ({
+      getCurrent: () => ({
         languageId: options.getLanguageId(),
         model: options.getModel(),
-        token: importOnlyToken,
       }),
-    );
-
-    const rawText = await freshness.step(() => file.text());
-    if (rawText == null) return;
-
-    const convertedText = await freshness.step(() =>
-      convert<string>('convert', {
-        sourceLanguage,
-        targetFormat: targetLanguage,
-        text: rawText,
-        options: options.getFormattingOptions?.(),
-      }),
-    );
-    if (convertedText == null) return;
-
-    await startFullEditSession({
-      language: targetLanguage,
-      text: convertedText,
-      reason,
-      transportKind: 'memory',
-      isFresh: freshness.isCurrent,
+    });
+    importConversionOperation = operation;
+    await operation.run({
+      execute: async ({ step }) => {
+        const rawText = await step(() => file.text());
+        return step(() =>
+          convert<string>('convert', {
+            sourceLanguage,
+            targetFormat: targetLanguage,
+            text: rawText,
+            options: options.getFormattingOptions?.(),
+          }),
+        );
+      },
+      land: async (convertedText) => {
+        await startFullEditSession({
+          language: targetLanguage,
+          text: convertedText,
+          reason,
+          transportKind: 'memory',
+          isFresh: operation.isCurrent,
+        });
+      },
     });
   }
 

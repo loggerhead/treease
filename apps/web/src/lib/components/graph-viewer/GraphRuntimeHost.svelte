@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onDestroy, onMount } from 'svelte';
-  import { createFreshnessScope } from '../../guards/freshness-scope';
+  import { createViewRuntimeOperation, type ViewRuntimeOperation } from '../../guards/view-runtime-operation';
   import { getSharedWasmWorkerClient } from '../../wasm/wasm-worker-singleton';
   import type {
     App as LeaferApp,
@@ -63,6 +63,7 @@
 
   let graphRuntimeToken = 0;
   let resizeObserver: ResizeObserver | null = null;
+  let runtimeOperation: ViewRuntimeOperation | null = null;
 
   function cleanupRuntime() {
     resizeObserver?.disconnect();
@@ -84,15 +85,20 @@
 
   onMount(() => {
     const runtimeToken = ++graphRuntimeToken;
-    const freshness = createFreshnessScope({ token: runtimeToken }, () => ({ token: graphRuntimeToken }));
+    const operation = createViewRuntimeOperation({
+      captured: { token: runtimeToken },
+      getCurrent: () => ({ token: graphRuntimeToken }),
+      onStale: cleanupRuntime,
+    });
+    runtimeOperation = operation;
     graphRuntimeReady = false;
     errorMessage = '';
 
-    const init = async () => {
-      try {
+    void operation.run({
+      execute: async ({ step }) => {
         scheduleMeasure();
         void getSharedWasmWorkerClient().catch(() => {});
-        const runtimeModules = await freshness.step(async () => {
+        const runtimeModules = await step(async () => {
           await import('@leafer-in/viewport');
           await import('@leafer-in/editor');
           await import('@leafer-in/state');
@@ -100,85 +106,89 @@
           await import('@leafer-in/export');
           return import('leafer-ui');
         });
-        if (!runtimeModules || !container) return;
+        const runtimeContainer = container;
+        if (!runtimeContainer) return false;
         const mod = runtimeModules;
-        cleanupRuntime();
-        LeaferCtor = (mod.App ?? mod.Leafer) as typeof LeaferApp | typeof Leafer;
-        PlainLeaferCtor = mod.Leafer as typeof Leafer | undefined;
-        BoxCtor = mod.Box;
-        TextCtor = mod.Text;
-        PenCtor = mod.Pen;
-        MoveEventCtor = mod.MoveEvent;
-        ZoomEventCtor = mod.ZoomEvent;
-        DragEventCtor = mod.DragEvent;
-        LeaferEventCtor = mod.LeaferEvent;
-        PointerEventCtor = mod.PointerEvent;
-        if (!LeaferCtor || !BoxCtor || !TextCtor || !PenCtor) return;
+        await step(async () => {
+          cleanupRuntime();
+          LeaferCtor = (mod.App ?? mod.Leafer) as typeof LeaferApp | typeof Leafer;
+          PlainLeaferCtor = mod.Leafer as typeof Leafer | undefined;
+          BoxCtor = mod.Box;
+          TextCtor = mod.Text;
+          PenCtor = mod.Pen;
+          MoveEventCtor = mod.MoveEvent;
+          ZoomEventCtor = mod.ZoomEvent;
+          DragEventCtor = mod.DragEvent;
+          LeaferEventCtor = mod.LeaferEvent;
+          PointerEventCtor = mod.PointerEvent;
+          if (!LeaferCtor || !BoxCtor || !TextCtor || !PenCtor) return;
 
-        leafer = new LeaferCtor({
-          view: container,
-          type: 'viewport',
-          editor: {
-            visible: true,
-            hittable: true,
-            hover: false,
-            moveable: false,
-            resizeable: false,
-            rotateable: false,
-            skewable: false,
-            flipable: false,
-          },
-          move: { drag: false, holdSpaceKey: true, holdRightKey: true, scroll: true },
-          zoom: { disabled: false },
-          wheel: { zoomMode: false },
-          multiTouch: { disabled: false },
-        });
-        registerViewportEvents(leafer);
-        const editor = (leafer as { editor?: unknown } | null)?.editor ?? null;
-        bindGraphEditorLifecycle(editor);
-        minimapRuntimeController.attach({
-          app: leafer,
-          PlainLeaferCtor,
-          minimapHost,
-          container,
-          constructors: { BoxCtor, PenCtor, TextCtor },
-          width: minimapWidth,
-          height: minimapHeight,
-          events: {
-            move: (MoveEventCtor?.BEFORE_MOVE ?? MoveEventCtor?.MOVE) as string | undefined,
-            zoom: (ZoomEventCtor?.BEFORE_ZOOM ?? ZoomEventCtor?.ZOOM) as string | undefined,
-            dragStart: DragEventCtor?.START as string | undefined,
-            drag: DragEventCtor?.DRAG as string | undefined,
-            dragEnd: DragEventCtor?.END as string | undefined,
-            pointerDown: PointerEventCtor?.DOWN as string | undefined,
-          },
-        });
+          leafer = new LeaferCtor({
+            view: runtimeContainer,
+            type: 'viewport',
+            editor: {
+              visible: true,
+              hittable: true,
+              hover: false,
+              moveable: false,
+              resizeable: false,
+              rotateable: false,
+              skewable: false,
+              flipable: false,
+            },
+            move: { drag: false, holdSpaceKey: true, holdRightKey: true, scroll: true },
+            zoom: { disabled: false },
+            wheel: { zoomMode: false },
+            multiTouch: { disabled: false },
+          });
+          registerViewportEvents(leafer);
+          const editor = (leafer as { editor?: unknown } | null)?.editor ?? null;
+          bindGraphEditorLifecycle(editor);
+          minimapRuntimeController.attach({
+            app: leafer,
+            PlainLeaferCtor,
+            minimapHost,
+            container: runtimeContainer,
+            constructors: { BoxCtor, PenCtor, TextCtor },
+            width: minimapWidth,
+            height: minimapHeight,
+            events: {
+              move: (MoveEventCtor?.BEFORE_MOVE ?? MoveEventCtor?.MOVE) as string | undefined,
+              zoom: (ZoomEventCtor?.BEFORE_ZOOM ?? ZoomEventCtor?.ZOOM) as string | undefined,
+              dragStart: DragEventCtor?.START as string | undefined,
+              drag: DragEventCtor?.DRAG as string | undefined,
+              dragEnd: DragEventCtor?.END as string | undefined,
+              pointerDown: PointerEventCtor?.DOWN as string | undefined,
+            },
+          });
 
-        updateSize();
-        resizeObserver = new ResizeObserver(() => {
           updateSize();
-          minimapRuntimeController.updateLayout();
-          minimapRuntimeController.updateViewport();
+          resizeObserver = new ResizeObserver(() => {
+            updateSize();
+            minimapRuntimeController.updateLayout();
+            minimapRuntimeController.updateViewport();
+          });
+          resizeObserver.observe(runtimeContainer);
         });
-        resizeObserver.observe(container);
-        if (freshness.isCurrent()) {
-          graphRuntimeReady = true;
-        }
-      } catch (error) {
-        if (freshness.isCurrent()) {
-          errorMessage = 'Graph view failed to load. Please refresh and try again.';
-        }
-        throw error;
-      }
-    };
-
-    void init();
+        return true;
+      },
+      land: (ready) => {
+        if (ready) graphRuntimeReady = true;
+      },
+      handleError: () => {
+        errorMessage = 'Graph view failed to load. Please refresh and try again.';
+      },
+    });
 
     return () => {};
   });
 
   onDestroy(() => {
     graphRuntimeToken += 1;
+    if (runtimeOperation) {
+      void runtimeOperation.cancel();
+      return;
+    }
     cleanupRuntime();
   });
 </script>

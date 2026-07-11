@@ -14,7 +14,7 @@ import {
 } from '../preview/color';
 import { resolveTreePathResult, resolvePathSpanResult, toByteColumn } from '../services/TreePathService';
 import { resolveEditorPositionTargetResult } from '../components/Editor/editor-position-target';
-import { getWorkspaceSnapshotId } from '../store/workspace-snapshot-bindings';
+import { getWorkspaceSnapshotId } from '../store/workspace-store';
 import { settings } from '../settings/settings-store';
 
 type ColorProviderRegistrarOptions = {

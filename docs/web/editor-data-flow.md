@@ -52,6 +52,10 @@ read_when:
 
 Editor / Graph 的可见交互与渲染现场。
 
+### View Runtime Operation Lifecycle
+
+Web 侧异步 operation 的 freshness、stale 丢弃、资源清理与 UI 落地由 `View Runtime Operation Lifecycle` 收敛。它消费 `documentKey`、revision、language、Editor Model、session 等可见上下文，但不生成或解释 `DocumentSnapshot`。
+
 ## 核心实体关系
 
 ```mermaid
@@ -104,6 +108,15 @@ flowchart LR
 
 - 前端可见 `snapshotId` 绑定关系在 `Workspace Store`
 - 但 `snapshotId` 的生成和语义不在前端
+
+### View Runtime operation lifecycle
+
+- `src/lib/guards/view-runtime-operation.ts` 以 `FreshnessScope` 为基础，统一一次异步 operation 的多阶段 freshness 检查。
+- operation 只在当前上下文仍一致时才允许 UI、store、graph scene 或 workspace pane 落地；stale 结果不会覆盖当前可见状态。
+- stale cleanup 由 operation 自己至多执行一次。可取消的 `DocumentJob`、外部 full-edit session、Leafer runtime 等资源在对应 operation 的 cleanup 中释放或取消。
+- Rust `Document Runtime` 仍拥有 authoritative freshness、`DocumentSnapshot`、`SnapshotReady`、`ParseFailed` 与 snapshot-bound read 的语义；Web operation lifecycle 只决定旧的可见结果能否落地。
+- 同步的 readiness / request correlation 可以保留局部 requestId，但不得再承担异步 stale cleanup 或 UI landing 的 freshness authority。
+- `FreshnessScope` 仍可用于不拥有资源、没有 terminal UI landing 的局部一次性查询，例如局部 hover、search 或即时 value 解析；它们不建立平行 operation authority，也不替代 View Runtime operation lifecycle。
 
 ## 业务场景数据流
 

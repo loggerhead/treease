@@ -33,6 +33,8 @@ Treease 是一个面向结构化文本的 editor + Graph 工作台。它把文�
   产品价值、用户路径与入门阅读顺序。
 - [Web](./web/index.md)
   编辑器、GraphViewer、Worker、streaming、workspace 与前端消费链路。
+- [Desktop](./desktop/index.md)
+  Desktop Workspace、Tauri 宿主、本地文件交互与桌面发布。
 - [Core](./core/index.md)
   协议真源、runtime、snapshot、WASM 与 Core 职责边界。
 - [Testing](./testing/index.md)
@@ -55,15 +57,6 @@ Treease 是一个面向结构化文本的 editor + Graph 工作台。它把文�
 - CLI 修改：`../apps/cli/AGENTS.md` → `./cli/index.md`
 - 测试决策：`./testing/index.md`
 - 文档重构：`./AGENTS.md` → `./CODING.md`
-- 需要看导航元数据：`./docs.json`
-- 需要看标题映射产物：`./docs_map.md`
-
-## Bump Versions
-
-- 同步提升版本号入口：`pnpm bump:version -- --targets core,cli,web --part minor`
-- `--targets` 支持任意组合，例如 `core`、`cli`、`web`。
-- `--part` 支持 `patch`（默认）、`minor`、`major`。
-- 当同时升级 `core` 与 `cli` 时，命令会检查 `apps/cli/Cargo.toml` 里的 `treease-core` 依赖是否可追踪到同一次 core 版本，并会同步写入。
 
 ## Verification
 

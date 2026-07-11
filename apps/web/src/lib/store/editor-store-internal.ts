@@ -18,7 +18,6 @@ import {
   initialDocumentSessionState,
   languageId as documentSessionLanguageIdStore,
   previousSourceText as documentSessionPreviousSourceTextStore,
-  registerDocumentSessionCoordinator,
   setCompareEditToken,
   setDocumentSessionState,
   setEditorMutationState,
@@ -62,6 +61,7 @@ import {
   updateWorkspaceTab as updateWorkspaceTabState,
   workspaceStore,
 } from './workspace-store';
+import { resetActiveDocumentAuthority } from './active-document-authority';
 import {
   clearJsonBlockSelectionForDocument,
   completeFullEditStreamUi,
@@ -123,30 +123,6 @@ const initialEditorState: EditorState = {
   workspace: initialWorkspaceState,
 };
 
-registerDocumentSessionCoordinator({
-  onStateChange: (next) => {
-    workspaceStore.update((workspace) => {
-      const primaryTab = workspace.tabsById[workspace.primaryTabId];
-      if (!primaryTab) return workspace;
-      const nextWorkspace = {
-        ...workspace,
-        tabsById: {
-          ...workspace.tabsById,
-          [primaryTab.id]: {
-            ...primaryTab,
-            sourceText: next.sourceText,
-            documentKey: next.documentKey,
-            languageId: next.languageId,
-            revision: next.editorRevision,
-            graphAppliedRevision: next.graphAppliedRevision,
-          },
-        },
-      };
-      return syncSidecarLanguageFromPrimary(nextWorkspace);
-    });
-  },
-});
-
 registerFullEditUiCoordinator({
   onFullEditUiStateChange: (next) => {
     workspaceStore.update((workspace) => {
@@ -189,25 +165,6 @@ registerWorkspaceCoordinator({
   onWorkspaceChange: (next) => {
     const primaryTab = next.tabsById[next.primaryTabId];
     if (!primaryTab) return;
-    const session = getDocumentSessionState();
-    if (
-      session.documentKey === primaryTab.documentKey &&
-      session.languageId === primaryTab.languageId &&
-      session.sourceText === primaryTab.sourceText &&
-      session.editorRevision === primaryTab.revision &&
-      session.graphAppliedRevision === primaryTab.graphAppliedRevision
-    ) {
-      return;
-    }
-    setDocumentSessionState({
-      ...session,
-      previousSourceText: session.sourceText,
-      sourceText: primaryTab.sourceText,
-      documentKey: primaryTab.documentKey,
-      languageId: primaryTab.languageId,
-      editorRevision: primaryTab.revision,
-      graphAppliedRevision: primaryTab.graphAppliedRevision,
-    });
     setTempModelState(primaryTab.tempModel);
     setFullEditUiState(primaryTab.fullEditUiState);
   },
@@ -237,7 +194,7 @@ function setRawEditorState(state: EditorState): void {
     graphAppliedRevision: state.graphAppliedRevision,
     editorIO: state.editorIO,
   };
-  if (
+  const sessionChanged =
     currentDocumentSession.sourceText !== nextDocumentSession.sourceText ||
     currentDocumentSession.previousSourceText !== nextDocumentSession.previousSourceText ||
     currentDocumentSession.documentKey !== nextDocumentSession.documentKey ||
@@ -245,8 +202,8 @@ function setRawEditorState(state: EditorState): void {
     currentDocumentSession.compareEditToken !== nextDocumentSession.compareEditToken ||
     currentDocumentSession.editorRevision !== nextDocumentSession.editorRevision ||
     currentDocumentSession.graphAppliedRevision !== nextDocumentSession.graphAppliedRevision ||
-    currentDocumentSession.editorIO !== nextDocumentSession.editorIO
-  ) {
+    currentDocumentSession.editorIO !== nextDocumentSession.editorIO;
+  if (sessionChanged) {
     setDocumentSessionState(nextDocumentSession);
   }
   if (get(editorMutationRawStore) !== state.editorMutation) {
@@ -264,7 +221,9 @@ function setRawEditorState(state: EditorState): void {
   if (get(tempModelStore) !== state.tempModel) {
     setTempModelState(state.tempModel);
   }
-  if (getWorkspaceRawState() !== state.workspace) {
+  // A Document Session change has already advanced authority. Replaying the
+  // aggregate's pre-change Workspace snapshot would restore stale identity.
+  if (!sessionChanged && getWorkspaceRawState() !== state.workspace) {
     setWorkspaceState(state.workspace);
   }
 }
@@ -677,15 +636,7 @@ function createEditorStore() {
     subscribe: (run: (value: EditorState) => void) =>
       derived(internalStore, ($s) => cloneEditorStateForRead($s)).subscribe(run),
     actions: {
-      setSourceText: (text: string) =>
-        updateState((s) => {
-          const nextState = mirrorPrimaryWorkspaceTab(
-            { ...s, previousSourceText: s.sourceText, sourceText: text },
-            { sourceText: text },
-          );
-          setDocumentSessionSourceText(text);
-          return nextState;
-        }),
+      setSourceText: (text: string) => setDocumentSessionSourceText(text),
       setDocumentKey: (key: string) =>
         updateState((s) => {
           const nextState = mirrorPrimaryWorkspaceTab({ ...s, documentKey: key }, { documentKey: key });
@@ -701,11 +652,7 @@ function createEditorStore() {
             workspace: syncSidecarLanguageFromPrimary(nextState.workspace),
           };
         }),
-      incrementCompareEditToken: () =>
-        updateState((s) => {
-          setCompareEditToken(s.compareEditToken + 1);
-          return { ...s, compareEditToken: s.compareEditToken + 1 };
-        }),
+      incrementCompareEditToken: () => setCompareEditToken(getDocumentSessionState().compareEditToken + 1),
       incrementEditorRevision: () =>
         updateState((s) => {
           const editorRevision = s.editorRevision + 1;
@@ -901,6 +848,7 @@ function createEditorStore() {
         updateState((s) => mirrorPrimaryWorkspaceTab({ ...s, tempModel: initialTempModel }, { tempModel: initialTempModel })),
     },
     reset: (): void => {
+      resetActiveDocumentAuthority();
       setRawEditorState(initialEditorState);
     },
     get: (): EditorState => {

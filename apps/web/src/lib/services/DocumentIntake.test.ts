@@ -148,6 +148,8 @@ describe('runIntakeJob', () => {
       language: 'yaml',
       text: 'key: value',
       settings: { ...documentJobSettings, parser: { enableNest: true, nestMaxDepth: 8 } },
+      outputAnalysis: true,
+      outputGraph: true,
     });
   });
 });

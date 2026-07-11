@@ -2,9 +2,7 @@
 import { querySnapshot, type PathSeg, type QueryResult, type SnapshotId, type SnapshotReadResult } from '@core-wasm/index';
 import { pathSegKeyValue } from '../../shared/path';
 import { PathSegTag, type PathSpan } from '@core-wasm/index';
-import type { DocumentAnalysisCacheRuntime } from './document-runtime-state';
-import { postOk } from './logging';
-import type { GraphSearchTarget, WorkerContext, WorkerRequest } from './protocol';
+import type { GraphSearchTarget, WorkerRequest } from './protocol';
 
 const textEncoder = new TextEncoder();
 
@@ -180,24 +178,12 @@ function readMessageText(message: { text?: string | null }): string {
   return message.text ?? '';
 }
 
-function requireSnapshotId(
-  ctx: WorkerContext,
-  messageId: number,
-  snapshotId: SnapshotId | null | undefined,
-): SnapshotId | null {
-  if (snapshotId != null) return snapshotId;
-  postOk(ctx, messageId, { status: 'snapshotNotReady' });
-  return null;
-}
-
 export async function handleTreePath(
-  ctx: WorkerContext,
-  _runtime: DocumentAnalysisCacheRuntime,
   message: Extract<WorkerRequest, { type: 'treePath' }>,
-): Promise<void> {
+): Promise<PathSeg[] | { status: 'snapshotNotReady' }> {
   const text = readMessageText(message);
-  const snapshotId = requireSnapshotId(ctx, message.id, message.snapshotId);
-  if (snapshotId == null) return;
+  const snapshotId = message.snapshotId;
+  if (snapshotId == null) return { status: 'snapshotNotReady' };
   const byteOffset = byteOffsetFromRowColumn(text, message.row, message.column);
   const data: SnapshotReadResult<QueryResult> = await querySnapshot({
     documentKey: message.documentKey,
@@ -206,17 +192,15 @@ export async function handleTreePath(
     spanStart: byteOffset,
     spanEnd: byteOffset,
   });
-  postOk(ctx, message.id, data.status === 'ready' ? parseAnchorPath(data.data.anchors[0]?.path) : { status: 'snapshotNotReady' });
+  return data.status === 'ready' ? parseAnchorPath(data.data.anchors[0]?.path) : { status: 'snapshotNotReady' };
 }
 
 export async function handlePathSpan(
-  ctx: WorkerContext,
-  _runtime: DocumentAnalysisCacheRuntime,
   message: Extract<WorkerRequest, { type: 'pathSpan' }>,
-): Promise<void> {
+): Promise<PathSpan | { status: 'snapshotNotReady' }> {
   const text = readMessageText(message);
-  const snapshotId = requireSnapshotId(ctx, message.id, message.snapshotId);
-  if (snapshotId == null) return;
+  const snapshotId = message.snapshotId;
+  if (snapshotId == null) return { status: 'snapshotNotReady' };
   const result: SnapshotReadResult<QueryResult> = await querySnapshot({
     documentKey: message.documentKey,
     snapshotId,
@@ -225,19 +209,17 @@ export async function handlePathSpan(
     target: message.target === 'key' ? 'key' : 'value',
   });
   if (result.status !== 'ready') {
-    postOk(ctx, message.id, { status: 'snapshotNotReady' });
-    return;
+    return { status: 'snapshotNotReady' };
   }
   const anchor = result.data.anchors[0];
   if (!anchor || anchor.spanEnd < anchor.spanStart) {
-    postOk(ctx, message.id, { startByte: -1, endByte: -1, row: -1, column: -1 } as PathSpan);
-    return;
+    return { startByte: -1, endByte: -1, row: -1, column: -1 } as PathSpan;
   }
   const start = byteOffsetToRowColumn(text, anchor.spanStart);
-  postOk(ctx, message.id, {
+  return {
     startByte: anchor.spanStart,
     endByte: anchor.spanEnd,
     row: start.row,
     column: start.column,
-  } as PathSpan);
+  } as PathSpan;
 }

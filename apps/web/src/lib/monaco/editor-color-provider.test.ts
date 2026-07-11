@@ -5,7 +5,7 @@ vi.mock('../services/TreePathService', () => ({
   resolvePathSpanResult: vi.fn(),
   toByteColumn: vi.fn((text: string, columnIndex: number) => new TextEncoder().encode(text.slice(0, columnIndex)).length),
 }));
-vi.mock('../store/workspace-snapshot-bindings', () => ({
+vi.mock('../store/workspace-store', () => ({
   getWorkspaceSnapshotId: vi.fn(() => 7),
 }));
 

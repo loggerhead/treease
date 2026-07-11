@@ -16,13 +16,15 @@ export type EditorAnalysisLike = Partial<
   >
 >;
 
+export type EditorAnalysisFreshness = Pick<FreshnessScope, 'isCurrent' | 'step'>;
+
 type ApplyDocumentAnalysisToEditorOptions = {
   monaco: typeof import('monaco-editor') | undefined;
   requestModel: Monaco.editor.ITextModel;
   requestLanguage: SupportedEditorLanguageId;
   requestDocumentKey: string;
   requestNest: boolean;
-  freshness: FreshnessScope;
+  freshness: EditorAnalysisFreshness;
   analysis?: EditorAnalysisLike | null;
   hasCurrentJsonBlockSelection?: (documentKey: string) => boolean;
   onResolvedAnalysis?: (analysis: EditorAnalysisLike) => void;
@@ -46,7 +48,7 @@ async function applyStoredDiagnosticsToEditor(params: {
   requestLanguage: SupportedEditorLanguageId;
   requestDocumentKey: string;
   requestNest: boolean;
-  freshness: FreshnessScope;
+  freshness: EditorAnalysisFreshness;
   updateTempModel: (updater: (current: any) => any) => void;
   preloadedErrors?: WasmError[] | null;
 }): Promise<DiagnosticsResult | null> {

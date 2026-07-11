@@ -53,7 +53,7 @@
   import { splitLayoutDrag } from '../../lib/components/ui/split-layout';
   import { importFormatOptions, supportedEditorLanguageSet, editorLanguageFallback, type SupportedEditorLanguageId } from '../../lib/monaco/language-support';
   import { computeSynchronizedRuntimeLoading, type RuntimeStateEventDetail } from '../../lib/runtime-loading';
-  import { getActiveDocumentText } from '../../lib/services/ActiveDocumentContext';
+  import { getActiveDocumentText } from '../../lib/store/active-document-authority';
   import { breadcrumbTargetForPath, type PathSeg } from '../../lib/store/tree-path';
   import { markPreviewCompleted, markPreviewRequested } from '../../lib/test-bridge/runtime-readiness';
   import { setTreeaseUrlPresetState } from '../../lib/test-bridge/window-treease';

@@ -16,13 +16,10 @@ import { mergeEventBatches, streamDocumentJobText } from '../../shared/document-
 import { collectDocumentJobResult, normalizeDocumentJobAnalysisPayload } from '../../shared/document-job-result';
 import { clonePlainTreeNode } from '../../shared/tree-node-value';
 import type { DocumentAnalysisCacheRuntime } from './document-runtime-state';
-import { postOk } from './logging';
-import type { DocumentAnalysisResult, JsonBlockAtPositionResult, WorkerContext, WorkerRequest } from './protocol';
-import { postHandlerResult, readWorkerTextInput } from './request-utils';
+import type { DocumentAnalysisResult, JsonBlockAtPositionResult, WorkerRequest } from './protocol';
+import { readWorkerTextInput } from './request-utils';
 
-export type DocumentParseRuntime = DocumentAnalysisCacheRuntime & {
-  ctx: WorkerContext;
-};
+export type DocumentParseRuntime = DocumentAnalysisCacheRuntime;
 
 
 
@@ -45,10 +42,9 @@ export async function parseToTreeNode(language: string, text: string, nest: bool
 }
 
 export async function handleDiagnostics(
-  ctx: WorkerContext,
   message: Extract<WorkerRequest, { type: 'diagnostics' }>,
-): Promise<void> {
-  await postHandlerResult(ctx, message, () => getDiagnostics(message.language, message.text));
+): Promise<Awaited<ReturnType<typeof getDiagnostics>>> {
+  return getDiagnostics(message.language, message.text);
 }
 
 export function cacheDocumentJobAnalysisResult(
@@ -121,10 +117,9 @@ async function startSnapshotDocumentJob(
 }
 
 export async function handleParseAndStore(
-  runtime: Pick<DocumentParseRuntime, 'ctx' | 'encoder'>,
+  runtime: Pick<DocumentParseRuntime, 'encoder'>,
   message: Extract<WorkerRequest, { type: 'parseAndStore' }>,
-): Promise<void> {
-  const { ctx } = runtime;
+): Promise<true> {
   const { resolvedText, textBytes, hasBytes } = readWorkerTextInput(message);
   await startSnapshotDocumentJob(
     message.documentKey,
@@ -133,14 +128,13 @@ export async function handleParseAndStore(
     message.nest,
     hasBytes ? textBytes! : undefined,
   );
-  postOk(ctx, message.id, true);
+  return true;
 }
 
 export async function handleParseToTree(
-  ctx: WorkerContext,
   message: Extract<WorkerRequest, { type: 'parseToTree' }>,
-): Promise<void> {
-  await postHandlerResult(ctx, message, () => parseToTreeNode(message.language, message.text, message.nest));
+): Promise<WasmTreeNode> {
+  return parseToTreeNode(message.language, message.text, message.nest);
 }
 
 function offsetToEditorPosition(text: string, offset: number): { lineNumber: number; column: number } {
@@ -193,33 +187,29 @@ function createEmptyJsonBlockAtPositionResult(): JsonBlockAtPositionResult {
 }
 
 export async function handleFindJsonBlockAtPosition(
-  ctx: WorkerContext,
   message: Extract<WorkerRequest, { type: 'findJsonBlockAtPosition' }>,
-): Promise<void> {
-  await postHandlerResult(ctx, message, async (): Promise<JsonBlockAtPositionResult> => {
-    const span = await findJsonBlockAtPosition(message.language, message.text, message.row, message.column);
-    if (!span?.found) return createEmptyJsonBlockAtPositionResult();
+): Promise<JsonBlockAtPositionResult> {
+  const span = await findJsonBlockAtPosition(message.language, message.text, message.row, message.column);
+  if (!span?.found) return createEmptyJsonBlockAtPositionResult();
 
-    const startOffset = byteOffsetToTextOffset(message.text, span.startByte);
-    const endOffset = byteOffsetToTextOffset(message.text, span.endByte);
-    const start = offsetToEditorPosition(message.text, startOffset);
-    const end = offsetToEditorPosition(message.text, endOffset);
-    return {
-      found: true,
-      text: message.text.slice(startOffset, endOffset),
-      startByte: span.startByte,
-      endByte: span.endByte,
-      startLineNumber: start.lineNumber,
-      startColumn: start.column,
-      endLineNumber: end.lineNumber,
-      endColumn: end.column,
-    };
-  });
+  const startOffset = byteOffsetToTextOffset(message.text, span.startByte);
+  const endOffset = byteOffsetToTextOffset(message.text, span.endByte);
+  const start = offsetToEditorPosition(message.text, startOffset);
+  const end = offsetToEditorPosition(message.text, endOffset);
+  return {
+    found: true,
+    text: message.text.slice(startOffset, endOffset),
+    startByte: span.startByte,
+    endByte: span.endByte,
+    startLineNumber: start.lineNumber,
+    startColumn: start.column,
+    endLineNumber: end.lineNumber,
+    endColumn: end.column,
+  };
 }
 
 export async function handleParseValueToTree(
-  ctx: WorkerContext,
   message: Extract<WorkerRequest, { type: 'parseValueToTree' }>,
-): Promise<void> {
-  await postHandlerResult(ctx, message, () => parseValueToTreeNode(message.language, message.text, message.nest));
+): Promise<WasmTreeNode> {
+  return parseValueToTreeNode(message.language, message.text, message.nest);
 }

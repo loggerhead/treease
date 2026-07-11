@@ -25,6 +25,66 @@ Do not edit it by hand; run `pnpm docs:map:gen`.
   - H2: 临时脚本规则
   - H2: 禁止事项
 
+## adr/0001-workspace-host-for-desktop.md
+
+- Route: /adr/0001-workspace-host-for-desktop
+- Headings:
+  - H1: Workspace Host 作为桌面工作区的平台边界
+  - H2: Considered Options
+
+## adr/0002-vscode-style-tab-lifecycle.md
+
+- Route: /adr/0002-vscode-style-tab-lifecycle
+- Headings:
+  - H1: VS Code 风格的 Workspace Tab 生命周期
+  - H2: Considered Options
+
+## adr/0003-least-privilege-file-access.md
+
+- Route: /adr/0003-least-privilege-file-access
+- Headings:
+  - H1: 仅授权用户显式交付的文件
+  - H2: Considered Options
+
+## adr/0004-desktop-authentication-boundary.md
+
+- Route: /adr/0004-desktop-authentication-boundary
+- Headings:
+  - H1: 系统浏览器登录与系统凭证库会话
+  - H2: Considered Options
+
+## adr/0005-no-cost-desktop-release.md
+
+- Route: /adr/0005-no-cost-desktop-release
+- Headings:
+  - H1: 首版使用已签名的 Tauri 更新包
+  - H2: Considered Options
+
+## adr/0006-desktop-application-identity.md
+
+- Route: /adr/0006-desktop-application-identity
+- Headings:
+  - H1: 桌面应用的稳定身份
+
+## adr/0007-default-desktop-analytics.md
+
+- Route: /adr/0007-default-desktop-analytics
+- Headings:
+  - H1: 默认启用最小化桌面分析
+  - H2: Considered Options
+
+## adr/0008-desktop-external-content-boundary.md
+
+- Route: /adr/0008-desktop-external-content-boundary
+- Headings:
+  - H1: 桌面端的外部内容边界
+
+## adr/0009-desktop-deep-link-scope.md
+
+- Route: /adr/0009-desktop-deep-link-scope
+- Headings:
+  - H1: 桌面深链只打开编辑器工作区
+
 ## cli/index.md
 
 - Route: /cli
@@ -81,6 +141,29 @@ Do not edit it by hand; run `pnpm docs:map:gen`.
   - H3: 架构验收
   - H3: 测试验收
   - H2: 风险与缓解
+
+## desktop/implementation.md
+
+- Route: /desktop/implementation
+- Headings:
+  - H1: Desktop Workspace 实施方案
+  - H2: 目标与非目标
+  - H2: 模块边界
+  - H2: 实施切片
+  - H3: 1. 桌面壳与共享入口
+  - H3: 2. 多 Tab 文件生命周期
+  - H3: 3. 会话与系统交互
+  - H3: 4. 登录、云能力与网络边界
+  - H3: 5. 更新、发布与测试
+  - H2: 发布前检查
+
+## desktop/index.md
+
+- Route: /desktop
+- Headings:
+  - H1: Desktop
+  - H2: 已确定决策
+  - H2: 相关决策记录
 
 ## formats/csv.md
 
@@ -938,12 +1021,14 @@ Do not edit it by hand; run `pnpm docs:map:gen`.
   - H3: Workspace Mirror Text
   - H3: Active Document Context
   - H3: View Runtime
+  - H3: View Runtime Operation Lifecycle
   - H2: 核心实体关系
   - H2: 核心约束
   - H3: 文本 authority
   - H3: 提交 authority
   - H3: 语义 authority
   - H3: 绑定 authority
+  - H3: View Runtime operation lifecycle
   - H2: 业务场景数据流
   - H3: 1. 用户直接编辑主文档
   - H3: 2. 程序化整文替换
@@ -1076,6 +1161,7 @@ Do not edit it by hand; run `pnpm docs:map:gen`.
   - H2: 工作区专有规则
   - H3: path 规则
   - H3: cache 规则
+  - H2: Module Architecture
   - H3: 交互一致性规则
   - H2: 检查清单
 

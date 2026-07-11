@@ -1,6 +1,5 @@
-import { postOk } from './logging';
-import type { WorkerContext } from './protocol';
 
+// 职责：operation 输入归一化；response 与错误由 worker-transport 统一处理。
 type MessageWithNestOptions = {
   options?: Record<string, unknown> | undefined;
   nest?: boolean;
@@ -18,14 +17,6 @@ export function withNestOptions<T extends MessageWithNestOptions>(
     ...message.options,
     nest: Boolean(message.nest ?? message.options?.nest),
   };
-}
-
-export async function postHandlerResult<T>(
-  ctx: WorkerContext,
-  message: { id: number },
-  run: () => Promise<T> | T,
-): Promise<void> {
-  postOk(ctx, message.id, await run());
 }
 
 export function readWorkerTextInput(message: MessageWithTextInput): {

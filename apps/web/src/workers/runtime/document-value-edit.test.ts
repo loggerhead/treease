@@ -35,10 +35,6 @@ describe('document-value-edit', () => {
     vi.clearAllMocks();
   });
 
-  function createContext() {
-    return { postMessage: vi.fn() } as any;
-  }
-
   it('normalizes tree-like input before canonical apply', async () => {
     const inputTree = { kind: 1, semType: 2, children: [] };
     const normalizedTree = { kind: 'normalized' };
@@ -50,8 +46,7 @@ describe('document-value-edit', () => {
       tree: parsedTree,
       value: { ok: true },
     });
-    const ctx = createContext();
-    await handleApplyValueEditCanonical(ctx, {
+    const result = await handleApplyValueEditCanonical({
       id: 1,
       type: 'applyValueEditCanonical',
       language: 'json',
@@ -63,11 +58,7 @@ describe('document-value-edit', () => {
     } as any);
     expect(mocked.parseToTreeNode).not.toHaveBeenCalled();
     expect(mocked.applyValueEditCanonical).toHaveBeenCalledWith('json', 'source', [{ key: 'name' }], false, 'patched');
-    expect(ctx.postMessage).toHaveBeenCalledWith({
-      id: 1,
-      ok: true,
-      data: { text: 'next-text', tree: parsedTree, value: { ok: true } },
-    });
+    expect(result).toEqual({ text: 'next-text', tree: parsedTree, value: { ok: true } });
   });
 
   it('reuses the normalized plain value for snapshot planner edits', async () => {
@@ -81,8 +72,7 @@ describe('document-value-edit', () => {
       data: { mode: 'edits', edits, reason: null },
     });
 
-    const ctx = createContext();
-    await handlePlanGraphValueEdit(ctx, {
+    const result = await handlePlanGraphValueEdit({
       id: 2,
       type: 'planGraphValueEdit',
       documentKey: 'doc-1',
@@ -103,16 +93,12 @@ describe('document-value-edit', () => {
       preferKey: false,
       value: 'row-0-updated',
     });
-    expect(ctx.postMessage).toHaveBeenCalledWith({
-      id: 2,
-      ok: true,
-      data: {
-        mode: 'edits',
-        edits,
-        tree: normalizedTree,
-        value: 'row-0-updated',
-        text: 'source',
-      },
+    expect(result).toEqual({
+      mode: 'edits',
+      edits,
+      tree: normalizedTree,
+      value: 'row-0-updated',
+      text: 'source',
     });
   });
   it('returns snapshotNotReady when snapshot planning is unavailable', async () => {
@@ -121,8 +107,7 @@ describe('document-value-edit', () => {
     mocked.treeNodeToValue.mockReturnValueOnce(43);
     mocked.valueToTreeNode.mockReturnValueOnce(normalizedTree);
     mocked.planGraphValueEdit.mockResolvedValueOnce({ status: 'snapshotNotReady' });
-    const ctx = createContext();
-    await handlePlanGraphValueEdit(ctx, {
+    const result = await handlePlanGraphValueEdit({
       id: 3,
       type: 'planGraphValueEdit',
       documentKey: 'doc-2',
@@ -137,12 +122,6 @@ describe('document-value-edit', () => {
     expect(mocked.planGraphValueEdit).not.toHaveBeenCalled();
     expect(mocked.parseToTreeNode).not.toHaveBeenCalled();
     expect(mocked.applyValueEditCanonical).not.toHaveBeenCalled();
-    expect(ctx.postMessage).toHaveBeenCalledWith({
-      id: 3,
-      ok: true,
-      data: {
-        mode: 'snapshotNotReady',
-      },
-    });
+    expect(result).toEqual({ mode: 'snapshotNotReady' });
   });
 });

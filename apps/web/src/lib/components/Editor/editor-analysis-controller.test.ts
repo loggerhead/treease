@@ -1,13 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createEditorAnalysisController } from './editor-analysis-controller';
 import type { JsonBlockSelection } from '../../store/editor-store';
-import { getWorkspaceSnapshotId } from '../../store/workspace-snapshot-bindings';
+import { getWorkspaceSnapshotId } from '../../store/workspace-store';
 import {
   clearActiveDocumentSemanticState,
   markActiveDocumentSemanticInvalid,
   markActiveDocumentSemanticPending,
   markActiveDocumentSemanticValid,
-} from '../../store/active-document-semantic-state';
+} from '../../store/active-document-authority';
 
 type ControllerOptions = Parameters<typeof createEditorAnalysisController>[0];
 type CursorPathRequestMarker = NonNullable<ControllerOptions['markCursorPathRequested']>;
@@ -47,7 +47,7 @@ vi.mock('../../graph-stream/document-job-runner', () => ({
   runTextDocumentJobForGraph: mocked.runTextDocumentJobForGraph,
   buildDocumentJobSettings: mocked.buildDocumentJobSettings,
 }));
-vi.mock('../../store/workspace-snapshot-bindings', () => ({
+vi.mock('../../store/workspace-store', () => ({
   getWorkspaceSnapshotId: vi.fn(() => 7),
 }));
 
@@ -341,7 +341,7 @@ describe('editor analysis controller json block selection', () => {
       'doc-json',
       'json',
       false,
-      null,
+      42,
     );
   });
 
@@ -387,7 +387,7 @@ describe('editor analysis controller json block selection', () => {
       'doc-json',
       'json',
       false,
-      null,
+      42,
     );
   });
 

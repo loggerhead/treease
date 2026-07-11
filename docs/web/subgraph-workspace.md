@@ -178,6 +178,22 @@ Monaco local draft
 - graph cache 只缓存同一 `documentKey + snapshotId + revision + renderConfig + enableNest` 组合下的 projection 结果
 - 组合变化时必须整体失效
 
+## Module Architecture
+
+`apps/web/src/lib/components/graph-viewer/workspace/controller.ts` 是 `Subgraph Workspace` 的领域 Module。它的 Interface 只承接路径打开、pane 关闭、内容提交、宿主挂载、尺寸拖拽和 projection context 同步；pane chain、visible panes、projection cache、stale invalidation、Pending Commit、runtime map 与 dispose 都是其 Implementation。
+
+`GraphViewRuntime.svelte` 只作为 View Runtime Adapter：提供当前 `DocumentSnapshot` 绑定、渲染与交互依赖，消费 Workspace state，并把用户意图交给 Module。它不维护 Workspace 的 refresh signature、cache key、request token 或编辑队列。
+
+Module 内部的关键 seam：
+
+- Workspace Projection：所有 content read 与 graph projection 都显式绑定当前 `snapshotId`。
+- Graph Runtime：Leafer constructors、pointer binding 与 editor lifecycle 由 View Runtime 提供；Workspace 负责各 pane runtime 的创建、保留与释放。
+- Commit Transaction：Graph Pane 与 Content Pane 的编辑都通过现有 graph edit / planner / commit 主链回写主文档；Workspace 不产生新的 Document authority。
+
+当 projection context 变化时，Module 使 cache 与渲染失效并刷新已有 pane；过期 open / refresh 结果以 Module 内部 token 丢弃。`reset` 与 `dispose` 都会释放 runtime、cache 和 Pending Commit 状态。
+
+`Pending Commit` 只有在对应主文档 Commit Transaction 的 semantic state 到达终态后才算完成；Monaco 已应用文本不是完成信号。这样同一路径的最新 queued draft 必定基于新的 `DocumentSnapshot` 规划，不会按旧 snapshot 生成第二份 edits。
+
 ### 交互一致性规则
 
 - graph pane 的 canvas 交互应尽量与主图一致

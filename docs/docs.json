@@ -12,6 +12,11 @@
       "entry": "docs/web/index.md"
     },
     {
+      "id": "desktop",
+      "label": "Desktop",
+      "entry": "docs/desktop/index.md"
+    },
+    {
       "id": "core",
       "label": "Core",
       "entry": "docs/core/index.md"

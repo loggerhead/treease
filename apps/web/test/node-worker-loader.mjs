@@ -26,6 +26,11 @@ function resolveFile(target) {
 }
 
 export async function resolve(specifier, context, nextResolve) {
+  if (specifier === '@core-wasm/pkg') {
+    const target = path.join(repoRoot, 'packages', 'core', 'wasm', 'pkg', 'core.js');
+    return nextResolve(pathToFileURL(target).href, context);
+  }
+
   if (specifier.startsWith('@core-wasm/')) {
     const subPath = specifier.slice('@core-wasm/'.length);
     const target = resolveFile(path.join(repoRoot, 'packages', 'core', 'wasm', subPath));

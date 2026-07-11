@@ -7,7 +7,7 @@ vi.mock('../../services/TreePathService', () => ({
   resolveTreePathResult: vi.fn(),
   resolvePathSpanResult: vi.fn(),
 }));
-vi.mock('../../store/workspace-snapshot-bindings', () => ({
+vi.mock('../../store/workspace-store', () => ({
   getWorkspaceSnapshotId: vi.fn(() => 7),
 }));
 vi.mock('../../services/SnapshotProjectionService', () => ({

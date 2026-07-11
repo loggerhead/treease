@@ -1,7 +1,6 @@
 import { querySnapshot, type PathSeg, type QueryResult, type SnapshotId, type SnapshotReadResult } from '@core-wasm/index';
 import fuzzysort from 'fuzzysort';
-import { postOk } from './logging';
-import { type WorkerContext, type WorkerRequest } from './protocol';
+import { type WorkerRequest } from './protocol';
 import type { GraphState } from './graph-state-service';
 import type { GraphSearchItem, GraphSearchReadResult, GraphSearchResult, SearchIndexEntry } from './graph-search-types';
 import { buildPathKey, buildPathText, createPathResolver, parseAnchorPath, resolveLazyPath, resolveSearchRevealTarget } from './tree-path';
@@ -196,22 +195,19 @@ export async function buildGraphPathMap(
 }
 
 export async function handleGraphSearch(
-  ctx: WorkerContext,
   runtime: GraphSearchAnalysisRuntime,
   graphStateByDocumentKey: Map<string, GraphState>,
   message: Extract<WorkerRequest, { type: 'graphSearch' }>,
-): Promise<void> {
+): Promise<GraphSearchReadResult> {
   const query = message.query?.trim();
   if (!query) {
-    postOk(ctx, message.id, { status: 'ready', data: [] } satisfies GraphSearchReadResult);
-    return;
+    return { status: 'ready', data: [] } satisfies GraphSearchReadResult;
   }
   const snapshotId = message.snapshotId ?? null;
   const nest = message.nest;
   const itemsResult = await getSearchItems(runtime, graphStateByDocumentKey, message.documentKey, snapshotId);
   if (itemsResult.status !== 'ready') {
-    postOk(ctx, message.id, { status: 'snapshotNotReady' } satisfies GraphSearchReadResult);
-    return;
+    return { status: 'snapshotNotReady' } satisfies GraphSearchReadResult;
   }
   const items = itemsResult.data;
   const pathMap = await buildGraphPathMap(runtime, graphStateByDocumentKey, message.documentKey, message.language, '', snapshotId);
@@ -257,5 +253,5 @@ export async function handleGraphSearch(
     uniqueResults.set(entry.dedupeKey, entry.data);
     if (uniqueResults.size >= 20) break;
   }
-  postOk(ctx, message.id, { status: 'ready', data: [...uniqueResults.values()] } satisfies GraphSearchReadResult);
+  return { status: 'ready', data: [...uniqueResults.values()] } satisfies GraphSearchReadResult;
 }

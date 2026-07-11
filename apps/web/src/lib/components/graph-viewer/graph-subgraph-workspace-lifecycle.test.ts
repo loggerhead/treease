@@ -61,7 +61,12 @@ describe('shouldResetSubgraphWorkspaceForFullEdit', () => {
     ).toBe(true);
   });
 
-  it('does not reset workspace for idle or sessionless state', () => {
+  it('does not reset workspace after the rebuild has settled, or without a live session', () => {
+    expect(
+      shouldResetSubgraphWorkspaceForFullEdit(
+        createFullEditUiState({ phase: 'settled' }),
+      ),
+    ).toBe(false);
     expect(
       shouldResetSubgraphWorkspaceForFullEdit(
         createFullEditUiState({ phase: 'idle' }),
@@ -85,5 +90,20 @@ describe('shouldResetSubgraphWorkspaceForFullEdit', () => {
         createFullEditUiState({ reason: 'tab-reactivate' }),
       ),
     ).toBe(false);
+  });
+
+  it('does not reset a Workspace after the full-edit revision has a visible main graph', () => {
+    expect(
+      shouldResetSubgraphWorkspaceForFullEdit(
+        createFullEditUiState({ revision: 4, phase: 'streaming' }),
+        4,
+      ),
+    ).toBe(false);
+    expect(
+      shouldResetSubgraphWorkspaceForFullEdit(
+        createFullEditUiState({ revision: 4, phase: 'streaming' }),
+        3,
+      ),
+    ).toBe(true);
   });
 });

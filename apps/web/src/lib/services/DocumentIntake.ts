@@ -1,13 +1,14 @@
 import type { BuilderConfig, DocumentJobSettings, SnapshotId } from '@core-wasm/index';
 import type { DocumentAnalysisResult } from '../../shared/worker-protocol/protocol';
-import { runTextDocumentJobForGraph } from '../graph-stream/document-job-runner';
 import type { DocumentJobResultStatus } from '../../shared/document-job-result';
+import { createFreshnessScope } from '../guards/freshness-scope';
+import { runEditorCommitTransaction, type EditorCommitLanding } from './EditorCommitTransaction';
 
 export type IntakeResultStatus = 'completed' | 'diagnosticsOnly' | 'failed';
 
 export type IntakeResult = {
   status: IntakeResultStatus;
-  resultStatus: DocumentJobResultStatus | 'cancelled' | 'jobFailed';
+  resultStatus: DocumentJobResultStatus | 'cancelled' | 'jobFailed' | 'rejected';
   documentKey: string;
   revision: number;
   snapshotId: SnapshotId | null;
@@ -24,6 +25,7 @@ export type RunIntakeJobParams = {
   revision: number;
   builderConfig?: BuilderConfig;
   isFresh?: () => boolean;
+  landing?: EditorCommitLanding;
 };
 
 function createFailedIntakeResult(params: {
@@ -77,8 +79,22 @@ function createDiagnosticsOnlyIntakeResult(params: {
  */
 export async function runIntakeJob(params: RunIntakeJobParams): Promise<IntakeResult> {
   const { documentKey, language, text, settings, builderConfig, revision, isFresh } = params;
+  const freshness = createFreshnessScope(
+    { documentKey, languageId: language, revision, token: revision },
+    () => ({ documentKey, languageId: language, revision, token: isFresh?.() === false ? -1 : revision }),
+  );
+  const result = await runEditorCommitTransaction({
+    documentKey,
+    language,
+    revision,
+    settings,
+    builderConfig,
+    intent: { kind: 'analyzeSource', text },
+    freshness,
+    landing: params.landing,
+  });
 
-  if (isFresh && !isFresh()) {
+  if (result.status === 'cancelled') {
     return createFailedIntakeResult({
       documentKey,
       revision,
@@ -86,34 +102,14 @@ export async function runIntakeJob(params: RunIntakeJobParams): Promise<IntakeRe
       error: 'cancelled: operation is no longer fresh',
     });
   }
-
-  let result;
-  try {
-    result = await runTextDocumentJobForGraph({
-      documentKey,
-      language,
-      text,
-      settings,
-      builderConfig,
-    });
-  } catch (error) {
+  if (result.status === 'jobFailed') {
     return createFailedIntakeResult({
       documentKey,
       revision,
       resultStatus: 'jobFailed',
-      error: error instanceof Error ? error.message : String(error),
+      error: result.error ?? 'DocumentJob failed',
     });
   }
-
-  if (isFresh && !isFresh()) {
-    return createFailedIntakeResult({
-      documentKey,
-      revision,
-      resultStatus: 'cancelled',
-      error: 'cancelled: result is stale',
-    });
-  }
-
   if (result.status === 'parseFailed') {
     return createDiagnosticsOnlyIntakeResult({
       documentKey,

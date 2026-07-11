@@ -102,11 +102,11 @@ function updateOwnedFullEditUiState(
   payload: FullEditOwnerPayload,
   updater: (current: FullEditUiState) => FullEditUiState | null,
 ): void {
-  fullEditUiStateStore.update((current) => {
-    if (!matchesFullEditOwner(current, payload)) return current;
-    const next = updater(current);
-    return next ?? current;
-  });
+  const current = get(fullEditUiStateStore);
+  if (!matchesFullEditOwner(current, payload)) return;
+  const next = updater(current);
+  if (!next || next === current) return;
+  setFullEditUiState(next);
 }
 
 export function getFullEditUiStateSnapshot(): FullEditUiState {

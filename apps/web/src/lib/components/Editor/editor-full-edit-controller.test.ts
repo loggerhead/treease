@@ -51,9 +51,9 @@ vi.mock('../../graph-stream/full-edit-document-job-session', () => ({
 }));
 
 import {
-  clearWorkspaceSnapshot,
+  clearWorkspaceSnapshotBinding as clearWorkspaceSnapshot,
   getWorkspaceSnapshotId,
-} from '../../store/workspace-snapshot-bindings';
+} from '../../store/workspace-store';
 import { editorStore, type FullEditUiState } from '../../store/editor-store-internal';
 import { createEditorFullEditController } from './editor-full-edit-controller';
 import type { FullEditSink } from './editor-full-edit-sink';
@@ -61,7 +61,7 @@ import {
   clearActiveDocumentSemanticState,
   getActiveDocumentCommitBaseSnapshotId,
   getActiveDocumentSemanticState,
-} from '../../store/active-document-semantic-state';
+} from '../../store/active-document-authority';
 
 describe('editor-full-edit-controller', () => {
   const originalRequestAnimationFrame = globalThis.requestAnimationFrame;
@@ -87,6 +87,7 @@ describe('editor-full-edit-controller', () => {
 
   function createOptions(overrides: Record<string, unknown> = {}) {
     let modelValue = '{"a":1}';
+    let modelVersion = 1;
     const setSourceText = vi.fn();
     const model = {
       uri: { toString: () => 'model://test' },
@@ -95,7 +96,7 @@ describe('editor-full-edit-controller', () => {
       pushEditOperations: vi.fn((_before: unknown, edits: Array<{ text: string }>) => {
         modelValue += edits.map((edit) => edit.text).join('');
       }),
-      getVersionId: () => 1,
+      getVersionId: () => modelVersion,
       getValue: () => modelValue,
     };
     return {
@@ -128,6 +129,9 @@ describe('editor-full-edit-controller', () => {
       applyGraphAnalysis: mockApplyGraphAnalysis,
       setActiveTabDocumentKey: vi.fn(),
       triggerGraphSync: vi.fn(),
+      bumpModelVersion: () => {
+        modelVersion += 1;
+      },
       ...overrides,
     };
   }
@@ -692,7 +696,7 @@ describe('editor-full-edit-controller', () => {
       revision: 0,
     });
     expectLegacyFullEditActionsNotCalled(legacyFullEditActionSpies);
-    expect(getWorkspaceSnapshotId('sidecar:tab-sidecar:0')).toBeNull();
+    expect(getWorkspaceSnapshotId('sidecar:tab-sidecar:0')).toBe(42);
   });
   it('updates source text progressively and finishes with the full streamed import text', async () => {
     const options = createOptions();
@@ -743,6 +747,36 @@ describe('editor-full-edit-controller', () => {
         expect.objectContaining({ value: { a: 1 } }),
       );
     });
+  });
+
+  it('finishes the import UI when graph analysis makes the commit landing stale', async () => {
+    mockStartReadableDocumentJobSessionForGraph.mockImplementationOnce((input: any) => ({
+      sessionId: input.sessionId,
+      documentKey: input.documentKey,
+      language: input.language,
+      revision: input.revision,
+      totalBytes: input.totalBytes ?? 0,
+      chunkSize: input.chunkSize,
+      streamRunId: input.sessionId,
+      jobHandle: 2,
+      result: Promise.resolve({
+        status: 'snapshotReady',
+        snapshotId: 11,
+        analysis: { documentKey: 'doc-test', language: 'json', tree: {}, value: { a: 1 } },
+        batch: { requestSeq: 1, events: [], terminal: null },
+        jobHandle: 2,
+      }),
+      batches: async function* () {},
+      cancel: vi.fn(async () => {}),
+    }));
+
+    const options = createOptions();
+    options.applyGraphAnalysis = vi.fn(async () => options.bumpModelVersion());
+    const controller = createEditorFullEditController(options as any);
+
+    await controller.importStream(createReadableFile(['{"a":', '1}']) as any, 'json' as any, 'import-file');
+
+    expect(editorStore.get().fullEditUiState).toMatchObject({ active: false, phase: 'idle' });
   });
 
   it('keeps graph analysis enabled for large streamed json imports so semantic tokens can be applied', async () => {

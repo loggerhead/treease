@@ -1,8 +1,7 @@
 // 职责：Worker 侧文档比较 handler：结构化判等、结构化 diff、文本 diff
 import { diffStructured, diffText, isStructurallyEqual, type DiffResult } from '@core-wasm/index';
 import { createEmptyDiffResult } from '../../shared/brand-bridge';
-import { postOk } from './logging';
-import type { CompareResponse, WorkerContext, WorkerRequest } from './protocol';
+import type { CompareResponse, WorkerRequest } from './protocol';
 
 function createEqualCompareResponse(mode: CompareResponse['mode']): CompareResponse {
   return { mode, equal: true, result: createEmptyDiffResult() };
@@ -26,19 +25,9 @@ async function buildTextCompareResponse(left: string, right: string): Promise<Co
   return createTextCompareResponse(left, right, await diffText(left, right));
 }
 
-async function postTextCompare(
-  ctx: WorkerContext,
-  messageId: number,
-  left: string,
-  right: string,
-): Promise<void> {
-  postOk(ctx, messageId, await buildTextCompareResponse(left, right));
-}
-
 export async function handleCompare(
-  ctx: WorkerContext,
   message: Extract<WorkerRequest, { type: 'compare' }>,
-): Promise<void> {
+): Promise<CompareResponse> {
   const left = message.left ?? '';
   const right = message.right ?? '';
   const leftLanguage = message.leftLanguage ?? message.language;
@@ -46,23 +35,19 @@ export async function handleCompare(
   const sameLanguage = leftLanguage === rightLanguage;
 
   if (left === right) {
-    postOk(ctx, message.id, createEqualCompareResponse(sameLanguage ? 'tree' : 'text'));
-    return;
+    return createEqualCompareResponse(sameLanguage ? 'tree' : 'text');
   }
 
   if (!sameLanguage) {
-    await postTextCompare(ctx, message.id, left, right);
-    return;
+    return buildTextCompareResponse(left, right);
   }
 
   try {
     const structuredEqual = await isStructurallyEqual(leftLanguage, left, right);
     if (structuredEqual) {
-      postOk(ctx, message.id, createEqualCompareResponse('tree'));
-      return;
+      return createEqualCompareResponse('tree');
     }
-    postOk(ctx, message.id, { mode: 'tree', equal: false, result: await diffStructured(leftLanguage, left, right) });
-    return;
+    return { mode: 'tree', equal: false, result: await diffStructured(leftLanguage, left, right) };
   } catch (error) {
     console.warn('[compare] structured compare failed, falling back to text mode', {
       leftLanguage,
@@ -71,5 +56,5 @@ export async function handleCompare(
     });
   }
 
-  await postTextCompare(ctx, message.id, left, right);
+  return buildTextCompareResponse(left, right);
 }

@@ -1,5 +1,4 @@
 import type { SnapshotId } from '@core-wasm/index';
-import { bindWorkspaceSnapshotIfPresent } from '../../store/workspace-snapshot-bindings';
 import {
   appendFullEditStreamChunkMeta,
   beginFullEditStream,
@@ -97,7 +96,9 @@ export function createPrimaryFullEditSink(): FullEditSink {
     markFinalizing: (payload) => markFullEditStreamFinalizing(payload),
     finish: (payload) => finishFullEditStream(payload),
     cancel: (payload) => cancelFullEditStream(payload),
-    bindSnapshot: (payload) => bindWorkspaceSnapshotIfPresent(payload),
+    // DocumentSnapshot binding belongs to EditorCommitTransaction's authority
+    // landing. This sink only mirrors Full Edit UI lifecycle.
+    bindSnapshot: () => undefined,
   };
 }
 
@@ -144,17 +145,13 @@ export function createWorkspaceTabFullEditSink(tabId: string): FullEditSink {
       ),
     finish: (payload) => applyIfCurrent(tabId, payload, () => createIdleFullEditState()),
     cancel: (payload) => applyIfCurrent(tabId, payload, () => createIdleFullEditState()),
+    // The transaction authority owns the workspace snapshot binding. The
+    // sidecar sink only mirrors that already-authoritative snapshot on its tab.
     bindSnapshot: (payload) => {
       const tab = getWorkspaceTab(tabId);
-      if (!tab) return;
-      if (payload.snapshotId == null) return;
-      if (tab.documentKey !== payload.documentKey) return;
-      if (payload.revision < tab.revision) return;
-      updateWorkspaceTab(tabId, {
-        revision: payload.revision,
-        snapshotId: payload.snapshotId,
-      });
-      bindWorkspaceSnapshotIfPresent(payload);
+      if (!tab || payload.snapshotId == null) return;
+      if (tab.documentKey !== payload.documentKey || payload.revision < tab.revision) return;
+      updateWorkspaceTab(tabId, { revision: payload.revision, snapshotId: payload.snapshotId });
     },
   };
 }

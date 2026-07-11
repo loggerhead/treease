@@ -4,7 +4,7 @@ import type { GraphHighlightTarget } from '../../store/graph-selection-store';
 import type { PathSeg } from '../../store/tree-path';
 import type { SupportedEditorLanguageId } from '../../monaco/language-support';
 import { resolvePathSpanResult, toByteColumn } from '../../services/TreePathService';
-import { getWorkspaceSnapshotId } from '../../store/workspace-snapshot-bindings';
+import { getWorkspaceSnapshotId } from '../../store/workspace-store';
 
 export async function resolveEditorPositionTargetResult(
   model: Monaco.editor.ITextModel,

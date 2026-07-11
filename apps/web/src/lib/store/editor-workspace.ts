@@ -60,6 +60,7 @@ export type CloseWorkspaceTabResult = {
 
 export type EditorWorkspaceTabPatch = {
   name?: string;
+  documentKey?: string;
   languageId?: SupportedEditorLanguageId;
   sourceText?: string;
   revision?: number;

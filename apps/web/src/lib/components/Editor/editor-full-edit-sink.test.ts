@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
-  clearWorkspaceSnapshot,
+  clearWorkspaceSnapshotBinding as clearWorkspaceSnapshot,
   getWorkspaceSnapshotId,
-} from '../../store/workspace-snapshot-bindings';
+} from '../../store/workspace-store';
 import { editorStore, type FullEditUiState } from '../../store/editor-store-internal';
 import { createPrimaryFullEditSink, createWorkspaceTabFullEditSink } from './editor-full-edit-sink';
 
@@ -220,7 +220,7 @@ describe('editor-full-edit-sink', () => {
     expectLegacyPrimaryFullEditState();
   });
 
-  it('sidecar bindSnapshot does not pollute primary tab snapshot or legacy primary fullEditUiState', () => {
+  it('sidecar bindSnapshot mirrors an already-authoritative snapshot without owning workspace binding', () => {
     const primarySink = createPrimaryFullEditSink();
     const sidecarSink = createWorkspaceTabFullEditSink(sidecarTabId);
     primarySink.begin({
@@ -249,7 +249,7 @@ describe('editor-full-edit-sink', () => {
       snapshotId: 101,
     });
     expect(getWorkspaceSnapshotId(primaryDocumentKey)).toBeNull();
-    expect(getWorkspaceSnapshotId(sidecarDocumentKey)).toBe(101);
+    expect(getWorkspaceSnapshotId(sidecarDocumentKey)).toBeNull();
   });
 
   it('sidecar bindSnapshot ignores foreign documentKey without binding the primary document snapshot', () => {

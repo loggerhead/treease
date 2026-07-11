@@ -8,7 +8,7 @@ import type { TreeSyncState } from '../../store/graph-selection-store';
 import { generatePreview } from '../../preview';
 import { isPreviewableNode, readTreeNodeString } from '../../preview/tree-node';
 import { resolvePathSpanResult, resolveTreePathResult } from '../../services/TreePathService';
-import { getWorkspaceSnapshotId } from '../../store/workspace-snapshot-bindings';
+import { getWorkspaceSnapshotId } from '../../store/workspace-store';
 import { nodePreviewToTreeNode, queryNodePreview, queryPathValue } from '../../services/SnapshotProjectionService';
 import { valueToTreeNode } from '../../../shared/tree-node-value';
 import { resolveEditorPositionTargetResult } from './editor-position-target';

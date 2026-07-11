@@ -92,6 +92,10 @@ vi.mock('@core-wasm/index', () => ({
   GraphKind: { SCALAR: 0, TABLE: 1, OBJECT: 2 },
 }));
 
+vi.mock('@core-wasm/pkg', () => ({
+  get_chunk_size_config: () => ({}),
+}));
+
 type WorkerMessage = { id: number; type: string; [key: string]: any };
 
 function scalarNode(value: string) {

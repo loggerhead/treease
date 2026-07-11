@@ -5,23 +5,27 @@ import { resolveDocumentAnalysis } from '../../services/DocumentAnalysisResolver
 import { resolveTreePathResult, toByteColumn } from '../../services/TreePathService';
 import { resolveEditorPositionTargetResult } from './editor-position-target';
 import { applyFailedTreePath, applyResolvedTreePath } from './EditorCore.graph-highlight';
-import { createFreshnessScope } from '../../guards/freshness-scope';
+import { createViewRuntimeOperation, type ViewRuntimeOperation } from '../../guards/view-runtime-operation';
 import { supportedEditorLanguageSet, type SupportedEditorLanguageId } from '../../monaco/language-support';
 import { callSharedWasmWorker } from '../../wasm/wasm-worker-singleton';
 import type { DocumentAnalysisResult, JsonBlockAtPositionResult } from '../../../shared/worker-protocol/protocol';
-import { getWorkspaceSnapshotId } from '../../store/workspace-snapshot-bindings';
+import { getWorkspaceSnapshotId } from '../../store/workspace-store';
 import type { JsonBlockSelection } from '../../store/full-edit-ui-store';
-import { applyDocumentAnalysisToEditor, type EditorAnalysisLike } from './editor-analysis-apply';
+import {
+  applyDocumentAnalysisToEditor,
+  type EditorAnalysisFreshness,
+  type EditorAnalysisLike,
+} from './editor-analysis-apply';
 import { offsetSemanticTokens } from '../../monaco/semantic-token-offset';
 import { buildDocumentJobSettings, runTextDocumentJobForGraph } from '../../graph-stream/document-job-runner';
 import {
   isActiveDocumentSemanticPending,
   isActiveDocumentSemanticValid,
   shouldSuppressJsonBlockFallback,
-} from '../../store/active-document-semantic-state';
-import { resolveReadableSnapshotId } from '../../services/ActiveDocumentContext';
+} from '../../store/active-document-authority';
+import { resolveReadableSnapshotId } from '../../store/active-document-authority';
 
-type EditorFreshnessScope = ReturnType<typeof createFreshnessScope>;
+type EditorFreshnessScope = EditorAnalysisFreshness;
 type CachedAuthoritativeAnalysis = {
   documentKey: string;
   language: SupportedEditorLanguageId;
@@ -72,8 +76,9 @@ type CreateEditorAnalysisControllerOptions = {
 };
 
 export function createEditorAnalysisController(options: CreateEditorAnalysisControllerOptions) {
-  let analysisSyncToken = 0;
-  let treePathToken = 0;
+  let treePathRequestId = 0;
+  let treePathOperation: ViewRuntimeOperation | null = null;
+  let analysisOperation: ViewRuntimeOperation | null = null;
   let latestAuthoritativeAnalysis: CachedAuthoritativeAnalysis | null = null;
 
   function currentRevision(): number {
@@ -258,7 +263,8 @@ export function createEditorAnalysisController(options: CreateEditorAnalysisCont
   }
 
   function prepareLanguageSwitchAnalysisReset(): void {
-    analysisSyncToken += 1;
+    void treePathOperation?.cancel();
+    void analysisOperation?.cancel();
     const currentDocumentKey = options.getDocumentKey();
     clearAuthoritativeAnalysis(currentDocumentKey || undefined);
     if (currentDocumentKey) {
@@ -286,10 +292,26 @@ export function createEditorAnalysisController(options: CreateEditorAnalysisCont
     if (!requestModel) return;
     const requestDocumentKey = options.getDocumentKey();
     if (!requestDocumentKey) return;
-    const requestToken = (treePathToken += 1);
+    void treePathOperation?.cancel();
+    const operation = createViewRuntimeOperation({
+      captured: {
+        documentKey: requestDocumentKey,
+        languageId: requestLanguage,
+        revision: options.getEditorRevision(),
+        model: requestModel,
+      },
+      getCurrent: () => ({
+        documentKey: options.getDocumentKey(),
+        languageId: options.getLanguageId(),
+        revision: options.getEditorRevision(),
+        model: options.getModel(),
+      }),
+    });
+    treePathOperation = operation;
+    const requestId = (treePathRequestId += 1);
     const requestRevision = options.getEditorRevision();
     const cursorPathPayload = {
-      requestId: requestToken,
+      requestId,
       documentKey: requestDocumentKey,
       revision: requestRevision,
       lineNumber: position.lineNumber,
@@ -299,79 +321,72 @@ export function createEditorAnalysisController(options: CreateEditorAnalysisCont
       ...cursorPathPayload,
       syncGraphHighlight,
     });
-    const freshness = createFreshnessScope(
-      {
-        documentKey: requestDocumentKey,
-        languageId: requestLanguage,
-        model: requestModel,
-        token: requestToken,
-      },
-      () => ({
-        documentKey: options.getDocumentKey(),
-        languageId: options.getLanguageId(),
-        model: options.getModel(),
-        token: treePathToken,
-      }),
-    );
     const requestSnapshotId = resolveReadableSnapshotId(requestDocumentKey, requestRevision);
     const hasJsonBlockSelection = getJsonBlockSelectionForDocument(requestDocumentKey) != null;
     const shouldUpdateJsonBlockSelection =
       requestLanguage === 'json' && (syncGraphHighlight || requestSnapshotId == null || hasJsonBlockSelection);
-    if (shouldUpdateJsonBlockSelection) {
-      await updateJsonBlockSelection(
-        requestModel,
-        position,
-        requestDocumentKey,
-        requestLanguage,
-        freshness,
-      );
-      if (!freshness.isCurrent()) return;
-    }
-    const treePathResult = await freshness.step(() =>
-      resolveTreePathResult(
-        requestModel,
-        position,
-        requestDocumentKey,
-        requestLanguage,
-        options.getNestEnabled(),
-        requestSnapshotId,
-      ),
-    );
-    if (!treePathResult || treePathResult.status !== 'ready') return;
-    const treePath = treePathResult.data;
-    const graphHighlightTargetResult = treePath.length
-      ? await freshness.step(() =>
-          resolveEditorPositionTargetResult(
+    await operation.run({
+      execute: async ({ step }) => {
+        if (shouldUpdateJsonBlockSelection) {
+          await updateJsonBlockSelection(
             requestModel,
             position,
-            treePath,
+            requestDocumentKey,
+            requestLanguage,
+            operation,
+          );
+        }
+        const treePathResult = await step(() =>
+          resolveTreePathResult(
+            requestModel,
+            position,
             requestDocumentKey,
             requestLanguage,
             options.getNestEnabled(),
+            requestSnapshotId,
           ),
-        )
-      : undefined;
-    if (graphHighlightTargetResult?.status === 'snapshotNotReady') return;
-    if (!freshness.isCurrent()) return;
-    const graphHighlightTarget = graphHighlightTargetResult?.data ?? undefined;
-    options.updateActiveTempModel((current) => ({
-      ...applyResolvedTreePath(current, {
-        treePath,
-        target: graphHighlightTarget,
-        revision: options.getEditorRevision(),
-        syncGraphHighlight,
-      }),
-    }));
-    options.markCursorPathSettled?.(cursorPathPayload);
-    if (syncGraphHighlight && !shouldUpdateJsonBlockSelection) {
-      await updateJsonBlockSelection(
-        requestModel,
-        position,
-        requestDocumentKey,
-        requestLanguage,
-        freshness,
-      );
-    }
+        );
+        if (treePathResult.status !== 'ready') return null;
+        const treePath = treePathResult.data;
+        const graphHighlightTargetResult = treePath.length
+          ? await step(() =>
+              resolveEditorPositionTargetResult(
+                requestModel,
+                position,
+                treePath,
+                requestDocumentKey,
+                requestLanguage,
+                options.getNestEnabled(),
+              ),
+            )
+          : undefined;
+        if (graphHighlightTargetResult?.status === 'snapshotNotReady') return null;
+        return { treePath, graphHighlightTarget: graphHighlightTargetResult?.data ?? undefined };
+      },
+      land: async (resolved) => {
+        if (!resolved) return;
+        options.updateActiveTempModel((current) => ({
+          ...applyResolvedTreePath(current, {
+            treePath: resolved.treePath,
+            target: resolved.graphHighlightTarget,
+            revision: options.getEditorRevision(),
+            syncGraphHighlight,
+          }),
+        }));
+        options.markCursorPathSettled?.(cursorPathPayload);
+        if (syncGraphHighlight && !shouldUpdateJsonBlockSelection) {
+          await operation.step(() =>
+            updateJsonBlockSelection(
+              requestModel,
+              position,
+              requestDocumentKey,
+              requestLanguage,
+              operation,
+            ),
+          );
+        }
+      },
+    });
   }
 
   async function syncStoredAnalysisToEditor(
@@ -414,40 +429,45 @@ export function createEditorAnalysisController(options: CreateEditorAnalysisCont
     revision: number,
     analysis: DocumentAnalysisResult | null,
   ): Promise<void> {
-    const current = analysisSyncToken + 1;
-    analysisSyncToken = current;
-    const freshness = createFreshnessScope(
-      {
+    void analysisOperation?.cancel();
+    const operation = createViewRuntimeOperation({
+      captured: {
         documentKey: requestDocumentKey,
         languageId: requestLanguage,
         model: requestModel,
         revision,
-        token: current,
       },
-      () => ({
+      getCurrent: () => ({
         documentKey: options.getDocumentKey(),
         languageId: options.getLanguageId(),
         model: options.getModel(),
         revision: currentRevision(),
-        token: analysisSyncToken,
       }),
-    );
-    await syncStoredAnalysisToEditor(
-      requestModel,
-      requestLanguage,
-      requestDocumentKey,
-      options.getNestEnabled(),
-      freshness,
-      analysis,
-    );
-    if (!freshness.isCurrent()) return;
-    options.setTreeState({
-      tree: null,
-      value: null,
-      source: 'editor',
-      revision,
     });
-    await freshness.step(() => updateTreePath(options.getEditor()?.getPosition() ?? null, { syncGraphHighlight: false }));
+    analysisOperation = operation;
+    await operation.run({
+      execute: async ({ step }) => {
+        await step(() =>
+          syncStoredAnalysisToEditor(
+            requestModel,
+            requestLanguage,
+            requestDocumentKey,
+            options.getNestEnabled(),
+            operation,
+            analysis,
+          ),
+        );
+      },
+      land: async () => {
+        options.setTreeState({
+          tree: null,
+          value: null,
+          source: 'editor',
+          revision,
+        });
+        await operation.step(() => updateTreePath(options.getEditor()?.getPosition() ?? null, { syncGraphHighlight: false }));
+      },
+    });
   }
 
   return {

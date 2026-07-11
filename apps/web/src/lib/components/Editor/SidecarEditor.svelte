@@ -21,7 +21,7 @@
     removeDetachedSidecarWorkspaceTab,
     updateWorkspaceTab,
   } from '../../store/workspace-store';
-  import { clearWorkspaceSnapshot, getWorkspaceSnapshotId } from '../../store/workspace-snapshot-bindings';
+  import { clearWorkspaceSnapshotBinding, getWorkspaceSnapshotId } from '../../store/workspace-store';
   import { queryRootValueKind } from '../../services/SnapshotProjectionService';
   import { monacoChangesToDocumentTextEdits, type MonacoTextChange } from '../../../shared/document-text-edits';
   import { markSidecarRequested, markSidecarSettled } from '../../test-bridge/runtime-readiness';
@@ -55,7 +55,7 @@
     scrollbar: { alwaysConsumeMouseWheel: false },
     overviewRulerBorder: true,
     colorDecorators: true,
-    colorDecoratorsActivatedOn: 'clickAndHover',
+    colorDecoratorsActivatedOn: 'clickAndHover' as const,
     'semanticHighlighting.enabled': true,
   };
 
@@ -280,7 +280,7 @@
       },
     });
     if (shouldClearSnapshot) {
-      clearWorkspaceSnapshot(documentKey);
+      clearWorkspaceSnapshotBinding(documentKey);
     }
     clearSemanticTokensForDocument(documentKey);
     refreshSemanticTokensForLanguage(activeLanguage);
@@ -498,7 +498,6 @@
               externalSync.acceptExternalText(sourceTextValue);
             });
           },
-          bindSnapshot: fullEditSink.bindSnapshot,
           applyGraphAnalysis: applySidecarGraphAnalysis,
         });
       } else {

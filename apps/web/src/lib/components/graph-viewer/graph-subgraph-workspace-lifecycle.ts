@@ -12,9 +12,11 @@ const subgraphWorkspaceResetReasonSet = new Set<NonNullable<FullEditUiState['rea
 
 export function shouldResetSubgraphWorkspaceForFullEdit(
   fullEditUiState: FullEditUiState | null | undefined,
+  graphAppliedRevision?: number,
 ): boolean {
   if (!fullEditUiState?.active || !fullEditUiState.sessionId) return false;
-  if (fullEditUiState.phase === 'idle') return false;
+  if (fullEditUiState.phase === 'idle' || fullEditUiState.phase === 'settled') return false;
+  if (graphAppliedRevision != null && graphAppliedRevision >= fullEditUiState.revision) return false;
   return (
     fullEditUiState.reason != null &&
     subgraphWorkspaceResetReasonSet.has(fullEditUiState.reason)

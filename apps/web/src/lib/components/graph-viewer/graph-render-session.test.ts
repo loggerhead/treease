@@ -9,9 +9,9 @@ vi.mock('@core-wasm/index', () => ({
 }));
 
 
-vi.mock('../../store/workspace-snapshot-bindings', () => ({
-  bindWorkspaceSnapshotIfPresent: vi.fn(),
-  clearWorkspaceSnapshot: vi.fn(),
+vi.mock('../../store/workspace-store', () => ({
+  bindWorkspaceSnapshot: vi.fn(),
+  clearWorkspaceSnapshotBinding: vi.fn(),
 }));
 
 vi.mock('../../wasm/wasm-worker-singleton', () => ({
@@ -24,7 +24,7 @@ vi.mock('../../wasm/wasm-worker-singleton', () => ({
 }));
 
 import { createGraphRenderSession } from './graph-render-session';
-import { bindWorkspaceSnapshotIfPresent } from '../../store/workspace-snapshot-bindings';
+import { bindWorkspaceSnapshot } from '../../store/workspace-store';
 import { readRuntimeReadiness, resetRuntimeReadiness, syncRuntimeReadinessFromEditorState } from '../../test-bridge/runtime-readiness';
 
 function startJobResult(jobHandle = 1, requestSeq = 1) {
@@ -397,7 +397,7 @@ describe('graph-render-session coordinator', () => {
       appliedRevision: 5,
       flushedRevision: 5,
     });
-    expect(bindWorkspaceSnapshotIfPresent).toHaveBeenCalledWith(
+    expect(bindWorkspaceSnapshot).toHaveBeenCalledWith(
       expect.objectContaining({ documentKey: 'test-key', revision: 5 }),
     );
   });
@@ -725,6 +725,7 @@ describe('graph-render-session coordinator', () => {
     resolveTextChunk?.(textChunkBatch());
 
     await expect(renderPromise).resolves.toBeNull();
+    expect(mockedCallWorker.mock.calls.filter(([method]) => method === 'cancelDocumentJob')).toHaveLength(1);
     expect(deps.setErrorMessage).not.toHaveBeenCalled();
   });
 
@@ -1110,7 +1111,7 @@ describe('graph-render-session coordinator', () => {
       endColumn: 25,
     });
 
-    expect(bindWorkspaceSnapshotIfPresent).toHaveBeenCalledWith(
+    expect(bindWorkspaceSnapshot).toHaveBeenCalledWith(
       expect.objectContaining({ documentKey: 'block-key', revision: 8, snapshotId: 11 }),
     );
     expect(coordinator.getActiveSnapshotId()).toBe(11);
