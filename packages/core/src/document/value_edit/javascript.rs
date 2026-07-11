@@ -4,10 +4,14 @@ use crate::tree::TreeNode;
 use super::quote_json_string;
 use super::scalar::{ScalarGraphValueEditPlanner, ScalarGraphValueEditRules};
 
-pub(super) static PLANNER: ScalarGraphValueEditPlanner<JavascriptGraphValueEditRules> =
+static PLANNER: ScalarGraphValueEditPlanner<JavascriptGraphValueEditRules> =
     ScalarGraphValueEditPlanner::new(JavascriptGraphValueEditRules);
 
 pub(super) struct JavascriptGraphValueEditRules;
+
+pub(crate) fn planner() -> &'static dyn super::GraphValueEditPlanner {
+    &PLANNER
+}
 
 impl ScalarGraphValueEditRules for JavascriptGraphValueEditRules {
     fn format_key(&self, key: &str) -> Option<String> {

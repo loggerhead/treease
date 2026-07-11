@@ -110,6 +110,10 @@ pub enum CoreError {
     WasmProtocol {
         code: i32,
     },
+    CapabilityMissing {
+        language: String,
+        capability: &'static str,
+    },
 }
 
 impl fmt::Display for CoreError {
@@ -128,6 +132,10 @@ impl fmt::Display for CoreError {
             } => write!(f, "parse error at {line}:{column}: {message}"),
             CoreError::OperatorMessage { op, message } => write!(f, "operator {op}: {message}"),
             CoreError::WasmProtocol { code } => write!(f, "WASM protocol error: {code}"),
+            CoreError::CapabilityMissing {
+                language,
+                capability,
+            } => write!(f, "language capability missing: {language}.{capability}"),
         }
     }
 }

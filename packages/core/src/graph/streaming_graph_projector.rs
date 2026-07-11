@@ -254,7 +254,7 @@ pub struct StreamingGraphProjector {
 }
 
 impl StreamingGraphProjector {
-    pub fn new(language_name: &str, _document_key: impl Into<String>) -> Self {
+    pub fn new(language_name: &str) -> Self {
         Self {
             language: graph_language_from_name(language_name),
             previous_model: None,
@@ -268,7 +268,6 @@ impl StreamingGraphProjector {
 
     pub(crate) fn from_incremental_state(
         language_name: &str,
-        _document_key: impl Into<String>,
         state: &IncrementalState,
     ) -> Option<Self> {
         let previous_model = state
@@ -884,14 +883,6 @@ impl StreamingGraphProjector {
         }
     }
 
-    pub fn finalize_graph_projection(&mut self, document_key: &str) -> Option<GraphDelta> {
-        let model = self.previous_model.take()?;
-        let raw_delta = crate::graph::graph_projection_service::model_to_graph_delta(&model);
-        let delta = self.split_patches(&model, raw_delta, &[], &[]);
-        crate::graph::graph_projection_service::store_projection_model_cache(document_key, model);
-        Some(delta)
-    }
-
     pub fn finalize_layout(&mut self) -> Option<GraphDelta> {
         let model = self.previous_model.as_ref()?;
         if model.nodes.is_empty() {
@@ -1062,7 +1053,7 @@ mod tests {
         let mut decoder = crate::stream::streaming_json::StreamDecoder::new(false);
         let mut builder = Builder::new();
         builder.enable_patches();
-        let mut projector = StreamingGraphProjector::new("json", "direct-incremental-state");
+        let mut projector = StreamingGraphProjector::new("json");
 
         decoder.feed(r#"{"a":1,"b":{"c":2}}"#).unwrap();
         for event in &decoder.take_events() {
@@ -1089,7 +1080,7 @@ mod tests {
         let mut d = crate::stream::streaming_json::StreamDecoder::new(false);
         let mut b = Builder::new();
         b.enable_patches();
-        let mut p = StreamingGraphProjector::new("json", "pending-sequence");
+        let mut p = StreamingGraphProjector::new("json");
 
         d.feed(r#"{"rows":["#).unwrap();
         for e in &d.take_events() {
@@ -1138,7 +1129,7 @@ mod tests {
         let mut d = crate::stream::streaming_json::StreamDecoder::new(false);
         let mut b = Builder::new();
         b.enable_patches();
-        let mut p = StreamingGraphProjector::new("json", "split-object-key");
+        let mut p = StreamingGraphProjector::new("json");
 
         d.feed(&source[..split]).unwrap();
         for e in &d.take_events() {
@@ -1177,7 +1168,7 @@ mod tests {
         let mut d = crate::stream::streaming_json::StreamDecoder::new(false);
         let mut b = Builder::new();
         b.enable_patches();
-        let mut p = StreamingGraphProjector::new("json", "headerless-scalar-rows");
+        let mut p = StreamingGraphProjector::new("json");
         let mut updates = Vec::new();
 
         for chunk in chunks {
@@ -1223,7 +1214,7 @@ mod tests {
         let mut decoder = crate::stream::streaming_json::StreamDecoder::new(false);
         let mut builder = Builder::new();
         builder.enable_patches();
-        let mut projector = StreamingGraphProjector::new("json", "same-depth-x");
+        let mut projector = StreamingGraphProjector::new("json");
         let mut consumer_nodes: HashMap<u32, crate::document::protocol::GraphNodeData> =
             HashMap::new();
         let mut consumer_edges: HashMap<
@@ -1279,7 +1270,7 @@ mod tests {
         let mut decoder = crate::stream::streaming_json::StreamDecoder::new(false);
         let mut builder = Builder::new();
         builder.enable_patches();
-        let mut projector = StreamingGraphProjector::new("json", "edge-geometry");
+        let mut projector = StreamingGraphProjector::new("json");
         let mut consumer_nodes: HashMap<u32, crate::document::protocol::GraphNodeData> =
             HashMap::new();
         let mut consumer_edges: HashMap<
@@ -1337,7 +1328,7 @@ mod tests {
         let mut decoder = crate::stream::streaming_json::StreamDecoder::new(false);
         let mut builder = Builder::new();
         builder.enable_patches();
-        let mut projector = StreamingGraphProjector::new("json", "table-meta-geometry");
+        let mut projector = StreamingGraphProjector::new("json");
         let mut consumer_nodes: HashMap<u32, crate::document::protocol::GraphNodeData> =
             HashMap::new();
         let mut consumer_edges: HashMap<
@@ -1400,7 +1391,7 @@ mod tests {
         let mut d = crate::stream::streaming_json::StreamDecoder::new(false);
         let mut b = Builder::new();
         b.enable_patches();
-        let mut p = StreamingGraphProjector::new("json", "pending-header-table");
+        let mut p = StreamingGraphProjector::new("json");
 
         d.feed(r#"{"rows":[{"#).unwrap();
         for e in &d.take_events() {
@@ -1433,7 +1424,7 @@ mod tests {
     fn projector_produces_initial_delta_for_first_chunk() {
         let b = builder_from_source(r#"{"a":1}"#);
         let (s, r) = b.tree_ref().unwrap();
-        let mut p = StreamingGraphProjector::new("json", "t");
+        let mut p = StreamingGraphProjector::new("json");
         let u = p.update(s, r, &[]).unwrap();
         assert!(!u.delta.nodes_added.is_empty());
         assert_eq!(u.graph_version, 1);
@@ -1443,7 +1434,7 @@ mod tests {
     fn projector_increments_version_across_updates() {
         let b = builder_from_source(r#"{"a":1}"#);
         let (s, r) = b.tree_ref().unwrap();
-        let mut p = StreamingGraphProjector::new("json", "t");
+        let mut p = StreamingGraphProjector::new("json");
         assert_eq!(p.update(s, r, &[]).unwrap().graph_version, 1);
         assert_eq!(p.update(s, r, &[]).unwrap().graph_version, 2);
     }
@@ -1453,7 +1444,7 @@ mod tests {
         let chunks = [r#"{"a":1,"b":"#, r#""hello","c":"#, r#"[1,2,3]}"#];
         let mut d = crate::stream::streaming_json::StreamDecoder::new(false);
         let mut b = Builder::new();
-        let mut p = StreamingGraphProjector::new("json", "t");
+        let mut p = StreamingGraphProjector::new("json");
         for (i, ch) in chunks.iter().enumerate() {
             d.feed(ch).unwrap();
             for e in &d.take_events() {
@@ -1472,7 +1463,7 @@ mod tests {
     fn empty_graph_data_still_advances_version() {
         let b = builder_from_source(r#"{}"#);
         let (s, r) = b.tree_ref().unwrap();
-        let mut p = StreamingGraphProjector::new("json", "t");
+        let mut p = StreamingGraphProjector::new("json");
         assert_eq!(p.update(s, r, &[]).unwrap().graph_version, 1);
         assert_eq!(p.update(s, r, &[]).unwrap().graph_version, 2);
     }
@@ -1483,7 +1474,7 @@ mod tests {
         let n = source.len();
         let mut d = crate::stream::streaming_json::StreamDecoder::new(false);
         let mut b = Builder::new();
-        let mut p = StreamingGraphProjector::new("json", "s");
+        let mut p = StreamingGraphProjector::new("json");
         let mut c = 0;
         for ch in [
             &source[..n / 3],
@@ -1518,7 +1509,7 @@ mod tests {
         let cs = n / 4;
         let mut d = crate::stream::streaming_json::StreamDecoder::new(false);
         let mut b = Builder::new();
-        let mut p = StreamingGraphProjector::new("json", "b");
+        let mut p = StreamingGraphProjector::new("json");
         let (mut ta, mut tu) = (0usize, 0usize);
         let mut o = 0;
         while o < n {
@@ -1543,7 +1534,7 @@ mod tests {
         let mut d = crate::stream::streaming_json::StreamDecoder::new(false);
         let mut b = Builder::new();
         b.enable_patches();
-        let mut p = StreamingGraphProjector::new("json", "t");
+        let mut p = StreamingGraphProjector::new("json");
         d.feed(r#"{"a":1,"b":"#).unwrap();
         for e in &d.take_events() {
             b.push(e).unwrap();
@@ -1575,7 +1566,7 @@ mod tests {
         let mut d = crate::stream::streaming_json::StreamDecoder::new(false);
         let mut b = Builder::new();
         b.enable_patches();
-        let mut p = StreamingGraphProjector::new("json", "idx");
+        let mut p = StreamingGraphProjector::new("json");
 
         for chunk in chunks {
             d.feed(chunk).unwrap();
@@ -1596,7 +1587,7 @@ mod tests {
         let n = source.len();
         let mut d = crate::stream::streaming_json::StreamDecoder::new(false);
         let mut b = Builder::new();
-        let mut p = StreamingGraphProjector::new("json", "t");
+        let mut p = StreamingGraphProjector::new("json");
         // Feed first half.
         d.feed(&source[..n / 2]).unwrap();
         for e in &d.take_events() {
@@ -1653,7 +1644,7 @@ mod tests {
         let mut d = crate::stream::streaming_json::StreamDecoder::new(false);
         let mut b = Builder::new();
         b.enable_patches();
-        let mut p = StreamingGraphProjector::new("json", "uni");
+        let mut p = StreamingGraphProjector::new("json");
         let mut o = 0;
         while o < n {
             let e = (o + cs).min(n);
@@ -1731,7 +1722,7 @@ mod tests {
         let mut d = crate::stream::streaming_json::StreamDecoder::new(false);
         let mut b = Builder::new();
         b.enable_patches();
-        let mut p = StreamingGraphProjector::new("json", "aln");
+        let mut p = StreamingGraphProjector::new("json");
         let mut o = 0;
         while o < n {
             let e = (o + cs).min(n);
@@ -1820,7 +1811,7 @@ mod tests {
     fn first_projection_emits_table_created_and_initial_rows() {
         let b = builder_from_source(r#"[{"a":1,"b":2},{"a":3,"b":4},{"a":5,"b":6}]"#);
         let (s, r) = b.tree_ref().unwrap();
-        let mut p = StreamingGraphProjector::new("json", "first-projection-rows");
+        let mut p = StreamingGraphProjector::new("json");
         let update = p
             .update(s, r, &[])
             .expect("first update must produce delta");
@@ -1881,7 +1872,7 @@ mod tests {
         let b =
             builder_from_source(r#"[{"id":1,"name":"a"},{"id":2,"name":"b"},{"id":3,"name":"c"}]"#);
         let (s, r) = b.tree_ref().unwrap();
-        let mut p = StreamingGraphProjector::new("json", "table-created-cols");
+        let mut p = StreamingGraphProjector::new("json");
         let update = p
             .update(s, r, &[])
             .expect("first update must produce delta");
@@ -1936,7 +1927,7 @@ mod tests {
     fn rows_appended_carries_table_sizing() {
         let b = builder_from_source(r#"[{"a":1,"b":2},{"a":3,"b":4},{"a":5,"b":6}]"#);
         let (s, r) = b.tree_ref().unwrap();
-        let mut p = StreamingGraphProjector::new("json", "rows-appended-sizing");
+        let mut p = StreamingGraphProjector::new("json");
         let update = p
             .update(s, r, &[])
             .expect("first update must produce delta");
@@ -1982,7 +1973,7 @@ mod tests {
     fn dirty_table_row_emits_only_changed_cells() {
         let b = builder_from_source(r#"[{"a":1,"b":2},{"a":3,"b":4}]"#);
         let (s, r) = b.tree_ref().unwrap();
-        let mut p = StreamingGraphProjector::new("json", "dirty-cell-only");
+        let mut p = StreamingGraphProjector::new("json");
         let first = p.update(s, r, &[]).expect("initial projection");
         let table_handle = first
             .delta
@@ -2060,7 +2051,7 @@ mod tests {
         let mut d = crate::stream::streaming_json::StreamDecoder::new(false);
         let mut b = Builder::new();
         b.enable_patches();
-        let mut p = StreamingGraphProjector::new("json", "fix");
+        let mut p = StreamingGraphProjector::new("json");
 
         let mut offset = 0;
         while offset < bytes.len() {
@@ -2122,7 +2113,7 @@ mod tests {
         let mut d = crate::stream::streaming_json::StreamDecoder::new(false);
         let mut b = Builder::new();
         b.enable_patches();
-        let mut p = StreamingGraphProjector::new("json", "big-object-node");
+        let mut p = StreamingGraphProjector::new("json");
         let mut consumer: HashMap<u32, crate::document::protocol::GraphNodeData> = HashMap::new();
         let mut max_consumer_nodes = 0usize;
 
@@ -2189,7 +2180,7 @@ mod tests {
         let mut d = crate::stream::streaming_json::StreamDecoder::new(false);
         let mut b = Builder::new();
         b.enable_patches();
-        let mut p = StreamingGraphProjector::new("json", "2mb");
+        let mut p = StreamingGraphProjector::new("json");
 
         // Consumer-side accumulation: render_handle -> GraphNodeData (the
         // post-split form actually delivered to the web consumer).
@@ -2301,7 +2292,7 @@ mod tests {
         let mut decoder = crate::stream::streaming_json::StreamDecoder::new(false);
         let mut builder = Builder::new();
         builder.enable_patches();
-        let mut projector = StreamingGraphProjector::new("json", "5mb-min-rows-appended");
+        let mut projector = StreamingGraphProjector::new("json");
 
         let mut table_handle: Option<u32> = None;
         let mut snapshots: Vec<TableUpdateSnapshot> = Vec::new();
@@ -2465,7 +2456,7 @@ mod tests {
             let b = builder_from_source(&source);
             let (s, r) = b.tree_ref().unwrap();
             let delta = crate::graph::graph_projection_service::build_initial_projection_delta(
-                s, r, "json", None,
+                s, r, "json",
             );
             delta.nodes_added.iter().map(path_key).collect()
         };
@@ -2474,7 +2465,7 @@ mod tests {
         let mut d = crate::stream::streaming_json::StreamDecoder::new(false);
         let mut b = Builder::new();
         b.enable_patches();
-        let mut p = StreamingGraphProjector::new("json", "seq-of-seq");
+        let mut p = StreamingGraphProjector::new("json");
         let mut consumer: HashMap<u32, crate::document::protocol::GraphNodeData> = HashMap::new();
 
         let bytes = source.as_bytes();
@@ -2549,7 +2540,7 @@ mod tests {
         let mut decoder = crate::stream::streaming_json::StreamDecoder::new(false);
         let mut builder = Builder::new();
         builder.enable_patches();
-        let mut projector = StreamingGraphProjector::new("json", "scrollable-headerless-rows");
+        let mut projector = StreamingGraphProjector::new("json");
         let mut consumer_nodes: HashMap<u32, crate::document::protocol::GraphNodeData> =
             HashMap::new();
         let mut consumer_edges: HashMap<
@@ -2683,7 +2674,7 @@ mod tests {
         let mut d = crate::stream::streaming_json::StreamDecoder::new(false);
         let mut b = Builder::new();
         b.enable_patches();
-        let mut p = StreamingGraphProjector::new("json", "root-multi-array");
+        let mut p = StreamingGraphProjector::new("json");
 
         let bytes = source.as_bytes();
         let chunk = 9usize;
@@ -2772,7 +2763,7 @@ mod tests {
         let mut d = crate::stream::streaming_json::StreamDecoder::new(false);
         let mut b = Builder::new();
         b.enable_patches();
-        let mut p = StreamingGraphProjector::new("json", "promote");
+        let mut p = StreamingGraphProjector::new("json");
 
         let mut consumer: HashMap<u32, crate::document::protocol::GraphNodeData> = HashMap::new();
 
@@ -2887,7 +2878,7 @@ mod tests {
         let mut d = crate::stream::streaming_json::StreamDecoder::new(false);
         let mut b = Builder::new();
         b.enable_patches();
-        let mut p = StreamingGraphProjector::new("json", "root-trailing-scalars");
+        let mut p = StreamingGraphProjector::new("json");
 
         let bytes = source.as_bytes();
         let chunk = 7usize;
@@ -3039,7 +3030,7 @@ mod tests {
         let mut decoder = crate::stream::streaming_json::StreamDecoder::new(false);
         let mut builder = Builder::new();
         builder.enable_patches();
-        let mut projector = StreamingGraphProjector::new("json", "empty-containers");
+        let mut projector = StreamingGraphProjector::new("json");
 
         let bytes = source.as_bytes();
         let mut offset = 0;
@@ -3094,7 +3085,7 @@ mod tests {
         let mut decoder = crate::stream::streaming_json::StreamDecoder::new(false);
         let mut builder = Builder::new();
         builder.enable_patches();
-        let mut projector = StreamingGraphProjector::new("json", "new-column");
+        let mut projector = StreamingGraphProjector::new("json");
         let mut updates = Vec::new();
 
         for chunk in chunks {
@@ -3162,7 +3153,7 @@ mod tests {
         let mut decoder = crate::stream::streaming_json::StreamDecoder::new(false);
         let mut builder = Builder::new();
         builder.enable_patches();
-        let mut projector = StreamingGraphProjector::new("json", "same-schema-rows");
+        let mut projector = StreamingGraphProjector::new("json");
 
         decoder.feed(chunks[0]).unwrap();
         for event in &decoder.take_events() {
@@ -3209,7 +3200,7 @@ mod tests {
         let mut decoder = crate::stream::streaming_json::StreamDecoder::new(false);
         let mut builder = Builder::new();
         builder.enable_patches();
-        let mut projector = StreamingGraphProjector::new("json", "height-only-table-growth");
+        let mut projector = StreamingGraphProjector::new("json");
 
         decoder.feed(chunks[0]).unwrap();
         for event in &decoder.take_events() {
@@ -3313,7 +3304,7 @@ mod tests {
         let mut decoder = crate::stream::streaming_json::StreamDecoder::new(false);
         let mut builder = Builder::new();
         builder.enable_patches();
-        let mut projector = StreamingGraphProjector::new("json", "tail-layout-suffix");
+        let mut projector = StreamingGraphProjector::new("json");
 
         decoder.feed(&source_prefix).unwrap();
         for event in &decoder.take_events() {
@@ -3366,7 +3357,7 @@ mod tests {
         let mut decoder = crate::stream::streaming_json::StreamDecoder::new(false);
         let mut builder = Builder::new();
         builder.enable_patches();
-        let mut projector = StreamingGraphProjector::new("json", "no-remove-close-noop");
+        let mut projector = StreamingGraphProjector::new("json");
 
         for chunk in chunks {
             decoder.feed(chunk).unwrap();

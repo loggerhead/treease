@@ -212,7 +212,6 @@ fn final_artifacts(document_key: &str, language: &str, chunks: &[&str]) -> Final
                     &decoded.store,
                     decoded.root,
                     language,
-                    Some(document_key),
                 ),
             )
         })
@@ -2446,7 +2445,7 @@ fn current_canonical_graph_from_builder(
         };
     };
     let delta = crate::graph::graph_projection_service::build_initial_projection_delta(
-        &store, root, language, None,
+        &store, root, language,
     );
     canonical_graph_view(&delta)
 }
@@ -2678,7 +2677,6 @@ fn wasm_document_escape_nest_json_reconstructs_original_graph_when_enabled() {
                     &decoded.store,
                     decoded.root,
                     "json",
-                    Some("escape-nest-1mb-nested"),
                 ),
             )
         })

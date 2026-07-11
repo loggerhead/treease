@@ -314,13 +314,15 @@ pub const LANG_SPECS: &[LangSpec<'static>] = &[
 ];
 
 pub fn lang_from_name(candidate: &str) -> Option<&'static LangSpec<'static>> {
-    LANG_SPECS.iter().find(|spec| spec.matches_name(candidate))
+    crate::language::capability::builtin_registry()
+        .find(candidate)
+        .map(|adapter| adapter.spec())
 }
 
 pub fn lang_from_extension(candidate: &str) -> Option<&'static LangSpec<'static>> {
-    LANG_SPECS
-        .iter()
-        .find(|spec| spec.matches_extension(candidate))
+    crate::language::capability::builtin_registry()
+        .find_extension(candidate)
+        .map(|adapter| adapter.spec())
 }
 
 pub fn query_from_language(candidate: &str) -> Option<&'static str> {
@@ -424,9 +426,9 @@ pub fn is_array_node_type(node_type: &str, language_name: &str) -> bool {
 /// Return whether the given language supports structured (tree-sitter) paths.
 ///
 pub fn has_structured_path(language_name: &str) -> bool {
-    find_spec(language_name)
-        .map(|spec| spec.has_structured_path)
-        .unwrap_or(false)
+    crate::language::capability::builtin_registry()
+        .find(language_name)
+        .is_some_and(|adapter| adapter.tree_path_supported())
 }
 
 /// Return the [`StreamKind`] for a language, defaulting to

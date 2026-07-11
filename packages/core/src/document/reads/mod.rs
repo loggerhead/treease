@@ -2,9 +2,8 @@ use std::collections::BTreeSet;
 
 use super::protocol::{
     DocumentAnchor, DocumentNodePreview, DocumentPathValue, DocumentSearchItem, ProjectionDelta,
-    ProjectionRequest, QueryKind, QueryResult, QueryTargetKind, SnapshotQuery, SnapshotReadResult,
+    QueryKind, QueryResult, QueryTargetKind, SnapshotQuery,
 };
-use super::runtime::with_global_document_runtime;
 use super::snapshot::{AnalysisBundle, DocumentSnapshot};
 use crate::formats::DecodedDocument;
 use crate::graph::graph_builder::PathSeg as GraphPathSeg;
@@ -12,13 +11,12 @@ use crate::graph::graph_projection_service;
 use crate::language::SemType;
 use crate::tree::tree_store::TreeStore;
 use crate::tree::{
-    NodeId, ParsedKey, TreeNode, TreeNodeKind, compute_path_span_for_document,
-    compute_tree_path_segments_for_document, format_tree_path, path_seg_index, path_seg_key,
-    unescape_json_string,
+    NodeId, OwnedPathSeg, ParsedKey, TreeNode, TreeNodeKind, borrowed_tree_path,
+    compute_path_span_for_document, compute_tree_path_segments_for_document,
+    format_owned_tree_path, format_tree_path, parse_tree_path, path_seg_index, path_seg_key,
 };
-use crate::wasm_types::PathSegTag;
 
-pub fn query_snapshot(snapshot: &DocumentSnapshot, query: &SnapshotQuery) -> QueryResult {
+pub(crate) fn query_snapshot(snapshot: &DocumentSnapshot, query: &SnapshotQuery) -> QueryResult {
     let Some(analysis) = &snapshot.analysis else {
         return QueryResult::default();
     };
@@ -88,19 +86,6 @@ pub fn query_snapshot(snapshot: &DocumentSnapshot, query: &SnapshotQuery) -> Que
     }
 }
 
-pub fn build_hover_subgraph_projection(
-    request: &ProjectionRequest,
-) -> Result<SnapshotReadResult<ProjectionDelta>, &'static str> {
-    with_global_document_runtime(|runtime| {
-        let Some(snapshot) = runtime.snapshots.get(&request.snapshot_id.0) else {
-            return Ok(SnapshotReadResult::SnapshotNotReady);
-        };
-        build_hover_subgraph_projection_for_snapshot(snapshot, &request.path)
-            .map(|data| SnapshotReadResult::Ready { data })
-    })
-    .ok_or("projection runtime error")?
-}
-
 fn resolve_anchor_for_span(
     snapshot_id: super::protocol::SnapshotId,
     analysis: &AnalysisBundle,
@@ -123,6 +108,7 @@ fn resolve_anchor_for_span(
     if path.is_empty() {
         return None;
     }
+    let borrowed_path = borrowed_tree_path(&path);
     let span = compute_path_span_for_document(
         &document.store,
         document.root,
@@ -130,7 +116,7 @@ fn resolve_anchor_for_span(
         &analysis.diagnostics,
         &analysis.language,
         &analysis.source,
-        &path,
+        &borrowed_path,
         false,
     );
     if span.start_byte < 0 || span.end_byte < span.start_byte {
@@ -138,7 +124,7 @@ fn resolve_anchor_for_span(
     }
     Some(DocumentAnchor {
         snapshot_id,
-        path: format_tree_path(&path),
+        path: format_owned_tree_path(&path),
         span_start: span.start_byte as u32,
         span_end: (span.end_byte as u32).max(end),
     })
@@ -151,7 +137,8 @@ fn resolve_anchor_for_path(
     path_pattern: &str,
     target: QueryTargetKind,
 ) -> Option<DocumentAnchor> {
-    let path = parse_snapshot_path(path_pattern)?;
+    let path = parse_tree_path(path_pattern)?;
+    let borrowed_path = borrowed_tree_path(&path);
     let span = compute_path_span_for_document(
         &document.store,
         document.root,
@@ -159,7 +146,7 @@ fn resolve_anchor_for_path(
         &analysis.diagnostics,
         &analysis.language,
         &analysis.source,
-        &path,
+        &borrowed_path,
         matches!(target, QueryTargetKind::Key),
     );
     if span.start_byte < 0 || span.end_byte < span.start_byte {
@@ -167,65 +154,19 @@ fn resolve_anchor_for_path(
     }
     Some(DocumentAnchor {
         snapshot_id,
-        path: format_tree_path(&path),
+        path: format_owned_tree_path(&path),
         span_start: span.start_byte as u32,
         span_end: span.end_byte as u32,
     })
 }
 
-fn parse_snapshot_path(path: &str) -> Option<Vec<crate::wasm_types::PathSeg<'static>>> {
-    if path.is_empty() || path == "$" {
-        return Some(Vec::new());
-    }
-    let bytes = path.as_bytes();
-    let mut index = 0usize;
-    if bytes.first() == Some(&b'$') {
-        index = 1;
-    }
-    let mut segments = Vec::new();
-    while index < bytes.len() {
-        match bytes[index] {
-            b'.' => {
-                index += 1;
-                let start = index;
-                while index < bytes.len()
-                    && matches!(bytes[index], b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'_' | b'$')
-                {
-                    index += 1;
-                }
-                if start == index {
-                    return None;
-                }
-                segments.push(path_seg_key(Box::leak(
-                    path[start..index].to_owned().into_boxed_str(),
-                )));
-            }
-            b'[' => {
-                let start = index + 1;
-                let end = path[start..].find(']')? + start;
-                let inner = path[start..end].trim();
-                if inner.starts_with('"') {
-                    let key = unescape_json_string(inner)?;
-                    segments.push(path_seg_key(Box::leak(key.into_boxed_str())));
-                } else {
-                    let value = inner.parse::<i32>().ok()?;
-                    segments.push(path_seg_index(value));
-                }
-                index = end + 1;
-            }
-            _ => return None,
-        }
-    }
-    Some(segments)
-}
-
 fn parsed_keys_from_snapshot_path(path: &str) -> Option<Vec<ParsedKey>> {
-    parse_snapshot_path(path).map(|segments| {
+    parse_tree_path(path).map(|segments| {
         segments
-            .iter()
-            .map(|segment| match segment.tag {
-                PathSegTag::Key => ParsedKey::Str(segment.key.to_owned()),
-                PathSegTag::Index => ParsedKey::Int(i64::from(segment.index)),
+            .into_iter()
+            .map(|segment| match segment {
+                OwnedPathSeg::Key(key) => ParsedKey::Str(key),
+                OwnedPathSeg::Index(index) => ParsedKey::Int(i64::from(index)),
             })
             .collect()
     })
@@ -247,15 +188,15 @@ fn node_id_for_path(
         .flatten()
 }
 
-fn build_hover_subgraph_projection_for_snapshot(
+pub(crate) fn build_hover_subgraph_projection_for_snapshot(
     snapshot: &DocumentSnapshot,
     path: &str,
 ) -> Result<ProjectionDelta, &'static str> {
     let analysis = snapshot.analysis.as_ref().ok_or("no analysis")?;
     let document = analysis.document.as_ref().ok_or("no document")?;
-    let path = parse_projection_snapshot_path(path).ok_or("invalid path")?;
+    let path = parse_tree_path(path).ok_or("invalid path")?;
     let root = resolve_projection_node_for_path(&document.store, document.root, &path)
-        .unwrap_or(document.root);
+        .ok_or("path not found")?;
     let root_path = snapshot_projection_path_to_graph_path(&path);
     Ok(ProjectionDelta {
         clear: true,
@@ -269,22 +210,16 @@ fn build_hover_subgraph_projection_for_snapshot(
     })
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-enum ProjectionSnapshotPathSeg {
-    Key(String),
-    Index(i32),
-}
-
 fn resolve_projection_node_for_path(
     store: &crate::tree::TreeStore,
     root: NodeId,
-    path: &[ProjectionSnapshotPathSeg],
+    path: &[OwnedPathSeg],
 ) -> Option<NodeId> {
     let mut current = root;
     for segment in path {
         let node = store.get(current)?;
         current = match segment {
-            ProjectionSnapshotPathSeg::Key(key) => {
+            OwnedPathSeg::Key(key) => {
                 if node.kind != TreeNodeKind::Mapping {
                     return None;
                 }
@@ -294,7 +229,7 @@ fn resolve_projection_node_for_path(
                         .then_some(pair[1])
                 })?
             }
-            ProjectionSnapshotPathSeg::Index(index) => {
+            OwnedPathSeg::Index(index) => {
                 if node.kind != TreeNodeKind::Sequence || *index < 0 {
                     return None;
                 }
@@ -305,55 +240,11 @@ fn resolve_projection_node_for_path(
     Some(current)
 }
 
-fn parse_projection_snapshot_path(path: &str) -> Option<Vec<ProjectionSnapshotPathSeg>> {
-    if path.is_empty() || path == "$" {
-        return Some(Vec::new());
-    }
-    let bytes = path.as_bytes();
-    let mut index = usize::from(bytes.first() == Some(&b'$'));
-    let mut segments = Vec::new();
-    while index < bytes.len() {
-        match bytes[index] {
-            b'.' => {
-                index += 1;
-                let start = index;
-                while index < bytes.len()
-                    && matches!(bytes[index], b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'_' | b'$')
-                {
-                    index += 1;
-                }
-                if start == index {
-                    return None;
-                }
-                segments.push(ProjectionSnapshotPathSeg::Key(
-                    path[start..index].to_owned(),
-                ));
-            }
-            b'[' => {
-                let end = path[index + 1..].find(']')? + index + 1;
-                let inner = path[index + 1..end].trim();
-                if inner.starts_with('"') {
-                    segments.push(ProjectionSnapshotPathSeg::Key(
-                        crate::tree::unescape_json_string(inner)?,
-                    ));
-                } else {
-                    segments.push(ProjectionSnapshotPathSeg::Index(inner.parse::<i32>().ok()?));
-                }
-                index = end + 1;
-            }
-            _ => return None,
-        }
-    }
-    Some(segments)
-}
-
-fn snapshot_projection_path_to_graph_path(path: &[ProjectionSnapshotPathSeg]) -> Vec<GraphPathSeg> {
+fn snapshot_projection_path_to_graph_path(path: &[OwnedPathSeg]) -> Vec<GraphPathSeg> {
     path.iter()
         .map(|segment| match segment {
-            ProjectionSnapshotPathSeg::Key(key) => GraphPathSeg::Key(key.clone()),
-            ProjectionSnapshotPathSeg::Index(index) => {
-                GraphPathSeg::Index((*index).max(0) as usize)
-            }
+            OwnedPathSeg::Key(key) => GraphPathSeg::Key(key.clone()),
+            OwnedPathSeg::Index(index) => GraphPathSeg::Index((*index).max(0) as usize),
         })
         .collect()
 }

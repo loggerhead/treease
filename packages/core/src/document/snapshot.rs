@@ -292,19 +292,16 @@ fn encode_error_spans_raw(spans: &[RawErrorSpan]) -> Vec<u32> {
 impl DocumentSnapshot {
     /// Execute a query against this snapshot.
     /// Queries are read-only: they never produce new authoritative state.
-    /// Returns a result bound to this snapshot's identity.
-    pub fn query(&self, query: &SnapshotQuery) -> QueryResult {
+    pub(crate) fn query(&self, query: &SnapshotQuery) -> QueryResult {
         super::reads::query_snapshot(self, query)
     }
 }
 
 impl DocumentSnapshot {
-    pub fn plan_graph_value_edit(&self, request: &GraphValueEditRequest) -> GraphValueEditPlan {
-        if self.snapshot_id != request.snapshot_id || self.document_key != request.document_key {
-            return super::value_edit::graph_value_edit_fallback(
-                GraphValueEditFallbackReason::SnapshotNotReady,
-            );
-        }
+    pub(crate) fn plan_graph_value_edit(
+        &self,
+        request: &GraphValueEditRequest,
+    ) -> GraphValueEditPlan {
         let Some(analysis) = self.analysis.as_ref() else {
             return super::value_edit::graph_value_edit_fallback(
                 GraphValueEditFallbackReason::MissingAnalysis,

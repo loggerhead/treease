@@ -1,13 +1,16 @@
-mod csv;
-mod javascript;
-mod json;
-mod python;
+#[cfg(not(feature = "lite"))]
+pub(crate) mod csv;
+pub(crate) mod javascript;
+pub(crate) mod json;
+#[cfg(not(feature = "lite"))]
+pub(crate) mod python;
 mod scalar;
-mod toml;
-mod yaml;
+#[cfg(not(feature = "lite"))]
+pub(crate) mod toml;
+#[cfg(not(feature = "lite"))]
+pub(crate) mod yaml;
 
 use crate::formats::DecodedDocument;
-use crate::language::lang_spec::{GraphValueEditRuleKind, find_spec};
 use crate::tree::DocumentTextEdit;
 use crate::wasm_types::{PathSeg, PathSpan};
 
@@ -24,7 +27,7 @@ pub(crate) struct GraphValueEditContext<'a> {
     pub path_index: Option<&'a crate::tree::TreePathIndex>,
 }
 
-pub(crate) trait GraphValueEditPlanner {
+pub(crate) trait GraphValueEditPlanner: Sync {
     fn plan(&self, ctx: GraphValueEditContext<'_>) -> GraphValueEditPlan;
 }
 
@@ -34,32 +37,16 @@ pub(crate) fn plan_graph_value_edit(
     request: &GraphValueEditRequest,
     path_index: Option<&crate::tree::TreePathIndex>,
 ) -> GraphValueEditPlan {
-    let Some(spec) = find_spec(&analysis.language) else {
-        return graph_value_edit_fallback(GraphValueEditFallbackReason::UnsupportedLanguage);
-    };
-    let Some(planner) = planner_for_rule_kind(spec.graph_value_edit_rule) else {
-        return graph_value_edit_fallback(GraphValueEditFallbackReason::UnsupportedLanguage);
-    };
-    planner.plan(GraphValueEditContext {
+    let context = GraphValueEditContext {
         analysis,
         document,
         request,
         path_index,
-    })
-}
-
-fn planner_for_rule_kind(
-    kind: GraphValueEditRuleKind,
-) -> Option<&'static dyn GraphValueEditPlanner> {
-    match kind {
-        GraphValueEditRuleKind::Json => Some(&json::PLANNER),
-        GraphValueEditRuleKind::ScalarYaml => Some(&yaml::PLANNER),
-        GraphValueEditRuleKind::ScalarToml => Some(&toml::PLANNER),
-        GraphValueEditRuleKind::ScalarCsv => Some(&csv::PLANNER),
-        GraphValueEditRuleKind::ScalarPython => Some(&python::PLANNER),
-        GraphValueEditRuleKind::ScalarJavascript => Some(&javascript::PLANNER),
-        GraphValueEditRuleKind::Unsupported => None,
-    }
+    };
+    crate::language::capability::plan_graph_value_edit_with_capability(&analysis.language, context)
+        .unwrap_or_else(|_| {
+            graph_value_edit_fallback(GraphValueEditFallbackReason::UnsupportedLanguage)
+        })
 }
 
 pub(crate) fn graph_value_edit_fallback(

@@ -50,6 +50,13 @@ const ATTRIBUTE: u32 = 14;
 ///
 /// For the full-featured version with caching, use [`semantic_tokens_inner`].
 pub fn encode_semantic_tokens(language: &str, source: &str) -> Vec<u32> {
+    crate::language::capability::semantic_tokens_with_capability(language, source)
+        .unwrap_or_default()
+}
+
+/// Internal implementation used by registered language adapters.  Keeping it
+/// separate prevents the registry seam from recursing through the public API.
+pub(crate) fn encode_semantic_tokens_direct(language: &str, source: &str) -> Vec<u32> {
     semantic_tokens_inner(None, "", language, source)
 }
 

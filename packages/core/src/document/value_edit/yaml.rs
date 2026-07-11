@@ -6,10 +6,14 @@ use super::scalar::{
     normalize_default_scalar_graph_edit_span,
 };
 
-pub(super) static PLANNER: ScalarGraphValueEditPlanner<YamlGraphValueEditRules> =
+static PLANNER: ScalarGraphValueEditPlanner<YamlGraphValueEditRules> =
     ScalarGraphValueEditPlanner::new(YamlGraphValueEditRules);
 
 pub(super) struct YamlGraphValueEditRules;
+
+pub(crate) fn planner() -> &'static dyn super::GraphValueEditPlanner {
+    &PLANNER
+}
 
 impl ScalarGraphValueEditRules for YamlGraphValueEditRules {
     fn normalize_span(&self, source: &str, prefer_key: bool, span: PathSpan) -> Option<PathSpan> {

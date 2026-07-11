@@ -316,7 +316,7 @@ fn hover_subgraph_projection_missing_snapshot_is_snapshot_not_ready() {
     assert!(matches!(projection, SnapshotReadResult::SnapshotNotReady));
 }
 #[test]
-fn hover_subgraph_projection_without_analysis_is_error() {
+fn hover_subgraph_projection_without_semantic_analysis_is_snapshot_not_ready() {
     init_wasm();
     reset_runtime_for_tests();
     store_snapshot_for_document(
@@ -332,12 +332,30 @@ fn hover_subgraph_projection_without_analysis_is_error() {
     )
     .expect("snapshot should be stored");
 
-    let error =
+    let projection =
         treease_core::document::projection::build_hover_subgraph_projection(&ProjectionRequest {
             snapshot_id: SnapshotId(91),
             path: "$".into(),
         })
-        .expect_err("snapshot without analysis should fail");
+        .expect("unavailable semantic analysis is a read status");
 
-    assert_eq!(error, "no analysis");
+    assert_eq!(projection, SnapshotReadResult::SnapshotNotReady);
+}
+
+#[test]
+fn hover_subgraph_projection_invalid_or_missing_path_never_projects_root() {
+    init_wasm();
+    reset_runtime_for_tests();
+    store_analysis_snapshot("doc-hover-invalid-path", 93, "json", r#"{"value":1}"#);
+
+    for path in ["$.", "$.missing", "$[0]"] {
+        let result = treease_core::document::projection::build_hover_subgraph_projection(
+            &ProjectionRequest {
+                snapshot_id: SnapshotId(93),
+                path: path.to_owned(),
+            },
+        );
+
+        assert!(result.is_err(), "{path} must not fall back to the root");
+    }
 }

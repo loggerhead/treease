@@ -55,7 +55,7 @@ impl<R: ScalarGraphValueEditRules> ScalarGraphValueEditPlanner<R> {
     }
 }
 
-impl<R: ScalarGraphValueEditRules> GraphValueEditPlanner for ScalarGraphValueEditPlanner<R> {
+impl<R: ScalarGraphValueEditRules + Sync> GraphValueEditPlanner for ScalarGraphValueEditPlanner<R> {
     fn plan(&self, ctx: GraphValueEditContext<'_>) -> GraphValueEditPlan {
         let path = request_path_segments(&ctx.request.path);
         let recovered_span =

@@ -1,11 +1,14 @@
-use super::super::metrics::{DocumentEngineMetrics, with_global_document_engine_metrics};
+use super::super::materialization::validate_snapshot_ready_outputs;
+use super::super::metrics::DocumentEngineMetrics;
 use super::super::protocol::{
     AdvanceInput, DocumentEvent, DocumentJobKind, DocumentJobSpec, EventBatch, JobTerminal,
     OutputPlan, ProjectionDelta, SnapshotId,
 };
-use super::super::runtime::{DocumentRuntime, close_job_terminal, with_global_document_runtime};
+use super::super::runtime::DocumentRuntime;
 use super::super::stream_state::supports_streaming_language;
-use super::entry::{DocumentJobHandle, JobEntry};
+use super::entry::DocumentJobHandle;
+#[cfg(test)]
+use super::entry::JobEntry;
 use super::{batch, streaming};
 
 pub(super) fn rejected_batch(
@@ -51,20 +54,6 @@ fn projection_from_graph(
         graph_data: projection.graph_data.clone(),
         ..Default::default()
     })
-}
-
-pub(super) fn validate_snapshot_ready_outputs(
-    graph: Option<&super::super::snapshot::GraphProjection>,
-    output: &OutputPlan,
-) -> Result<(), String> {
-    if !output.graph {
-        return Ok(());
-    }
-    let projection = graph.ok_or_else(|| "requested main graph was not produced".to_owned())?;
-    if projection.graph_data.is_none() && !projection.clear {
-        return Err("requested main graph was empty".to_owned());
-    }
-    Ok(())
 }
 
 fn snapshot_ready_event(
@@ -131,10 +120,7 @@ fn latest_job_snapshot_id(
     runtime: &DocumentRuntime,
     handle: DocumentJobHandle,
 ) -> Option<SnapshotId> {
-    runtime
-        .jobs
-        .get(&handle)
-        .and_then(|entry| entry.latest_snapshot_id)
+    runtime.job_snapshot_id(handle)
 }
 
 pub(super) fn snapshot_events_for_terminal(
@@ -147,7 +133,7 @@ pub(super) fn snapshot_events_for_terminal(
     let Some(snapshot_id) = latest_job_snapshot_id(runtime, handle) else {
         return Vec::new();
     };
-    let Some(snapshot) = runtime.snapshots.get(&snapshot_id.0) else {
+    let Some(snapshot) = runtime.snapshot(snapshot_id) else {
         return Vec::new();
     };
     let Some(analysis) = snapshot.analysis.as_ref() else {
@@ -167,27 +153,147 @@ pub(super) fn snapshot_events_for_terminal(
     }
 }
 
+impl DocumentRuntime {
+    pub(crate) fn start_job_with_identity(
+        &mut self,
+        metrics: &mut DocumentEngineMetrics,
+        spec: DocumentJobSpec,
+    ) -> super::super::runtime::StartedDocumentJob {
+        let started = self.insert_job(spec);
+        metrics.record_job_started();
+        started
+    }
+
+    pub fn start_job(
+        &mut self,
+        metrics: &mut DocumentEngineMetrics,
+        spec: DocumentJobSpec,
+    ) -> DocumentJobHandle {
+        self.start_job_with_identity(metrics, spec).handle
+    }
+
+    pub fn advance_job(
+        &mut self,
+        metrics: &mut DocumentEngineMetrics,
+        handle: DocumentJobHandle,
+        input: AdvanceInput,
+    ) -> EventBatch {
+        let Some((request_seq, terminal)) = self.job_lifecycle(handle) else {
+            let batch = rejected_batch(
+                0,
+                "document_runtime_missing_job",
+                format!("No document runtime job registered for handle {}", handle.0),
+            );
+            metrics.record_job_advanced(&batch);
+            return batch;
+        };
+
+        if terminal.is_some() {
+            let batch = EventBatch {
+                request_seq,
+                events: Vec::new(),
+                terminal,
+            };
+            metrics.record_job_advanced(&batch);
+            return batch;
+        }
+
+        let batch = match input {
+            AdvanceInput::TextChunk(text) => {
+                let entry = self.job_mut(handle).expect("job existence checked above");
+                let language = &entry.spec.language;
+                let is_streaming = matches!(entry.spec.kind, DocumentJobKind::AnalyzeSource)
+                    && supports_streaming_language(language);
+
+                if is_streaming {
+                    streaming::advance_streaming_text_chunk(entry, request_seq, text)
+                } else {
+                    entry.append_source_text(&text);
+                    open_batch(request_seq, Vec::new())
+                }
+            }
+            AdvanceInput::BinaryChunk(bytes) => {
+                let entry = self.job_mut(handle).expect("job existence checked above");
+                let language = &entry.spec.language;
+                let is_streaming = matches!(entry.spec.kind, DocumentJobKind::AnalyzeSource)
+                    && supports_streaming_language(language);
+
+                if is_streaming {
+                    streaming::advance_streaming_binary_chunk(entry, request_seq, bytes)
+                } else {
+                    entry.append_source_bytes(&bytes);
+                    open_batch(request_seq, Vec::new())
+                }
+            }
+            AdvanceInput::Close => batch::advance_close(self, handle, request_seq),
+            AdvanceInput::Poll => EventBatch {
+                request_seq,
+                events: Vec::new(),
+                terminal: None,
+            },
+        };
+        metrics.record_job_advanced(&batch);
+        batch
+    }
+
+    pub fn close_job(
+        &mut self,
+        metrics: &mut DocumentEngineMetrics,
+        handle: DocumentJobHandle,
+        terminal: JobTerminal,
+    ) -> EventBatch {
+        let batch = self.close_job_terminal(handle, terminal);
+        metrics.record_job_closed(&batch);
+        batch
+    }
+
+    pub fn cancel_job(
+        &mut self,
+        metrics: &mut DocumentEngineMetrics,
+        handle: DocumentJobHandle,
+    ) -> EventBatch {
+        let (batch, should_record_cancel) =
+            if let Some((request_seq, terminal)) = self.job_lifecycle(handle) {
+                if let Some(terminal) = terminal {
+                    (
+                        EventBatch {
+                            request_seq,
+                            events: Vec::new(),
+                            terminal: Some(terminal),
+                        },
+                        false,
+                    )
+                } else {
+                    (
+                        self.close_job_terminal(handle, JobTerminal::Cancelled),
+                        true,
+                    )
+                }
+            } else {
+                (
+                    rejected_batch(
+                        0,
+                        "document_runtime_missing_job",
+                        format!("No document runtime job registered for handle {}", handle.0),
+                    ),
+                    true,
+                )
+            };
+        if should_record_cancel {
+            metrics.record_job_cancelled(&batch);
+        } else {
+            metrics.record_job_closed(&batch);
+        }
+        batch
+    }
+}
+
 pub fn start_job(
     runtime: &mut DocumentRuntime,
     metrics: &mut DocumentEngineMetrics,
     spec: DocumentJobSpec,
 ) -> DocumentJobHandle {
-    let handle = runtime.allocate_job_handle();
-    let request_seq = runtime.allocate_request_seq(&spec.document_key);
-    runtime.jobs.insert(
-        handle,
-        JobEntry {
-            spec,
-            request_seq,
-            latest_snapshot_id: None,
-            terminal: None,
-            source_buffer: None,
-            stream_state: None,
-            ..Default::default()
-        },
-    );
-    metrics.record_job_started();
-    handle
+    runtime.start_job(metrics, spec)
 }
 
 pub fn advance_job(
@@ -196,69 +302,7 @@ pub fn advance_job(
     handle: DocumentJobHandle,
     input: AdvanceInput,
 ) -> EventBatch {
-    let Some(existing) = runtime.jobs.get(&handle) else {
-        let batch = rejected_batch(
-            0,
-            "document_runtime_missing_job",
-            format!("No document runtime job registered for handle {}", handle.0),
-        );
-        metrics.record_job_advanced(&batch);
-        return batch;
-    };
-    let request_seq = existing.request_seq;
-
-    if existing.terminal.is_some() {
-        let batch = EventBatch {
-            request_seq,
-            events: Vec::new(),
-            terminal: existing.terminal.clone(),
-        };
-        metrics.record_job_advanced(&batch);
-        return batch;
-    }
-
-    let batch = match input {
-        AdvanceInput::TextChunk(text) => {
-            let entry = runtime
-                .jobs
-                .get_mut(&handle)
-                .expect("job existence checked above");
-            let language = &entry.spec.language;
-            let is_streaming = matches!(entry.spec.kind, DocumentJobKind::AnalyzeSource)
-                && supports_streaming_language(language);
-
-            if is_streaming {
-                streaming::advance_streaming_text_chunk(entry, request_seq, text)
-            } else {
-                entry.append_source_text(&text);
-                open_batch(request_seq, Vec::new())
-            }
-        }
-        AdvanceInput::BinaryChunk(bytes) => {
-            let entry = runtime
-                .jobs
-                .get_mut(&handle)
-                .expect("job existence checked above");
-            let language = &entry.spec.language;
-            let is_streaming = matches!(entry.spec.kind, DocumentJobKind::AnalyzeSource)
-                && supports_streaming_language(language);
-
-            if is_streaming {
-                streaming::advance_streaming_binary_chunk(entry, request_seq, bytes)
-            } else {
-                entry.append_source_bytes(&bytes);
-                open_batch(request_seq, Vec::new())
-            }
-        }
-        AdvanceInput::Close => batch::advance_close(runtime, handle, request_seq),
-        AdvanceInput::Poll => EventBatch {
-            request_seq,
-            events: Vec::new(),
-            terminal: None,
-        },
-    };
-    metrics.record_job_advanced(&batch);
-    batch
+    runtime.advance_job(metrics, handle, input)
 }
 
 pub fn close_job(
@@ -267,9 +311,7 @@ pub fn close_job(
     handle: DocumentJobHandle,
     terminal: JobTerminal,
 ) -> EventBatch {
-    let batch = close_job_terminal(runtime, handle, terminal);
-    metrics.record_job_closed(&batch);
-    batch
+    runtime.close_job(metrics, handle, terminal)
 }
 
 pub fn cancel_job(
@@ -277,62 +319,7 @@ pub fn cancel_job(
     metrics: &mut DocumentEngineMetrics,
     handle: DocumentJobHandle,
 ) -> EventBatch {
-    let (batch, should_record_cancel) = if let Some(entry) = runtime.jobs.get(&handle) {
-        if let Some(terminal) = entry.terminal.clone() {
-            (
-                EventBatch {
-                    request_seq: entry.request_seq,
-                    events: Vec::new(),
-                    terminal: Some(terminal),
-                },
-                false,
-            )
-        } else {
-            (
-                close_job_terminal(runtime, handle, JobTerminal::Cancelled),
-                true,
-            )
-        }
-    } else {
-        (
-            rejected_batch(
-                0,
-                "document_runtime_missing_job",
-                format!("No document runtime job registered for handle {}", handle.0),
-            ),
-            true,
-        )
-    };
-    if should_record_cancel {
-        metrics.record_job_cancelled(&batch);
-    } else {
-        metrics.record_job_closed(&batch);
-    }
-    batch
-}
-
-pub fn start_global_job(spec: DocumentJobSpec) -> Option<DocumentJobHandle> {
-    with_global_document_runtime(|runtime| {
-        with_global_document_engine_metrics(|metrics| start_job(runtime, metrics, spec))
-    })?
-}
-
-pub fn cancel_global_job(handle: DocumentJobHandle) -> Option<EventBatch> {
-    with_global_document_runtime(|runtime| {
-        with_global_document_engine_metrics(|metrics| cancel_job(runtime, metrics, handle))
-    })?
-}
-
-pub fn advance_global_job(handle: DocumentJobHandle, input: AdvanceInput) -> Option<EventBatch> {
-    with_global_document_runtime(|runtime| {
-        with_global_document_engine_metrics(|metrics| advance_job(runtime, metrics, handle, input))
-    })?
-}
-
-pub fn close_global_job(handle: DocumentJobHandle, terminal: JobTerminal) -> Option<EventBatch> {
-    with_global_document_runtime(|runtime| {
-        with_global_document_engine_metrics(|metrics| close_job(runtime, metrics, handle, terminal))
-    })?
+    runtime.cancel_job(metrics, handle)
 }
 
 #[cfg(test)]
@@ -365,7 +352,7 @@ mod tests {
     fn add_job(rt: &mut DocumentRuntime, key: &str) -> DocumentJobHandle {
         let h = rt.allocate_job_handle();
         let seq = rt.allocate_request_seq(key);
-        rt.jobs.insert(
+        rt.insert_job_entry_for_test(
             h,
             JobEntry {
                 spec: make_spec(key),
@@ -438,7 +425,7 @@ mod tests {
         assert!(b.terminal.is_none());
         // Streaming JSON jobs no longer store source in entry.source_buffer;
         // the source is managed by StreamingSourceDoc inside the stream state.
-        assert_eq!(rt.jobs.get(&h).unwrap().source_buffer.as_deref(), None);
+        assert_eq!(rt.job(h).unwrap().source_buffer.as_deref(), None);
     }
 
     #[test]
@@ -471,8 +458,8 @@ mod tests {
                 _ => None,
             })
             .expect("Close should emit SnapshotReady");
-        assert!(rt.snapshots.contains_key(&id.0));
-        assert_eq!(rt.snapshots.get(&id.0).unwrap().document_key, "t3");
+        assert!(rt.snapshot(id).is_some());
+        assert_eq!(rt.snapshot(id).unwrap().document_key, "t3");
     }
 
     #[test]
@@ -509,7 +496,7 @@ mod tests {
         assert!(b.terminal.is_none());
         // Streaming JSON jobs no longer store source in entry.source_bytes;
         // the source is managed by StreamingSourceDoc inside the stream state.
-        assert_eq!(rt.jobs.get(&h).unwrap().source_bytes.as_deref(), None);
+        assert_eq!(rt.job(h).unwrap().source_bytes.as_deref(), None);
     }
     #[test]
     fn streaming_json_binary_chunks_accept_split_utf8_and_commit_snapshot() {
@@ -547,8 +534,7 @@ mod tests {
             })
             .expect("binary streaming close should emit SnapshotReady");
         let snapshot = rt
-            .snapshots
-            .get(&snapshot_id.0)
+            .snapshot(snapshot_id)
             .expect("snapshot should be committed");
         assert_eq!(snapshot.analysis.as_ref().unwrap().source, source);
         assert!(
@@ -565,7 +551,7 @@ mod tests {
         let mut m = DocumentEngineMetrics::default();
         let h = rt.allocate_job_handle();
         let seq = rt.allocate_request_seq("binary-csv");
-        rt.jobs.insert(
+        rt.insert_job_entry_for_test(
             h,
             JobEntry {
                 spec: DocumentJobSpec {
@@ -619,7 +605,7 @@ mod tests {
                 _ => None,
             })
             .expect("csv binary close should emit SnapshotReady");
-        let snapshot = rt.snapshots.get(&snapshot_id.0).unwrap();
+        let snapshot = rt.snapshot(snapshot_id).unwrap();
         assert_eq!(snapshot.analysis.as_ref().unwrap().source, "a,b\n1,2");
     }
 
@@ -637,7 +623,7 @@ mod tests {
             close.terminal,
             Some(JobTerminal::Rejected { ref code, .. }) if code == "invalid_utf8_source"
         ));
-        assert!(rt.snapshots.is_empty());
+        assert!(rt.snapshot_count_for_test() == 0);
     }
 
     #[test]
@@ -646,7 +632,7 @@ mod tests {
         let mut m = DocumentEngineMetrics::default();
         let h = rt.allocate_job_handle();
         let seq = rt.allocate_request_seq("t6");
-        rt.jobs.insert(
+        rt.insert_job_entry_for_test(
             h,
             JobEntry {
                 spec: DocumentJobSpec {
@@ -704,10 +690,10 @@ mod tests {
         base_snapshot.snapshot_id = base_snapshot_id;
         base_snapshot.graph = base_result.graph;
         base_snapshot.incremental = base_result.incremental;
-        rt.next_snapshot_id = base_snapshot_id.0;
-        rt.snapshots.insert(base_snapshot_id.0, base_snapshot);
-        rt.latest_snapshot_by_document
-            .insert("t6-base".into(), base_snapshot_id);
+        assert_eq!(
+            rt.store_snapshot_for_document("t6-base", base_snapshot, true),
+            base_snapshot_id
+        );
 
         let h = start_job(
             &mut rt,
@@ -748,7 +734,7 @@ mod tests {
                 _ => None,
             })
             .expect("ApplyEdits close batch should emit SnapshotReady");
-        assert!(rt.snapshots.contains_key(&snapshot_id.0));
+        assert!(rt.snapshot(snapshot_id).is_some());
         let analysis = analysis.expect("SnapshotReady should carry lightweight analysis");
         assert!(analysis.tree.is_none());
         assert!(analysis.value_json.is_none());
@@ -756,6 +742,129 @@ mod tests {
         assert_eq!(analysis.language, "json");
         assert!(main_graph.is_some());
         assert_eq!(main_graph.map(|projection| projection.clear), Some(false));
+    }
+
+    #[test]
+    fn document_job_materialization_interface_covers_non_streaming_outcomes() {
+        let mut rt = DocumentRuntime::default();
+        let mut metrics = DocumentEngineMetrics::default();
+        let source = r#"{"k":1}"#;
+
+        let analyze = start_job(
+            &mut rt,
+            &mut metrics,
+            DocumentJobSpec {
+                output: OutputPlan {
+                    analysis: true,
+                    graph: true,
+                },
+                document_key: "materialization-interface".to_owned(),
+                ..make_spec("materialization-interface")
+            },
+        );
+        advance_job(
+            &mut rt,
+            &mut metrics,
+            analyze,
+            AdvanceInput::TextChunk(source.to_owned()),
+        );
+        let analyzed = advance_job(&mut rt, &mut metrics, analyze, AdvanceInput::Close);
+        let base_snapshot_id = analyzed
+            .events
+            .iter()
+            .find_map(|event| match event {
+                DocumentEvent::SnapshotReady {
+                    snapshot_id,
+                    main_graph,
+                    ..
+                } => {
+                    assert!(
+                        main_graph.is_some(),
+                        "AnalyzeSource should produce mainGraph"
+                    );
+                    Some(*snapshot_id)
+                }
+                _ => None,
+            })
+            .expect("AnalyzeSource should commit an authoritative snapshot");
+
+        let edit_start = source.find('1').expect("fixture contains scalar") as u32;
+        let edits = start_job(
+            &mut rt,
+            &mut metrics,
+            DocumentJobSpec {
+                kind: DocumentJobKind::ApplyEdits,
+                document_key: "materialization-interface".to_owned(),
+                language: "json".to_owned(),
+                input: DocumentInputPlan::SourceText,
+                settings: Default::default(),
+                output: OutputPlan {
+                    analysis: true,
+                    graph: true,
+                },
+                base_snapshot_id: Some(base_snapshot_id),
+                edits: vec![DocumentTextEdit {
+                    start_byte: edit_start,
+                    old_end_byte: edit_start + 1,
+                    new_end_byte: edit_start + 1,
+                    replacement: "2".to_owned(),
+                }],
+            },
+        );
+        let edited = advance_job(&mut rt, &mut metrics, edits, AdvanceInput::Close);
+        assert!(matches!(edited.terminal, Some(JobTerminal::Completed)));
+        let edited_snapshot_id = edited
+            .events
+            .iter()
+            .find_map(|event| match event {
+                DocumentEvent::SnapshotReady { snapshot_id, .. } => Some(*snapshot_id),
+                _ => None,
+            })
+            .expect("ApplyEdits should commit a snapshot");
+        assert_eq!(
+            rt.snapshot(edited_snapshot_id)
+                .and_then(|snapshot| snapshot.analysis.as_ref())
+                .map(|analysis| analysis.source.as_str()),
+            Some(r#"{"k":2}"#),
+        );
+
+        let mismatched_base = start_job(
+            &mut rt,
+            &mut metrics,
+            DocumentJobSpec {
+                kind: DocumentJobKind::ApplyEdits,
+                document_key: "different-document".to_owned(),
+                language: "json".to_owned(),
+                input: DocumentInputPlan::BaseTextWithEdits,
+                settings: Default::default(),
+                output: OutputPlan::default(),
+                base_snapshot_id: Some(base_snapshot_id),
+                edits: Vec::new(),
+            },
+        );
+        let mismatch = advance_job(&mut rt, &mut metrics, mismatched_base, AdvanceInput::Close);
+        assert!(matches!(
+            mismatch.terminal,
+            Some(JobTerminal::Rejected { ref code, .. }) if code == "base_snapshot_document_mismatch"
+        ));
+
+        let invalid = start_job(&mut rt, &mut metrics, make_spec("materialization-invalid"));
+        advance_job(
+            &mut rt,
+            &mut metrics,
+            invalid,
+            AdvanceInput::TextChunk("{invalid".to_owned()),
+        );
+        let failed = advance_job(&mut rt, &mut metrics, invalid, AdvanceInput::Close);
+        assert!(matches!(failed.terminal, Some(JobTerminal::ParseFailed)));
+        assert!(failed.events.iter().any(|event| matches!(
+            event,
+            DocumentEvent::ProjectionDelta {
+                clear: true,
+                graph_data: None,
+                ..
+            }
+        )));
     }
 
     #[test]
@@ -783,10 +892,10 @@ mod tests {
         base_snapshot.snapshot_id = base_snapshot_id;
         base_snapshot.graph = base_result.graph;
         base_snapshot.incremental = base_result.incremental;
-        rt.next_snapshot_id = base_snapshot_id.0;
-        rt.snapshots.insert(base_snapshot_id.0, base_snapshot);
-        rt.latest_snapshot_by_document
-            .insert("t6-reuse".into(), base_snapshot_id);
+        assert_eq!(
+            rt.store_snapshot_for_document("t6-reuse", base_snapshot, true),
+            base_snapshot_id
+        );
 
         let h = start_job(
             &mut rt,
@@ -822,10 +931,7 @@ mod tests {
                 _ => None,
             })
             .expect("ApplyEdits close batch should emit SnapshotReady");
-        let snapshot = rt
-            .snapshots
-            .get(&snapshot_id.0)
-            .expect("snapshot should be stored");
+        let snapshot = rt.snapshot(snapshot_id).expect("snapshot should be stored");
         let incremental = snapshot
             .incremental
             .as_ref()
@@ -836,6 +942,143 @@ mod tests {
         let analysis = snapshot.analysis.as_ref().expect("analysis should exist");
         assert!(analysis.ts_tree.is_some());
         assert_eq!(analysis.value_json, r#"{"root":{"k":2}}"#);
+    }
+
+    #[test]
+    fn snapshot_graph_state_isolated_across_edits_interleaved_jobs_and_stale_commits() {
+        fn graph_snapshot(runtime: &mut DocumentRuntime, key: &str, source: &str) -> SnapshotId {
+            let result = crate::document::materialize(
+                &DocumentInputPlan::SourceText,
+                key,
+                "json",
+                source,
+                false,
+                &OutputPlan {
+                    analysis: true,
+                    graph: true,
+                },
+                &[],
+                None,
+            );
+            let mut snapshot = DocumentSnapshot::with_analysis(key, result.analysis);
+            snapshot.graph = result.graph;
+            snapshot.incremental = result.incremental;
+            runtime.store_snapshot_for_document(key, snapshot, true)
+        }
+
+        fn edit_job(key: &str, base_snapshot_id: SnapshotId, replacement: &str) -> DocumentJobSpec {
+            DocumentJobSpec {
+                kind: DocumentJobKind::ApplyEdits,
+                document_key: key.to_owned(),
+                language: "json".to_owned(),
+                input: DocumentInputPlan::BaseTextWithEdits,
+                settings: crate::document::protocol::DocumentJobSettings::default(),
+                output: OutputPlan {
+                    analysis: true,
+                    graph: true,
+                },
+                base_snapshot_id: Some(base_snapshot_id),
+                edits: vec![DocumentTextEdit {
+                    start_byte: 13,
+                    old_end_byte: 14,
+                    new_end_byte: 13 + replacement.len() as u32,
+                    replacement: replacement.to_owned(),
+                }],
+            }
+        }
+
+        fn ready_snapshot_id(batch: &EventBatch) -> SnapshotId {
+            batch
+                .events
+                .iter()
+                .find_map(|event| match event {
+                    DocumentEvent::SnapshotReady { snapshot_id, .. } => Some(*snapshot_id),
+                    _ => None,
+                })
+                .expect("completed edit should emit SnapshotReady")
+        }
+
+        let mut runtime = DocumentRuntime::default();
+        let mut metrics = DocumentEngineMetrics::default();
+        let source = r#"{"root":{"k":1}}"#;
+        let base_id = graph_snapshot(&mut runtime, "snapshot-isolation", source);
+        let other_base_id = graph_snapshot(&mut runtime, "other-document", source);
+
+        // Both jobs explicitly consume the same base snapshot. Starting the second
+        // job makes the first stale, without changing its base graph authority.
+        let stale_handle = start_job(
+            &mut runtime,
+            &mut metrics,
+            edit_job("snapshot-isolation", base_id, "2"),
+        );
+        let fresh_handle = start_job(
+            &mut runtime,
+            &mut metrics,
+            edit_job("snapshot-isolation", base_id, "3"),
+        );
+        let other_handle = start_job(
+            &mut runtime,
+            &mut metrics,
+            edit_job("other-document", other_base_id, "4"),
+        );
+
+        let fresh_id = ready_snapshot_id(&advance_job(
+            &mut runtime,
+            &mut metrics,
+            fresh_handle,
+            AdvanceInput::Close,
+        ));
+        let other_id = ready_snapshot_id(&advance_job(
+            &mut runtime,
+            &mut metrics,
+            other_handle,
+            AdvanceInput::Close,
+        ));
+        let stale_id = ready_snapshot_id(&advance_job(
+            &mut runtime,
+            &mut metrics,
+            stale_handle,
+            AdvanceInput::Close,
+        ));
+
+        let graph_model = |snapshot_id| {
+            runtime
+                .snapshot(snapshot_id)
+                .and_then(|snapshot| snapshot.incremental.as_ref())
+                .and_then(|state| state.graph_model_snapshot.as_ref())
+                .expect("each graph snapshot owns a resumable graph model")
+                .materialize()
+        };
+        let base_model = graph_model(base_id);
+        let fresh_model = graph_model(fresh_id);
+        let stale_model = graph_model(stale_id);
+        let other_model = graph_model(other_id);
+
+        assert_ne!(
+            base_model, fresh_model,
+            "edit must create a new graph state"
+        );
+        assert_ne!(
+            fresh_model, stale_model,
+            "interleaved jobs must not share graph state"
+        );
+        assert_ne!(
+            fresh_model, other_model,
+            "different documents must not share graph state"
+        );
+        assert_eq!(
+            runtime.latest_authoritative_snapshot_id("snapshot-isolation"),
+            Some(fresh_id),
+            "a stale job must not replace the authoritative snapshot"
+        );
+        assert_eq!(
+            runtime
+                .snapshot(base_id)
+                .and_then(|snapshot| snapshot.analysis.as_ref())
+                .map(|analysis| analysis.source.as_str()),
+            Some(source),
+            "the base snapshot remains immutable after consecutive edits"
+        );
     }
 
     struct IncrementalCase {
@@ -912,10 +1155,10 @@ mod tests {
             base_snapshot.snapshot_id = base_snapshot_id;
             base_snapshot.graph = base_result.graph;
             base_snapshot.incremental = base_result.incremental;
-            rt.next_snapshot_id = base_snapshot_id.0;
-            rt.snapshots.insert(base_snapshot_id.0, base_snapshot);
-            rt.latest_snapshot_by_document
-                .insert(case.language.to_owned(), base_snapshot_id);
+            assert_eq!(
+                rt.store_snapshot_for_document(case.language, base_snapshot, true),
+                base_snapshot_id
+            );
 
             let h = start_job(
                 &mut rt,
@@ -967,10 +1210,7 @@ mod tests {
                     _ => None,
                 })
                 .unwrap_or_else(|| panic!("{} should emit SnapshotReady", case.language));
-            let snapshot = rt
-                .snapshots
-                .get(&snapshot_id.0)
-                .expect("snapshot should be stored");
+            let snapshot = rt.snapshot(snapshot_id).expect("snapshot should be stored");
             let incremental = snapshot
                 .incremental
                 .as_ref()
@@ -1043,10 +1283,10 @@ mod tests {
             base_snapshot.snapshot_id = base_snapshot_id;
             base_snapshot.graph = base_result.graph;
             base_snapshot.incremental = base_result.incremental;
-            rt.next_snapshot_id = base_snapshot_id.0;
-            rt.snapshots.insert(base_snapshot_id.0, base_snapshot);
-            rt.latest_snapshot_by_document
-                .insert(document_key.clone(), base_snapshot_id);
+            assert_eq!(
+                rt.store_snapshot_for_document(&document_key, base_snapshot, true),
+                base_snapshot_id
+            );
 
             let h = start_job(
                 &mut rt,
@@ -1098,10 +1338,7 @@ mod tests {
                     _ => None,
                 })
                 .unwrap_or_else(|| panic!("{} should emit SnapshotReady", case.language));
-            let snapshot = rt
-                .snapshots
-                .get(&snapshot_id.0)
-                .expect("snapshot should be stored");
+            let snapshot = rt.snapshot(snapshot_id).expect("snapshot should be stored");
             let incremental = snapshot
                 .incremental
                 .as_ref()
@@ -1174,7 +1411,7 @@ mod tests {
     fn add_streaming_job(rt: &mut DocumentRuntime, key: &str) -> DocumentJobHandle {
         let h = rt.allocate_job_handle();
         let seq = rt.allocate_request_seq(key);
-        rt.jobs.insert(
+        rt.insert_job_entry_for_test(
             h,
             JobEntry {
                 spec: make_streaming_spec(key),
@@ -1295,7 +1532,7 @@ mod tests {
         let mut m = DocumentEngineMetrics::default();
         let h = rt.allocate_job_handle();
         let seq = rt.allocate_request_seq("csv-1");
-        rt.jobs.insert(
+        rt.insert_job_entry_for_test(
             h,
             JobEntry {
                 spec: DocumentJobSpec {
@@ -1332,7 +1569,7 @@ mod tests {
             "CSV chunk should not emit streaming events"
         );
         assert_eq!(
-            rt.jobs.get(&h).unwrap().source_buffer.as_deref(),
+            rt.job(h).unwrap().source_buffer.as_deref(),
             Some("a,b\n1,2")
         );
     }
@@ -1468,10 +1705,7 @@ mod tests {
                 _ => None,
             })
             .expect("Close should emit SnapshotReady");
-        let snapshot = rt
-            .snapshots
-            .get(&snapshot_id.0)
-            .expect("snapshot should be stored");
+        let snapshot = rt.snapshot(snapshot_id).expect("snapshot should be stored");
         let analysis = snapshot
             .analysis
             .as_ref()
@@ -1519,10 +1753,7 @@ mod tests {
                 _ => None,
             })
             .expect("Close should emit SnapshotReady");
-        let snapshot = rt
-            .snapshots
-            .get(&snapshot_id.0)
-            .expect("snapshot should be stored");
+        let snapshot = rt.snapshot(snapshot_id).expect("snapshot should be stored");
         let incremental = snapshot
             .incremental
             .as_ref()
@@ -1576,10 +1807,7 @@ mod tests {
                 _ => None,
             })
             .expect("Close should emit ParseFailed");
-        let snapshot = rt
-            .snapshots
-            .get(&snapshot_id.0)
-            .expect("snapshot should be stored");
+        let snapshot = rt.snapshot(snapshot_id).expect("snapshot should be stored");
         let analysis = snapshot
             .analysis
             .as_ref()
@@ -1637,8 +1865,7 @@ mod tests {
         assert!(main_graph.clear);
         assert!(main_graph.graph_data.is_none());
         let snapshot = rt
-            .snapshots
-            .get(&snapshot_id.0)
+            .snapshot(snapshot_id)
             .expect("empty snapshot should be stored");
         let stored = snapshot
             .analysis
@@ -1648,8 +1875,8 @@ mod tests {
         assert!(stored.diagnostics.is_empty());
         assert_eq!(stored.source, "");
         assert_eq!(
-            rt.latest_snapshot_by_document.get(document_key),
-            Some(&snapshot_id),
+            rt.latest_authoritative_snapshot_id(document_key),
+            Some(snapshot_id),
             "blank source should become the authoritative latest snapshot",
         );
         snapshot_id
@@ -1717,7 +1944,7 @@ mod tests {
         let mut m = DocumentEngineMetrics::default();
         let h = rt.allocate_job_handle();
         let seq = rt.allocate_request_seq("apply-edits");
-        rt.jobs.insert(
+        rt.insert_job_entry_for_test(
             h,
             JobEntry {
                 spec: DocumentJobSpec {
@@ -1755,7 +1982,7 @@ mod tests {
             "ApplyEdits should not stream, even for JSON"
         );
         assert_eq!(
-            rt.jobs.get(&h).unwrap().source_buffer.as_deref(),
+            rt.job(h).unwrap().source_buffer.as_deref(),
             Some(r#"{"k":1}"#)
         );
     }
@@ -1816,10 +2043,10 @@ mod tests {
         base_snapshot.snapshot_id = base_snapshot_id;
         base_snapshot.graph = base.graph;
         base_snapshot.incremental = base.incremental;
-        rt.next_snapshot_id = base_snapshot_id.0;
-        rt.snapshots.insert(base_snapshot_id.0, base_snapshot);
-        rt.latest_snapshot_by_document
-            .insert("doc-json".to_owned(), base_snapshot_id);
+        assert_eq!(
+            rt.store_snapshot_for_document("doc-json", base_snapshot, true),
+            base_snapshot_id
+        );
 
         let edit_start = source.find('1').expect("fixture contains scalar") as u32;
         let handle = start_job(
@@ -1862,7 +2089,7 @@ mod tests {
                 _ => None,
             })
             .expect("structural edit should emit SnapshotReady");
-        let snapshot = rt.snapshots.get(&next_id.0).expect("snapshot stored");
+        let snapshot = rt.snapshot(next_id).expect("snapshot stored");
         let analysis = snapshot.analysis.as_ref().expect("analysis stored");
         assert_eq!(analysis.value_json, r#"{"root":{"k":3},"tail":2}"#);
         assert_eq!(analysis.line_index.source_len(), analysis.source.len());
@@ -2035,10 +2262,10 @@ mod tests {
         base_snapshot.snapshot_id = base_snapshot_id;
         base_snapshot.graph = base.graph;
         base_snapshot.incremental = base.incremental;
-        rt.next_snapshot_id = base_snapshot_id.0;
-        rt.snapshots.insert(base_snapshot_id.0, base_snapshot);
-        rt.latest_snapshot_by_document
-            .insert("doc-json-subtree".to_owned(), base_snapshot_id);
+        assert_eq!(
+            rt.store_snapshot_for_document("doc-json-subtree", base_snapshot, true),
+            base_snapshot_id
+        );
 
         let old = "{\n    \"a\": 1\n  }";
         let replacement = "{\n    \"a\": 11,\n    \"b\": 22\n  }";
@@ -2083,7 +2310,7 @@ mod tests {
                 _ => None,
             })
             .expect("structural subtree edit should emit SnapshotReady");
-        let snapshot = rt.snapshots.get(&snapshot_id.0).expect("snapshot stored");
+        let snapshot = rt.snapshot(snapshot_id).expect("snapshot stored");
         let analysis = snapshot.analysis.as_ref().expect("analysis stored");
         let document = analysis.document.as_ref().expect("document stored");
         let path = [
@@ -2134,10 +2361,10 @@ mod tests {
         base_snapshot.snapshot_id = base_snapshot_id;
         base_snapshot.graph = base.graph;
         base_snapshot.incremental = base.incremental;
-        rt.next_snapshot_id = base_snapshot_id.0;
-        rt.snapshots.insert(base_snapshot_id.0, base_snapshot);
-        rt.latest_snapshot_by_document
-            .insert("doc-json-index".to_owned(), base_snapshot_id);
+        assert_eq!(
+            rt.store_snapshot_for_document("doc-json-index", base_snapshot, true),
+            base_snapshot_id
+        );
 
         let old = r#"{"a":1}"#;
         let replacement = r#"{"a":1,"b":2}"#;
@@ -2174,7 +2401,7 @@ mod tests {
                 _ => None,
             })
             .expect("structural edit should emit SnapshotReady");
-        let snapshot = rt.snapshots.get(&snapshot_id.0).expect("snapshot stored");
+        let snapshot = rt.snapshot(snapshot_id).expect("snapshot stored");
         let plan = snapshot.plan_graph_value_edit(&GraphValueEditRequest {
             document_key: "doc-json-index".to_owned(),
             snapshot_id,

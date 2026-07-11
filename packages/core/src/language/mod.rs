@@ -5,6 +5,7 @@ pub mod language;
 pub mod sem_type;
 pub mod semantic_tokens;
 pub mod tree_sitter_support;
+pub use capability::RegistryLoadError;
 pub use edit_rules::parse_scalar_edit_replacement;
 pub use guess_language::guess_language;
 pub use lang_spec::{
@@ -28,3 +29,4 @@ pub use tree_sitter_support::{
     parse_supported_language, parse_with_tree, query_capture_name_for_id, query_cursor_exec,
     query_cursor_new, query_new, tree_sitter_language,
 };
+pub mod capability;

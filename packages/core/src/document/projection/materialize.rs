@@ -175,12 +175,8 @@ pub fn materialize_with_base_context(
                 &decoded_doc,
                 Some(tree),
             );
-            let graph = if output_plan.graph {
-                build_graph_projection(language, &decoded_doc, document_key)
-            } else {
-                None
-            };
-            let incremental = incremental_state_for_graph(document_key, graph.as_ref());
+            let (graph, incremental) =
+                build_graph_output(language, &decoded_doc, output_plan.graph);
             return MaterializeResult {
                 analysis,
                 graph,
@@ -197,8 +193,7 @@ pub fn materialize_with_base_context(
         Ok(decoded) => {
             let analysis = build_decoded_analysis(document_key, language, &source_text, &decoded);
 
-            let (graph, incremental) =
-                build_graph_output(language, &decoded, document_key, output_plan.graph);
+            let (graph, incremental) = build_graph_output(language, &decoded, output_plan.graph);
 
             MaterializeResult {
                 analysis,
@@ -290,7 +285,7 @@ pub fn materialize_from_decoded(
     let (graph, incremental) = if skip_graph_output {
         (None, None)
     } else {
-        build_graph_output(language, &decoded, document_key, output_plan.graph)
+        build_graph_output(language, &decoded, output_plan.graph)
     };
     let document = if !diagnostics.is_empty() && shared.value_json.is_empty() {
         None
@@ -450,7 +445,6 @@ fn try_structural_materialize(
     );
     let (graph, incremental) = if output_plan.graph {
         build_structural_graph_output(
-            document_key,
             language,
             &decoded,
             edit,
@@ -500,22 +494,42 @@ fn semantic_tokens_for_structural_edit(
 fn build_graph_output(
     language: &str,
     decoded: &DecodedDocument,
-    document_key: &str,
     enabled: bool,
 ) -> (Option<GraphProjection>, Option<IncrementalState>) {
     if !enabled {
         return (None, None);
     }
 
-    let graph = build_graph_projection(language, decoded, document_key);
-    let incremental = attach_tree_path_index(
-        incremental_state_for_graph(document_key, graph.as_ref()),
-        decoded,
-    );
-    (graph, incremental)
+    let Some(build) = graph_projection_service::build_graph_model_for_tree_with_runtime_state(
+        &decoded.store,
+        decoded.root,
+        language,
+    )
+    .ok() else {
+        return (None, None);
+    };
+    let graph_data = graph_projection_service::model_to_graph_delta(&build.model);
+    let index = crate::graph::graph_model_index::GraphModelIndex::build(&build.model);
+    let incremental = IncrementalState::resumable()
+        .with_graph_state(
+            crate::graph::graph_builder::GraphModelSnapshot::owned(build.model),
+            index,
+        )
+        .with_graph_runtime_state(build.topology, build.layout_state)
+        .with_tree_path_index(crate::tree::TreePathIndex::build(
+            &decoded.store,
+            decoded.root,
+        ));
+    (
+        Some(GraphProjection {
+            ready: true,
+            clear: true,
+            graph_data: Some(graph_data),
+        }),
+        Some(incremental),
+    )
 }
 fn build_incremental_graph_output(
-    document_key: &str,
     language: &str,
     decoded: &DecodedDocument,
     edit: &DocumentTextEdit,
@@ -523,13 +537,9 @@ fn build_incremental_graph_output(
     old_model: &crate::graph::graph_builder::GraphModel,
     structural_outcome: &StructuralEditOutcome,
 ) -> Option<(GraphProjection, IncrementalState)> {
-    if let Some(resumed) = build_resumed_graph_output(
-        document_key,
-        language,
-        decoded,
-        base_incremental,
-        structural_outcome,
-    ) {
+    if let Some(resumed) =
+        build_resumed_graph_output(language, decoded, base_incremental, structural_outcome)
+    {
         return Some(resumed);
     }
 
@@ -553,11 +563,6 @@ fn build_incremental_graph_output(
         builder_config,
         graph_language,
     )?;
-    graph_projection_service::store_projection_model_snapshot_cache_with_index(
-        document_key,
-        result.model_snapshot.clone(),
-        result.graph_index.clone(),
-    );
     Some((
         GraphProjection {
             ready: true,
@@ -577,7 +582,6 @@ fn build_incremental_graph_output(
 }
 
 fn build_resumed_graph_output(
-    document_key: &str,
     language: &str,
     decoded: &DecodedDocument,
     base_incremental: Option<&IncrementalState>,
@@ -589,9 +593,7 @@ fn build_resumed_graph_output(
     let base = base_incremental?;
     let mut projector =
         crate::graph::streaming_graph_projector::StreamingGraphProjector::from_incremental_state(
-            language,
-            document_key,
-            base,
+            language, base,
         )?;
     let mut anchors = structural_outcome.affected_nodes.clone();
     anchors.push(structural_outcome.changed_root);
@@ -636,7 +638,6 @@ fn graph_delta_is_empty(delta: &crate::document::protocol::GraphDelta) -> bool {
         && delta.layout_patches.is_empty()
 }
 fn build_structural_graph_output(
-    document_key: &str,
     language: &str,
     decoded: &DecodedDocument,
     edit: &DocumentTextEdit,
@@ -655,7 +656,6 @@ fn build_structural_graph_output(
     };
     let (graph, mut incremental, fallback_reason) = if let Some(old_model) = old_model {
         if let Some((graph, incremental)) = build_incremental_graph_output(
-            document_key,
             language,
             decoded,
             edit,
@@ -665,7 +665,7 @@ fn build_structural_graph_output(
         ) {
             (Some(graph), Some(incremental), None)
         } else {
-            let (graph, incremental) = build_graph_output(language, decoded, document_key, true);
+            let (graph, incremental) = build_graph_output(language, decoded, true);
             (
                 graph,
                 incremental,
@@ -673,7 +673,7 @@ fn build_structural_graph_output(
             )
         }
     } else {
-        let (graph, incremental) = build_graph_output(language, decoded, document_key, true);
+        let (graph, incremental) = build_graph_output(language, decoded, true);
         (graph, incremental, None)
     };
     if let Some(state) = incremental.as_mut() {
@@ -1023,36 +1023,6 @@ fn decode_document_with_nesting(
     )
 }
 
-fn build_graph_projection(
-    language: &str,
-    decoded: &DecodedDocument,
-    document_key: &str,
-) -> Option<GraphProjection> {
-    let graph_data = graph_projection_service::build_initial_projection_delta(
-        &decoded.store,
-        decoded.root,
-        language,
-        Some(document_key),
-    );
-    Some(GraphProjection {
-        ready: true,
-        clear: true,
-        graph_data: Some(graph_data),
-    })
-}
-
-fn attach_tree_path_index(
-    incremental: Option<IncrementalState>,
-    decoded: &DecodedDocument,
-) -> Option<IncrementalState> {
-    incremental.map(|state| {
-        state.with_tree_path_index(crate::tree::TreePathIndex::build(
-            &decoded.store,
-            decoded.root,
-        ))
-    })
-}
-
 fn structural_tree_path_index(
     base_incremental: Option<&IncrementalState>,
     decoded: &DecodedDocument,
@@ -1069,27 +1039,6 @@ fn structural_tree_path_index(
     }
     crate::tree::TreePathIndex::build(&decoded.store, decoded.root)
 }
-fn incremental_state_for_graph(
-    document_key: &str,
-    graph: Option<&GraphProjection>,
-) -> Option<IncrementalState> {
-    if !graph.is_some_and(|projection| projection.ready) {
-        return None;
-    }
-    graph_projection_service::get_projection_model_cache_entry(document_key)
-        .map(|entry| {
-            let state = IncrementalState::resumable()
-                .with_graph_state(entry.model_snapshot.clone(), entry.index.clone());
-            match (entry.topology.clone(), entry.layout_state.clone()) {
-                (Some(topology), Some(layout_state)) => {
-                    state.with_graph_runtime_state(topology, layout_state)
-                }
-                _ => state,
-            }
-        })
-        .or_else(|| Some(IncrementalState::resumable()))
-}
-
 pub fn decode_for_stream_session(
     language: &str,
     input: ByteStream,

@@ -185,12 +185,13 @@ pub use tree_ops::{
     get_map_entry, get_or_create_map_value,
 };
 pub use tree_path::{
-    EMPTY_PATH, PathSpanResolver, build_tree_path_parts, compute_graph_path_span,
-    compute_path_span, compute_path_span_for_document, compute_path_span_for_document_with_index,
-    compute_tree_path_segments, compute_tree_path_segments_for_document, find_node_by_graph_path,
-    find_node_by_path, find_node_by_path_with_index, format_tree_path, format_tree_path_segment,
-    is_punctuation_type, is_simple_key, normalize_key_text, path_seg_index, path_seg_key,
-    path_seg_key_slice, unescape_json_string,
+    EMPTY_PATH, PathSpanResolver, borrowed_tree_path, build_tree_path_parts,
+    compute_graph_path_span, compute_path_span, compute_path_span_for_document,
+    compute_path_span_for_document_with_index, compute_tree_path_segments,
+    compute_tree_path_segments_for_document, find_node_by_graph_path, find_node_by_path,
+    find_node_by_path_with_index, format_owned_tree_path, format_tree_path,
+    format_tree_path_segment, is_punctuation_type, is_simple_key, normalize_key_text,
+    parse_tree_path, path_seg_index, path_seg_key, path_seg_key_slice, unescape_json_string,
 };
 pub use tree_path_index::{OwnedPathSeg, PathLookup, TreePathIndex, TreePathIndexStructuralUpdate};
 pub use tree_store::{DocumentAnalysis, DocumentMeta, GraphEntry, TokenSpan, TreeEntry, TreeStore};

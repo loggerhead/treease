@@ -3,10 +3,14 @@ use crate::tree::TreeNode;
 use super::quote_json_string;
 use super::scalar::{ScalarGraphValueEditPlanner, ScalarGraphValueEditRules};
 
-pub(super) static PLANNER: ScalarGraphValueEditPlanner<PythonGraphValueEditRules> =
+static PLANNER: ScalarGraphValueEditPlanner<PythonGraphValueEditRules> =
     ScalarGraphValueEditPlanner::new(PythonGraphValueEditRules);
 
 pub(super) struct PythonGraphValueEditRules;
+
+pub(crate) fn planner() -> &'static dyn super::GraphValueEditPlanner {
+    &PLANNER
+}
 
 impl ScalarGraphValueEditRules for PythonGraphValueEditRules {
     fn format_key(&self, key: &str) -> Option<String> {

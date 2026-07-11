@@ -1,5 +1,4 @@
 use std::cell::RefCell;
-use std::collections::HashMap;
 
 use crate::document::protocol::{
     GraphBoxArgs, GraphCellData, GraphDelta, GraphEdgeData, GraphEdgeRemoved, GraphNodeData,
@@ -7,26 +6,12 @@ use crate::document::protocol::{
 };
 use crate::language::lang_spec::lang_from_name;
 use crate::layout::full_layout_adapter::{FullGraphBuild, FullLayoutAdapter};
-use crate::layout::layout_engine::LayoutState;
 
-use super::{
-    graph_builder as core_graph_builder, graph_builder_preorder, graph_topology::GraphTopology,
-};
-use crate::graph::GraphModelIndex;
+use super::{graph_builder as core_graph_builder, graph_builder_preorder};
 use crate::language::SemType;
 use crate::tree::{NodeId, TreeStore};
 
-#[derive(Debug, Clone)]
-pub(crate) struct CachedProjectionModel {
-    pub(crate) model_snapshot: crate::graph::GraphModelSnapshot,
-    pub(crate) index: GraphModelIndex,
-    pub(crate) topology: Option<GraphTopology>,
-    pub(crate) layout_state: Option<LayoutState>,
-}
-
 thread_local! {
-    static PROJECTION_MODEL_CACHE: RefCell<HashMap<String, CachedProjectionModel>> =
-        RefCell::new(HashMap::new());
     static PROJECTION_BUILDER_CONFIG: RefCell<BuilderConfigState> =
         RefCell::new(BuilderConfigState::default());
 }
@@ -115,64 +100,6 @@ pub(crate) fn set_builder_config(state: BuilderConfigState) {
 
 pub(crate) fn projection_builder_config() -> BuilderConfigState {
     PROJECTION_BUILDER_CONFIG.with(|config| *config.borrow())
-}
-
-pub(crate) fn store_projection_model_cache(
-    document_key: &str,
-    model: core_graph_builder::GraphModel,
-) {
-    let index = GraphModelIndex::build(&model);
-    store_projection_model_snapshot_cache_with_index(
-        document_key,
-        crate::graph::GraphModelSnapshot::owned(model),
-        index,
-    );
-}
-
-pub(crate) fn store_projection_model_cache_with_runtime_state(
-    document_key: &str,
-    model: core_graph_builder::GraphModel,
-    topology: GraphTopology,
-    layout_state: LayoutState,
-) {
-    let index = GraphModelIndex::build(&model);
-    PROJECTION_MODEL_CACHE.with(|cache| {
-        let mut cache = cache.borrow_mut();
-        cache.insert(
-            document_key.to_owned(),
-            CachedProjectionModel {
-                model_snapshot: crate::graph::GraphModelSnapshot::owned(model),
-                index,
-                topology: Some(topology),
-                layout_state: Some(layout_state),
-            },
-        );
-    });
-}
-
-pub(crate) fn store_projection_model_snapshot_cache_with_index(
-    document_key: &str,
-    model_snapshot: crate::graph::GraphModelSnapshot,
-    index: GraphModelIndex,
-) {
-    PROJECTION_MODEL_CACHE.with(|cache| {
-        let mut cache = cache.borrow_mut();
-        cache.insert(
-            document_key.to_owned(),
-            CachedProjectionModel {
-                model_snapshot,
-                index,
-                topology: None,
-                layout_state: None,
-            },
-        );
-    });
-}
-
-pub(crate) fn get_projection_model_cache_entry(
-    document_key: &str,
-) -> Option<CachedProjectionModel> {
-    PROJECTION_MODEL_CACHE.with(|cache| cache.borrow().get(document_key).cloned())
 }
 
 pub(crate) fn str_sem_type_to_u32(sem: Option<&str>) -> u32 {
@@ -362,25 +289,14 @@ pub(crate) fn to_document_graph_delta(delta: &graph_builder_preorder::GraphDelta
     }
 }
 
+#[cfg(test)]
 pub(crate) fn build_initial_projection_delta(
     store: &TreeStore,
     root: NodeId,
     language: &str,
-    document_key: Option<&str>,
 ) -> GraphDelta {
     match build_graph_model_for_tree_with_runtime_state(store, root, language) {
-        Ok(build) => {
-            let delta = model_to_graph_delta(&build.model);
-            if let Some(key) = document_key {
-                store_projection_model_cache_with_runtime_state(
-                    key,
-                    build.model,
-                    build.topology,
-                    build.layout_state,
-                );
-            }
-            delta
-        }
+        Ok(build) => model_to_graph_delta(&build.model),
         Err(_) => GraphDelta::default(),
     }
 }
@@ -458,7 +374,7 @@ mod tests {
         let decoded = JsonDecoder
             .decode_str(r#"{"user":{"name":"Alice","role":"admin"},"count":42}"#)
             .expect("json fixture should decode");
-        let delta = build_initial_projection_delta(&decoded.store, decoded.root, "json", None);
+        let delta = build_initial_projection_delta(&decoded.store, decoded.root, "json");
         let cell = delta
             .nodes_added
             .iter()

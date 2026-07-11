@@ -1,7 +1,8 @@
 use treease_core::core::{
-    Decoder, NodeId, SemType, TreeNode, TreeNodeKind, TreeStore, build_tree_path_parts,
-    compute_path_span, compute_tree_path_segments, format_tree_path, format_tree_path_segment,
-    is_simple_key, path_seg_index, path_seg_key, path_seg_key_slice,
+    Decoder, NodeId, OwnedPathSeg, SemType, TreeNode, TreeNodeKind, TreeStore,
+    build_tree_path_parts, compute_path_span, compute_tree_path_segments, format_tree_path,
+    format_tree_path_segment, is_simple_key, parse_tree_path, path_seg_index, path_seg_key,
+    path_seg_key_slice,
 };
 
 #[test]
@@ -31,6 +32,26 @@ fn tree_path_helpers_format_segments_and_full_paths() {
     let full = format_tree_path(&[path_seg_key("a"), path_seg_index(1), path_seg_key("x.y")]);
     assert_eq!(full, "$.a[1][\"x.y\"]");
     assert_eq!(format_tree_path(&[]), "$");
+}
+
+#[test]
+fn snapshot_tree_path_parser_owns_root_keys_indices_and_rejects_invalid_syntax() {
+    assert_eq!(parse_tree_path(""), Some(Vec::new()));
+    assert_eq!(parse_tree_path("$"), Some(Vec::new()));
+    assert_eq!(
+        parse_tree_path(r#"$.rows[2]["quoted.key"]["right]bracket"]["escaped\"quote"]"#),
+        Some(vec![
+            OwnedPathSeg::Key("rows".to_owned()),
+            OwnedPathSeg::Index(2),
+            OwnedPathSeg::Key("quoted.key".to_owned()),
+            OwnedPathSeg::Key("right]bracket".to_owned()),
+            OwnedPathSeg::Key("escaped\"quote".to_owned()),
+        ])
+    );
+
+    for invalid in ["$.", "$[]", "$[x]", "$[\"unterminated]", "$rows"] {
+        assert_eq!(parse_tree_path(invalid), None, "{invalid}");
+    }
 }
 
 // ── Helper: add a tree node with byte spans ──────────────────────
@@ -178,8 +199,7 @@ fn json_headerless_array_computes_index_path_and_span() {
     // Byte offset of "30" in "[10, 20, 30]" is at position 9
     let result = compute_tree_path_segments(Some(&decoded.store), cache_key, "json", source, 0, 9);
     assert_eq!(result.len(), 1);
-    assert_eq!(result[0].tag, treease_core::wasm_types::PathSegTag::Index);
-    assert_eq!(result[0].index, 2, "30 should be at index 2");
+    assert_eq!(result[0], OwnedPathSeg::Index(2));
 
     // compute_path_span for index path
     let path = &[path_seg_index(2)];
@@ -219,8 +239,8 @@ fn toml_inline_table_resolves_tree_path_for_inner_value() {
     // "Ada" starts at byte 20 in `profile = { name = "Ada" }\n`
     let result = compute_tree_path_segments(Some(&decoded.store), cache_key, "toml", source, 0, 20);
     assert_eq!(result.len(), 2);
-    assert_eq!(path_seg_key_slice(result[0]), "profile");
-    assert_eq!(path_seg_key_slice(result[1]), "name");
+    assert_eq!(result[0], OwnedPathSeg::Key("profile".to_owned()));
+    assert_eq!(result[1], OwnedPathSeg::Key("name".to_owned()));
 }
 
 // ── Owned TreePathIndex (shared entity Task 1) ──────────────────

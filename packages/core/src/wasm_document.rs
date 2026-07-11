@@ -9,7 +9,9 @@ use crate::document::protocol::{
     EventBatch, GraphValueEditPlan, GraphValueEditRequest, OutputPlan, ProjectionRequest,
     QueryKind, QueryResult, QueryTargetKind, SnapshotId, SnapshotQuery, SnapshotReadResult,
 };
-use crate::document::runtime::with_global_document_runtime;
+use crate::document::runtime::{
+    build_global_hover_subgraph_projection, plan_global_graph_value_edit, query_global_snapshot,
+};
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
 
@@ -204,8 +206,7 @@ pub fn build_hover_subgraph_projection(spec: JsValue) -> Result<JsValue, JsValue
         snapshot_id: SnapshotId(input.snapshot_id as u64),
         path: input.path,
     };
-    let result =
-        crate::document::reads::build_hover_subgraph_projection(&req).map_err(JsValue::from_str)?;
+    let result = build_global_hover_subgraph_projection(&req).map_err(JsValue::from_str)?;
     Ok(serde_wasm_bindgen::to_value(&result).map_err(|e| JsValue::from_str(&e.to_string()))?)
 }
 
@@ -277,23 +278,15 @@ fn start_document_job_impl(req: StartDocumentJobRequest) -> Result<StartDocument
         base_snapshot_id: req.base_snapshot_id,
         edits: req.edits,
     };
-    let handle = start_global_job(spec).ok_or_else(|| "failed to start job".to_string())?;
-    let request_seq = with_global_document_runtime(|runtime| {
-        runtime
-            .jobs
-            .get(&handle)
-            .map(|entry| entry.request_seq)
-            .unwrap_or_default()
-    })
-    .unwrap_or_default();
+    let started = start_global_job(spec).map_err(|_| "failed to start job".to_string())?;
 
     // Start the job without feeding any source. The caller feeds chunks
     // via advance_document_job and closes when done. For one-shot usage,
     // callers should use the convenience wrapper that bundles start+feed+close.
     Ok(StartDocumentJobOutput {
-        job_handle: handle.0,
+        job_handle: started.handle.0,
         batch: EventBatch {
-            request_seq,
+            request_seq: started.request_seq,
             events: Vec::new(),
             terminal: None,
         },
@@ -329,7 +322,7 @@ fn advance_document_job_impl(
         }
         other => return Err(format!("unknown advance kind: {other}")),
     };
-    advance_global_job(handle, input).ok_or_else(|| "engine advance failed".to_string())
+    advance_global_job(handle, input).map_err(|_| "engine advance failed".to_string())
 }
 
 fn query_snapshot_impl(
@@ -361,33 +354,14 @@ fn query_snapshot_impl(
         },
         target: Some(req.target),
     };
-    with_global_document_runtime(|runtime| {
-        let Some(snapshot) = runtime
-            .snapshots
-            .get(&requested_snapshot_id)
-            .filter(|snapshot| snapshot.document_key == req.document_key)
-        else {
-            return SnapshotReadResult::SnapshotNotReady;
-        };
-        SnapshotReadResult::Ready {
-            data: snapshot.query(&query),
-        }
-    })
-    .ok_or_else(|| "query runtime error".to_string())
+    query_global_snapshot(&req.document_key, &query).map_err(|_| "query runtime error".to_string())
 }
 
 fn plan_graph_value_edit_impl(
     request: GraphValueEditRequest,
 ) -> Result<SnapshotReadResult<GraphValueEditPlan>, String> {
-    with_global_document_runtime(|runtime| {
-        let Some(snapshot) = runtime.snapshots.get(&request.snapshot_id.0) else {
-            return SnapshotReadResult::SnapshotNotReady;
-        };
-        SnapshotReadResult::Ready {
-            data: snapshot.plan_graph_value_edit(&request),
-        }
-    })
-    .ok_or_else(|| "plan graph value edit runtime error".to_string())
+    plan_global_graph_value_edit(&request)
+        .map_err(|_| "plan graph value edit runtime error".to_string())
 }
 #[cfg(test)]
 mod tests;

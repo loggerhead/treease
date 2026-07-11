@@ -347,7 +347,6 @@ impl StreamState {
 
     pub(crate) fn for_language(
         language: &str,
-        document_key: &str,
         settings: crate::document::protocol::DocumentJobSettings,
         graph_output: bool,
     ) -> Option<Self> {
@@ -362,7 +361,7 @@ impl StreamState {
                     builder,
                     first_chunk: true,
                     projector: graph_output
-                        .then(|| Box::new(StreamingGraphProjector::new(language, document_key))),
+                        .then(|| Box::new(StreamingGraphProjector::new(language))),
                     source_doc: StreamingSourceDoc::new(),
                     token_spans: Vec::new(),
                 })

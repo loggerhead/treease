@@ -137,6 +137,7 @@ fn map_core_error(err: CoreCodecError) -> CoreError {
         CoreCodecError::ParseMessage { .. } => CoreError::Parse(ParseError::InvalidSyntax),
         CoreCodecError::OperatorMessage { .. } => CoreError::Eval(EvalError::UnsupportedFlat),
         CoreCodecError::WasmProtocol { .. } => CoreError::Format(FormatError::UnknownFormat),
+        CoreCodecError::CapabilityMissing { .. } => CoreError::Format(FormatError::UnknownFormat),
         CoreCodecError::OutOfMemory => CoreError::OutOfMemory,
     }
 }

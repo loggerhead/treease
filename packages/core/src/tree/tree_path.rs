@@ -6,7 +6,7 @@ use super::tree_store::{TreeEntry, TreeStore};
 use crate::analysis::line_index::LineIndex;
 use crate::graph::graph_builder::PathSeg as GraphPathSeg;
 use crate::language::lang_spec;
-use crate::tree::tree_path_index::TreePathIndex;
+use crate::tree::tree_path_index::{OwnedPathSeg, TreePathIndex};
 
 pub const EMPTY_PATH: &[PathSeg<'static>] = &[];
 
@@ -86,6 +86,87 @@ pub fn format_tree_path(segments: &[PathSeg<'_>]) -> String {
         }
     }
     out
+}
+
+pub fn borrowed_tree_path(segments: &[OwnedPathSeg]) -> Vec<PathSeg<'_>> {
+    segments.iter().map(OwnedPathSeg::borrowed).collect()
+}
+
+pub fn format_owned_tree_path(segments: &[OwnedPathSeg]) -> String {
+    format_tree_path(&borrowed_tree_path(segments))
+}
+
+/// Parse the protocol Tree Path syntax into an owned representation.
+///
+/// The empty string and `$` both denote the root. For compatibility, paths
+/// without the leading `$` are accepted when they start with `.` or `[`. Keys
+/// may use dot notation or JSON-string bracket notation; bracket indices are
+/// signed `i32` values and are rejected later when they cannot address a
+/// sequence node.
+pub fn parse_tree_path(path: &str) -> Option<Vec<OwnedPathSeg>> {
+    if path.is_empty() || path == "$" {
+        return Some(Vec::new());
+    }
+
+    let bytes = path.as_bytes();
+    let mut index = usize::from(bytes.first() == Some(&b'$'));
+    let mut segments = Vec::new();
+
+    while index < bytes.len() {
+        match bytes[index] {
+            b'.' => {
+                index += 1;
+                let start = index;
+                while index < bytes.len()
+                    && matches!(bytes[index], b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'_' | b'$')
+                {
+                    index += 1;
+                }
+                if start == index {
+                    return None;
+                }
+                segments.push(OwnedPathSeg::Key(path[start..index].to_owned()));
+            }
+            b'[' => {
+                let inner_start = index + 1;
+                let mut cursor = inner_start;
+                let mut in_string = false;
+                let mut escaped = false;
+                let end = loop {
+                    let byte = *bytes.get(cursor)?;
+                    if in_string {
+                        if escaped {
+                            escaped = false;
+                        } else if byte == b'\\' {
+                            escaped = true;
+                        } else if byte == b'"' {
+                            in_string = false;
+                        }
+                    } else if byte == b'"' {
+                        in_string = true;
+                    } else if byte == b']' {
+                        break cursor;
+                    }
+                    cursor += 1;
+                };
+                if in_string {
+                    return None;
+                }
+
+                let inner = path[inner_start..end].trim();
+                if inner.starts_with('"') {
+                    let key = unescape_json_string(inner)?;
+                    segments.push(OwnedPathSeg::Key(key));
+                } else {
+                    segments.push(OwnedPathSeg::Index(inner.parse::<i32>().ok()?));
+                }
+                index = end + 1;
+            }
+            _ => return None,
+        }
+    }
+
+    Some(segments)
 }
 
 fn append_json_escaped(text: &str) -> String {
@@ -376,8 +457,8 @@ fn build_structured_tree_path_segments(
     node: tree_sitter::Node<'_>,
     language_name: &str,
     source: &[u8],
-) -> Vec<PathSeg<'static>> {
-    let mut segments: Vec<PathSeg<'static>> = Vec::new();
+) -> Vec<OwnedPathSeg> {
+    let mut segments = Vec::new();
     let mut current = node;
 
     loop {
@@ -394,14 +475,14 @@ fn build_structured_tree_path_segments(
                     collect_toml_key_parts_from_node(source, key_node, &mut parts);
                     if !parts.is_empty() {
                         for part in parts.into_iter().rev() {
-                            segments.push(path_seg_key_owned(part));
+                            segments.push(OwnedPathSeg::Key(part));
                         }
                     } else if let Some(key) = get_pair_key(parent, source) {
-                        segments.push(path_seg_key_owned(key));
+                        segments.push(OwnedPathSeg::Key(key));
                     }
                 }
             } else if let Some(key) = get_pair_key(parent, source) {
-                segments.push(path_seg_key_owned(key));
+                segments.push(OwnedPathSeg::Key(key));
             }
             current = parent;
             continue;
@@ -409,7 +490,7 @@ fn build_structured_tree_path_segments(
 
         if lang_spec::is_array_node_type(parent_type, language_name) {
             if let Some(index) = find_array_index(parent, current, language_name) {
-                segments.push(path_seg_index(index as i32));
+                segments.push(OwnedPathSeg::Index(index as i32));
             }
             current = parent;
             continue;
@@ -440,13 +521,13 @@ fn build_structured_tree_path_segments(
                 collect_toml_key_parts_from_node(source, kn, &mut parts);
                 if !parts.is_empty() {
                     for part in parts.into_iter().rev() {
-                        segments.push(path_seg_key_owned(part));
+                        segments.push(OwnedPathSeg::Key(part));
                     }
                 } else {
                     let raw =
                         std::str::from_utf8(&source[kn.start_byte()..kn.end_byte()]).unwrap_or("");
                     if !raw.is_empty() {
-                        segments.push(path_seg_key_owned(normalize_key_text(raw)));
+                        segments.push(OwnedPathSeg::Key(normalize_key_text(raw)));
                     }
                 }
             }
@@ -652,7 +733,7 @@ fn tree_path_segments_at_byte_offset(
     tree_root: NodeId,
     byte_offset: u32,
     store: &TreeStore,
-) -> Option<Vec<PathSeg<'static>>> {
+) -> Option<Vec<OwnedPathSeg>> {
     // First try find_node_at_offset-style lookup via byte spans.
     let found = find_tree_node_at_byte_offset(tree_root, byte_offset, store)?;
     let parsed_path = store.path_for(found).ok()?;
@@ -663,7 +744,7 @@ fn tree_path_segments_at_byte_offset(
     let mut out = Vec::with_capacity(parsed_path.len());
     for seg in &parsed_path {
         match seg {
-            super::tree_node::ParsedKey::Str(s) => out.push(path_seg_key_owned(s.clone())),
+            super::tree_node::ParsedKey::Str(s) => out.push(OwnedPathSeg::Key(s.clone())),
             super::tree_node::ParsedKey::Int(v) => {
                 if *v < 0 {
                     return None;
@@ -674,7 +755,7 @@ fn tree_path_segments_at_byte_offset(
                 if idx > i32::MAX as usize {
                     return None;
                 }
-                out.push(path_seg_index(idx as i32));
+                out.push(OwnedPathSeg::Index(idx as i32));
             }
         }
     }
@@ -691,7 +772,7 @@ fn find_nearest_tree_path_segments(
     line_end: usize,
     byte_offset: usize,
     store: &TreeStore,
-) -> Option<Vec<PathSeg<'static>>> {
+) -> Option<Vec<OwnedPathSeg>> {
     if line_start >= line_end || byte_offset >= source.len() {
         return None;
     }
@@ -740,7 +821,7 @@ pub fn compute_tree_path_segments(
     source: &str,
     row: u32,
     column: u32,
-) -> Vec<PathSeg<'static>> {
+) -> Vec<OwnedPathSeg> {
     // TOML that looks like JSON → bail out early.
     if language_name == "toml" && looks_like_json_document(source) {
         return Vec::new();
@@ -839,7 +920,7 @@ pub fn compute_tree_path_segments_for_document(
     line_index: &LineIndex,
     row: u32,
     column: u32,
-) -> Vec<PathSeg<'static>> {
+) -> Vec<OwnedPathSeg> {
     if language_name == "toml" && looks_like_json_document(source) {
         return Vec::new();
     }
@@ -955,7 +1036,8 @@ fn structured_path_span_for_pair(
     let candidate = normalize_node(target_node)
         .map(|node| build_structured_tree_path_segments(node, language_name, source))
         .unwrap_or_default();
-    path_segments_match(path, &candidate).then(|| path_span_from_ts_node(target_node))
+    path_segments_match(path, &borrowed_tree_path(&candidate))
+        .then(|| path_span_from_ts_node(target_node))
 }
 
 fn recover_structured_path_span(
@@ -976,7 +1058,7 @@ fn recover_structured_path_span(
     let candidate = normalize_node(node)
         .map(|normalized| build_structured_tree_path_segments(normalized, language_name, source))
         .unwrap_or_default();
-    if path_segments_match(path, &candidate) {
+    if path_segments_match(path, &borrowed_tree_path(&candidate)) {
         return Some(path_span_from_ts_node(node));
     }
 
@@ -1310,32 +1392,26 @@ impl<'a> PathSpanResolver<'a> {
             if self.path_index.is_none() {
                 self.path_index = Some(TreePathIndex::build(self.store, self.root));
             }
-            let path_buffer: Vec<PathSeg<'static>>;
-            if let Some(segments) = path {
-                path_buffer = segments
+            let owned_path_buffer = if let Some(segments) = path {
+                segments
                     .iter()
                     .map(|seg| match seg.tag {
-                        PathSegTag::Key => path_seg_key_owned(seg.key.to_owned()),
-                        PathSegTag::Index => path_seg_index(seg.index),
+                        PathSegTag::Key => OwnedPathSeg::Key(seg.key.to_owned()),
+                        PathSegTag::Index => OwnedPathSeg::Index(seg.index),
                     })
-                    .collect();
+                    .collect()
             } else {
-                let owned = self
+                let Some(owned) = self
                     .path_index
                     .as_ref()
-                    .unwrap()
-                    .owned_path_for_node(node_id);
-                let Some(segments) = owned else {
+                    .expect("path index initialized above")
+                    .owned_path_for_node(node_id)
+                else {
                     return PathSpan::EMPTY;
                 };
-                path_buffer = segments
-                    .iter()
-                    .map(|seg| match seg {
-                        crate::tree::OwnedPathSeg::Key(key) => path_seg_key_owned(key.clone()),
-                        crate::tree::OwnedPathSeg::Index(index) => path_seg_index(*index),
-                    })
-                    .collect();
+                owned.to_vec()
             };
+            let path_buffer = borrowed_tree_path(&owned_path_buffer);
             let language_name = self.language_name;
             let source_bytes = self.source.as_bytes();
             let Some(tree) = self.ensure_structured_tree() else {
@@ -1429,22 +1505,4 @@ pub fn compute_path_span_for_document_with_index(
         None => resolver,
     };
     resolver.resolve_path(path, prefer_key)
-}
-// ============================================================================
-// Owned key helper (new)
-// ============================================================================
-
-/// Create an owned [`PathSeg`] with a `Key` tag and a `'static` lifetime.
-fn path_seg_key_owned(key: String) -> PathSeg<'static> {
-    // SAFETY: we leak the string to get a 'static reference. This is
-    // acceptable because PathSeg<'static> values are consumed by the caller
-    // and not stored long-term. The alternative would be to change the return
-    // type to Vec<PathSeg<'_>> with a separate string arena, but that would
-    // break the existing API.
-    let leaked: &'static str = Box::leak(key.into_boxed_str());
-    PathSeg {
-        tag: PathSegTag::Key,
-        key: leaked,
-        index: 0,
-    }
 }

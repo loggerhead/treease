@@ -1,16 +1,14 @@
-use crate::document::runtime::commit_snapshot;
 use crate::document::snapshot;
 use crate::document::stream_state::{CommitEventsError, StreamState};
 
-use super::super::projection::{
-    MaterializeBaseContext, is_blank_source, materialize, materialize_with_base_context,
+use super::super::materialization::{
+    MaterializationOutcome, materialize_job, validate_snapshot_ready_outputs,
 };
-use super::super::protocol::{CommitMode, DocumentInputPlan, DocumentJobKind};
+use super::super::projection::{is_blank_source, materialize};
+use super::super::protocol::{CommitMode, DocumentInputPlan};
 use super::super::snapshot::DocumentSnapshot;
 use super::super::{protocol::EventBatch, runtime::DocumentRuntime};
-use super::engine::{
-    rejected_batch, snapshot_events_for_terminal, terminal_batch, validate_snapshot_ready_outputs,
-};
+use super::engine::{rejected_batch, snapshot_events_for_terminal, terminal_batch};
 use super::entry::{DocumentJobHandle, JobEntry};
 use crate::document::snapshot::GraphProjection;
 fn format_preferences_from_job_settings(
@@ -91,7 +89,7 @@ pub(super) fn advance_close(
     handle: DocumentJobHandle,
     request_seq: u64,
 ) -> EventBatch {
-    let Some(entry) = runtime.jobs.get_mut(&handle) else {
+    let Some(entry) = runtime.job_mut(handle) else {
         return rejected_batch(
             request_seq,
             "document_runtime_missing_job",
@@ -287,7 +285,7 @@ pub(super) fn advance_close(
                 DocumentSnapshot::with_analysis(document_key.clone(), result.analysis);
             snapshot.graph = result.graph;
             snapshot.incremental = result.incremental;
-            let terminal = commit_snapshot(runtime, handle, snapshot, CommitMode::Authoritative);
+            let terminal = runtime.commit_snapshot(handle, snapshot, CommitMode::Authoritative);
             let events =
                 snapshot_events_for_terminal(runtime, handle, &terminal, &output_plan, None);
             return terminal_batch(request_seq, events, terminal);
@@ -305,7 +303,7 @@ pub(super) fn advance_close(
                 None,
             );
             let snapshot = DocumentSnapshot::with_analysis(document_key.clone(), result.analysis);
-            let terminal = commit_snapshot(runtime, handle, snapshot, CommitMode::DiagnosticsOnly);
+            let terminal = runtime.commit_snapshot(handle, snapshot, CommitMode::DiagnosticsOnly);
             let events =
                 snapshot_events_for_terminal(runtime, handle, &terminal, &output_plan, None);
             return terminal_batch(request_seq, events, terminal);
@@ -344,8 +342,7 @@ pub(super) fn advance_close(
                 let mut snapshot = DocumentSnapshot::with_analysis(document_key.clone(), analysis);
                 snapshot.graph = graph;
                 snapshot.incremental = incremental;
-                let terminal =
-                    commit_snapshot(runtime, handle, snapshot, CommitMode::Authoritative);
+                let terminal = runtime.commit_snapshot(handle, snapshot, CommitMode::Authoritative);
                 let events = snapshot_events_for_terminal(
                     runtime,
                     handle,
@@ -363,116 +360,18 @@ pub(super) fn advance_close(
         };
     }
 
-    let Some(entry) = runtime.jobs.get_mut(&handle) else {
-        return rejected_batch(
-            request_seq,
-            "document_runtime_missing_job",
-            format!("No document runtime job registered for handle {}", handle.0),
-        );
-    };
-
-    let document_key = entry.spec.document_key.clone();
-    let language = entry.spec.language.clone();
-    let source = match entry.take_source_text() {
-        Ok(source) => source,
-        Err(error) => {
-            return rejected_batch(
-                request_seq,
-                "invalid_utf8_source",
-                format!("document source is not valid UTF-8: {error}"),
-            );
+    match materialize_job(runtime, handle) {
+        MaterializationOutcome::Rejected { code, detail } => {
+            rejected_batch(request_seq, code, detail)
         }
-    };
-
-    match entry.spec.kind {
-        _ => {
-            if entry.spec.kind == DocumentJobKind::ApplyEdits
-                && entry.spec.base_snapshot_id.is_none()
-            {
-                return rejected_batch(
-                    request_seq,
-                    "missing_base_snapshot",
-                    "ApplyEdits requires a base snapshot",
-                );
-            }
-            let input_plan = entry.spec.input.clone();
-            let output_plan = entry.spec.output;
-            let edits = entry.spec.edits.clone();
-            let mut source = source;
-
-            let mut base_incremental_owned = None;
-            let result = if entry.spec.kind == DocumentJobKind::ApplyEdits {
-                let Some(base_snapshot_id) = entry.spec.base_snapshot_id else {
-                    unreachable!("ApplyEdits missing base snapshot rejected above");
-                };
-                let Some(base) = runtime.snapshots.get(&base_snapshot_id.0) else {
-                    return rejected_batch(
-                        request_seq,
-                        "base_snapshot_not_found",
-                        "ApplyEdits base snapshot is not available",
-                    );
-                };
-                let Some(base_analysis) = base.analysis.as_ref() else {
-                    return rejected_batch(
-                        request_seq,
-                        "base_snapshot_missing_analysis",
-                        "ApplyEdits base snapshot has no analysis",
-                    );
-                };
-                source = base_analysis.source.clone();
-                base_incremental_owned = base.incremental.clone();
-                materialize_with_base_context(
-                    &input_plan,
-                    &document_key,
-                    &language,
-                    &source,
-                    false,
-                    &output_plan,
-                    &edits,
-                    base_analysis.ts_tree.clone(),
-                    MaterializeBaseContext {
-                        document: base_analysis.document.as_ref(),
-                        incremental: base.incremental.as_ref(),
-                        line_index: Some(&base_analysis.line_index),
-                        semantic_tokens: Some(&base_analysis.semantic_tokens),
-                    },
-                )
-            } else {
-                materialize(
-                    &input_plan,
-                    &document_key,
-                    &language,
-                    &source,
-                    false,
-                    &output_plan,
-                    &edits,
-                    None,
-                )
-            };
-
-            let parse_failed =
-                result.analysis.document.is_none() && !result.analysis.diagnostics.is_empty();
-
-            if !parse_failed {
-                if let Err(detail) =
-                    validate_snapshot_ready_outputs(result.graph.as_ref(), &output_plan)
-                {
-                    return rejected_batch(request_seq, "missing_requested_main_graph", detail);
-                }
-            }
-
-            let mut snapshot =
-                DocumentSnapshot::with_analysis(document_key.clone(), result.analysis);
-            snapshot.graph = result.graph;
-            snapshot.incremental = result.incremental.or(base_incremental_owned);
-            let mode = if parse_failed {
-                CommitMode::DiagnosticsOnly
-            } else {
-                CommitMode::Authoritative
-            };
-            let terminal = commit_snapshot(runtime, handle, snapshot, mode);
-            let events =
-                snapshot_events_for_terminal(runtime, handle, &terminal, &output_plan, None);
+        MaterializationOutcome::Ready { snapshot, output } => {
+            let terminal = runtime.commit_snapshot(handle, snapshot, CommitMode::Authoritative);
+            let events = snapshot_events_for_terminal(runtime, handle, &terminal, &output, None);
+            terminal_batch(request_seq, events, terminal)
+        }
+        MaterializationOutcome::DiagnosticsOnly { snapshot, output } => {
+            let terminal = runtime.commit_snapshot(handle, snapshot, CommitMode::DiagnosticsOnly);
+            let events = snapshot_events_for_terminal(runtime, handle, &terminal, &output, None);
             terminal_batch(request_seq, events, terminal)
         }
     }

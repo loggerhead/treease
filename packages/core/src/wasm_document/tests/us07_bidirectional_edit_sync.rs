@@ -612,6 +612,26 @@ fn wasm_document_plan_graph_value_edit_reports_snapshot_not_ready_without_snapsh
 }
 
 #[test]
+fn wasm_document_plan_graph_value_edit_rejects_snapshot_from_another_document() {
+    let _guard = lock_test_mutex();
+    reset_test_state();
+    let (snapshot_id, _) =
+        analyze_document_via_job("planner-identity-source", "json", &[r#"{"name":"old"}"#]);
+
+    let planned = plan_graph_value_edit_impl(GraphValueEditRequest {
+        document_key: "planner-identity-other".to_owned(),
+        snapshot_id,
+        language: "json".to_owned(),
+        path: vec![key_seg("name")],
+        prefer_key: false,
+        value: scalar_edit_value("next"),
+    })
+    .expect("planner should return a snapshot read status");
+
+    assert_eq!(planned, SnapshotReadResult::SnapshotNotReady);
+}
+
+#[test]
 fn wasm_document_plan_graph_value_edit_reports_invalid_path_for_missing_node() {
     let _guard = lock_test_mutex();
 

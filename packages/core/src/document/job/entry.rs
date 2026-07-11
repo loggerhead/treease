@@ -5,15 +5,15 @@ use super::super::stream_state::StreamState;
 pub struct DocumentJobHandle(pub u64);
 
 #[derive(Debug)]
-pub struct JobEntry {
-    pub spec: DocumentJobSpec,
-    pub request_seq: u64,
-    pub latest_snapshot_id: Option<SnapshotId>,
-    pub terminal: Option<JobTerminal>,
-    pub source_buffer: Option<String>,
-    pub source_bytes: Option<Vec<u8>>,
+pub(crate) struct JobEntry {
+    pub(crate) spec: DocumentJobSpec,
+    pub(crate) request_seq: u64,
+    pub(crate) latest_snapshot_id: Option<SnapshotId>,
+    pub(crate) terminal: Option<JobTerminal>,
+    pub(crate) source_buffer: Option<String>,
+    pub(crate) source_bytes: Option<Vec<u8>>,
     /// Append-only line count from streaming chunks.
-    pub line_count: u32,
+    pub(crate) line_count: u32,
     pub(crate) stream_state: Option<StreamState>,
 }
 

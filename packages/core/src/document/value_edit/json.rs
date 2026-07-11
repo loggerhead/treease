@@ -3,10 +3,14 @@ use crate::tree::TreeNode;
 use super::edit_value_to_plain_json;
 use super::scalar::{ScalarGraphValueEditPlanner, ScalarGraphValueEditRules};
 
-pub(super) static PLANNER: ScalarGraphValueEditPlanner<JsonGraphValueEditRules> =
+static PLANNER: ScalarGraphValueEditPlanner<JsonGraphValueEditRules> =
     ScalarGraphValueEditPlanner::new(JsonGraphValueEditRules);
 
 pub(super) struct JsonGraphValueEditRules;
+
+pub(crate) fn planner() -> &'static dyn super::GraphValueEditPlanner {
+    &PLANNER
+}
 
 impl ScalarGraphValueEditRules for JsonGraphValueEditRules {
     fn format_subtree_value(&self, value: &serde_json::Value) -> Option<String> {

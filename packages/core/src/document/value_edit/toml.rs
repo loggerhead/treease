@@ -8,10 +8,14 @@ use crate::wasm_types::{PathSeg, PathSegTag, PathSpan};
 use super::quote_json_string;
 use super::scalar::{ScalarGraphValueEditPlanner, ScalarGraphValueEditRules};
 
-pub(super) static PLANNER: ScalarGraphValueEditPlanner<TomlGraphValueEditRules> =
+static PLANNER: ScalarGraphValueEditPlanner<TomlGraphValueEditRules> =
     ScalarGraphValueEditPlanner::new(TomlGraphValueEditRules);
 
 pub(super) struct TomlGraphValueEditRules;
+
+pub(crate) fn planner() -> &'static dyn super::GraphValueEditPlanner {
+    &PLANNER
+}
 
 impl ScalarGraphValueEditRules for TomlGraphValueEditRules {
     fn recover_span(

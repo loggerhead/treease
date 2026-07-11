@@ -31,7 +31,6 @@ fn advance_streaming_chunk(
     if entry.stream_state.is_none() {
         entry.stream_state = StreamState::for_language(
             &entry.spec.language,
-            &entry.spec.document_key,
             entry.spec.settings,
             entry.spec.output.graph,
         );

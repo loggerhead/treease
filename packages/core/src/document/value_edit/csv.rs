@@ -3,10 +3,14 @@ use crate::tree::TreeNode;
 use super::edit_value_as_scalar_string;
 use super::scalar::{ScalarGraphValueEditPlanner, ScalarGraphValueEditRules};
 
-pub(super) static PLANNER: ScalarGraphValueEditPlanner<CsvGraphValueEditRules> =
+static PLANNER: ScalarGraphValueEditPlanner<CsvGraphValueEditRules> =
     ScalarGraphValueEditPlanner::new(CsvGraphValueEditRules);
 
 pub(super) struct CsvGraphValueEditRules;
+
+pub(crate) fn planner() -> &'static dyn super::GraphValueEditPlanner {
+    &PLANNER
+}
 
 impl ScalarGraphValueEditRules for CsvGraphValueEditRules {
     fn supports_key_edit(&self) -> bool {

@@ -1,8 +1,4 @@
-use crate::formats::{
-    CsvEncoder, CsvObjectDecoder, Decode, DecodedDocument, Encode, JavascriptEncoder,
-    JavascriptObjectDecoder, JsonDecoder, JsonEncoder, PythonEncoder, PythonObjectDecoder,
-    TomlDecoder, TomlEncoder, YamlDecoder, YamlEncoder, configured_language_preferences,
-};
+use crate::formats::{Decode, DecodedDocument, Encode, configured_language_preferences};
 
 use crate::errors::{CoreError, FormatError, ParseError};
 use crate::language::tree_sitter_support;
@@ -79,15 +75,8 @@ impl CodecService {
                 .ok_or(FormatError::UnknownFormat.into());
         }
 
-        match canonical_format_name(format_name)? {
-            "json" => Ok(Box::new(JsonEncoder::new(prefs))),
-            "yaml" => Ok(Box::new(YamlEncoder::new(prefs))),
-            "toml" => Ok(Box::new(TomlEncoder::new(prefs))),
-            "csv" => Ok(Box::new(CsvEncoder::new(prefs))),
-            "python" => Ok(Box::new(PythonEncoder::new(prefs))),
-            "javascript" => Ok(Box::new(JavascriptEncoder::new(prefs))),
-            _ => Err(FormatError::UnknownFormat.into()),
-        }
+        let canonical = canonical_format_name(format_name)?;
+        Ok(crate::language::capability::capability_for_format(canonical, "encode")?.encode(prefs))
     }
 
     pub fn get_decoder(&self, format_name: &str) -> Result<Box<dyn Decode>, CoreError> {
@@ -99,15 +88,8 @@ impl CodecService {
                 .ok_or(FormatError::UnknownFormat.into());
         }
 
-        match canonical_format_name(format_name)? {
-            "json" => Ok(Box::new(JsonDecoder::default())),
-            "yaml" => Ok(Box::new(YamlDecoder::default())),
-            "toml" => Ok(Box::new(TomlDecoder::default())),
-            "csv" => Ok(Box::new(CsvObjectDecoder::default())),
-            "python" => Ok(Box::new(PythonObjectDecoder::default())),
-            "javascript" => Ok(Box::new(JavascriptObjectDecoder::default())),
-            _ => Err(FormatError::UnknownFormat.into()),
-        }
+        let canonical = canonical_format_name(format_name)?;
+        Ok(crate::language::capability::capability_for_format(canonical, "decode")?.decode())
     }
 
     pub fn encode_to_string(
@@ -130,15 +112,8 @@ impl CodecService {
         let mut prefs = self.preferences_for(format_name)?;
         prefs.indent = 0;
         prefs.unwrap_scalar = false;
-        match canonical_format_name(format_name)? {
-            "json" => JsonEncoder::new(prefs).encode_to_string(store, root),
-            "yaml" => YamlEncoder::new(prefs).encode_to_string(store, root),
-            "toml" => TomlEncoder::new(prefs).encode_to_string(store, root),
-            "csv" => CsvEncoder::new(prefs).encode_to_string(store, root),
-            "python" => PythonEncoder::new(prefs).encode_to_string(store, root),
-            "javascript" => JavascriptEncoder::new(prefs).encode_to_string(store, root),
-            _ => Err(FormatError::UnknownFormat.into()),
-        }
+        let canonical = canonical_format_name(format_name)?;
+        crate::language::capability::encode_with_capability(canonical, prefs, store, root)
     }
 
     pub fn convert_string(

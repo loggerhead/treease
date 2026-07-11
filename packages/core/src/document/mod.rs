@@ -1,5 +1,6 @@
 pub mod input;
 pub mod job;
+mod materialization;
 pub mod metrics;
 pub mod projection;
 pub mod protocol;
@@ -8,7 +9,7 @@ pub mod runtime;
 pub mod snapshot;
 pub mod stream_state;
 pub mod value_edit;
-pub use job::entry::{DocumentJobHandle, JobEntry};
+pub use job::entry::DocumentJobHandle;
 pub use projection::{
     MaterializeBaseContext, MaterializeResult, materialize, materialize_with_base,
     materialize_with_base_context,
@@ -25,5 +26,5 @@ pub use protocol::{
     QueryTargetKind, SemanticTokensPayload, SnapshotId, SnapshotQuery, SnapshotReadResult,
     SnapshotReady, TableCellPatchData, TablePatch,
 };
-pub use runtime::{DocumentRuntime, commit_snapshot};
+pub use runtime::{DocumentRuntime, RuntimeAccessError, StartedDocumentJob, commit_snapshot};
 pub use snapshot::{AnalysisBundle, DocumentSnapshot, GraphProjection, IncrementalState};
