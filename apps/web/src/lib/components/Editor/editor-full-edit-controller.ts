@@ -18,7 +18,11 @@ import { createFreshnessScope } from '../../guards/freshness-scope';
 import { createViewRuntimeOperation, type ViewRuntimeOperation } from '../../guards/view-runtime-operation';
 
 import { readImportSourceSample, resolveImportSourceFormat } from '../../import/resolve-import-source';
-import { IMPORT_EDITOR_FLUSH_BYTE_THRESHOLD, IMPORT_FILE_CHUNK_BYTE_SIZE } from '../../import/import-config';
+import {
+  IMPORT_EDITOR_FLUSH_BYTE_THRESHOLD,
+  IMPORT_FILE_CHUNK_BYTE_SIZE,
+  selectImportEditorFlushByteThreshold,
+} from '../../import/import-config';
 import { selectGraphStreamChunkSize } from '../../graph-stream/chunk-size-policy';
 import { buildDocumentJobSettings, type DocumentJobGraphResult } from '../../graph-stream/document-job-runner';
 import {
@@ -101,6 +105,7 @@ type FullEditSession = {
   visibleText: string;
   pendingText: string;
   pendingBytes: number;
+  editorFlushByteThreshold: number;
   flushHandle: number | null;
   hasVisibleFlush: boolean;
   ownerKey: string;
@@ -384,11 +389,9 @@ export function createEditorFullEditController(options: CreateEditorFullEditCont
     if (!session || !isCurrentImportSession(sessionId) || !text) return;
     session.pendingText += text;
     session.pendingBytes += byteLength;
-    if (!session.hasVisibleFlush || session.pendingBytes >= IMPORT_EDITOR_FLUSH_BYTE_THRESHOLD) {
-      flushPendingText(sessionId);
-      return;
+    if (!session.hasVisibleFlush || session.pendingBytes >= session.editorFlushByteThreshold) {
+      scheduleImportTextFlush(sessionId);
     }
-    scheduleImportTextFlush(sessionId);
   }
 
   function appendMemoryFullEditChunkMeta(session: FullEditSession, inputByteLength: number, modelVersionId: number): void {
@@ -427,6 +430,7 @@ export function createEditorFullEditController(options: CreateEditorFullEditCont
     editorReadOnly: boolean;
     sourceWritebackPolicy: SourceWritebackPolicy;
     formatSourceOnClose: boolean;
+    editorFlushByteThreshold?: number;
     documentKey?: string;
     isFresh?: () => boolean;
   }): Promise<FullEditSession | null> {
@@ -481,6 +485,7 @@ export function createEditorFullEditController(options: CreateEditorFullEditCont
       visibleText: '',
       pendingText: '',
       pendingBytes: 0,
+      editorFlushByteThreshold: params.editorFlushByteThreshold ?? IMPORT_EDITOR_FLUSH_BYTE_THRESHOLD,
       flushHandle: null,
       hasVisibleFlush: false,
       ownerKey: model.uri.toString(),
@@ -505,6 +510,7 @@ export function createEditorFullEditController(options: CreateEditorFullEditCont
   async function beginImportStream(
     language: string,
     reason: Extract<FullEditReason, 'import-file' | 'drop-file'> = 'import-file',
+    totalBytes = 0,
   ): Promise<FullEditSession | null> {
     const session = await createFullEditSession({
       language: language as SupportedEditorLanguageId,
@@ -513,6 +519,7 @@ export function createEditorFullEditController(options: CreateEditorFullEditCont
       editorReadOnly: true,
       sourceWritebackPolicy: 'intake',
       formatSourceOnClose: true,
+      editorFlushByteThreshold: selectImportEditorFlushByteThreshold(totalBytes),
     });
     if (!session) return null;
     const changed = options.setEditorValueForFullEdit('');
@@ -923,48 +930,25 @@ export function createEditorFullEditController(options: CreateEditorFullEditCont
       await importConvertedFile(file, sourceLanguage, targetLanguage, reason);
       return;
     }
-    const session = await beginImportStream(targetLanguage, reason);
+    const session = await beginImportStream(targetLanguage, reason, file.size);
     if (!session) return;
     try {
-      const [workerStream, uiStream] = file.stream().tee();
       const graphJobSession = startReadableDocumentJobSessionForGraph({
         sessionId: session.sessionId,
         documentKey: session.documentKey,
         revision: session.revision,
         language: session.language,
-        readable: workerStream,
+        readable: file.stream(),
+        onChunk: (chunk) => {
+          appendImportBytes(chunk);
+        },
         settings: documentJobSettingsFor(),
         builderConfig: options.getGraphBuilderConfig(),
         chunkSize: selectGraphStreamChunkSize(file.size),
         totalBytes: file.size,
       });
       session.graphJobSession = graphJobSession;
-      let resolvedIntakeResult: Awaited<typeof graphJobSession.result> | null = null;
-      const intakePromise = graphJobSession.result.then((result) => {
-        resolvedIntakeResult = result;
-        return result;
-      });
-      const reader = uiStream.getReader();
-
-      try {
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) {
-
-            break;
-          }
-          if (value) {
-            appendImportBytes(value);
-            if (session.inputByteLength >= file.size && resolvedIntakeResult) {
-
-              break;
-            }
-          }
-        }
-      } finally {
-        reader.releaseLock();
-      }
-      const intakeResult = resolvedIntakeResult ?? (await intakePromise);
+      const intakeResult = await graphJobSession.result;
       await finishImportStream(intakeResult);
     } catch (error) {
       cancelImportStream();

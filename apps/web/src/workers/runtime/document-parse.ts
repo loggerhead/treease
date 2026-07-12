@@ -93,12 +93,12 @@ async function startSnapshotDocumentJob(
     outputGraph: true,
     outputAnalysis: true,
   });
-  const streamedBatches = await streamDocumentJobText({
+  const streamedBatch = await streamDocumentJobText({
     jobHandle: started.jobHandle,
     text,
     advance: (input) => advanceDocumentJob(input),
   });
-  const batch = mergeEventBatches([started.batch, ...streamedBatches]);
+  const batch = mergeEventBatches([started.batch, streamedBatch]);
   const result = collectDocumentJobResult(batch);
   const analysis = cacheDocumentJobAnalysisResult(
     {} as DocumentAnalysisCacheRuntime,

@@ -9,7 +9,6 @@ export const IMPORT_FILE_CHUNK_BYTE_SIZE = resolveCompileTimeNumber(
   128 * 1024,
 );
 
-
 // 导入图流在 shared wasm worker 侧累计到该体积后立刻 flush，影响增量出图频率与 worker 往返次数。
 export const IMPORT_GRAPH_STREAM_FLUSH_BYTE_THRESHOLD = resolveCompileTimeNumber(
   typeof __TREEASE_IMPORT_GRAPH_STREAM_FLUSH_BYTE_THRESHOLD__ !== 'undefined'
@@ -24,3 +23,12 @@ export const IMPORT_EDITOR_FLUSH_BYTE_THRESHOLD = resolveCompileTimeNumber(
     : undefined,
   256 * 1024,
 );
+
+const MB = 1024 * 1024;
+
+export function selectImportEditorFlushByteThreshold(totalBytes: number): number {
+  const size = Number.isFinite(totalBytes) ? Math.max(0, Math.trunc(totalBytes)) : 0;
+  if (size < MB) return IMPORT_EDITOR_FLUSH_BYTE_THRESHOLD;
+  if (size < 10 * MB) return Math.max(IMPORT_EDITOR_FLUSH_BYTE_THRESHOLD, MB);
+  return Math.max(IMPORT_EDITOR_FLUSH_BYTE_THRESHOLD, 4 * MB);
+}

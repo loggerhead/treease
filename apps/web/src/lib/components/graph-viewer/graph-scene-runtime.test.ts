@@ -39,6 +39,15 @@ const mockStreamUpdateHandler = vi.hoisted(() => ({
       const node = nodeMap.get(tablePatch.tableRenderHandle);
       if (node) nodeMap.set(tablePatch.tableRenderHandle, node);
     }
+    for (const tablePatch of delta.tablePatches ?? []) {
+      if (tablePatch.kind !== 'rowsAppended') continue;
+      const nodeId = tablePatch.tableRenderHandle ?? tablePatch.tableHandle;
+      const node = nodeMap.get(nodeId);
+      if (!node?.table) continue;
+      const rows = [...node.table.rows];
+      rows.splice(tablePatch.startIndex ?? rows.length, tablePatch.rows.length, ...tablePatch.rows);
+      nodeMap.set(nodeId, { ...node, table: { ...node.table, rows } });
+    }
     state.nodes = [...nodeMap.values()];
   }),
   applyVersionedProjection: vi.fn((state: any, delta: any, version: any) => {
@@ -74,6 +83,15 @@ const mockStreamUpdateHandler = vi.hoisted(() => ({
     for (const tablePatch of delta.tableCellPatches ?? []) {
       const node = nodeMap.get(tablePatch.tableRenderHandle);
       if (node) nodeMap.set(tablePatch.tableRenderHandle, node);
+    }
+    for (const tablePatch of delta.tablePatches ?? []) {
+      if (tablePatch.kind !== 'rowsAppended') continue;
+      const nodeId = tablePatch.tableRenderHandle ?? tablePatch.tableHandle;
+      const node = nodeMap.get(nodeId);
+      if (!node?.table) continue;
+      const rows = [...node.table.rows];
+      rows.splice(tablePatch.startIndex ?? rows.length, tablePatch.rows.length, ...tablePatch.rows);
+      nodeMap.set(nodeId, { ...node, table: { ...node.table, rows } });
     }
     state.nodes = [...nodeMap.values()];
     state.version = version.graphVersion;
@@ -327,6 +345,116 @@ describe('graph-scene-runtime', () => {
     vi.stubGlobal('cancelAnimationFrame', vi.fn());
   });
 
+  it('applies a large graph delta across multiple animation frames', async () => {
+    const frames: FrameRequestCallback[] = [];
+    vi.stubGlobal('requestAnimationFrame', ((callback: FrameRequestCallback) => {
+      frames.push(callback);
+      return frames.length;
+    }) as typeof requestAnimationFrame);
+    const { runtime } = createDeps();
+    const nodes = Array.from({ length: 300 }, (_, index) => createNode(index + 1, index * 10));
+
+    const applied = runtime.applyGraphDelta({
+      clear: 1,
+      nodesAdded: nodes,
+      nodesUpdated: [],
+      nodesRemoved: [],
+      edgesAdded: [],
+      edgesRemoved: [],
+      tablePatches: [],
+      layoutPatches: [],
+    } as any);
+
+    expect(frames).toHaveLength(1);
+    frames.shift()?.(0);
+    await Promise.resolve();
+
+    expect(mockRenderState.renderCount).toBeGreaterThan(0);
+    expect(mockRenderState.renderCount).toBeLessThan(nodes.length);
+    expect(frames.length).toBeGreaterThan(0);
+
+    while (frames.length > 0) {
+      frames.shift()?.(0);
+      await Promise.resolve();
+    }
+    await applied;
+    expect(mockRenderState.renderCount).toBe(nodes.length);
+  });
+
+  it('applies large table row patches within the same per-frame budget', async () => {
+    const frames: FrameRequestCallback[] = [];
+    vi.stubGlobal('requestAnimationFrame', ((callback: FrameRequestCallback) => {
+      frames.push(callback);
+      return frames.length;
+    }) as typeof requestAnimationFrame);
+    const { runtime } = createDeps();
+    runtime.replaceAll({ nodes: [createNode(1, 0)], edges: [] });
+    const rows = Array.from({ length: 300 }, (_, index) => ({
+      boxArgs: { x: 0, y: index * 20, width: 100, height: 20, cornerRadius: 0 },
+      cellBoxArgs: { x: 0, y: 0, width: 100, height: 20, cornerRadius: 0 },
+      cells: [],
+    }));
+
+    const applied = runtime.applyGraphDelta({
+      normalized: true,
+      clear: 0,
+      nodesAdded: [],
+      nodesUpdated: [],
+      nodesRemoved: [],
+      edgesAdded: [],
+      edgesRemoved: [],
+      tablePatches: [{ kind: 'rowsAppended', tableHandle: 1, startIndex: 0, rows }],
+      layoutPatches: [],
+    } as any);
+
+    frames.shift()?.(0);
+    await Promise.resolve();
+    const firstFrameRows = runtime.getLastGraphData()?.nodes[0]?.table?.rows.length ?? 0;
+    expect(firstFrameRows).toBeGreaterThan(0);
+    expect(firstFrameRows).toBeLessThan(rows.length);
+
+    while (frames.length > 0) {
+      frames.shift()?.(0);
+      await Promise.resolve();
+    }
+    await applied;
+    expect(runtime.getLastGraphData()?.nodes[0]?.table?.rows).toHaveLength(rows.length);
+  });
+
+  it('stops a budgeted graph delta between frames when render work is cancelled', async () => {
+    const frames: Array<{ id: number; callback: FrameRequestCallback }> = [];
+    let nextFrameId = 0;
+    vi.stubGlobal('requestAnimationFrame', ((callback: FrameRequestCallback) => {
+      const id = ++nextFrameId;
+      frames.push({ id, callback });
+      return id;
+    }) as typeof requestAnimationFrame);
+    vi.stubGlobal('cancelAnimationFrame', ((handle: number) => {
+      const index = frames.findIndex((frame) => frame.id === handle);
+      if (index >= 0) frames.splice(index, 1);
+    }) as typeof cancelAnimationFrame);
+    const { runtime } = createDeps();
+    const nodes = Array.from({ length: 300 }, (_, index) => createNode(index + 1, index * 10));
+    const applied = runtime.applyGraphDelta({
+      clear: 1,
+      nodesAdded: nodes,
+      nodesUpdated: [],
+      nodesRemoved: [],
+      edgesAdded: [],
+      edgesRemoved: [],
+    } as any);
+
+    frames.shift()?.callback(0);
+    await Promise.resolve();
+    runtime.cancelActiveRenderWork();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(frames).toHaveLength(0);
+    await applied;
+    expect(mockRenderState.renderCount).toBeLessThan(nodes.length);
+  });
+
   it('removes stale click targets before patching a table node', async () => {
     useControlledSceneTimers();
     try {
@@ -517,7 +645,7 @@ describe('graph-scene-runtime', () => {
     expect(updateLeafer).toHaveBeenCalled();
   });
 
-  it('does not render buffered partial nodes after a full rebuild clear', async () => {
+  it('removes previously rendered partial nodes when a full rebuild clears the scene', async () => {
     useControlledSceneTimers();
     try {
       const { runtime, probeStore } = createDeps();
@@ -534,7 +662,10 @@ describe('graph-scene-runtime', () => {
       } as any);
       await flushSceneFrame(partialApplied);
 
-      expect(Object.values(probeStore).map((entry: any) => entry.cell.text)).toEqual([]);
+      expect(Object.values(probeStore).map((entry: any) => entry.cell.text).sort()).toEqual([
+        'initial-1',
+        'node-1',
+      ]);
 
       const finalApplied = runtime.applyGraphDelta({
         clear: 1,
@@ -552,7 +683,7 @@ describe('graph-scene-runtime', () => {
         'initial-2',
         'node-2',
       ]);
-      expect(mockRenderState.renderCount).toBe(1);
+      expect(mockRenderState.renderCount).toBe(2);
     } finally {
       vi.useRealTimers();
     }

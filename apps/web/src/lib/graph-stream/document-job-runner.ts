@@ -13,6 +13,7 @@ import {
   streamDocumentJobText,
   type AdvanceDocumentJobFn,
   type DocumentJobBatchListener,
+  type DocumentJobBinaryChunkListener,
 } from '../../shared/document-job-stream';
 import {
   collectDocumentJobResult,
@@ -70,6 +71,7 @@ export type TextGraphDocumentJobInput = GraphDocumentJobInput & {
 export type ReadableGraphDocumentJobInput = GraphDocumentJobInput & {
   readable: ReadableStream<Uint8Array> | AsyncIterable<Uint8Array>;
   onBatch?: DocumentJobBatchListener;
+  onChunk?: DocumentJobBinaryChunkListener;
   chunkSize?: number;
 };
 
@@ -85,7 +87,7 @@ export type DocumentJobGraphResult = {
 export type StreamDocumentJob = (input: {
   jobHandle: number;
   advance: AdvanceDocumentJobFn;
-}) => Promise<EventBatch[]>;
+}) => Promise<EventBatch>;
 
 export type GraphDocumentJobLifecycleHooks = {
   onJobHandle?: (jobHandle: number) => void;
@@ -152,7 +154,7 @@ export async function runSharedGraphDocumentJob(
   const { started, advance } = await startSharedGraphDocumentJob(input);
   hooks?.onJobHandle?.(started.jobHandle);
   hooks?.onBatch?.(started.batch);
-  const streamedBatches = await streamDocumentJob({
+  const streamedBatch = await streamDocumentJob({
     jobHandle: started.jobHandle,
     advance,
   });
@@ -160,7 +162,7 @@ export async function runSharedGraphDocumentJob(
     documentKey: input.documentKey,
     language: input.language,
     jobHandle: started.jobHandle,
-    batches: [started.batch, ...streamedBatches],
+    batches: [started.batch, streamedBatch],
   });
 }
 
@@ -191,6 +193,7 @@ export async function runReadableDocumentJobForGraph(
         ...streamInput,
         readable: input.readable,
         onBatch: chainBatchListener(input.onBatch, hooks?.onBatch),
+        onChunk: input.onChunk,
         chunkSize: input.chunkSize,
       }),
     hooks,

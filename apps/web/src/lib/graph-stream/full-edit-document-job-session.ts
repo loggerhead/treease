@@ -35,6 +35,7 @@ export type FullEditDocumentJobSessionRef = {
 };
 
 const fullEditDocumentJobSessions = new Map<string, FullEditDocumentJobSession>();
+const MAX_REPLAY_BATCHES = 8;
 
 export function getFullEditDocumentJobSession(
   ref: string | FullEditDocumentJobSessionRef | null | undefined,
@@ -71,7 +72,8 @@ class ReadableDocumentJobSession implements FullEditDocumentJobSession {
   readonly streamRunId: string;
   readonly result: Promise<DocumentJobGraphResult>;
 
-  private readonly history: EventBatch[] = [];
+  private readonly replayWindow: EventBatch[] = [];
+  private replayStartIndex = 0;
   private readonly waiters = new Set<() => void>();
   private closed = false;
   private failure: unknown = null;
@@ -93,11 +95,16 @@ class ReadableDocumentJobSession implements FullEditDocumentJobSession {
   }
 
   async *batches(): AsyncIterable<EventBatch> {
-    let index = 0;
+    let index = this.replayStartIndex;
     while (true) {
-      while (index < this.history.length) {
-        yield this.history[index];
+      if (index < this.replayStartIndex) {
+        index = this.replayStartIndex;
+      }
+      const replayEndIndex = this.replayStartIndex + this.replayWindow.length;
+      if (index < replayEndIndex) {
+        yield this.replayWindow[index - this.replayStartIndex];
         index += 1;
+        continue;
       }
       if (this.closed) {
         if (this.failure) throw this.failure;
@@ -131,7 +138,11 @@ class ReadableDocumentJobSession implements FullEditDocumentJobSession {
   }
 
   private pushBatch(batch: EventBatch): void {
-    this.history.push(batch);
+    this.replayWindow.push(batch);
+    if (this.replayWindow.length > MAX_REPLAY_BATCHES) {
+      this.replayWindow.shift();
+      this.replayStartIndex += 1;
+    }
     this.notify();
   }
 

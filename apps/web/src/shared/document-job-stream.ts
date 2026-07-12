@@ -11,6 +11,36 @@ export type AdvanceDocumentJobRequest =
 
 export type AdvanceDocumentJobFn = (input: AdvanceDocumentJobRequest) => Promise<EventBatch>;
 export type DocumentJobBatchListener = (batch: EventBatch) => Promise<void> | void;
+export type DocumentJobBinaryChunkListener = (chunk: Uint8Array) => Promise<void> | void;
+
+type DocumentJobTerminalEvent = Extract<
+  EventBatch['events'][number],
+  { type: 'snapshotReady' | 'parseFailed' }
+>;
+
+function createDocumentJobBatchAccumulator() {
+  let requestSeq = 0;
+  let terminal: EventBatch['terminal'] = null;
+  let terminalEvent: DocumentJobTerminalEvent | null = null;
+  return {
+    append(batch: EventBatch): void {
+      requestSeq = batch.requestSeq;
+      terminal = batch.terminal ?? terminal;
+      for (const event of batch.events) {
+        if (event.type === 'snapshotReady' || event.type === 'parseFailed') {
+          terminalEvent = event;
+        }
+      }
+    },
+    result(): EventBatch {
+      return {
+        requestSeq,
+        events: terminalEvent ? [terminalEvent] : [],
+        terminal,
+      };
+    },
+  };
+}
 
 export function mergeEventBatches(batches: EventBatch[]): EventBatch {
   const terminal = batches.reduce<EventBatch['terminal']>(
@@ -41,12 +71,12 @@ function* splitTextIntoUtf8Chunks(text: string, chunkSize: number): Generator<st
 
 async function emitDocumentJobBatch(
   advance: AdvanceDocumentJobFn,
-  batchSink: EventBatch[],
+  batchAccumulator: ReturnType<typeof createDocumentJobBatchAccumulator>,
   onBatch: DocumentJobBatchListener | undefined,
   request: AdvanceDocumentJobRequest,
 ): Promise<void> {
   const batch = await advance(request);
-  batchSink.push(batch);
+  batchAccumulator.append(batch);
   await onBatch?.(batch);
 }
 
@@ -55,23 +85,23 @@ async function streamDocumentJobTextChunks(input: {
   chunks: Iterable<string> | AsyncIterable<string>;
   advance: AdvanceDocumentJobFn;
   onBatch?: DocumentJobBatchListener;
-}): Promise<EventBatch[]> {
-  const batches: EventBatch[] = [];
+}): Promise<EventBatch> {
+  const accumulator = createDocumentJobBatchAccumulator();
 
   for await (const chunk of input.chunks) {
     if (!chunk) continue;
-    await emitDocumentJobBatch(input.advance, batches, input.onBatch, {
+    await emitDocumentJobBatch(input.advance, accumulator, input.onBatch, {
       jobHandle: input.jobHandle,
       kind: 'textChunk',
       text: chunk,
     });
   }
 
-  await emitDocumentJobBatch(input.advance, batches, input.onBatch, {
+  await emitDocumentJobBatch(input.advance, accumulator, input.onBatch, {
     jobHandle: input.jobHandle,
     kind: 'close',
   });
-  return batches;
+  return accumulator.result();
 }
 
 async function streamDocumentJobBinaryChunks(input: {
@@ -79,23 +109,25 @@ async function streamDocumentJobBinaryChunks(input: {
   chunks: Iterable<Uint8Array> | AsyncIterable<Uint8Array>;
   advance: AdvanceDocumentJobFn;
   onBatch?: DocumentJobBatchListener;
-}): Promise<EventBatch[]> {
-  const batches: EventBatch[] = [];
+  onChunk?: DocumentJobBinaryChunkListener;
+}): Promise<EventBatch> {
+  const accumulator = createDocumentJobBatchAccumulator();
 
   for await (const chunk of input.chunks) {
     if (!chunk.byteLength) continue;
-    await emitDocumentJobBatch(input.advance, batches, input.onBatch, {
+    await input.onChunk?.(chunk);
+    await emitDocumentJobBatch(input.advance, accumulator, input.onBatch, {
       jobHandle: input.jobHandle,
       kind: 'binaryChunk',
       data: chunk,
     });
   }
 
-  await emitDocumentJobBatch(input.advance, batches, input.onBatch, {
+  await emitDocumentJobBatch(input.advance, accumulator, input.onBatch, {
     jobHandle: input.jobHandle,
     kind: 'close',
   });
-  return batches;
+  return accumulator.result();
 }
 
 async function* coalescedByteChunks(input: {
@@ -174,7 +206,7 @@ export async function streamDocumentJobText(input: {
   advance: AdvanceDocumentJobFn;
   onBatch?: DocumentJobBatchListener;
   chunkSize?: number;
-}): Promise<EventBatch[]> {
+}): Promise<EventBatch> {
   const chunkSize = Math.max(1, input.chunkSize ?? getStreamChunkSize());
   return streamDocumentJobTextChunks({
     jobHandle: input.jobHandle,
@@ -190,7 +222,7 @@ export async function streamDocumentJobBytes(input: {
   advance: AdvanceDocumentJobFn;
   onBatch?: DocumentJobBatchListener;
   chunkSize?: number;
-}): Promise<EventBatch[]> {
+}): Promise<EventBatch> {
   const chunkSize = Math.max(1, input.chunkSize ?? getStreamChunkSize());
   const bytes = input.bytes instanceof Uint8Array ? input.bytes : new Uint8Array(input.bytes);
   return streamDocumentJobBinaryChunks({
@@ -229,8 +261,9 @@ export async function streamDocumentJobReadable(input: {
   readable: ReadableStream<Uint8Array> | AsyncIterable<Uint8Array>;
   advance: AdvanceDocumentJobFn;
   onBatch?: DocumentJobBatchListener;
+  onChunk?: DocumentJobBinaryChunkListener;
   chunkSize?: number;
-}): Promise<EventBatch[]> {
+}): Promise<EventBatch> {
   const chunkSize = Math.max(1, input.chunkSize ?? getStreamChunkSize());
   return streamDocumentJobBinaryChunks({
     jobHandle: input.jobHandle,
@@ -241,5 +274,6 @@ export async function streamDocumentJobReadable(input: {
     }),
     advance: input.advance,
     onBatch: input.onBatch,
+    onChunk: input.onChunk,
   });
 }

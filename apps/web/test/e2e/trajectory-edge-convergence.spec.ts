@@ -8,6 +8,7 @@ import {
   setMonacoPositionByText,
   waitForEditorReady,
   waitForGraphRendered,
+  waitForImportSettled,
 } from './utils';
 
 test.setTimeout(20_000);
@@ -134,8 +135,12 @@ test('trajectory fixture imported through source drop also converges rendered ed
     content: TRAJECTORY_FIXTURE_TEXT,
     mimeType: 'application/json',
   });
-  await expect.poll(async () => getMonacoValue(page, 'source-editor'), { timeout: 15_000 }).toBe(TRAJECTORY_FIXTURE_TEXT);
-  await expect.poll(async () => (await readEditorState(page)).sourceText, { timeout: 15_000 }).toBe(TRAJECTORY_FIXTURE_TEXT);
+  await waitForImportSettled(page, 15_000);
+  const [modelText, state] = await Promise.all([
+    getMonacoValue(page, 'source-editor'),
+    readEditorState(page),
+  ]);
+  expect(state.sourceText).toBe(modelText);
   await waitForGraphRendered(page, 15_000);
 
   const mismatches = await readEdgeAlignmentMismatches(page);

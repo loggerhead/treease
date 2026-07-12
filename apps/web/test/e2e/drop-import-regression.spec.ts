@@ -6,6 +6,7 @@ import {
   getLatestGraphProbes,
   getMonacoValue,
   readEditorState,
+  readRuntimeReadiness,
   readTempGraphSelection,
   setMonacoPositionByTextAndWaitForTreePath,
   waitForEditorReady,
@@ -77,6 +78,16 @@ async function expectWithinBudget(label: string, budgetMs: number, action: () =>
   await action();
   const elapsedMs = Date.now() - startedAt;
   expect(elapsedMs, `${label} exceeded budget: ${elapsedMs}ms > ${budgetMs}ms`).toBeLessThanOrEqual(budgetMs);
+}
+
+async function expectSettledJsonSource(page: Page, expectedText: string, timeout = SOURCE_DROP_BUDGET_MS) {
+  await waitForImportSettled(page, timeout);
+  const [modelText, state] = await Promise.all([
+    getMonacoValue(page, 'source-editor'),
+    readEditorState(page),
+  ]);
+  expect(state.sourceText).toBe(modelText);
+  expect(JSON.stringify(JSON.parse(modelText))).toBe(JSON.stringify(JSON.parse(expectedText)));
 }
 
 async function readGraphValueTextsByPath(page: Page, wantedPaths: string[]): Promise<Record<string, string[]>> {
@@ -779,10 +790,12 @@ test('dropping a 5MB json file shows source text before import finishes', async 
   });
 
   let firstVisibleTextMs = -1;
+  let importWasSettledAtFirstVisible = true;
   await expect.poll(async () => {
     const value = await getMonacoValue(page, 'source-editor');
     if (value.length > 0 && firstVisibleTextMs < 0) {
       firstVisibleTextMs = Date.now() - startedAt;
+      importWasSettledAtFirstVisible = (await readRuntimeReadiness(page)).import.settled;
     }
     return value.length > 0;
   }, { timeout: LARGE_IMPORT_FIRST_VISIBLE_BUDGET_MS }).toBe(true);
@@ -790,8 +803,9 @@ test('dropping a 5MB json file shows source text before import finishes', async 
 
   expect(firstVisibleTextMs, `first visible text exceeded budget: ${firstVisibleTextMs}ms > ${LARGE_IMPORT_FIRST_VISIBLE_BUDGET_MS}ms`).toBeGreaterThanOrEqual(0);
   expect(firstVisibleTextMs, `first visible text exceeded budget: ${firstVisibleTextMs}ms > ${LARGE_IMPORT_FIRST_VISIBLE_BUDGET_MS}ms`).toBeLessThanOrEqual(LARGE_IMPORT_FIRST_VISIBLE_BUDGET_MS);
+  expect(importWasSettledAtFirstVisible).toBe(false);
 
-  await expect.poll(async () => getMonacoValue(page, 'source-editor'), { timeout: SOURCE_DROP_BUDGET_MS }).toBe(largeJsonFixtureText);
+  await expectSettledJsonSource(page, largeJsonFixtureText);
 });
 
 test('dropping the 5MB json fixture surfaces an explicit finishing phase before graph completion', async ({ page }) => {
@@ -833,8 +847,7 @@ test('dropping the 1mb json fixture keeps graph progress monotonic', async ({ pa
     mimeType: 'application/json',
   });
 
-  await expect.poll(async () => getMonacoValue(page, 'source-editor'), { timeout: SOURCE_DROP_BUDGET_MS }).toBe(oneMbMinJsonFixtureText);
-  await expect.poll(async () => (await readEditorState(page)).sourceText, { timeout: SOURCE_DROP_BUDGET_MS }).toBe(oneMbMinJsonFixtureText);
+  await expectSettledJsonSource(page, oneMbMinJsonFixtureText);
   await waitForGraphRendered(page, SOURCE_DROP_BUDGET_MS);
   const observation = await stopGraphProgressObservation(page);
   const streamRunId = observation?.samples.at(-1)?.streamRunId ?? '';
@@ -928,8 +941,7 @@ test('dropping the 1mb json fixture does not render streamed graph cells on top 
     mimeType: 'application/json',
   });
 
-  await expect.poll(async () => getMonacoValue(page, 'source-editor'), { timeout: SOURCE_DROP_BUDGET_MS }).toBe(oneMbMinJsonFixtureText);
-  await expect.poll(async () => (await readEditorState(page)).sourceText, { timeout: SOURCE_DROP_BUDGET_MS }).toBe(oneMbMinJsonFixtureText);
+  await expectSettledJsonSource(page, oneMbMinJsonFixtureText);
   await waitForGraphRendered(page, 15_000);
 
   const layoutObservation = await stopStreamingGraphLayoutObservation(page);

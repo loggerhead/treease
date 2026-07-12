@@ -2,7 +2,6 @@
 import type { GraphViewerConfig } from '../../settings/ui-settings';
 import {
   applyGraphDeltaToState,
-  applyVersionedProjection,
   clearStreamState,
   createEmptyStreamState,
   replaceStreamState,
@@ -40,6 +39,78 @@ export type GraphSceneInteractionState = {
 };
 
 type GraphSceneDelta = NormalizedGraphDelta | RawGraphDelta;
+const GRAPH_DELTA_FRAME_WORK_BUDGET = 128;
+
+function tablePatchCollectionKey(kind: unknown): 'rows' | 'cells' | 'columns' | null {
+  switch (kind) {
+    case 'rowsAppended':
+      return 'rows';
+    case 'cellsUpdated':
+      return 'cells';
+    case 'columnsAdded':
+      return 'columns';
+    default:
+      return null;
+  }
+}
+
+function expandTablePatchWork(patches: unknown[]): unknown[] {
+  return patches.flatMap((patch) => {
+    const record = asRecord(patch);
+    if (!record) return [patch];
+    const collectionKey = tablePatchCollectionKey(record.kind);
+    if (!collectionKey) return [patch];
+    const values = arrayValue(record[collectionKey]);
+    if (values.length <= 1) return [patch];
+    const startIndex = Number(record.startIndex ?? record.start_index ?? 0);
+    return values.map((value, index) => ({
+      ...record,
+      [collectionKey]: [value],
+      ...(collectionKey === 'rows' ? { startIndex: startIndex + index } : {}),
+    }));
+  });
+}
+
+function splitGraphDeltaByFrameBudget(delta: GraphSceneDelta): GraphSceneDelta[] {
+  const sources = {
+    nodesAdded: Array.from(delta.nodesAdded ?? []),
+    nodesUpdated: Array.from(delta.nodesUpdated ?? []),
+    nodesRemoved: Array.from(delta.nodesRemoved ?? []),
+    edgesAdded: Array.from(delta.edgesAdded ?? []),
+    edgesRemoved: Array.from(delta.edgesRemoved ?? []),
+    tableCellPatches: arrayValue((delta as unknown as Record<string, unknown>).tableCellPatches),
+    tablePatches: expandTablePatchWork(
+      arrayValue((delta as unknown as Record<string, unknown>).tablePatches),
+    ),
+    layoutPatches: arrayValue((delta as unknown as Record<string, unknown>).layoutPatches),
+  };
+  const sourceKeys = Object.keys(sources) as Array<keyof typeof sources>;
+  const offsets = Object.fromEntries(sourceKeys.map((key) => [key, 0])) as Record<keyof typeof sources, number>;
+  const totalWork = Object.values(sources).reduce((total, values) => total + values.length, 0);
+  if (totalWork <= GRAPH_DELTA_FRAME_WORK_BUDGET) return [delta];
+
+  const chunks: GraphSceneDelta[] = [];
+  while (sourceKeys.some((key) => offsets[key] < sources[key].length)) {
+    let remaining = GRAPH_DELTA_FRAME_WORK_BUDGET;
+    const values = Object.fromEntries(
+      Object.entries(sources).map(([key, source]) => {
+        const typedKey = key as keyof typeof sources;
+        const start = offsets[typedKey];
+        const end = Math.min(source.length, start + remaining);
+        const slice = source.slice(start, end);
+        offsets[typedKey] = end;
+        remaining -= slice.length;
+        return [key, slice];
+      }),
+    ) as typeof sources;
+    chunks.push({
+      ...delta,
+      clear: chunks.length === 0 ? delta.clear : 0,
+      ...values,
+    } as GraphSceneDelta);
+  }
+  return chunks;
+}
 
 type TrackedCellBinding = {
   cell: any;
@@ -237,9 +308,8 @@ export function createGraphSceneRuntime(deps: GraphSceneRuntimeDeps) {
   let resolvePendingStreamRedraw: (() => void) | null = null;
   let pendingViewportRedrawFrame: number | null = null;
   let pendingViewportRedrawDone: Promise<void> | null = null;
-  let pendingNodeBuffer: GraphNode[] = [];
-  let pendingBufferTimer: ReturnType<typeof setTimeout> | null = null;
   let resolvePendingViewportRedraw: (() => void) | null = null;
+  let renderWorkGeneration = 0;
 
   function flushLeaferSceneLayout(): void {
     deps.updateLeafer();
@@ -502,7 +572,6 @@ export function createGraphSceneRuntime(deps: GraphSceneRuntimeDeps) {
   }
 
   function beginFullSceneReplace(graphData: GraphSceneViewData): void {
-    cancelPendingNodeBuffer();
     deps.clearSearchHighlight();
     clearRenderedMainGraph();
     deps.beginMainGraphRedraw(graphData.nodes);
@@ -685,32 +754,8 @@ export function createGraphSceneRuntime(deps: GraphSceneRuntimeDeps) {
     return renderedView;
   }
 
-  function cancelPendingNodeBuffer(): void {
-    if (pendingBufferTimer) {
-      clearTimeout(pendingBufferTimer);
-      pendingBufferTimer = null;
-    }
-    pendingNodeBuffer = [];
-  }
-
-  function flushNodeBuffer(forceLeafer?: boolean): void {
-    if (pendingBufferTimer) {
-      clearTimeout(pendingBufferTimer);
-      pendingBufferTimer = null;
-    }
-    const batch = pendingNodeBuffer;
-    pendingNodeBuffer = [];
-    if (batch.length === 0) return;
-    batch.forEach((node) => upsertNodeRender(node));
-    dirtyRegion.flush(deps.getLeafer(), false);
-    if (forceLeafer) deps.updateLeafer();
-  }
-
   async function flushPendingRenderWork(): Promise<void> {
     await (pendingStreamRedrawDone ?? Promise.resolve());
-    if (pendingNodeBuffer.length > 0 || pendingBufferTimer) {
-      flushNodeBuffer(true);
-    }
     await (pendingViewportRedrawDone ?? Promise.resolve());
   }
 
@@ -720,9 +765,7 @@ export function createGraphSceneRuntime(deps: GraphSceneRuntimeDeps) {
         pendingStreamFrame ||
         pendingStreamRedrawDone ||
         pendingViewportRedrawFrame ||
-        pendingViewportRedrawDone ||
-        pendingNodeBuffer.length > 0 ||
-        pendingBufferTimer,
+        pendingViewportRedrawDone,
     );
   }
 
@@ -734,15 +777,6 @@ export function createGraphSceneRuntime(deps: GraphSceneRuntimeDeps) {
       pendingRenderWork: hasPendingRenderWork(),
     };
   }
-
-  function scheduleNodeBufferFlush(): void {
-    if (pendingBufferTimer) return;
-    pendingBufferTimer = setTimeout(() => {
-      pendingBufferTimer = null;
-      flushNodeBuffer(true);
-    }, 200);
-  }
-
 
   function flushStreamPatch(patch: PendingStreamPatch): void {
     performance.mark('pipeline:flush-stream-patch:start');
@@ -775,9 +809,8 @@ export function createGraphSceneRuntime(deps: GraphSceneRuntimeDeps) {
           upsertNodeRender(node, patch.tablePatchModes.get(nodeId));
           return;
         }
-        // Buffer node for deferred Leafer scene creation (200ms batch).
         removeNodeRender(node.renderHandle);
-        pendingNodeBuffer.push(node);
+        renderNodeIntoScene(node);
         return;
       }
       removeNodeRender(nodeId);
@@ -787,7 +820,6 @@ export function createGraphSceneRuntime(deps: GraphSceneRuntimeDeps) {
       markViewDirty(graphData);
     }
     finalizeSceneFrame(graphData, !patch.edgeChange, true);
-    scheduleNodeBufferFlush();
     performance.mark('pipeline:flush-stream-patch:end');
     performance.measure('pipeline:flush-stream-patch', 'pipeline:flush-stream-patch:start', 'pipeline:flush-stream-patch:end');
   }
@@ -849,22 +881,30 @@ export function createGraphSceneRuntime(deps: GraphSceneRuntimeDeps) {
     return lastGraphData;
   }
 
-  function applyGraphDelta(
+  async function applyGraphDelta(
     delta: GraphSceneDelta,
     version?: { baseGraphVersion: number; graphVersion: number },
   ): Promise<void> {
-    if (version) {
-      applyVersionedProjection(streamState, delta, version);
-    } else {
-      applyGraphDeltaToState(delta, streamState);
+    if (version && version.baseGraphVersion !== 0 && version.baseGraphVersion < streamState.version) {
+      return;
     }
-    const nextPatch = createPendingStreamPatch(delta);
-    if (!pendingStreamPatch) {
-      pendingStreamPatch = nextPatch;
-      return scheduleStreamFrame();
+    const generation = renderWorkGeneration;
+    const chunks = splitGraphDeltaByFrameBudget(delta);
+    for (let index = 0; index < chunks.length; index += 1) {
+      const chunk = chunks[index];
+      applyGraphDeltaToState(chunk, streamState);
+      if (version && index === chunks.length - 1) {
+        streamState.version = version.graphVersion;
+      }
+      const nextPatch = createPendingStreamPatch(chunk);
+      if (!pendingStreamPatch) {
+        pendingStreamPatch = nextPatch;
+      } else {
+        mergePendingStreamPatch(pendingStreamPatch, nextPatch);
+      }
+      await scheduleStreamFrame();
+      if (generation !== renderWorkGeneration) return;
     }
-    mergePendingStreamPatch(pendingStreamPatch, nextPatch);
-    return scheduleStreamFrame();
   }
   function updateViewport(): Promise<void> {
     return scheduleViewportRedraw();
@@ -881,7 +921,7 @@ export function createGraphSceneRuntime(deps: GraphSceneRuntimeDeps) {
   }
 
   function cancelActiveRenderWork(): void {
-    cancelPendingNodeBuffer();
+    renderWorkGeneration += 1;
     if (pendingStreamFrame) cancelAnimationFrame(pendingStreamFrame);
     pendingStreamFrame = null;
     resolvePendingStreamRedraw?.();

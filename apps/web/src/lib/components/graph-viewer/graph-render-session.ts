@@ -623,7 +623,7 @@ export function createGraphRenderSession(deps: GraphRenderSessionDeps) {
       activeJobHandle = started.jobHandle;
       if (!freshness.isCurrent()) return null;
 
-      const streamedBatches = await streamDocumentJobText({
+      const streamedBatch = await streamDocumentJobText({
         jobHandle: started.jobHandle,
         text: request.text,
         chunkSize,
@@ -645,7 +645,7 @@ export function createGraphRenderSession(deps: GraphRenderSessionDeps) {
         documentKey: request.documentKey,
         language: request.language,
         jobHandle: started.jobHandle,
-        batches: [started.batch, ...streamedBatches],
+        batches: [started.batch, streamedBatch],
       });
       deps.updateStreamProgress(
         buildGraphLifecycleProgressEvent(streamRunId, totalBytes, 'flushing'),
@@ -838,7 +838,7 @@ export function createGraphRenderSession(deps: GraphRenderSessionDeps) {
       activeJobHandle = started.jobHandle;
       if (!freshness.isCurrent()) return null;
 
-      const streamedBatches = await streamDocumentJobText({
+      const streamedBatch = await streamDocumentJobText({
         jobHandle: started.jobHandle,
         text: selection.text,
         chunkSize,
@@ -860,7 +860,7 @@ export function createGraphRenderSession(deps: GraphRenderSessionDeps) {
         documentKey: selection.blockDocumentKey,
         language: selection.language,
         jobHandle: started.jobHandle,
-        batches: [started.batch, ...streamedBatches],
+        batches: [started.batch, streamedBatch],
       });
       deps.updateStreamProgress(
         buildGraphLifecycleProgressEvent(streamRunId, totalBytes, 'flushing'),

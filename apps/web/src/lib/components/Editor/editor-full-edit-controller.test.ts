@@ -5,25 +5,40 @@ const mockStartDocumentJobForGraph = vi.hoisted(() =>
   vi.fn().mockResolvedValue({ status: 'snapshotReady', snapshotId: 1, analysis: null, batch: { requestSeq: 1, events: [], terminal: null }, jobHandle: 1 }),
 );
 const mockStartReadableDocumentJobSessionForGraph = vi.hoisted(() =>
-  vi.fn((input: any) => ({
-    sessionId: input.sessionId,
-    documentKey: input.documentKey,
-    language: input.language,
-    revision: input.revision,
-    totalBytes: input.totalBytes ?? 0,
-    chunkSize: input.chunkSize,
-    streamRunId: input.sessionId,
-    jobHandle: 2,
-    result: Promise.resolve({
-      status: 'snapshotReady',
-      snapshotId: 1,
-      analysis: null,
-      batch: { requestSeq: 1, events: [], terminal: null },
+  vi.fn((input: any) => {
+    const result = (async () => {
+      const reader = input.readable.getReader();
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          if (value) await input.onChunk?.(value);
+        }
+      } finally {
+        reader.releaseLock();
+      }
+      return {
+        status: 'snapshotReady',
+        snapshotId: 1,
+        analysis: null,
+        batch: { requestSeq: 1, events: [], terminal: null },
+        jobHandle: 2,
+      };
+    })();
+    return {
+      sessionId: input.sessionId,
+      documentKey: input.documentKey,
+      language: input.language,
+      revision: input.revision,
+      totalBytes: input.totalBytes ?? 0,
+      chunkSize: input.chunkSize,
+      streamRunId: input.sessionId,
       jobHandle: 2,
-    }),
-    batches: async function* () {},
-    cancel: vi.fn(async () => {}),
-  })),
+      result,
+      batches: async function* () {},
+      cancel: vi.fn(async () => {}),
+    };
+  }),
 );
 const mockClearFullEditDocumentJobSession = vi.hoisted(() => vi.fn());
 const mockApplyGraphAnalysis = vi.hoisted(() => vi.fn(async () => {}));
@@ -709,6 +724,77 @@ describe('editor-full-edit-controller', () => {
     const sourceTextCalls = (options.setSourceText as ReturnType<typeof vi.fn>).mock.calls.map(([value]) => value);
     expect(sourceTextCalls).toContain('{"a":');
     expect(sourceTextCalls.at(-1)).toBe('{"a":1}');
+  });
+
+  it('imports a file through one readable stream without duplicating it with tee', async () => {
+    const options = createOptions();
+    const controller = createEditorFullEditController(options as any);
+    const stream = createReadableFile(['{"a":', '1}']).stream();
+    Object.defineProperty(stream, 'tee', {
+      value: vi.fn(() => {
+        throw new Error('the import source must not be duplicated');
+      }),
+    });
+    const file = {
+      name: 'data.json',
+      size: 7,
+      stream: () => stream,
+    };
+
+    await controller.importStream(file as any, 'json' as any, 'import-file');
+
+    const sourceTextCalls = (options.setSourceText as ReturnType<typeof vi.fn>).mock.calls.map(([value]) => value);
+    expect(sourceTextCalls.at(-1)).toBe('{"a":1}');
+  });
+
+  it('coalesces import chunks into at most one Monaco write per animation frame', async () => {
+    const frames: FrameRequestCallback[] = [];
+    globalThis.requestAnimationFrame = ((callback: FrameRequestCallback) => {
+      frames.push(callback);
+      return frames.length;
+    }) as typeof requestAnimationFrame;
+    let capturedInput: any = null;
+    const terminal = createDeferred<any>();
+    mockStartReadableDocumentJobSessionForGraph.mockImplementationOnce((input: any) => {
+      capturedInput = input;
+      return {
+        sessionId: input.sessionId,
+        documentKey: input.documentKey,
+        language: input.language,
+        revision: input.revision,
+        totalBytes: input.totalBytes ?? 0,
+        chunkSize: input.chunkSize,
+        streamRunId: input.sessionId,
+        jobHandle: 2,
+        result: terminal.promise,
+        batches: async function* () {},
+        cancel: vi.fn(async () => {}),
+      };
+    });
+    const options = createOptions();
+    const controller = createEditorFullEditController(options as any);
+    const importing = controller.importStream(createReadableFile([]) as any, 'json' as any, 'import-file');
+    await vi.waitFor(() => expect(capturedInput).not.toBeNull());
+
+    capturedInput.onChunk(new TextEncoder().encode('a'));
+    capturedInput.onChunk(new TextEncoder().encode('b'));
+    capturedInput.onChunk(new TextEncoder().encode('c'));
+
+    expect(options.getModel().pushEditOperations).not.toHaveBeenCalled();
+    expect(frames).toHaveLength(1);
+
+    frames.shift()?.(0);
+    expect(options.getModel().pushEditOperations).toHaveBeenCalledTimes(1);
+    expect(options.getModel().getValue()).toBe('abc');
+
+    terminal.resolve({
+      status: 'snapshotReady',
+      snapshotId: 1,
+      analysis: null,
+      batch: { requestSeq: 1, events: [], terminal: { type: 'completed' } },
+      jobHandle: 2,
+    });
+    await importing;
   });
 
   it('applies graph analysis after a streamed file import completes', async () => {

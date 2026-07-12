@@ -14,14 +14,19 @@ import {
 
 let pendingUpdate: Update | null = null;
 
+type GrantedDocument = { grant: FileAccessGrant; text: string };
+
+function toGrantedFile(document: GrantedDocument): File {
+  return Object.assign(new File([document.text], document.grant.name, { type: 'text/plain;charset=utf-8' }), {
+    fileAccessGrant: document.grant,
+  });
+}
+
 export const desktopWorkspaceHost: WorkspaceHost = {
   surface: 'desktop',
   async openFile(_options: WorkspaceOpenFileOptions) {
-    const document = await invoke<{ grant: FileAccessGrant; text: string } | null>('pick_file');
-    if (!document) return null;
-    return Object.assign(new File([document.text], document.grant.name, { type: 'text/plain;charset=utf-8' }), {
-      fileAccessGrant: document.grant,
-    });
+    const document = await invoke<GrantedDocument | null>('pick_file');
+    return document ? toGrantedFile(document) : null;
   },
   async saveText(options: WorkspaceSaveTextOptions) {
     await this.saveFileAs(options);
@@ -50,28 +55,20 @@ export const desktopWorkspaceHost: WorkspaceHost = {
     return invoke<FileAccessGrant[]>('list_recent_files');
   },
   async openRecentFile(grant) {
-    const document = await invoke<{ grant: FileAccessGrant; text: string }>('open_recent_file', { recentId: grant.id });
-    return Object.assign(new File([document.text], document.grant.name, { type: 'text/plain;charset=utf-8' }), {
-      fileAccessGrant: document.grant,
-    });
+    const document = await invoke<GrantedDocument>('open_recent_file', { recentId: grant.id });
+    return toGrantedFile(document);
   },
   async clearRecentFiles() {
     await invoke('clear_recent_files');
   },
   async onFilesDropped(onFiles) {
-    return listen<Array<{ grant: FileAccessGrant; text: string }>>('workspace-files-dropped', (event) => {
-      onFiles(event.payload.map((document) => Object.assign(
-        new File([document.text], document.grant.name, { type: 'text/plain;charset=utf-8' }),
-        { fileAccessGrant: document.grant },
-      )));
+    return listen<GrantedDocument[]>('workspace-files-dropped', (event) => {
+      onFiles(event.payload.map(toGrantedFile));
     });
   },
   async takeStartupFiles() {
-    const files = await invoke<Array<{ grant: FileAccessGrant; text: string }>>('take_startup_files');
-    return files.map((document) => Object.assign(
-      new File([document.text], document.grant.name, { type: 'text/plain;charset=utf-8' }),
-      { fileAccessGrant: document.grant },
-    ));
+    const files = await invoke<GrantedDocument[]>('take_startup_files');
+    return files.map(toGrantedFile);
   },
   async saveSession(session: WorkspaceSession) {
     await invoke('save_workspace_session', { session });

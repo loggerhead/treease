@@ -15,6 +15,88 @@ function normalizeAdvanceCalls(advance: { mock: { calls: unknown[][] } }) {
 }
 
 describe('document-job-stream', () => {
+  it('does not pull the next readable chunk until the worker acknowledges the current chunk', async () => {
+    const encoder = new TextEncoder();
+    let pullCount = 0;
+    let acknowledgeFirstChunk!: () => void;
+    const firstAcknowledged = new Promise<void>((resolve) => {
+      acknowledgeFirstChunk = resolve;
+    });
+    async function* chunks() {
+      pullCount += 1;
+      yield encoder.encode('a');
+      pullCount += 1;
+      yield encoder.encode('b');
+    }
+    const observedChunks: string[] = [];
+    const advance = vi.fn(async (input: AdvanceDocumentJobRequest) => {
+      if (input.kind === 'binaryChunk' && input.data?.[0] === encoder.encode('a')[0]) {
+        await firstAcknowledged;
+      }
+      return {
+        requestSeq: 1,
+        events: [],
+        terminal: input.kind === 'close' ? ({ type: 'completed' as const }) : null,
+      } satisfies EventBatch;
+    });
+
+    const streaming = streamDocumentJobReadable({
+      jobHandle: 6,
+      readable: chunks(),
+      advance,
+      onChunk: (chunk) => {
+        observedChunks.push(new TextDecoder().decode(chunk));
+      },
+    });
+
+    await vi.waitFor(() => {
+      expect(advance).toHaveBeenCalledTimes(1);
+    });
+    expect(pullCount).toBe(1);
+    expect(observedChunks).toEqual(['a']);
+
+    acknowledgeFirstChunk();
+    await streaming;
+
+    expect(pullCount).toBe(2);
+    expect(observedChunks).toEqual(['a', 'b']);
+  });
+
+  it('consumes every batch incrementally while retaining only the terminal document result', async () => {
+    const observed: EventBatch[] = [];
+    const advance = vi.fn(async (input: AdvanceDocumentJobRequest) => {
+      if (input.kind === 'close') {
+        return {
+          requestSeq: 4,
+          events: [{ type: 'snapshotReady' as const, snapshotId: 9, analysis: null, mainGraph: null }],
+          terminal: { type: 'completed' as const },
+        } satisfies EventBatch;
+      }
+      return {
+        requestSeq: 3,
+        events: [{ type: 'progress' as const, processedBytes: 1 }],
+        terminal: null,
+      } satisfies EventBatch;
+    });
+
+    const result = await streamDocumentJobText({
+      jobHandle: 12,
+      text: 'abcdef',
+      chunkSize: 1,
+      advance,
+      onBatch: (batch) => {
+        observed.push(batch);
+      },
+    });
+
+    expect(observed).toHaveLength(7);
+    expect(result).toEqual({
+      requestSeq: 4,
+      events: [{ type: 'snapshotReady', snapshotId: 9, analysis: null, mainGraph: null }],
+      terminal: { type: 'completed' },
+    });
+  });
+
   it('merges event batches while keeping the latest terminal', () => {
     expect(
       mergeEventBatches([
@@ -43,7 +125,7 @@ describe('document-job-stream', () => {
       }) satisfies EventBatch,
     );
 
-    const batches = await streamDocumentJobText({
+    const result = await streamDocumentJobText({
       jobHandle: 7,
       text: 'a你b',
       chunkSize: 2,
@@ -56,8 +138,7 @@ describe('document-job-stream', () => {
       [{ jobHandle: 7, kind: 'textChunk', text: 'b' }],
       [{ jobHandle: 7, kind: 'close' }],
     ]);
-    expect(batches).toHaveLength(4);
-    expect(batches.at(-1)?.terminal).toEqual({ type: 'completed' });
+    expect(result.terminal).toEqual({ type: 'completed' });
   });
 
   it('streams byte chunks as binary chunks', async () => {
@@ -74,7 +155,7 @@ describe('document-job-stream', () => {
 
     const encoder = new TextEncoder();
     const bytes = encoder.encode('a你b');
-    const batches = await streamDocumentJobBytes({
+    const result = await streamDocumentJobBytes({
       jobHandle: 8,
       bytes,
       chunkSize: 2,
@@ -87,7 +168,7 @@ describe('document-job-stream', () => {
       { jobHandle: 8, kind: 'binaryChunk', data: Array.from(bytes.subarray(4, 5)) },
       { jobHandle: 8, kind: 'close' },
     ]);
-    expect(batches).toHaveLength(4);
+    expect(result.terminal).toEqual({ type: 'completed' });
   });
 
   it('streams readable chunks as binary chunks and emits close once', async () => {
@@ -111,7 +192,7 @@ describe('document-job-stream', () => {
       },
     });
 
-    const batches = await streamDocumentJobReadable({
+    const result = await streamDocumentJobReadable({
       jobHandle: 9,
       readable,
       advance,
@@ -123,7 +204,7 @@ describe('document-job-stream', () => {
       { jobHandle: 9, kind: 'binaryChunk', data: Array.from(encoder.encode('b')) },
       { jobHandle: 9, kind: 'close' },
     ]);
-    expect(batches.at(-1)?.terminal).toEqual({ type: 'completed' });
+    expect(result.terminal).toEqual({ type: 'completed' });
   });
 
   it('slices oversized readable chunks before binary advance', async () => {
@@ -145,7 +226,7 @@ describe('document-job-stream', () => {
       },
     });
 
-    const batches = await streamDocumentJobReadable({
+    const result = await streamDocumentJobReadable({
       jobHandle: 10,
       readable,
       advance,
@@ -158,7 +239,7 @@ describe('document-job-stream', () => {
       { jobHandle: 10, kind: 'binaryChunk', data: Array.from(encoder.encode('g')) },
       { jobHandle: 10, kind: 'close' },
     ]);
-    expect(batches.at(-1)?.terminal).toEqual({ type: 'completed' });
+    expect(result.terminal).toEqual({ type: 'completed' });
   });
 
   it('coalesces readable bytes up to the requested binary chunk size', async () => {
@@ -214,7 +295,7 @@ describe('document-job-stream', () => {
       yield encoder.encode('b');
     }
 
-    const batches = await streamDocumentJobReadable({
+    const result = await streamDocumentJobReadable({
       jobHandle: 10,
       readable: chunks(),
       advance,
@@ -226,7 +307,7 @@ describe('document-job-stream', () => {
       { jobHandle: 10, kind: 'binaryChunk', data: Array.from(encoder.encode('b')) },
       { jobHandle: 10, kind: 'close' },
     ]);
-    expect(batches.at(-1)?.terminal).toEqual({ type: 'completed' });
+    expect(result.terminal).toEqual({ type: 'completed' });
   });
 
   it('closes empty text streams without emitting text chunks', async () => {
@@ -238,19 +319,17 @@ describe('document-job-stream', () => {
       }) satisfies EventBatch,
     );
 
-    const batches = await streamDocumentJobText({
+    const result = await streamDocumentJobText({
       jobHandle: 11,
       text: '',
       advance,
     });
 
     expect(advance.mock.calls).toEqual([[{ jobHandle: 11, kind: 'close' }]]);
-    expect(batches).toEqual([
-      {
-        requestSeq: 4,
-        events: [],
-        terminal: { type: 'completed' },
-      },
-    ]);
+    expect(result).toEqual({
+      requestSeq: 4,
+      events: [],
+      terminal: { type: 'completed' },
+    });
   });
 });

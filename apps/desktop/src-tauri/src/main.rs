@@ -423,7 +423,7 @@ async fn watch_granted_file(
 ) -> Result<(), String> {
     let path = state.path(&grant_id)?;
     let event_grant_id = grant_id.clone();
-    let watcher = notify::recommended_watcher(move |result: notify::Result<notify::Event>| {
+    let mut watcher = notify::recommended_watcher(move |result: notify::Result<notify::Event>| {
         if result.is_ok() {
             let _ = app.emit(
                 "workspace-file-changed",
@@ -432,7 +432,6 @@ async fn watch_granted_file(
         }
     })
     .map_err(|error| format!("Cannot watch the granted file: {error}"))?;
-    let mut watcher = watcher;
     watcher
         .watch(&path, RecursiveMode::NonRecursive)
         .map_err(|error| format!("Cannot watch the granted file: {error}"))?;

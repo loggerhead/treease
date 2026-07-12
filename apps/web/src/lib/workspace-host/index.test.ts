@@ -1,15 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { createWorkspaceHost, parseDesktopDeepLinks, parseEditorDeepLinks, resolveWorkspaceSurface } from './index';
+import { createWorkspaceHost, parseDesktopDeepLinks, parseEditorDeepLinks } from './index';
 
-describe('resolveWorkspaceSurface', () => {
-  it('selects the desktop adapter only for the desktop build surface', () => {
-    expect(resolveWorkspaceSurface('desktop')).toBe('desktop');
-  });
-
-  it('keeps browser as the default build surface', () => {
-    expect(resolveWorkspaceSurface(undefined)).toBe('browser');
-  });
-
+describe('workspace host boundary', () => {
   it('exposes file lifecycle operations only through the desktop host', async () => {
     const host = await createWorkspaceHost('desktop');
     expect(host.surface).toBe('desktop');

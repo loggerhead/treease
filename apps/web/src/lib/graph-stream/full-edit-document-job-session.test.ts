@@ -98,4 +98,53 @@ describe('full-edit-document-job-session', () => {
       kind: 'close',
     });
   });
+
+  it('keeps only a bounded replay window for late graph consumers', async () => {
+    let requestSeq = 0;
+    mockWorkerCall.mockImplementation(async (method: string, input: any) => {
+      if (method === 'startDocumentJob') {
+        return {
+          jobHandle: 8,
+          batch: { requestSeq: requestSeq++, events: [], terminal: null },
+        };
+      }
+      if (method === 'advanceDocumentJob' && input.kind === 'binaryChunk') {
+        return {
+          requestSeq: requestSeq++,
+          events: [{ type: 'progress', processedBytes: requestSeq }],
+          terminal: null,
+        };
+      }
+      if (method === 'advanceDocumentJob' && input.kind === 'close') {
+        return {
+          requestSeq: requestSeq++,
+          events: [{ type: 'snapshotReady', snapshotId: 10, analysis: null, mainGraph: null }],
+          terminal: { type: 'completed' },
+        };
+      }
+      throw new Error(`unexpected worker call: ${method}`);
+    });
+
+    const session = startReadableDocumentJobSessionForGraph({
+      sessionId: 'session-1',
+      documentKey: 'doc-1',
+      revision: 4,
+      language: 'json',
+      readable: (async function* () {
+        for (let index = 0; index < 20; index += 1) {
+          yield new Uint8Array([index]);
+        }
+      })(),
+      settings: documentJobSettings,
+      totalBytes: 20,
+      chunkSize: 1,
+    });
+
+    await session.result;
+    const replayed = [];
+    for await (const batch of session.batches()) replayed.push(batch);
+
+    expect(replayed.length).toBeLessThanOrEqual(8);
+    expect(replayed.at(-1)?.events.at(-1)).toMatchObject({ type: 'snapshotReady', snapshotId: 10 });
+  });
 });
