@@ -1,0 +1,17 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "app": {
+    "withGlobalTauri": true,
+    "security": {
+      "capabilities": [
+        "default",
+        {
+          "identifier": "wdio-test",
+          "description": "Embedded WebDriver access for the debug-only desktop test build.",
+          "windows": ["main"],
+          "permissions": ["wdio-webdriver:default", "wdio:default"]
+        }
+      ]
+    }
+  }
+}

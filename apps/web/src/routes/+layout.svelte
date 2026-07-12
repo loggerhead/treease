@@ -6,6 +6,7 @@
   import { afterNavigate } from '$app/navigation';
   import { onMount } from 'svelte';
   import { initializeAnalytics, trackPageView } from '$lib/analytics/ga4';
+  import 'virtual:wdio-plugin';
 
   if (typeof window !== 'undefined' && (import.meta.env.DEV || import.meta.env.MODE === 'test')) {
     installTestBridge();

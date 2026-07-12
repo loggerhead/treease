@@ -234,7 +234,8 @@ describe('settings-store', () => {
     settingsStore.actions.setSettings({
       ...defaultSettings,
       interaction: {
-        enableSyncScroll: false
+        enableSyncScroll: false,
+        autoSave: 'off',
       }
     });
     let val: unknown;

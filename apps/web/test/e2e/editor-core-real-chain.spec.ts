@@ -1,6 +1,5 @@
 import { expect, test } from './fixtures';
 import {
-  chooseFile,
   dropFile,
   evaluateTreease,
   getMonacoRenderedTokenColor,
@@ -30,13 +29,13 @@ test('renders the initial JSON example with syntax highlighting through the real
     });
 });
 
-test('imports and exports through TopBar using the real EditorCore chain', async ({ page }) => {
+test('imports through the TopBar drop target and exports using the real EditorCore chain', async ({ page }) => {
   await page.goto('/editor');
   await waitForEditorReady(page);
 
-  await chooseFile(page, {
-    triggerTestId: 'topbar-import-button',
-    inputLabel: 'Import file input',
+  await page.getByTestId('topbar-import-button').click();
+  await dropFile(page, {
+    targetTestId: 'import-drop-trigger',
     fileName: 'sample.json',
     content: '{"user":{"name":"Alice"},"items":[1,2,3]}',
     mimeType: 'application/json',
@@ -66,9 +65,9 @@ test('imports json into the selected toml language without switching languages',
   await waitForEditorReady(page);
   await setEditorContent(page, { sourceText: 'title = "ready"\n', language: 'toml' });
 
-  await chooseFile(page, {
-    triggerTestId: 'topbar-import-button',
-    inputLabel: 'Import file input',
+  await page.getByTestId('topbar-import-button').click();
+  await dropFile(page, {
+    targetTestId: 'import-drop-trigger',
     fileName: 'sample.json',
     content: '{"user":{"name":"Alice"}}',
     mimeType: 'application/json',

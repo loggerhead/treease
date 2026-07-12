@@ -1,36 +1,50 @@
 import { createClient, type Provider, type SupabaseClient } from '@supabase/supabase-js';
+import type { Session } from '@supabase/supabase-js';
+import { workspaceHost } from '../workspace-host';
 
 let client: SupabaseClient | null = null;
 
-export function getSupabaseClient(): SupabaseClient {
-  if (client) return client;
-
+export function getSupabaseConfiguration(): { url: string; anonKey: string } {
   const url = String(import.meta.env.SUPABASE_URL ?? '').trim();
   const anonKey = String(import.meta.env.SUPABASE_ANON_KEY ?? '').trim();
   if (!url || !anonKey) {
     throw new Error('Supabase login is not configured. Set SUPABASE_URL and SUPABASE_ANON_KEY.');
   }
+  return { url, anonKey };
+}
 
+export function getSupabaseClient(): SupabaseClient {
+  if (client) return client;
+
+  const { url, anonKey } = getSupabaseConfiguration();
+
+  const desktop = import.meta.env.PUBLIC_WORKSPACE_SURFACE === 'desktop';
   client = createClient(url, anonKey, {
     auth: {
-      persistSession: true,
-      autoRefreshToken: true,
-      detectSessionInUrl: true,
+      persistSession: !desktop,
+      autoRefreshToken: !desktop,
+      detectSessionInUrl: !desktop,
     },
   });
   return client;
 }
 
 function authRedirectUrl(): string {
+  if (import.meta.env.PUBLIC_WORKSPACE_SURFACE === 'desktop') return 'treease://auth/callback';
   return `${window.location.origin}/auth/callback`;
 }
 
 export async function signInWithProvider(provider: Extract<Provider, 'google' | 'github'>): Promise<void> {
-  const { error } = await getSupabaseClient().auth.signInWithOAuth({
+  const desktop = import.meta.env.PUBLIC_WORKSPACE_SURFACE === 'desktop';
+  const { data, error } = await getSupabaseClient().auth.signInWithOAuth({
     provider,
-    options: { redirectTo: authRedirectUrl() },
+    options: { redirectTo: authRedirectUrl(), skipBrowserRedirect: desktop },
   });
   if (error) throw error;
+  if (desktop) {
+    if (!data.url) throw new Error('The authentication provider did not return a browser URL.');
+    await (await workspaceHost).openExternal(new URL(data.url));
+  }
 }
 
 export async function sendEmailOtp(email: string): Promise<void> {
@@ -44,12 +58,22 @@ export async function sendEmailOtp(email: string): Promise<void> {
   if (error) throw error;
 }
 
-export async function verifyEmailOtp(email: string, token: string): Promise<void> {
-  const { error } = await getSupabaseClient().auth.verifyOtp({ email, token, type: 'email' });
+export async function verifyEmailOtp(email: string, token: string): Promise<Session | null> {
+  const { data, error } = await getSupabaseClient().auth.verifyOtp({ email, token, type: 'email' });
   if (error) throw error;
+  return data.session;
 }
 
-export async function exchangeAuthCode(code: string): Promise<void> {
-  const { error } = await getSupabaseClient().auth.exchangeCodeForSession(code);
+export async function exchangeAuthCode(code: string): Promise<Session | null> {
+  const { data, error } = await getSupabaseClient().auth.exchangeCodeForSession(code);
+  if (error) throw error;
+  return data.session;
+}
+
+export async function signOut(): Promise<void> {
+  if (import.meta.env.PUBLIC_WORKSPACE_SURFACE === 'desktop') {
+    await (await workspaceHost).clearRefreshToken();
+  }
+  const { error } = await getSupabaseClient().auth.signOut();
   if (error) throw error;
 }

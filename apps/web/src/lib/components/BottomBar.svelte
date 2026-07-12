@@ -18,10 +18,20 @@
   export let onShowYqInput: () => void | Promise<void> = () => {};
   export let onEscape: () => void | Promise<void> = () => {};
   export let onUnescape: () => void | Promise<void> = () => {};
+  export let onNewDocument: () => void | Promise<void> = () => {};
+  export let onOpenDocument: () => void | Promise<void> = () => {};
+  export let onSaveDocument: () => void | Promise<void> = () => {};
+  export let onSaveAsDocument: () => void | Promise<void> = () => {};
+  export let onCloseDocument: () => void | Promise<void> = () => {};
   export let onTreePathSelect: (path: PathSeg[]) => void = () => {};
 
   const languageItems = supportedEditorLanguages.map((option) => ({ value: option.id, label: option.label }));
   const commandHandlers: Record<CommandId, () => void | Promise<void>> = {
+    'workspace:new': () => onNewDocument(),
+    'workspace:open': () => onOpenDocument(),
+    'workspace:save': () => onSaveDocument(),
+    'workspace:save-as': () => onSaveAsDocument(),
+    'workspace:close-tab': () => onCloseDocument(),
     format: () => onFormat(),
     minify: () => onMinify(),
     sort: () => onSort(),

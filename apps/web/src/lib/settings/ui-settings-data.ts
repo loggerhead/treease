@@ -1,4 +1,5 @@
 type SemanticTypeKey = 'map' | 'key' | 'seq' | 'str' | 'int' | 'float' | 'boolean' | 'nil';
+export type AutoSaveMode = 'off' | 'afterDelay' | 'onFocusChange' | 'onWindowChange';
 
 export const semanticTypeColors = {
   // 对象类型的语义色
@@ -163,6 +164,7 @@ export const defaultSettings = {
   },
   interaction: {
     enableSyncScroll: true,
+    autoSave: 'off' as AutoSaveMode,
   },
   parser: {
     enableNest: true,

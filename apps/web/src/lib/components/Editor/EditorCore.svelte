@@ -1113,10 +1113,53 @@
     const tab = tabManager.addTab(languageIdValue, getLanguageExample(languageIdValue));
     if (tab) {
       userInputByTabId.set(tab.id, false);
-      addWorkspaceTabFromEditor(workspacePayloadForTab(tab));
+      addWorkspaceTabFromEditor({ ...workspacePayloadForTab(tab), savedText: tab.model.getValue() });
       void setActiveTab(tab);
       return;
     }
+    syncTabBindings();
+  }
+
+  export function openDocument(payload: {
+    name: string;
+    text: string;
+    languageId: SupportedEditorLanguageId;
+    fileLinkedDocument?: { grantId: string; name: string };
+  }): string | null {
+    if (guardImportInProgress() || !monaco) return null;
+    const tab = tabManager.addTab(payload.languageId, payload.text);
+    if (!tab) return null;
+    tabManager.setTabName(tab.id, payload.name);
+    userInputByTabId.set(tab.id, false);
+    addWorkspaceTabFromEditor({
+      ...workspacePayloadForTab(tab),
+      name: payload.name,
+      fileLinkedDocument: payload.fileLinkedDocument,
+      savedText: payload.fileLinkedDocument ? payload.text : undefined,
+    });
+    void setActiveTab(tab, 'tab-reactivate');
+    return tab.id;
+  }
+
+  export async function replaceActiveFromFile(payload: { text: string; languageId: SupportedEditorLanguageId }): Promise<void> {
+    if (!model || !monaco) return;
+    suppressNextWholeDocumentAutoGuess = true;
+    setLanguageIdWithoutExample(payload.languageId);
+    setEditorValue(payload.text);
+    markActiveTabUserInput(false);
+  }
+
+  export function replaceDocumentFromFile(payload: { tabId: string; text: string; languageId: SupportedEditorLanguageId }): void {
+    const tab = tabManager?.activateTab(payload.tabId);
+    if (!tab || !monaco) return;
+    monaco.editor.setModelLanguage(tab.model, payload.languageId);
+    tab.model.setValue(payload.text);
+    tabManager.updateTabLanguage(tab.id, payload.languageId);
+    userInputByTabId.set(tab.id, false);
+  }
+
+  export function renameDocument(tabId: string, name: string): void {
+    tabManager?.setTabName(tabId, name);
     syncTabBindings();
   }
 

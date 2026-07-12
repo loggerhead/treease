@@ -45,6 +45,7 @@ function createWorkspacePrimaryTab(payload: { id: string; name: string }): Edito
     role: 'primary',
     name: payload.name,
     snapshotId: null,
+    savedText: active.sourceText,
   };
 }
 
@@ -208,11 +209,10 @@ export function removeDetachedSidecarWorkspaceTab(tabId: string): void {
 
 export function updateWorkspaceTab(tabId: string, patch: EditorWorkspaceTabPatch): void {
   const workspace = get(workspaceStore);
-  if (tabId === workspace.primaryTabId && patch.documentKey !== undefined) {
-    patchAuthorityActiveDocument({ documentKey: patch.documentKey });
+  if (tabId === workspace.primaryTabId) {
+    patchAuthorityActiveDocument(patch);
     return;
   }
-  if (tabId === workspace.primaryTabId) return;
   const isSidecarTab = workspace.tabsById[tabId]?.role === 'sidecar';
   const { languageId: _ignoredLanguageId, ...patchWithoutLanguage } = patch;
   setWorkspaceState(patchWorkspaceTab(workspace, tabId, isSidecarTab ? patch : patchWithoutLanguage));

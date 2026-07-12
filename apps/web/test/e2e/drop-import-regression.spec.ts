@@ -19,7 +19,6 @@ const SOURCE_DROP_BUDGET_MS = IS_CI ? 10_000 : 5_000;
 const LARGE_IMPORT_FIRST_VISIBLE_BUDGET_MS = IS_CI ? 6_000 : 3_000;
 const HOVER_FIXTURE_IMPORT_BUDGET_MS = IS_CI ? 10_000 : 10_000;
 const oneMbMinJsonFixtureText = readFileSync(join(process.cwd(), '../../test/fixtures/json/1MB-min.1.json'), 'utf8');
-const oneMbMinJsonFixturePath = join(process.cwd(), '../../test/fixtures/json/1MB-min.1.json');
 const oneMbMinJsonRows = JSON.parse(oneMbMinJsonFixtureText) as Array<{ name: string; language: string; id: string }>;
 const largeJsonFixtureText = readFileSync(join(process.cwd(), '../../test/fixtures/json/5MB-min.1.json'), 'utf8');
 const hoverPanelFixtureText = readFileSync(join(process.cwd(), '../../test/fixtures/json/2mb.1.json'), 'utf8');
@@ -856,14 +855,19 @@ test('dropping the 1mb json fixture keeps graph progress monotonic', async ({ pa
 });
 
 
-test('importing the 1mb json fixture via file input never lets an older progress stream reappear', async ({ page }) => {
+test('importing the 1mb json fixture through the TopBar drop target never lets an older progress stream reappear', async ({ page }) => {
   test.slow();
   await page.goto('/editor');
   await waitForEditorReady(page);
   await installGraphProgressObservation(page);
 
   await page.getByTestId('topbar-import-button').click();
-  await page.getByLabel('Import file input').setInputFiles(oneMbMinJsonFixturePath);
+  await dropFile(page, {
+    targetTestId: 'import-drop-trigger',
+    fileName: '1MB-min.1.json',
+    content: oneMbMinJsonFixtureText,
+    mimeType: 'application/json',
+  });
   await waitForGraphRendered(page, 10_000);
   await waitForImportSettled(page, 10_000);
 

@@ -14,10 +14,14 @@ docs/dev-loop/registry.yaml
 .agents/ralph-loop.local.md
 packages/core/target*
 apps/cli/target
+apps/desktop/**/target
+apps/desktop/src-tauri/gen/
+apps/desktop/src-tauri/icons/
 apps/web/benchmarks/graph-stream-baseline.json
 apps/web/.env
 apps/web/.tinify-manifest.json
 apps/web/static/**/*.png
+!apps/web/static/treease-logo.png
 apps/web/static/**/*.mp4
 scripts/rewrite_*.py
 guess-failure.md

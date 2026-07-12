@@ -2,7 +2,7 @@
   import { onMount } from 'svelte'
   import { cubicOut } from 'svelte/easing'
   import { fly } from 'svelte/transition'
-  import { Plus, X, FileInput, FileOutput, BookOpen, MessageCircle, Share2, User, ArrowRight } from 'lucide-svelte'
+  import { Plus, X, FileInput, FileOutput, BookOpen, MessageCircle, Share2, User, ArrowRight, Save, FolderOpen } from 'lucide-svelte'
   import { trackEvent } from '../analytics/ga4'
   import { languageId as languageIdStore } from '../store/document-session-store'
   import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from './ui/dropdown-menu'
@@ -11,15 +11,22 @@
   import { Button, IconButton } from './ui/button'
   import type { SupportedEditorLanguageId } from '../monaco/language-support'
 
-  export let tabs: Array<{ id: string; name: string; languageId: SupportedEditorLanguageId }> = []
+  export let tabs: Array<{ id: string; name: string; languageId: SupportedEditorLanguageId; dirty?: boolean }> = []
   export let activeTabId = ''
   export let canAddTab = true
   export let showTabs = true
   export let showRightActions = true
   export let onAddTab: () => void = () => {}
+  export let onOpenDocument: () => Promise<void> = async () => {}
+  export let onSaveDocument: () => Promise<void> = async () => {}
+  export let onSaveAsDocument: () => Promise<void> = async () => {}
+  export let recentFiles: Array<{ id: string; name: string }> = []
+  export let onOpenRecentFile: (grant: { id: string; name: string }) => Promise<void> = async () => {}
+  export let onClearRecentFiles: () => Promise<void> = async () => {}
   export let onCloseTab: (id: string) => void = () => {}
   export let onActivateTab: (id: string) => void = () => {}
   export let formatOptions: Array<{ id: string; label: string; extensions: string[] }> = []
+  export let onRequestImportFile: (payload: { sourceFormat: string; targetFormat: string; accept: string[] }) => Promise<void> = async () => {}
   export let onImportFileStream: (payload: { file: File; sourceFormat: string; targetFormat: string; fileName: string }) => void = () => {}
   export let onExportPreview: (format: string) => void = () => {}
   export let onExportDownload: (format: string) => void = () => {}
@@ -28,6 +35,8 @@
   export let onShare: () => void = () => {}
   export let onOpenSettings: () => void = () => {}
   export let onLogin: () => void = () => {}
+  export let onLogout: () => Promise<void> = async () => {}
+  export let onCheckForUpdates: () => Promise<void> = async () => {}
 
   let importOpen = false
   let exportOpen = false
@@ -36,7 +45,6 @@
   let importDropActive = false
   let importAnchor: HTMLDivElement | null = null
   let exportAnchor: HTMLDivElement | null = null
-  let importInput: HTMLInputElement | null = null
 
   const toggleImportPanel = () => {
     importOpen = !importOpen
@@ -52,6 +60,12 @@
     if (!file) return
     importDropActive = false
     onImportFileStream({ file, sourceFormat: importFormat, targetFormat: $languageIdStore, fileName: file.name })
+    importOpen = false
+  }
+
+  const requestImportFile = async () => {
+    const accept = formatOptions.find((item) => item.id === importFormat)?.extensions ?? []
+    await onRequestImportFile({ sourceFormat: importFormat, targetFormat: $languageIdStore, accept })
     importOpen = false
   }
 
@@ -99,6 +113,36 @@
 
 <header class="grid h-[var(--topbar-height)] grid-cols-[auto_1fr_auto] items-center gap-3 border-b border-[var(--border-strong)] bg-[var(--topbar-bg)] px-3 text-[var(--text-primary)]">
   <ButtonGroup.Root variant="segmented-outline" class="min-w-0">
+    <div class="relative flex h-full items-center" data-button-group-item>
+      <IconButton aria-label="Open document" title="Open document" data-testid="topbar-open-document" on:click={() => void onOpenDocument()}>
+        <FolderOpen size={12} />
+      </IconButton>
+    </div>
+    <div class="relative flex h-full items-center" data-button-group-item>
+      <IconButton aria-label="Save document" title="Save document" data-testid="topbar-save-document" on:click={() => void onSaveDocument()}>
+        <Save size={12} />
+      </IconButton>
+    </div>
+    <div class="relative flex h-full items-center" data-button-group-item>
+      <IconButton aria-label="Save document as" title="Save document as" data-testid="topbar-save-as-document" on:click={() => void onSaveAsDocument()}>
+        <Save size={12} />
+      </IconButton>
+    </div>
+    <div class="relative flex h-full items-center" data-button-group-item>
+      <DropdownMenu>
+        <DropdownMenuTrigger class="inline-flex h-6 items-center px-2 text-[11px]" aria-label="Recent documents" title="Recent documents">Recent</DropdownMenuTrigger>
+        <DropdownMenuContent align="start">
+          {#if recentFiles.length}
+            {#each recentFiles as file (file.id)}
+              <DropdownMenuItem onSelect={() => void onOpenRecentFile(file)}>{file.name}</DropdownMenuItem>
+            {/each}
+            <DropdownMenuItem onSelect={() => void onClearRecentFiles()}>Clear recent</DropdownMenuItem>
+          {:else}
+            <DropdownMenuItem disabled>No recent files</DropdownMenuItem>
+          {/if}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
     <div class="relative flex h-full items-center" data-button-group-item bind:this={importAnchor}>
       <IconButton
         aria-label="Import"
@@ -155,7 +199,7 @@
             }`}
             aria-label="Choose import file"
             data-testid="import-drop-trigger"
-            on:click={() => importInput?.click()}
+            on:click={() => void requestImportFile()}
             on:dragenter={(event) => {
               event.preventDefault()
               importDropActive = true
@@ -180,14 +224,6 @@
           >
             <span class="text-[12px]">Click here to select file or drop a file right here</span>
           </button>
-          <input
-            bind:this={importInput}
-            type="file"
-            class="hidden"
-            aria-label="Import file input"
-            accept={(formatOptions.find((item) => item.id === importFormat)?.extensions ?? []).join(',')}
-            on:change={(event) => handleImportFile((event.target as HTMLInputElement).files?.[0])}
-          />
         </div>
       {/if}
     </div>
@@ -289,7 +325,7 @@
               data-testid={`tab-open-${tab.id}`}
               on:click={() => onActivateTab(tab.id)}
             >
-              {tab.name}
+              {tab.dirty ? `${tab.name} •` : tab.name}
             </button>
             <button
               class="inline-flex items-center justify-center p-0.5"
@@ -357,6 +393,8 @@
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuItem data-testid="account-login-menu-item" onSelect={onLogin}>Login</DropdownMenuItem>
+              <DropdownMenuItem data-testid="account-logout-menu-item" onSelect={() => void onLogout()}>Log out</DropdownMenuItem>
+              <DropdownMenuItem data-testid="account-check-updates-menu-item" onSelect={() => void onCheckForUpdates()}>Check for updates</DropdownMenuItem>
               <DropdownMenuItem data-testid="account-settings-menu-item" onSelect={onOpenSettings}>Settings</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>

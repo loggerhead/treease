@@ -1,6 +1,5 @@
 import { expect, test, type Page } from './fixtures';
 import {
-  chooseFile,
   dropFile,
   getMonacoValue,
   readEditorState,
@@ -15,13 +14,13 @@ async function openRightTextMode(page: Page) {
   await expect(page.getByTestId('monaco-right-editor')).toBeVisible({ timeout: 5_000 });
 }
 
-test('top import loads original file text into source editor', async ({ page }) => {
+test('top import drop target loads original file text into source editor', async ({ page }) => {
   await page.goto('/editor');
   await waitForEditorReady(page);
 
-  await chooseFile(page, {
-    triggerLabel: 'Import',
-    inputLabel: 'Import file input',
+  await page.getByRole('button', { name: 'Import', exact: true }).click();
+  await dropFile(page, {
+    targetTestId: 'import-drop-trigger',
     fileName: 'sample.yaml',
     content: yamlText,
     mimeType: 'text/plain',
@@ -33,13 +32,13 @@ test('top import loads original file text into source editor', async ({ page }) 
   await expect.poll(async () => (await readEditorState(page)).languageId, { timeout: 5_000 }).toBe('yaml');
 });
 
-test('top import converts csv into the active editor language', async ({ page }) => {
+test('top import drop target converts csv into the active editor language', async ({ page }) => {
   await page.goto('/editor');
   await waitForEditorReady(page);
 
-  await chooseFile(page, {
-    triggerLabel: 'Import',
-    inputLabel: 'Import file input',
+  await page.getByRole('button', { name: 'Import', exact: true }).click();
+  await dropFile(page, {
+    targetTestId: 'import-drop-trigger',
     fileName: 'people.csv',
     content: 'name,age\nAlice,18\nBob,20\n',
     mimeType: 'text/csv',

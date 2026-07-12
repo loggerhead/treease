@@ -12,6 +12,16 @@ const coreWasmDir = path.resolve(repoRoot, 'packages/core/wasm');
 const allowFsDirs = [path.resolve(repoRoot, 'packages/core'), path.resolve(repoRoot, 'example')];
 const bundleAnalyzeEnabled = process.env.TREEASE_BUNDLE_ANALYZE === '1';
 const bundleAnalyzeMode = 'server';
+const workspaceSurface = process.env.TREEASE_WORKSPACE_SURFACE ?? 'web';
+const wdioPluginAlias = process.env.TREEASE_WDIO_TEST === '1'
+  ? [{
+      find: 'virtual:wdio-plugin',
+      replacement: path.resolve(configDir, 'src/lib/test-bridge/wdio-plugin.enabled.ts'),
+    }]
+  : [{
+      find: 'virtual:wdio-plugin',
+      replacement: path.resolve(configDir, 'src/lib/test-bridge/wdio-plugin.ts'),
+    }];
 
 // 仅接受正整数覆盖，避免 benchmark 时把非法字符串静默带进构建产物。
 function readPositiveIntEnv(name: string, fallback: number): number {
@@ -67,6 +77,8 @@ export default defineConfig({
     'import.meta.env.SUPABASE_ANON_KEY': JSON.stringify(process.env.SUPABASE_ANON_KEY ?? ''),
     'import.meta.env.GA_MEASUREMENT_ID': JSON.stringify(process.env.GA_MEASUREMENT_ID ?? ''),
     'import.meta.env.GA_CONSENT_REQUIRED': JSON.stringify(process.env.GA_CONSENT_REQUIRED ?? '0'),
+    'import.meta.env.PUBLIC_WORKSPACE_SURFACE': JSON.stringify(workspaceSurface),
+    'import.meta.env.PUBLIC_WDIO_TEST': JSON.stringify(process.env.TREEASE_WDIO_TEST ?? '0'),
   },
   build: bundleAnalyzeEnabled
     ? {
@@ -79,6 +91,7 @@ export default defineConfig({
         find: /^@core-wasm(\/.*)?$/,
         replacement: `${coreWasmDir}$1`,
       },
+      ...wdioPluginAlias,
     ],
   },
   ssr: {

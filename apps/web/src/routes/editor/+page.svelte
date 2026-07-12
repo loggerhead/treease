@@ -51,7 +51,7 @@
   } from './split-layout-controller';
   import { resolveSplitLayoutMotion } from './split-layout-motion';
   import { splitLayoutDrag } from '../../lib/components/ui/split-layout';
-  import { importFormatOptions, supportedEditorLanguageSet, editorLanguageFallback, type SupportedEditorLanguageId } from '../../lib/monaco/language-support';
+  import { importFormatOptions, supportedEditorLanguageSet, editorLanguageFallback, findSupportedLanguageByExtension, type SupportedEditorLanguageId } from '../../lib/monaco/language-support';
   import { computeSynchronizedRuntimeLoading, type RuntimeStateEventDetail } from '../../lib/runtime-loading';
   import { getActiveDocumentText } from '../../lib/store/active-document-authority';
   import { breadcrumbTargetForPath, type PathSeg } from '../../lib/store/tree-path';
@@ -72,6 +72,10 @@
   import * as ButtonGroup from '../../lib/components/ui/button-group';
   import { IconButton } from '../../lib/components/ui/button';
   import { trackEvent } from '../../lib/analytics/ga4';
+  import { workspaceHost } from '../../lib/workspace-host';
+  import { exchangeAuthCode, signOut } from '../../lib/auth/supabase-auth';
+  import { editorWorkspace, getWorkspaceState, updateWorkspaceTab } from '../../lib/store/workspace-store';
+  import type { WorkspaceCommand, WorkspaceSession } from '../../lib/workspace-host';
 
   let editorRef: Editor | null = null;
   let viewerRef: ViewportPanel | null = null;
@@ -113,6 +117,11 @@
   let showBottomBar = true;
   let urlPreset: ResolvedEditorUrlPreset | null = null;
   let mirrorViewerFromSource = false;
+  let externalFileConflict: { tabId: string; name: string; externalText: string; localText: string; languageId: SupportedEditorLanguageId } | null = null;
+  let recentFiles: Array<{ id: string; name: string }> = [];
+  let autoSaveTimer: ReturnType<typeof setTimeout> | null = null;
+  let sessionSaveTimer: ReturnType<typeof setTimeout> | null = null;
+  let sessionRestoring = false;
   let lastMirroredViewerText = '';
   let lastTrackedGraphViewRevision = -1;
   const maxTabs = 9;
@@ -336,6 +345,11 @@
     void viewerRef.showTextPreview($sourceTextStore, editorRef?.getActiveLanguage() ?? $languageIdStore);
   }
   $: syncScrollEnabled = $settings?.interaction?.enableSyncScroll ?? true;
+  $: autoSaveMode = $settings?.interaction?.autoSave ?? 'off';
+  $: if (autoSaveMode === 'afterDelay' && $sourceTextStore) {
+    if (autoSaveTimer) clearTimeout(autoSaveTimer);
+    autoSaveTimer = setTimeout(() => void saveActiveDocument(false, true), 1_000);
+  }
 
   async function handleImportFileStream(payload: {
     file: File;
@@ -366,6 +380,145 @@
     }
   }
 
+  async function handleRequestImportFile(payload: { sourceFormat: string; targetFormat: string; accept: string[] }) {
+    try {
+      const file = await (await workspaceHost).openFile({ accept: payload.accept });
+      if (!file) return;
+      await handleImportFileStream({ ...payload, file, fileName: file.name });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      toast.error(`Import failed: ${message}`);
+    }
+  }
+
+  function languageForFileName(fileName: string): SupportedEditorLanguageId {
+    const extension = fileName.split('.').pop()?.toLowerCase() ?? '';
+    const language = findSupportedLanguageByExtension(extension);
+    return supportedEditorLanguageSet.has(language as SupportedEditorLanguageId)
+      ? (language as SupportedEditorLanguageId)
+      : editorLanguageFallback;
+  }
+
+  function activeWorkspaceTab() {
+    const workspace = getWorkspaceState();
+    return workspace.tabsById[workspace.activeTabId] ?? null;
+  }
+
+  async function openWorkspaceFile(file: Awaited<ReturnType<Awaited<typeof workspaceHost>['openFile']>>): Promise<void> {
+    if (!file) return;
+    const text = await file.text();
+    const languageId = languageForFileName(file.name);
+    const tabId = editorRef?.openDocument({
+      name: file.name,
+      text,
+      languageId,
+      fileLinkedDocument: file.fileAccessGrant ? { grantId: file.fileAccessGrant.id, name: file.fileAccessGrant.name } : undefined,
+    });
+    if (!tabId) {
+      toast.error('Cannot open another document while all tabs are in use.');
+      return;
+    }
+    if (file.fileAccessGrant) {
+      await watchFileForExternalChanges(tabId, file.fileAccessGrant);
+    }
+    toast.success(`Opened ${file.name}`);
+  }
+
+  async function refreshRecentFiles(): Promise<void> {
+    recentFiles = await (await workspaceHost).listRecentFiles();
+  }
+
+  async function handleOpenDocument(): Promise<void> {
+    const file = await (await workspaceHost).openFile({ accept: ['.json', '.jsonl', '.ndjson', '.yaml', '.yml', '.toml', '.csv'] });
+    await openWorkspaceFile(file);
+    await refreshRecentFiles();
+  }
+
+  async function handleOpenRecentFile(grant: { id: string; name: string }): Promise<void> {
+    await openWorkspaceFile(await (await workspaceHost).openRecentFile(grant));
+  }
+
+  async function handleClearRecentFiles(): Promise<void> {
+    await (await workspaceHost).clearRecentFiles();
+    recentFiles = [];
+  }
+
+  async function saveActiveDocument(forceSaveAs = false, automatic = false): Promise<void> {
+    const tab = activeWorkspaceTab();
+    if (!tab) return;
+    const host = await workspaceHost;
+    const text = editorRef?.getActiveText() ?? tab.sourceText;
+    if (automatic && !tab.fileLinkedDocument) return;
+    const extension = formatOptions.find((option) => option.id === tab.languageId)?.extensions[0] ?? `.${tab.languageId}`;
+    const defaultName = tab.fileLinkedDocument?.name ?? `${tab.name}${extension}`;
+    if (!forceSaveAs && tab.fileLinkedDocument) {
+      await host.saveFile({ id: tab.fileLinkedDocument.grantId, name: tab.fileLinkedDocument.name }, text);
+      updateWorkspaceTab(tab.id, { savedText: text });
+      toast.success(`Saved ${tab.fileLinkedDocument.name}`);
+      return;
+    }
+    const grant = await host.saveFileAs({ fileName: defaultName, text, mimeType: 'text/plain;charset=utf-8' });
+    if (!grant) return;
+    editorRef?.renameDocument(tab.id, grant.name);
+    updateWorkspaceTab(tab.id, { name: grant.name, fileLinkedDocument: { grantId: grant.id, name: grant.name }, savedText: text });
+    await watchFileForExternalChanges(tab.id, grant);
+    toast.success(`Saved ${grant.name}`);
+  }
+
+  const fileWatchUnsubscribers = new Map<string, () => void | Promise<void>>();
+
+  async function watchFileForExternalChanges(tabId: string, grant: { id: string; name: string }): Promise<void> {
+    const previous = fileWatchUnsubscribers.get(tabId);
+    if (previous) await previous();
+    const stop = await (await workspaceHost).watchFile(grant, async () => {
+      const workspace = getWorkspaceState();
+      const tab = workspace.tabsById[tabId];
+      if (!tab?.fileLinkedDocument) return;
+      const opened = await (await workspaceHost).readFile({ id: tab.fileLinkedDocument.grantId, name: tab.fileLinkedDocument.name });
+      if (!opened || opened.text === tab.savedText) return;
+      if (tab.sourceText !== tab.savedText) {
+        externalFileConflict = {
+          tabId,
+          name: tab.fileLinkedDocument.name,
+          externalText: opened.text,
+          localText: tab.sourceText,
+          languageId: tab.languageId,
+        };
+        return;
+      }
+      editorRef?.replaceDocumentFromFile({ tabId, text: opened.text, languageId: tab.languageId });
+      updateWorkspaceTab(tabId, { sourceText: opened.text, savedText: opened.text });
+      toast.info(`Reloaded external changes from ${tab.fileLinkedDocument.name}`);
+    });
+    fileWatchUnsubscribers.set(tabId, stop);
+  }
+
+  async function compareExternalFileChange(): Promise<void> {
+    if (!externalFileConflict) return;
+    viewerViewMode = 'text';
+    await showViewerTextPreview(externalFileConflict.externalText);
+  }
+
+  async function overwriteExternalFileChange(): Promise<void> {
+    const conflict = externalFileConflict;
+    if (!conflict) return;
+    const tab = getWorkspaceState().tabsById[conflict.tabId];
+    if (!tab?.fileLinkedDocument) return;
+    await (await workspaceHost).saveFile({ id: tab.fileLinkedDocument.grantId, name: tab.fileLinkedDocument.name }, conflict.localText);
+    updateWorkspaceTab(conflict.tabId, { savedText: conflict.localText });
+    externalFileConflict = null;
+    toast.success(`Overwrote external changes in ${tab.fileLinkedDocument.name}`);
+  }
+
+  function discardLocalFileChange(): void {
+    const conflict = externalFileConflict;
+    if (!conflict) return;
+    editorRef?.replaceDocumentFromFile({ tabId: conflict.tabId, text: conflict.externalText, languageId: conflict.languageId });
+    updateWorkspaceTab(conflict.tabId, { sourceText: conflict.externalText, savedText: conflict.externalText });
+    externalFileConflict = null;
+    toast.info(`Reloaded ${conflict.name}`);
+  }
+
   async function resolveExportText(format: string): Promise<string | null> {
     const text = await editorRef?.exportAs(format);
     return typeof text === 'string' ? text : null;
@@ -393,21 +546,21 @@
       tabName: tabSummaries.find((tab) => tab.id === activeTabId)?.name,
       formatOptions,
     });
-    downloadText(text, download.fileName);
+    try {
+      await (await workspaceHost).saveText({
+        text,
+        fileName: download.fileName,
+        mimeType: 'text/plain;charset=utf-8',
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      toast.error(`Export failed: ${message}`);
+      return;
+    }
     trackEvent('document_export', { source: 'download', format, result: 'success' });
     for (const message of download.toastMessages) {
       toast.success(message);
     }
-  }
-
-  function downloadText(text: string, fileName: string) {
-    const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = fileName;
-    link.click();
-    URL.revokeObjectURL(url);
   }
 
   function handleShowYqInput() {
@@ -498,6 +651,7 @@
     await settingsStore.save({
       interaction: {
         enableSyncScroll: nextEnabled,
+        autoSave: $settings.interaction.autoSave,
       },
     });
   }
@@ -581,12 +735,144 @@
   }
 
   function handleCloseTab(id: string) {
+    const tab = getWorkspaceState().tabsById[id];
+    if (tab && tab.sourceText !== tab.savedText && !window.confirm(`Close ${tab.name} without saving local changes?`)) {
+      return;
+    }
+    const stop = fileWatchUnsubscribers.get(id);
+    if (stop) {
+      void stop();
+      fileWatchUnsubscribers.delete(id);
+    }
     editorRef?.closeTab(id);
   }
 
   function handleActivateTab(id: string) {
     editorRef?.activateTab(id);
   }
+
+  function sessionFromWorkspace(): WorkspaceSession {
+    const workspace = getWorkspaceState();
+    return {
+      version: 1,
+      activeTabIndex: Math.max(0, workspace.tabOrder.indexOf(workspace.activeTabId)),
+      tabs: workspace.tabOrder.flatMap((tabId) => {
+        const tab = workspace.tabsById[tabId];
+        return tab && tab.role !== 'sidecar' ? [{
+          name: tab.name,
+          languageId: tab.languageId,
+          sourceText: tab.sourceText,
+          savedText: tab.savedText,
+          linkedFileName: tab.fileLinkedDocument?.name,
+        }] : [];
+      }),
+    };
+  }
+
+  function scheduleWorkspaceSessionSave(): void {
+    if (sessionRestoring) return;
+    if (sessionSaveTimer) clearTimeout(sessionSaveTimer);
+    sessionSaveTimer = setTimeout(() => {
+      void (async () => {
+        const host = await workspaceHost;
+        if (host.surface === 'desktop') await host.saveSession(sessionFromWorkspace());
+      })();
+    }, 300);
+  }
+
+  async function restoreWorkspaceSession(session: WorkspaceSession): Promise<void> {
+    if (!session.tabs.length || !editorRef) return;
+    sessionRestoring = true;
+    try {
+      await editorRef.ensureReady();
+      const [first, ...remaining] = session.tabs;
+      const firstLanguage = languageForFileName(`recovery.${first.languageId}`);
+      await editorRef.replaceActiveFromFile({ text: first.sourceText, languageId: firstLanguage });
+      const firstTab = activeWorkspaceTab();
+      if (firstTab) {
+        editorRef.renameDocument(firstTab.id, first.name);
+        updateWorkspaceTab(firstTab.id, { name: first.name, sourceText: first.sourceText, savedText: first.savedText });
+      }
+      for (const tab of remaining) {
+        editorRef.openDocument({
+          name: tab.name,
+          text: tab.sourceText,
+          languageId: languageForFileName(`recovery.${tab.languageId}`),
+        });
+      }
+      await tick();
+      const restored = getWorkspaceState().tabOrder;
+      const active = restored[Math.min(session.activeTabIndex, restored.length - 1)];
+      if (active) editorRef.activateTab(active);
+      toast.info('Recovered the previous desktop workspace as local drafts.');
+    } finally {
+      sessionRestoring = false;
+    }
+  }
+
+  async function handleDesktopDeepLinks(urls: URL[]): Promise<void> {
+    for (const url of urls) {
+      if (url.hostname === 'editor') {
+        const nextPreset = resolveEditorUrlPreset(url.search);
+        const allowedParameters = new Set([
+          'ui', 'lang', 'text', 'textUrl', 'rightText', 'rightTextUrl', 'command', 'nest', 'autoFormat', 'yq',
+        ]);
+        const hasUnknownParameter = [...url.searchParams.keys()].some((key) => !allowedParameters.has(key));
+        if (hasUnknownParameter || nextPreset.telemetry.ignored.length > 0) {
+          toast.error('Desktop editor link contains unsupported parameters.');
+          continue;
+        }
+        urlPreset = nextPreset;
+        await applyEditorUrlPreset(nextPreset);
+        continue;
+      }
+      if (url.hostname === 'auth' && url.pathname === '/callback') {
+        const code = url.searchParams.get('code');
+        if (!code) {
+          toast.error('Login callback did not include an authorization code.');
+          continue;
+        }
+        const session = await exchangeAuthCode(code);
+        if (!session?.refresh_token) throw new Error('Login did not return a refresh token.');
+        await (await workspaceHost).storeRefreshToken(session.refresh_token);
+        loginOpen = false;
+        toast.success('You are now logged in.');
+      }
+    }
+  }
+
+  async function handleLogout(): Promise<void> {
+    try {
+      await signOut();
+      toast.success('You are now logged out.');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      toast.error(`Logout failed: ${message}`);
+    }
+  }
+
+  async function handleCheckForUpdates(): Promise<void> {
+    const host = await workspaceHost;
+    if (host.surface !== 'desktop') return;
+    const update = await host.checkForUpdate();
+    if (!update) {
+      toast.info('Treease is up to date.');
+      return;
+    }
+    toast.info(`Treease ${update.version} is ready to download.`, {
+      action: { label: 'Download and restart', onClick: () => void host.installCheckedUpdate() },
+    });
+  }
+
+  const workspaceCommands: Record<WorkspaceCommand, () => void | Promise<void>> = {
+    'workspace:new': handleAddTab,
+    'workspace:open': handleOpenDocument,
+    'workspace:save': () => saveActiveDocument(),
+    'workspace:save-as': () => saveActiveDocument(true),
+    'workspace:close-tab': () => activeTabId && handleCloseTab(activeTabId),
+    'workspace:toggle-viewer': () => { showViewerPane = !showViewerPane; },
+    'workspace:help': () => void (async () => (await workspaceHost).openExternal(new URL('https://treease.io')) )(),
+  };
 
   $: {
     const nextSplitLayoutState = syncSplitRatio(splitLayoutState, containerWidth, splitLayoutConfig);
@@ -617,6 +903,29 @@
 
   onMount(() => {
     urlPreset ??= resolveEditorUrlPreset(window.location.search);
+    let stopWorkspaceSession: (() => void) | null = null;
+    let stopWorkspaceCommands: (() => void) | null = null;
+    let stopDeepLinks: (() => void) | null = null;
+    void (async () => {
+      const host = await workspaceHost;
+        if (host.surface === 'desktop') {
+        const session = await host.loadSession();
+        if (session) await restoreWorkspaceSession(session);
+        for (const file of await host.takeStartupFiles()) await openWorkspaceFile(file);
+        await handleDesktopDeepLinks(await host.getInitialDeepLinks());
+        stopWorkspaceCommands = await host.onCommand((command) => void workspaceCommands[command]());
+        stopDeepLinks = await host.onDeepLinks((urls) => void handleDesktopDeepLinks(urls).catch((error) => {
+          const message = error instanceof Error ? error.message : String(error);
+          toast.error(`Desktop deep link failed: ${message}`);
+        }));
+      }
+      await refreshRecentFiles();
+      stopWorkspaceSession = editorWorkspace.subscribe(() => scheduleWorkspaceSessionSave());
+      scheduleWorkspaceSessionSave();
+    })().catch((error) => {
+      const message = error instanceof Error ? error.message : String(error);
+      toast.error(`Desktop workspace initialization failed: ${message}`);
+    });
     void applyEditorUrlPreset(urlPreset).catch((error) => {
       const message = error instanceof Error ? error.message : String(error);
       console.error('[editor] failed to apply url preset', { error: message });
@@ -626,8 +935,31 @@
       syncSplitLayoutState(syncSplitRatio(splitLayoutState, getContainerWidth(), splitLayoutConfig));
     };
     window.addEventListener('resize', handleResize);
+    let stopDroppedFiles: (() => void) | null = null;
+    void (async () => {
+      stopDroppedFiles = await (await workspaceHost).onFilesDropped((files) => {
+        for (const file of files) void openWorkspaceFile(file);
+        void refreshRecentFiles();
+      });
+    })();
+    const saveOnFocusChange = () => {
+      if (autoSaveMode === 'onFocusChange') void saveActiveDocument(false, true);
+    };
+    const saveOnWindowChange = () => {
+      if (document.visibilityState === 'hidden' && autoSaveMode === 'onWindowChange') void saveActiveDocument(false, true);
+    };
+    window.addEventListener('blur', saveOnFocusChange);
+    document.addEventListener('visibilitychange', saveOnWindowChange);
     return () => {
       window.removeEventListener('resize', handleResize);
+      stopDroppedFiles?.();
+      stopWorkspaceSession?.();
+      stopWorkspaceCommands?.();
+      stopDeepLinks?.();
+      window.removeEventListener('blur', saveOnFocusChange);
+      document.removeEventListener('visibilitychange', saveOnWindowChange);
+      if (autoSaveTimer) clearTimeout(autoSaveTimer);
+      if (sessionSaveTimer) clearTimeout(sessionSaveTimer);
     };
   });
 </script>
@@ -645,14 +977,23 @@
         showTabs={true}
         showRightActions={true}
         {formatOptions}
-        onAddTab={handleAddTab}
+        onAddTab={workspaceCommands['workspace:new']}
+        onOpenDocument={async () => { await workspaceCommands['workspace:open'](); }}
+        onSaveDocument={async () => { await workspaceCommands['workspace:save'](); }}
+        onSaveAsDocument={async () => { await workspaceCommands['workspace:save-as'](); }}
+        {recentFiles}
+        onOpenRecentFile={handleOpenRecentFile}
+        onClearRecentFiles={handleClearRecentFiles}
         onCloseTab={handleCloseTab}
         onActivateTab={handleActivateTab}
+        onRequestImportFile={handleRequestImportFile}
         onImportFileStream={handleImportFileStream}
         onExportPreview={handleExportPreview}
         onExportDownload={handleExportDownload}
         onShare={() => (shareOpen = true)}
         onLogin={() => (loginOpen = true)}
+        onLogout={handleLogout}
+        onCheckForUpdates={handleCheckForUpdates}
         onOpenSettings={() => (settingsOpen = true)}
       />
     {/if}
@@ -828,11 +1169,29 @@
         onShowYqInput={handleShowYqInput}
         onEscape={() => editorRef?.escapeActive()}
         onUnescape={() => editorRef?.unescapeActive()}
+        onNewDocument={workspaceCommands['workspace:new']}
+        onOpenDocument={workspaceCommands['workspace:open']}
+        onSaveDocument={workspaceCommands['workspace:save']}
+        onSaveAsDocument={workspaceCommands['workspace:save-as']}
+        onCloseDocument={workspaceCommands['workspace:close-tab']}
         onTreePathSelect={handleTreePathSelect}
       />
     {/if}
   </div>
 </main>
+{#if externalFileConflict}
+  <div class="fixed inset-0 z-50 grid place-items-center bg-slate-950/30 p-6" role="presentation">
+    <div class="w-full max-w-lg rounded-xl border border-[var(--border-strong)] bg-white p-5 shadow-xl" role="dialog" aria-modal="true" aria-labelledby="external-file-conflict-title">
+      <h2 id="external-file-conflict-title" class="text-base font-semibold">External file change</h2>
+      <p class="mt-2 text-sm text-[var(--text-muted)]">{externalFileConflict.name} changed outside Treease while this tab has unsaved edits.</p>
+      <div class="mt-5 flex flex-wrap justify-end gap-2">
+        <button class="rounded-md border px-3 py-1.5 text-sm" on:click={() => void compareExternalFileChange()}>Compare</button>
+        <button class="rounded-md border px-3 py-1.5 text-sm" on:click={discardLocalFileChange}>Discard local and reload</button>
+        <button class="rounded-md bg-[var(--accent)] px-3 py-1.5 text-sm text-white" on:click={() => void overwriteExternalFileChange()}>Overwrite file</button>
+      </div>
+    </div>
+  </div>
+{/if}
 {#if !showEditorPane}
   <div class="pointer-events-none absolute -left-[10000px] top-0 h-px w-px overflow-hidden opacity-0" aria-hidden="true">
     <Editor

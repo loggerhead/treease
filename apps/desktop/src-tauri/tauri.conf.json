@@ -1,0 +1,53 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Treease",
+  "version": "0.1.0",
+  "identifier": "com.treease.desktop",
+  "build": {
+    "beforeDevCommand": "pnpm icons:generate && pnpm --dir ../web dev:desktop",
+    "devUrl": "http://127.0.0.1:1420",
+    "beforeBuildCommand": "pnpm icons:generate && pnpm --dir ../web build:desktop",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "security": {
+      "capabilities": ["default"],
+      "csp": "default-src 'self'; script-src 'self'; connect-src 'self' http://127.0.0.1:1420 https://api.treease.com https://*.supabase.co; img-src 'self' data: blob: https:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; worker-src 'self' blob:; frame-src 'none'; object-src 'none'; base-uri 'none'"
+    },
+    "windows": [
+      {
+        "label": "main",
+        "title": "Treease Developer Preview",
+        "width": 1280,
+        "height": 840,
+        "minWidth": 960,
+        "minHeight": 640,
+        "resizable": true
+      }
+    ]
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "createUpdaterArtifacts": true,
+    "fileAssociations": [
+      { "ext": ["json"], "name": "JSON document", "description": "Treease JSON document", "role": "Editor", "mimeType": "application/json", "rank": "Alternate" },
+      { "ext": ["jsonl", "ndjson"], "name": "JSON Lines document", "description": "Treease JSON Lines document", "role": "Editor", "mimeType": "application/x-ndjson", "rank": "Alternate" },
+      { "ext": ["yaml", "yml"], "name": "YAML document", "description": "Treease YAML document", "role": "Editor", "mimeType": "application/yaml", "rank": "Alternate" },
+      { "ext": ["toml"], "name": "TOML document", "description": "Treease TOML document", "role": "Editor", "mimeType": "application/toml", "rank": "Alternate" },
+      { "ext": ["csv"], "name": "CSV document", "description": "Treease CSV document", "role": "Editor", "mimeType": "text/csv", "rank": "Alternate" }
+    ]
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEUyMEVCMjgwMkE4OUJGQzAKUldUQXY0a3FnTElPNHNkNVJrR3VVcURiSk1ETWtYdlNhVXBSYTZ1SEdXTnFOMVBpVUdpZWUxcmcK",
+      "endpoints": ["https://github.com/loggerhead/treease/releases/latest/download/latest.json"],
+      "windows": { "installMode": "basicUi" }
+    },
+    "deep-link": {
+      "desktop": {
+        "schemes": ["treease"]
+      }
+    }
+  }
+}

@@ -118,6 +118,10 @@ test('closing tabs removes only left tabs and never lists the right sidecar tab'
   });
   await expect(page.getByTestId('tab-open-tab-sidecar')).toHaveCount(0);
 
+  page.once('dialog', (dialog) => {
+    expect(dialog.message()).toContain('without saving local changes');
+    void dialog.accept();
+  });
   await page.getByTestId(`tab-close-${firstTabId}`).click();
   await expect.poll(async () => await leftTabIds(page), { timeout: 5_000 }).toEqual([secondTabId]);
   await expect.poll(async () => activeWorkspaceTabId(page), { timeout: 5_000 }).toBe(secondTabId);

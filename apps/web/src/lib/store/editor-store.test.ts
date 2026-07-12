@@ -810,8 +810,8 @@ describe('editor-store', () => {
       });
 
       expect(editorStore.actions.getWorkspaceTabSummaries()).toEqual([
-        { id: 'tab-primary', name: 'Untitled 1', languageId: 'json' },
-        { id: 'tab-second', name: 'Untitled 2', languageId: 'yaml' },
+        { id: 'tab-primary', name: 'Untitled 1', languageId: 'json', dirty: false },
+        { id: 'tab-second', name: 'Untitled 2', languageId: 'yaml', dirty: false },
       ]);
     });
 
@@ -897,7 +897,7 @@ describe('editor-store', () => {
       });
     });
 
-    it('ignores direct workspace primary tab updates to protect legacy compatibility fields', () => {
+    it('updates the active primary tab through document authority', () => {
       editorStore.actions.setSourceText('{"primary":true}');
       editorStore.actions.setDocumentKey('tab-primary:0');
       editorStore.actions.incrementEditorRevision();
@@ -913,11 +913,11 @@ describe('editor-store', () => {
       });
 
       const state = editorStore.get();
-      expect(state.sourceText).toBe('{"primary":true}');
-      expect(state.editorRevision).toBe(1);
+      expect(state.sourceText).toBe('bad');
+      expect(state.editorRevision).toBe(99);
       expect(state.workspace.tabsById[state.workspace.primaryTabId]).toMatchObject({
-        sourceText: '{"primary":true}',
-        revision: 1,
+        sourceText: 'bad',
+        revision: 99,
       });
     });
 

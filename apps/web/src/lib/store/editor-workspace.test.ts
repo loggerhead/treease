@@ -7,6 +7,7 @@ import {
   ensureSidecarTab,
   reinitializeWorkspaceFromPrimaryTab,
   summarizeWorkspaceTabs,
+  isWorkspaceTabDirty,
   syncSidecarLanguageFromPrimary,
   syncWorkspaceEditorTab,
   updateWorkspaceTab,
@@ -94,9 +95,21 @@ describe('editor-workspace', () => {
     expect(workspace.paneTabIds.left).toBe('tab-primary');
     expect(workspace.paneTabIds.right).toBe('tab-sidecar');
     expect(summarizeWorkspaceTabs(workspace)).toEqual([
-      { id: 'tab-primary', name: 'Untitled 1', languageId: 'json' },
-      { id: 'tab-second', name: 'Untitled 2', languageId: 'yaml' },
+      { id: 'tab-primary', name: 'Untitled 1', languageId: 'json', dirty: false },
+      { id: 'tab-second', name: 'Untitled 2', languageId: 'yaml', dirty: false },
     ]);
+  });
+
+  it('keeps file linkage per tab and derives dirty state from the saved text', () => {
+    const linked = tab({
+      fileLinkedDocument: { grantId: 'file-1', name: 'config.json' },
+      savedText: '{"a":1}',
+    });
+    const dirty = updateWorkspaceTab(createEditorWorkspaceState(linked), linked.id, { sourceText: '{"a":2}' });
+
+    expect(isWorkspaceTabDirty(linked)).toBe(false);
+    expect(isWorkspaceTabDirty(dirty.tabsById[linked.id])).toBe(true);
+    expect(dirty.tabsById[linked.id].fileLinkedDocument).toEqual({ grantId: 'file-1', name: 'config.json' });
   });
 
   it('activates a background tab as the only primary tab', () => {

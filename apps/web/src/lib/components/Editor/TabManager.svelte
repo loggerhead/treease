@@ -130,6 +130,13 @@
     }
   }
 
+  export function setTabName(id: string, name: string): void {
+    const index = tabs.findIndex((tab) => tab.id === id);
+    if (index < 0 || tabs[index].name === name) return;
+    tabs = tabs.map((tab, currentIndex) => (currentIndex === index ? { ...tab, name } : tab));
+    syncTabSummaries();
+  }
+
   export function setTabDocumentKey(id: string, documentKey: string): void {
     const index = tabs.findIndex((tab) => tab.id === id);
     if (index < 0) return;

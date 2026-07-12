@@ -8,6 +8,12 @@ import type { PathSeg } from './tree-path';
 export type EditorPaneId = 'left' | 'right';
 export type EditorWorkspaceTabRole = 'primary' | 'sidecar' | 'background';
 
+/** Opaque host-owned reference to a user-selected local file. */
+export type FileLinkedDocument = {
+  grantId: string;
+  name: string;
+};
+
 export type EditorWorkspaceTab = {
   id: string;
   role: EditorWorkspaceTabRole;
@@ -20,6 +26,8 @@ export type EditorWorkspaceTab = {
   snapshotId: SnapshotId | null;
   tempModel: TempModel;
   fullEditUiState: FullEditUiState;
+  fileLinkedDocument?: FileLinkedDocument;
+  savedText?: string;
 };
 
 export type EditorWorkspaceState = {
@@ -37,7 +45,7 @@ export type WorkspaceSnapshotBinding = {
   snapshotId: SnapshotId;
 };
 
-export type EditorWorkspaceTabSummary = { id: string; name: string; languageId: SupportedEditorLanguageId };
+export type EditorWorkspaceTabSummary = { id: string; name: string; languageId: SupportedEditorLanguageId; dirty: boolean };
 
 export type WorkspaceEditorTabInput = {
   id: string;
@@ -50,6 +58,8 @@ export type WorkspaceEditorTabInput = {
   snapshotId?: SnapshotId | null;
   tempModel?: TempModel;
   fullEditUiState?: FullEditUiState;
+  fileLinkedDocument?: FileLinkedDocument;
+  savedText?: string;
 };
 
 export type CloseWorkspaceTabResult = {
@@ -68,6 +78,8 @@ export type EditorWorkspaceTabPatch = {
   snapshotId?: SnapshotId | null;
   tempModel?: TempModel;
   fullEditUiState?: FullEditUiState;
+  fileLinkedDocument?: FileLinkedDocument;
+  savedText?: string;
 };
 
 function sidecarDocumentKey(tabId: string): string {
@@ -195,6 +207,8 @@ function createEditorTabFromInput(
       : existing
         ? cloneFullEditUiState(existing.fullEditUiState)
         : createInactiveFullEditUiState(),
+    fileLinkedDocument: input.fileLinkedDocument ?? existing?.fileLinkedDocument,
+    savedText: input.savedText ?? existing?.savedText,
   };
 }
 
@@ -376,7 +390,11 @@ export function summarizeWorkspaceTabs(workspace: EditorWorkspaceState): EditorW
   return workspace.tabOrder
     .map((tabId) => workspace.tabsById[tabId])
     .filter((tab): tab is EditorWorkspaceTab => Boolean(tab && tab.role !== 'sidecar'))
-    .map((tab) => ({ id: tab.id, name: tab.name, languageId: tab.languageId }));
+    .map((tab) => ({ id: tab.id, name: tab.name, languageId: tab.languageId, dirty: isWorkspaceTabDirty(tab) }));
+}
+
+export function isWorkspaceTabDirty(tab: EditorWorkspaceTab): boolean {
+  return tab.savedText !== undefined && tab.sourceText !== tab.savedText;
 }
 
 export function ensureSidecarTab(
@@ -412,6 +430,8 @@ export function ensureSidecarTab(
     snapshotId: null,
     tempModel: createCleanTempModel(input.sourceText),
     fullEditUiState: createInactiveFullEditUiState(),
+    fileLinkedDocument: undefined,
+    savedText: undefined,
   };
   return {
     ...workspace,
@@ -450,6 +470,8 @@ export function ensureDetachedSidecarTab(
     snapshotId: null,
     tempModel: createCleanTempModel(input.sourceText),
     fullEditUiState: createInactiveFullEditUiState(),
+    fileLinkedDocument: undefined,
+    savedText: undefined,
   };
   return {
     ...workspace,
@@ -500,6 +522,8 @@ export function updateWorkspaceTab(
     snapshotId: nextSnapshotId,
     tempModel: nextTempModel,
     fullEditUiState: nextFullEditUiState,
+    fileLinkedDocument: patch.fileLinkedDocument ?? current.fileLinkedDocument,
+    savedText: patch.savedText ?? current.savedText,
   };
   return {
     ...workspace,

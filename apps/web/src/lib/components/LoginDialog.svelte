@@ -4,6 +4,7 @@
   import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog';
   import { Button } from './ui/button';
   import { sendEmailOtp, signInWithProvider, verifyEmailOtp } from '../auth/supabase-auth';
+  import { workspaceHost } from '../workspace-host';
 
   export let open = false;
 
@@ -61,7 +62,10 @@
     busy = true;
     error = '';
     try {
-      await verifyEmailOtp(normalizedEmail, normalizedOtp);
+      const session = await verifyEmailOtp(normalizedEmail, normalizedOtp);
+      if (session?.refresh_token && (await workspaceHost).surface === 'desktop') {
+        await (await workspaceHost).storeRefreshToken(session.refresh_token);
+      }
       open = false;
       toast.success('You are now logged in.');
     } catch (cause) {
@@ -69,6 +73,15 @@
     } finally {
       busy = false;
     }
+  }
+
+  async function openLegalPage(event: MouseEvent, path: '/terms' | '/privacy'): Promise<void> {
+    event.preventDefault();
+    if ((await workspaceHost).surface !== 'desktop') {
+      window.location.assign(path);
+      return;
+    }
+    await (await workspaceHost).openExternal(new URL(path, 'https://treease.io'));
   }
 </script>
 
@@ -135,7 +148,7 @@
 
       <p class="mt-5 flex items-start gap-2 text-[14px] leading-6 text-[#61738f]">
         <ShieldCheck size={17} class="mt-0.5 shrink-0 text-[#2879f6]" />
-        By continuing you agree to our <a class="text-[#2879f6] hover:underline" href="/terms">Terms of Service</a> and <a class="text-[#2879f6] hover:underline" href="/privacy">Privacy Policy</a>.
+        By continuing you agree to our <a class="text-[#2879f6] hover:underline" href="https://treease.io/terms" on:click={(event) => void openLegalPage(event, '/terms')}>Terms of Service</a> and <a class="text-[#2879f6] hover:underline" href="https://treease.io/privacy" on:click={(event) => void openLegalPage(event, '/privacy')}>Privacy Policy</a>.
       </p>
     </div>
   </DialogContent>

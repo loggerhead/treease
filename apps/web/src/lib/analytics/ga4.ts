@@ -20,20 +20,15 @@ const DEFAULT_MEASUREMENT_ID = 'G-N8DW5G72ZQ';
 const configuredMeasurementId = import.meta.env.GA_MEASUREMENT_ID ?? '';
 const measurementId = (configuredMeasurementId || (import.meta.env.PROD ? DEFAULT_MEASUREMENT_ID : '')).trim();
 const consentRequired = import.meta.env.GA_CONSENT_REQUIRED === '1';
+const desktopSurface = import.meta.env.PUBLIC_WORKSPACE_SURFACE === 'desktop';
 const allowedParamKeys = new Set([
-  'page_path',
-  'page_title',
   'source',
   'language',
   'result',
   'format',
   'operation',
   'mode',
-  'surface',
-  'result_count',
   'edit_type',
-  'from',
-  'to',
 ]);
 
 let initialized = false;
@@ -95,6 +90,7 @@ function scheduleFlush(): void {
 }
 
 function enqueueEvent(name: string, params: AnalyticsEventParams): void {
+  if (desktopSurface) return;
   if (!measurementId || (consentRequired && !consentGranted) || queuedEvents.length >= 100) return;
   const safeParams: AnalyticsEventParams = {};
   for (const [key, value] of Object.entries(params)) {
@@ -114,6 +110,7 @@ export function sanitizePagePath(pathname: string): string {
 }
 
 export async function initializeAnalytics(): Promise<void> {
+  if (desktopSurface) return;
   if (initialized || !measurementId || !consentGranted) return;
 
   const gtag = enqueueGoogleTag();
@@ -155,6 +152,7 @@ export async function setAnalyticsConsent(granted: boolean): Promise<void> {
 }
 
 export function trackPageView(pathname: string): void {
+  if (desktopSurface) return;
   const params: AnalyticsEventParams = { page_path: sanitizePagePath(pathname) };
   if (typeof document !== 'undefined') params.page_title = document.title;
   enqueueEvent('page_view', params);

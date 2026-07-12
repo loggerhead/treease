@@ -65,6 +65,27 @@
     return editorCore?.importAs(targetFormat, text, sourceFormat);
   }
 
+  export function openDocument(payload: {
+    name: string;
+    text: string;
+    languageId: SupportedEditorLanguageId;
+    fileLinkedDocument?: { grantId: string; name: string };
+  }) {
+    return editorCore?.openDocument(payload);
+  }
+
+  export function replaceActiveFromFile(payload: { text: string; languageId: SupportedEditorLanguageId }) {
+    return editorCore?.replaceActiveFromFile(payload);
+  }
+
+  export function replaceDocumentFromFile(payload: { tabId: string; text: string; languageId: SupportedEditorLanguageId }) {
+    return editorCore?.replaceDocumentFromFile(payload);
+  }
+
+  export function renameDocument(tabId: string, name: string) {
+    return editorCore?.renameDocument(tabId, name);
+  }
+
   export function importStream(
     file: File,
     sourceLanguage: string,

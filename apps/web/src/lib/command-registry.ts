@@ -1,6 +1,8 @@
 import type { SupportedLanguageId } from './monaco/language-support'
 
-export type CommandId = 'format' | 'minify' | 'sort' | 'show-yq-input' | 'toggle-nest' | 'toggle-auto-format' | 'escape' | 'unescape'
+export type CommandId =
+  | 'format' | 'minify' | 'sort' | 'show-yq-input' | 'toggle-nest' | 'toggle-auto-format' | 'escape' | 'unescape'
+  | 'workspace:new' | 'workspace:open' | 'workspace:save' | 'workspace:save-as' | 'workspace:close-tab'
 
 export type CommandLangs = '*' | SupportedLanguageId
 
@@ -13,6 +15,11 @@ export type CommandItem = {
 }
 
 export const commandItems: CommandItem[] = [
+  { id: 'workspace:new', label: 'New document', keywords: ['file', 'tab', 'create'], type: 'action', langs: ['*'] },
+  { id: 'workspace:open', label: 'Open document', keywords: ['file', 'import'], type: 'action', langs: ['*'] },
+  { id: 'workspace:save', label: 'Save document', keywords: ['file', 'write'], type: 'action', langs: ['*'] },
+  { id: 'workspace:save-as', label: 'Save document as', keywords: ['file', 'write', 'copy'], type: 'action', langs: ['*'] },
+  { id: 'workspace:close-tab', label: 'Close tab', keywords: ['file', 'document'], type: 'action', langs: ['*'] },
   { id: 'format', label: 'Format', keywords: ['pretty', 'beautify'], type: 'action', langs: ['*'] },
   { id: 'minify', label: 'Minify', keywords: ['compress', 'compact'], type: 'action', langs: ['*'] },
   { id: 'sort', label: 'Sort', keywords: ['order', 'stable'], type: 'action', langs: ['*'] },

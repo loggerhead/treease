@@ -53,6 +53,7 @@ function createLexicalTokenRules(colors: SemanticTypeColors) {
 export type GraphViewerConfig = typeof graphViewerConfig;
 export type SemanticTypeColors = typeof semanticTypeColors;
 export type SettingsDocument = Record<string, unknown>;
+export type { AutoSaveMode } from './ui-settings-data';
 
 export type Settings = {
   editor: {
@@ -72,6 +73,7 @@ export type Settings = {
   };
   interaction: {
     enableSyncScroll: boolean;
+    autoSave: import('./ui-settings-data').AutoSaveMode;
   };
   parser: {
     enableNest: boolean;
