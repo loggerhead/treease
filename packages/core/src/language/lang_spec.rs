@@ -302,14 +302,10 @@ pub const CSV_SPEC: LangSpec<'static> = LangSpec {
 
 pub const LANG_SPECS: &[LangSpec<'static>] = &[
     JSON_SPEC,
-    #[cfg(not(feature = "lite"))]
     YAML_SPEC,
-    #[cfg(not(feature = "lite"))]
     TOML_SPEC,
-    #[cfg(not(feature = "lite"))]
     PYTHON_SPEC,
     JAVASCRIPT_SPEC,
-    #[cfg(not(feature = "lite"))]
     CSV_SPEC,
 ];
 

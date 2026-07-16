@@ -1,6 +1,5 @@
 use std::{cell::RefCell, collections::HashMap};
 
-#[cfg(not(feature = "lite"))]
 use crate::formats::{CsvEncoder, JavascriptEncoder, PythonEncoder, TomlEncoder, YamlEncoder};
 use crate::formats::{Encode, FormatPreferences, JsonEncoder, default_language_preferences};
 use crate::graph::graph_projection_service;
@@ -178,23 +177,18 @@ fn encode_document_to_format(
         "json" => JsonEncoder::new(prefs)
             .encode_to_string(store, root)
             .map_err(|e| e.to_string()),
-        #[cfg(not(feature = "lite"))]
         "yaml" => YamlEncoder::new(prefs)
             .encode_to_string(store, root)
             .map_err(|e| e.to_string()),
-        #[cfg(not(feature = "lite"))]
         "toml" => TomlEncoder::new(prefs)
             .encode_to_string(store, root)
             .map_err(|e| e.to_string()),
-        #[cfg(not(feature = "lite"))]
         "python" => PythonEncoder::new(prefs)
             .encode_to_string(store, root)
             .map_err(|e| e.to_string()),
-        #[cfg(not(feature = "lite"))]
         "javascript" => JavascriptEncoder::new(prefs)
             .encode_to_string(store, root)
             .map_err(|e| e.to_string()),
-        #[cfg(not(feature = "lite"))]
         "csv" => CsvEncoder::new(prefs)
             .encode_to_string(store, root)
             .map_err(|e| e.to_string()),

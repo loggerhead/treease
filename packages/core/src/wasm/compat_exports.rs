@@ -489,7 +489,6 @@ fn value_edit_path_segments(
 
 // ── runYqText export ──────────────────────────────────────────────────
 
-#[cfg(not(feature = "lite"))]
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct RunYqTextInput {
@@ -499,7 +498,6 @@ struct RunYqTextInput {
     indent: Option<i32>,
 }
 
-#[cfg(not(feature = "lite"))]
 #[wasm_bindgen]
 pub fn run_yq_text_wasm(spec: JsValue) -> Result<JsValue, JsValue> {
     let input: RunYqTextInput =
@@ -514,7 +512,6 @@ pub fn run_yq_text_wasm(spec: JsValue) -> Result<JsValue, JsValue> {
     Ok(JsValue::from_str(&text))
 }
 
-#[cfg(not(feature = "lite"))]
 fn run_yq_text_impl(
     language: &str,
     text: &str,
@@ -528,7 +525,6 @@ fn run_yq_text_impl(
     evaluator_value_to_display_text(&result, indent).map_err(|e| e.to_string())
 }
 
-#[cfg(not(feature = "lite"))]
 fn evaluator_value_to_display_text(
     value: &crate::evaluator::Value,
     indent: i32,
@@ -549,7 +545,6 @@ fn evaluator_value_to_display_text(
     }
 }
 
-#[cfg(not(feature = "lite"))]
 fn json_to_evaluator_value(value: &serde_json::Value) -> crate::evaluator::Value {
     use crate::evaluator::Value;
     match value {
@@ -569,7 +564,6 @@ fn json_to_evaluator_value(value: &serde_json::Value) -> crate::evaluator::Value
     }
 }
 
-#[cfg(not(feature = "lite"))]
 fn evaluator_value_to_json(value: &crate::evaluator::Value) -> serde_json::Value {
     use crate::evaluator::Value;
     match value {
@@ -594,7 +588,6 @@ mod tests {
     use super::*;
     use crate::wasm_types::PathSegTag;
 
-    #[cfg(not(feature = "lite"))]
     #[test]
     fn run_yq_text_returns_display_ready_scalar_string_and_document_text() {
         crate::wasm::init_wasm();
@@ -654,7 +647,6 @@ mod tests {
             .expect("minify text should succeed"),
             "{\"a\":1,\"b\":2}\n",
         );
-        #[cfg(not(feature = "lite"))]
         assert_eq!(
             convert_text_impl(&ConvertTextInput {
                 source_language: "json".into(),
@@ -665,7 +657,6 @@ mod tests {
             .expect("convert text should succeed"),
             "a: 1\n",
         );
-        #[cfg(not(feature = "lite"))]
         assert_eq!(
             convert_text_impl(&ConvertTextInput {
                 source_language: "csv".into(),

@@ -23,11 +23,6 @@ wasm_release_date = "26070510"
 path = "src/lib.rs"
 crate-type = ["cdylib", "rlib"]
 
-[features]
-default = []
-## lite – only JSON language support, excludes YAML/TOML/Python/JavaScript/CSV
-lite = []
-
 [dependencies]
 regex-lite = "0.1"
 serde = { version = "1", features = ["derive"] }

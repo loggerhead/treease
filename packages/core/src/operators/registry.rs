@@ -83,19 +83,14 @@ fn ensure_default_formats_registered() {
 /// Initialize the operator and format registries.
 /// In the full implementation, the registry handle lives in Context.codec_registry.
 pub fn init_registry(reg: &mut OperatorRegistry) -> Result<(), CoreError> {
-    // Register operators (skipped in lite mode — no operator transformations).
-    #[cfg(not(feature = "lite"))]
-    {
-        let flags = OpFlags::default();
-        let mut op_list = Vec::new();
-        append_ops(&mut op_list, &flags);
+    let flags = OpFlags::default();
+    let mut op_list = Vec::new();
+    append_ops(&mut op_list, &flags);
 
-        for entry in &op_list {
-            reg.register_operator(entry.id, entry.handler)?;
-        }
+    for entry in &op_list {
+        reg.register_operator(entry.id, entry.handler)?;
     }
 
-    // Register formats (always available).
     let mut format_list = Vec::new();
     append_formats(&mut format_list, &FormatFlags::default());
     register_format_list(reg, &format_list);
@@ -109,7 +104,6 @@ pub fn register_op(
     reg.register_operator(id, handler)
 }
 
-#[cfg(not(feature = "lite"))]
 pub fn register_op_list(reg: &mut OperatorRegistry, ops: &[OpEntry]) -> Result<(), CoreError> {
     for entry in ops {
         register_op(reg, entry.id, entry.handler)?;

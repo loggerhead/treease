@@ -1,7 +1,6 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 
-#[cfg(not(feature = "lite"))]
 use crate::formats::{
     CsvDecoder, CsvObjectDecoder, JavascriptObjectDecoder, TomlDecoder, YamlDecoder,
 };
@@ -42,31 +41,26 @@ pub(crate) fn ensure_formats() {
                 .decode_str(source)
                 .map_err(|_| RustWasmStatus::CoreError)
         });
-        #[cfg(not(feature = "lite"))]
         register_format(registry, "yaml", |source| {
             YamlDecoder
                 .decode_str(source)
                 .map_err(|_| RustWasmStatus::CoreError)
         });
-        #[cfg(not(feature = "lite"))]
         register_format(registry, "toml", |source| {
             TomlDecoder
                 .decode_str(source)
                 .map_err(|_| RustWasmStatus::CoreError)
         });
-        #[cfg(not(feature = "lite"))]
         register_format(registry, "python", |source| {
             crate::formats::PythonObjectDecoder
                 .decode_str(source)
                 .map_err(|_| RustWasmStatus::CoreError)
         });
-        #[cfg(not(feature = "lite"))]
         register_format(registry, "javascript", |source| {
             JavascriptObjectDecoder
                 .decode_str(source)
                 .map_err(|_| RustWasmStatus::CoreError)
         });
-        #[cfg(not(feature = "lite"))]
         register_format(registry, "csv", |source| {
             CsvObjectDecoder::default()
                 .decode_str(source)
@@ -114,18 +108,11 @@ pub(crate) fn decode_value_document(
     language: &str,
     source: &str,
 ) -> Result<DecodedDocument, RustWasmStatus> {
-    #[cfg(not(feature = "lite"))]
-    {
-        match WasmProtocol::from_name(language) {
-            Some(WasmProtocol::Toml) => TomlDecoder
-                .decode_str(source)
-                .map_err(|_| RustWasmStatus::CoreError),
-            _ => decode_document(language, source),
-        }
-    }
-    #[cfg(feature = "lite")]
-    {
-        decode_document(language, source)
+    match WasmProtocol::from_name(language) {
+        Some(WasmProtocol::Toml) => TomlDecoder
+            .decode_str(source)
+            .map_err(|_| RustWasmStatus::CoreError),
+        _ => decode_document(language, source),
     }
 }
 

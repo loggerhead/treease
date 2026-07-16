@@ -6,7 +6,6 @@
 
 use crate::document::value_edit::{GraphValueEditContext, GraphValueEditPlanner};
 use crate::errors::CoreError;
-#[cfg(not(feature = "lite"))]
 use crate::formats::{
     CsvEncoder, CsvObjectDecoder, PythonEncoder, PythonObjectDecoder, TomlDecoder, TomlEncoder,
     YamlDecoder, YamlEncoder,
@@ -14,7 +13,6 @@ use crate::formats::{
 use crate::formats::{
     Decode, Encode, JavascriptEncoder, JavascriptObjectDecoder, JsonDecoder, JsonEncoder,
 };
-#[cfg(not(feature = "lite"))]
 use crate::language::lang_spec::{CSV_SPEC, PYTHON_SPEC, TOML_SPEC, YAML_SPEC};
 use crate::language::lang_spec::{JAVASCRIPT_SPEC, JSON_SPEC, LangSpec};
 use crate::tree::{NodeId, TreeStore};
@@ -64,22 +62,18 @@ impl LanguageCapabilityRegistry {
         registry
             .register(Box::new(JsonLanguageAdapter))
             .expect("json adapter is valid");
-        #[cfg(not(feature = "lite"))]
         registry
             .register(Box::new(YamlLanguageAdapter))
             .expect("yaml adapter is valid");
-        #[cfg(not(feature = "lite"))]
         registry
             .register(Box::new(StaticLanguageAdapter::toml()))
             .expect("toml adapter is valid");
         registry
             .register(Box::new(StaticLanguageAdapter::javascript()))
             .expect("javascript adapter is valid");
-        #[cfg(not(feature = "lite"))]
         registry
             .register(Box::new(StaticLanguageAdapter::python()))
             .expect("python adapter is valid");
-        #[cfg(not(feature = "lite"))]
         registry
             .register(Box::new(StaticLanguageAdapter::csv()))
             .expect("csv adapter is valid");
@@ -165,7 +159,6 @@ pub(crate) fn plan_graph_value_edit_with_capability(
 }
 
 pub(crate) struct JsonLanguageAdapter;
-#[cfg(not(feature = "lite"))]
 pub(crate) struct YamlLanguageAdapter;
 
 macro_rules! adapter_impl {
@@ -200,7 +193,6 @@ adapter_impl!(
     |prefs| Box::new(JsonEncoder::new(prefs)),
     crate::document::value_edit::json::planner()
 );
-#[cfg(not(feature = "lite"))]
 adapter_impl!(
     YamlLanguageAdapter,
     YAML_SPEC,
@@ -217,7 +209,6 @@ struct StaticLanguageAdapter {
 }
 
 impl StaticLanguageAdapter {
-    #[cfg(not(feature = "lite"))]
     fn toml() -> Self {
         Self {
             spec: &TOML_SPEC,
@@ -234,7 +225,6 @@ impl StaticLanguageAdapter {
             planner: crate::document::value_edit::javascript::planner(),
         }
     }
-    #[cfg(not(feature = "lite"))]
     fn python() -> Self {
         Self {
             spec: &PYTHON_SPEC,
@@ -243,7 +233,6 @@ impl StaticLanguageAdapter {
             planner: crate::document::value_edit::python::planner(),
         }
     }
-    #[cfg(not(feature = "lite"))]
     fn csv() -> Self {
         Self {
             spec: &CSV_SPEC,
@@ -280,10 +269,6 @@ mod tests {
     fn builtin_adapters_expose_consistent_json_and_yaml_capabilities() {
         let registry = builtin_registry();
         for language in ["json", "yaml"] {
-            #[cfg(feature = "lite")]
-            if language == "yaml" {
-                continue;
-            }
             let adapter = registry.require(language, "contract").unwrap();
             assert_eq!(adapter.spec().name, language);
             assert_eq!(adapter.tree_path_supported(), language == "yaml");
@@ -356,11 +341,8 @@ mod tests {
     }
 
     #[test]
-    fn build_capability_visibility_matches_feature_set() {
+    fn builtin_registry_exposes_all_language_adapters() {
         assert!(builtin_registry().find("json").is_some());
-        assert_eq!(
-            builtin_registry().find("yaml").is_some(),
-            !cfg!(feature = "lite")
-        );
+        assert!(builtin_registry().find("yaml").is_some());
     }
 }

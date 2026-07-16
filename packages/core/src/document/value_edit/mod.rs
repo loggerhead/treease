@@ -1,13 +1,9 @@
-#[cfg(not(feature = "lite"))]
 pub(crate) mod csv;
 pub(crate) mod javascript;
 pub(crate) mod json;
-#[cfg(not(feature = "lite"))]
 pub(crate) mod python;
 mod scalar;
-#[cfg(not(feature = "lite"))]
 pub(crate) mod toml;
-#[cfg(not(feature = "lite"))]
 pub(crate) mod yaml;
 
 use crate::formats::DecodedDocument;

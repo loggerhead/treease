@@ -3,7 +3,6 @@ use serde::Serialize;
 use treease_core::core::LANG_SPECS;
 use treease_core::formats::configured_language_preferences;
 
-#[cfg(not(feature = "lite"))]
 use treease_core::operators::{OpFlags, append_ops};
 
 const NO_ALIASES: &[&str] = &[];
@@ -52,7 +51,6 @@ pub(super) struct FormatPreferenceInfo {
     pub print_doc_separators: bool,
 }
 
-#[cfg(not(feature = "lite"))]
 pub(super) fn operators() -> Vec<OperatorInfo> {
     let mut entries = Vec::new();
     append_ops(&mut entries, &OpFlags::default());
@@ -67,11 +65,6 @@ pub(super) fn operators() -> Vec<OperatorInfo> {
     operators.sort_by(|left, right| left.name.cmp(right.name));
     operators.dedup_by(|left, right| left.name == right.name);
     operators
-}
-
-#[cfg(feature = "lite")]
-pub(super) fn operators() -> Vec<OperatorInfo> {
-    Vec::new()
 }
 
 pub(super) fn find_operator(name: &str) -> Option<OperatorInfo> {

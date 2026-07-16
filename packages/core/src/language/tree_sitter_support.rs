@@ -278,11 +278,8 @@ pub(crate) fn tree_sitter_language_for_spec(spec: &LangSpec<'_>) -> Option<tree_
         // and supports the `pair key:/value:` queries exercised by the tests.
         // Actual JSON semantic tokens still go through the streaming codec path.
         "json" => Some(tree_sitter::Language::new(tree_sitter_javascript::LANGUAGE)),
-        #[cfg(not(feature = "lite"))]
         "yaml" => Some(tree_sitter::Language::new(tree_sitter_yaml::LANGUAGE)),
-        #[cfg(not(feature = "lite"))]
         "toml" => Some(tree_sitter::Language::new(tree_sitter_toml_ng::LANGUAGE)),
-        #[cfg(not(feature = "lite"))]
         "python" => Some(tree_sitter::Language::new(tree_sitter_python::LANGUAGE)),
         "javascript" => Some(tree_sitter::Language::new(tree_sitter_javascript::LANGUAGE)),
         _ => None,

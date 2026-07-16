@@ -54,15 +54,10 @@ pub const fn empty_path_span() -> PathSpan {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum WasmProtocol {
     Json,
-    #[cfg(not(feature = "lite"))]
     Yaml,
-    #[cfg(not(feature = "lite"))]
     Toml,
-    #[cfg(not(feature = "lite"))]
     Python,
-    #[cfg(not(feature = "lite"))]
     Javascript,
-    #[cfg(not(feature = "lite"))]
     Csv,
 }
 
@@ -75,15 +70,10 @@ impl WasmProtocol {
         }
         match spec.name {
             "json" => Some(Self::Json),
-            #[cfg(not(feature = "lite"))]
             "yaml" => Some(Self::Yaml),
-            #[cfg(not(feature = "lite"))]
             "toml" => Some(Self::Toml),
-            #[cfg(not(feature = "lite"))]
             "python" => Some(Self::Python),
-            #[cfg(not(feature = "lite"))]
             "javascript" => Some(Self::Javascript),
-            #[cfg(not(feature = "lite"))]
             "csv" => Some(Self::Csv),
             _ => None,
         }
@@ -92,15 +82,10 @@ impl WasmProtocol {
     pub const fn canonical_name(self) -> &'static str {
         match self {
             Self::Json => "json",
-            #[cfg(not(feature = "lite"))]
             Self::Yaml => "yaml",
-            #[cfg(not(feature = "lite"))]
             Self::Toml => "toml",
-            #[cfg(not(feature = "lite"))]
             Self::Python => "python",
-            #[cfg(not(feature = "lite"))]
             Self::Javascript => "javascript",
-            #[cfg(not(feature = "lite"))]
             Self::Csv => "csv",
         }
     }
@@ -108,7 +93,6 @@ impl WasmProtocol {
     pub const fn stream_kind(self) -> Option<StreamKind> {
         match self {
             Self::Json => Some(StreamKind::Json),
-            #[cfg(not(feature = "lite"))]
             Self::Yaml | Self::Toml | Self::Python | Self::Javascript | Self::Csv => None,
         }
     }
@@ -118,14 +102,7 @@ impl WasmProtocol {
     }
 
     pub const fn supports_value_only_decode(self) -> bool {
-        #[cfg(not(feature = "lite"))]
-        {
-            matches!(self, Self::Toml)
-        }
-        #[cfg(feature = "lite")]
-        {
-            false
-        }
+        matches!(self, Self::Toml)
     }
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
