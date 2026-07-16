@@ -4,7 +4,10 @@
 .superpowers/
 *.txt
 .agents/
-.codex/
+.codex/*
+!.codex/hooks.json
+!.codex/hooks/
+!.codex/hooks/**
 .trae/
 .claude/
 .codegraph
