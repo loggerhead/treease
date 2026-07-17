@@ -1,8 +1,8 @@
 # Boolean Operators
 
-The `or` and `and` operators take two parameters and return a boolean result. 
+The `or` and `and` operators take two parameters and return a boolean result.
 
-`not` flips a boolean from true to false, or vice versa. 
+`not` flips a boolean from true to false, or vice versa.
 
 `any` will return `true` if there are any `true` values in an array sequence, and `all` will return true if _all_ elements in an array are true.
 
@@ -17,45 +17,61 @@ These are most commonly used with the `select` operator to filter particular nod
 - select operator [here](select.md)
 
 ## `or` example
+
 Running
+
 ```bash
 treease --null-input 'true or false'
 ```
+
 will output
+
 ```yaml
 true
 ```
 
 ## "yes" and "no" are strings
+
 In the yaml 1.2 standard, support for yes/no as booleans was dropped - they are now considered strings. See '10.2.1.2. Boolean' in https://yaml.org/spec/1.2.2/
 
 Given a sample.yml file of:
+
 ```yaml
 - yes
 - no
 ```
+
 then
+
 ```bash
 treease '.[] | tag' sample.yml
 ```
+
 will output
+
 ```yaml
 !!str
 !!str
 ```
 
 ## `and` example
+
 Running
+
 ```bash
 treease --null-input 'true and false'
 ```
+
 will output
+
 ```yaml
 false
 ```
 
 ## Matching nodes with select, equals and or
+
 Given a sample.yml file of:
+
 ```yaml
 - a: bird
   b: dog
@@ -64,11 +80,15 @@ Given a sample.yml file of:
 - a: cat
   b: fly
 ```
+
 then
+
 ```bash
 treease '[.[] | select(.a == "cat" or .b == "dog")]' sample.yml
 ```
+
 will output
+
 ```yaml
 - a: bird
   b: dog
@@ -77,36 +97,50 @@ will output
 ```
 
 ## `any` returns true if any boolean in a given array is true
+
 Given a sample.yml file of:
+
 ```yaml
 - false
 - true
 ```
+
 then
+
 ```bash
 treease 'any' sample.yml
 ```
+
 will output
+
 ```yaml
 true
 ```
 
 ## `any` returns false for an empty array
+
 Given a sample.yml file of:
+
 ```yaml
 []
 ```
+
 then
+
 ```bash
 treease 'any' sample.yml
 ```
+
 will output
+
 ```yaml
 false
 ```
 
 ## `any_c` returns true if any element in the array is true for the given condition.
+
 Given a sample.yml file of:
+
 ```yaml
 a:
   - rad
@@ -115,47 +149,65 @@ b:
   - meh
   - whatever
 ```
+
 then
+
 ```bash
 treease '.[] |= any_c(. == "awesome")' sample.yml
 ```
+
 will output
+
 ```yaml
 a: true
 b: false
 ```
 
 ## `all` returns true if all booleans in a given array are true
+
 Given a sample.yml file of:
+
 ```yaml
 - true
 - true
 ```
+
 then
+
 ```bash
 treease 'all' sample.yml
 ```
+
 will output
+
 ```yaml
 true
 ```
 
 ## `all` returns true for an empty array
+
 Given a sample.yml file of:
+
 ```yaml
 []
 ```
+
 then
+
 ```bash
 treease 'all' sample.yml
 ```
+
 will output
+
 ```yaml
 true
 ```
 
 ## `all_c` returns true if all elements in the array are true for the given condition.
+
 Given a sample.yml file of:
+
 ```yaml
 a:
   - rad
@@ -164,82 +216,114 @@ b:
   - meh
   - 12
 ```
+
 then
+
 ```bash
 treease '.[] |= all_c(tag == "!!str")' sample.yml
 ```
+
 will output
+
 ```yaml
 a: true
 b: false
 ```
 
 ## Not true is false
+
 Running
+
 ```bash
 treease --null-input 'true | not'
 ```
+
 will output
+
 ```yaml
 false
 ```
 
 ## Not false is true
+
 Running
+
 ```bash
 treease --null-input 'false | not'
 ```
+
 will output
+
 ```yaml
 true
 ```
 
 ## String values considered to be true
+
 Running
+
 ```bash
 treease --null-input '"cat" | not'
 ```
+
 will output
+
 ```yaml
 false
 ```
 
 ## Empty string value considered to be true
+
 Running
+
 ```bash
 treease --null-input '"" | not'
 ```
+
 will output
+
 ```yaml
 false
 ```
 
 ## Numbers are considered to be true
+
 Running
+
 ```bash
 treease --null-input '1 | not'
 ```
+
 will output
+
 ```yaml
 false
 ```
 
 ## Zero is considered to be true
+
 Running
+
 ```bash
 treease --null-input '0 | not'
 ```
+
 will output
+
 ```yaml
 false
 ```
 
 ## Null is considered to be false
+
 Running
+
 ```bash
 treease --null-input '~ | not'
 ```
+
 will output
+
 ```yaml
 true
 ```

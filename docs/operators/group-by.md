@@ -3,7 +3,9 @@
 This is used to group items in an array by an expression.
 
 ## Group by field
+
 Given a sample.yml file of:
+
 ```yaml
 - foo: 1
   bar: 10
@@ -12,11 +14,15 @@ Given a sample.yml file of:
 - foo: 1
   bar: 1
 ```
+
 then
+
 ```bash
 treease 'group_by(.foo)' sample.yml
 ```
+
 will output
+
 ```yaml
 - - foo: 1
     bar: 10
@@ -27,7 +33,9 @@ will output
 ```
 
 ## Group by field, with nulls
+
 Given a sample.yml file of:
+
 ```yaml
 - cat: dog
 - foo: 1
@@ -38,11 +46,15 @@ Given a sample.yml file of:
 - foo: 1
   bar: 1
 ```
+
 then
+
 ```bash
 treease 'group_by(.foo)' sample.yml
 ```
+
 will output
+
 ```yaml
 - - cat: dog
   - no: foo for you
@@ -53,4 +65,3 @@ will output
 - - foo: 3
     bar: 100
 ```
-

@@ -1,103 +1,71 @@
 ---
-summary: "仓库顶层模块分层、依赖方向与架构图总览。"
+summary: "Top-level module boundaries, dependency directions, and architecture diagram."
 read_when:
-  - 需要先从高层理解 Web、WASM、Core、CLI 的关系
-  - 准备做跨层设计或评审架构边界
+  - You need a high-level view of the relationships among Web, Desktop, Server, WASM, Core, and CLI.
+  - You are designing or reviewing a cross-layer boundary.
 ---
-# Treease 架构总览
 
-## 单一职责
+# Treease Architecture Overview
 
-本文只回答一个问题：Treease 顶层模块如何分层，依赖方向如何流动。
+## Single Responsibility
 
-不在本文重复领域术语、协议字段、测试策略、编码规则或模块内部职责：
+This document answers one question: how Treease's top-level modules are layered and how dependencies flow between them.
 
-- Document Runtime 语境：`CONTEXT.md`
-- 编码规则：`docs/CODING.md`
-- 测试策略：`docs/testing/index.md`
-- Web 约束：`docs/web/index.md`
-- Core 约束：`docs/core/index.md`
-- 文档入口：先运行 `pnpm docs:list`，再按 `docs/index.md` 选择主题文档
-
-## 顶层依赖图
+## Top-Level Dependency Diagram
 
 ```mermaid
-flowchart LR
-  subgraph Web["apps/web"]
-    WebUI["Web UI\ncomponents / routes"]
-    WebState["Web state / services\napps/web/src/lib"]
-    Shared["Shared helpers\napps/web/src/shared"]
-    Worker["Worker boundary\napps/web/src/workers"]
-  end
+flowchart TB
+  Desktop["apps/desktop\nTauri Desktop Workspace host"] --> Web
 
-  subgraph Server["apps/server"]
-    Http["HTTP routes\nFastify"]
-    ServerServices["Auth / billing / share / AI / usage"]
-    ServerRepos["Supabase + external integrations"]
+  subgraph Web["apps/web"]
+    WebUI["Svelte routes, components, and frontend state"]
+    WorkspaceHost["Workspace Host\nbrowser / desktop platform capability seam"]
+    Worker["Worker boundary\ntransport, request correlation, UI fan-out"]
+    WebUI --> WorkspaceHost
+    WebUI --> Worker
   end
 
   subgraph Wasm["packages/core/wasm"]
-    WasmTS["TS WASM adapter\nindex.ts / monaco"]
-    Generated["Generated protocol\ndocument-protocol.generated.ts"]
+    WasmAdapter["TypeScript WASM adapter\ndocument API and compat API"]
+    GeneratedProtocol["Generated document protocol binding"]
   end
 
   subgraph Core["packages/core/src"]
-    WasmDoc["Document WASM exports\nwasm_document.rs"]
-    WasmCompat["Compat / non-document ABI\nwasm.rs + wasm/"]
-    Protocol["Protocol source\ndocument/protocol.rs"]
-    DocEngine["Document Engine\ndocument/engine.rs / engine/"]
-    DocRuntime["Document Runtime\ndocument/runtime.rs"]
-    CoreLogic["Core logic\nparse / format / eval / graph"]
-    CLI["CLI entry\ntools/treease.rs"]
+    DocumentWasm["Document Runtime WASM exports\nwasm_document.rs"]
+    CompatWasm["Non-document / compatibility WASM exports\nwasm.rs and wasm/"]
+    DocumentProtocol["Document protocol source\ndocument/protocol.rs"]
+    CoreCapabilities["Document Runtime; parsing, formatting,\nevaluation, operators, and graph construction"]
+    DocumentWasm --> CoreCapabilities
+    CompatWasm --> CoreCapabilities
+    DocumentProtocol --> DocumentWasm
   end
 
-  WebUI --> WebState
-  WebState --> Shared
-  Shared --> Worker
-  WebUI --> Http
-  Http --> ServerServices --> ServerRepos
-  Worker --> WasmTS --> WasmDoc --> DocEngine --> DocRuntime --> CoreLogic
-  WasmTS --> WasmCompat --> CoreLogic
-  CLI --> CoreLogic
+  subgraph Server["apps/server"]
+    ServerApi["Fastify API\nauth, billing, sharing, AI, and usage"]
+    ExternalServices["Supabase and AI providers"]
+    ServerApi --> ExternalServices
+  end
 
-  Protocol --> Generated --> Worker
-  Protocol --> WasmDoc
-  DocRuntime --> Protocol
+  CLI["apps/cli\nstandalone command-line application"]
+
+  Worker --> WasmAdapter
+  GeneratedProtocol --> Worker
+  WasmAdapter --> DocumentWasm
+  WasmAdapter --> CompatWasm
+  DocumentProtocol -. generates .-> GeneratedProtocol
+  WebUI --> ServerApi
+  CLI --> CoreCapabilities
 ```
 
-- `Web UI`：承载 Svelte 组件、页面入口和用户交互，不包含 Core 计算逻辑。
-- `Web state / services`：承载前端状态、设置、服务编排和图形辅助逻辑，只通过 Worker 使用 Core 能力。
-- `Shared helpers`：Worker 与 UI 共享的纯辅助函数（tree node value、stored analysis、path、document edits），不承载状态或 authority。
-- `Worker boundary`：承载浏览器到 WASM 的消息边界、请求关联、fan-out 和统一错误出口。
-- `HTTP routes`：承载 `Treease Server` 的公开 API 入口，不承载 Core 文档计算。
-- `Auth / billing / share / AI / usage`：承载账号会话、订阅、公开分享、`suggest-yq` 与 credits 用量编排。
-- `Supabase + external integrations`：承载 Supabase Auth / storage、AI gateway 等外部服务访问。
-- `TS WASM adapter`：负责 TypeScript 侧 WASM 装载、内存交互和导出函数适配，拆分为 document API 与 compat API 两套表面。
-- `Generated protocol`：由 Rust 协议导出的 TypeScript 类型生成物，供 Worker / UI 消费。
-- `Document WASM exports`：暴露 Document Runtime 的 WASM API，是主文档链路进入 Rust runtime 的边界。
-- `Compat / non-document ABI`：保留兼容或非 document 能力（parse、format、value edit 等），不定义主文档协议。
-- `Protocol source`：定义跨边界 document protocol，是生成 TypeScript 协议的源头。
-- `Document Engine`：持有 streaming/batch 推进、job、snapshot、projection 与 materialize 的运行时语义。
-- `Document Runtime`：持有 job/snapshot 的 authority、freshness、snapshot-bound read 与资源管理语义。
-- `Core logic`：提供解析、格式化、求值和 graph 构建等可复用核心能力。
-- `CLI entry`：承载命令行入口和参数编排，复用 Core 能力。
+- `apps/web` is the frontend shared by the browser workspace and desktop application. It owns presentation, interaction, and frontend state; it does not implement Core document computation.
+- `apps/desktop` is the Tauri host for desktop packaging and platform capabilities. Shared UI accesses those capabilities through `Workspace Host`, not through direct Tauri API coupling.
+- `apps/server` is the product-service boundary for accounts, billing, sharing, AI, and usage. It does not duplicate parsing, formatting, evaluation, or graph construction.
+- `packages/core` is the sole implementation of document computation. `packages/core/wasm` adapts only its WASM surface, which Web accesses through the Worker.
+- `apps/cli` reuses `treease-core` computation while independently owning command-line arguments, I/O, and user-visible CLI contracts.
 
-## 读图规则
+## Reading the Diagram
 
-- 运行时依赖只沿箭头方向流动；Web 不直接调用 `packages/core/src` 内部实现。
-- `document/protocol.rs` 是 document protocol 的源头，`document-protocol.generated.ts` 是生成物。
-- `wasm_document.rs` 是 Document Runtime 的 WASM 导出边界。
-- `wasm.rs` + `wasm/` 模块只保留兼容或非 document ABI，不定义主文档协议。
-- `apps/server` 不重做 parse / format / eval / graph build；它只承载账号、计费、分享与 AI 配套服务。
-- Worker 是 transport / correlation / fan-out 边界；Document Runtime 的 authority、freshness、snapshot 语义见 `CONTEXT.md`。
-
-## 文档入口关系
-
-```mermaid
-flowchart TD
-  Human["人类入口\nREADME.md"] --> Docs["文档入口\npnpm docs:list + docs/index.md"]
-  Agent["Agent 全局语境\nCONTEXT.md"] --> Architecture["架构图\nARCHITECTURE.md"]
-  Docs --> Architecture
-  Docs --> Rules["规则文档\ndocs/CODING.md / docs/testing/index.md"]
-  Docs --> LayerRules["分层约束\ndocs/web/index.md / docs/core/index.md"]
-```
+- Solid arrows represent dependency or host relationships; dashed arrows represent generated artifacts. Web never calls internal implementations in `packages/core/src` directly.
+- `packages/core/src/document/protocol.rs` is the sole source of truth for the Document Protocol; `packages/core/wasm/document-protocol.generated.ts` is generated output.
+- `packages/core/src/wasm_document.rs` is the Document Runtime WASM export boundary. `packages/core/src/wasm.rs` and `packages/core/src/wasm/` contain only non-Document-Runtime or compatibility ABI.
+- The Worker is the browser-to-WASM transport, request-correlation, and UI fan-out boundary. See `docs/contracts/document-runtime.md` for Document Runtime authority, freshness, and snapshot semantics.

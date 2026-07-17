@@ -1,9 +1,3 @@
----
-summary: "Core registry 自动生成能力快照，列出当前构建注册到 registry 的内部能力符号。"
-read_when:
-  - 需要精确核对当前构建注册了哪些 operator 或 format 能力
-  - 需要区分手写总览、正文页与实际 registry 状态
----
 # Core Registry Capabilities
 
 This file is a generated registry snapshot.
@@ -13,6 +7,7 @@ This file is a generated registry snapshot.
 - For grouped human-readable guidance, read `../references/supported-syntax-and-operators.md`.
 
 ## Build Options
+
 - lang_json: true
 - lang_yaml: true
 - lang_toml: true
@@ -32,6 +27,7 @@ This file is a generated registry snapshot.
 - op_special: true
 
 ## Operators
+
 - short_pipe_op_type
 - self_reference_op_type
 - expression_op_type
@@ -119,6 +115,7 @@ This file is a generated registry snapshot.
 - filter_op_type
 
 ## Formats
+
 - json
 - yaml
 - toml

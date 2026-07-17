@@ -99,7 +99,7 @@ pnpm --dir apps/web build
 node ./scripts/treease-web-local.mjs . path/to/file.json
 ```
 
-`node ./scripts/treease-web-local.mjs` 会为 `apps/web/build/cli-assets` 启动本地静态服务器，用 `cargo run` 运行当前 checkout 的 CLI，并在 `.tmp/` 下创建隔离的 `TREEASE_WEB_CACHE_DIR`。这样即使 `wasm_release_date` 不变，本地 bundle 更新后也不会命中旧缓存。
+`node ./scripts/treease-web-local.mjs` 会为已构建的 CLI assets 目录启动本地静态服务器，用 `cargo run` 运行当前 checkout 的 CLI，并在 `.tmp/` 下创建隔离的 `TREEASE_WEB_CACHE_DIR`。这样即使 `wasm_release_date` 不变，本地 bundle 更新后也不会命中旧缓存。
 
 如果你只想拿到手动运行所需的环境变量，可以执行：
 

@@ -2,9 +2,10 @@
 
 Shuffles an array. Note that this command does _not_ use a cryptographically secure random number generator to randomise the array order.
 
-
 ## Shuffle array
+
 Given a sample.yml file of:
+
 ```yaml
 - 1
 - 2
@@ -12,11 +13,15 @@ Given a sample.yml file of:
 - 4
 - 5
 ```
+
 then
+
 ```bash
 treease 'shuffle' sample.yml
 ```
+
 will output
+
 ```yaml
 - 5
 - 2
@@ -26,7 +31,9 @@ will output
 ```
 
 ## Shuffle array in place
+
 Given a sample.yml file of:
+
 ```yaml
 cool:
   - 1
@@ -35,11 +42,15 @@ cool:
   - 4
   - 5
 ```
+
 then
+
 ```bash
 treease '.cool |= shuffle' sample.yml
 ```
+
 will output
+
 ```yaml
 cool:
   - 5
@@ -48,4 +59,3 @@ cool:
   - 1
   - 3
 ```
-

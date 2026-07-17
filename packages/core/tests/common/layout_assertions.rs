@@ -1,5 +1,5 @@
 // Shared graph layout assertion helpers, included via `include!` from test files.
-// 这些函数验证 docs/web/layout-pipeline.md Graph layout 规则：
+// 这些函数验证 docs/contracts/layout.md Graph layout 规则：
 //   - 节点生成规则（Mapping→Object, Sequence→Table, 其他→Scalar）
 //   - 根节点始终生成图节点
 //   - 只有非空 Mapping/Sequence 生成子节点
@@ -50,7 +50,7 @@ fn edge_body_row(node: &GraphNode, edge_row: i32) -> i32 {
     edge_row
 }
 
-/// 按 docs/web/layout-pipeline.md Graph layout 规则计算锚点 y。
+/// 按 docs/contracts/layout.md Graph layout 规则计算锚点 y。
 /// Table 使用 header/body row 高度从 node.y 独立推导。
 /// Object/Scalar 从 node.y + 配置参数独立计算（不用 row.abs_bounds，避免循环验证）。
 fn computed_anchor_y(node: &GraphNode, row_index: i32) -> i32 {
@@ -273,4 +273,3 @@ fn assert_incremental_layout_relations(model: &GraphModel) {
 
     assert_all_sibling_row_ordering(model);
 }
-

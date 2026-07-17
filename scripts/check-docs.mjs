@@ -62,11 +62,15 @@ function parseFrontmatter(content) {
 }
 
 function requiresDocMetadata(docPath) {
-  if (['ARCHITECTURE.md', 'CONTEXT.md', 'guess-failure.md'].includes(docPath)) {
+  if (['ARCHITECTURE.md', 'CONTEXT.md'].includes(docPath)) {
     return true;
   }
 
   if (!docPath.startsWith('docs/')) {
+    return false;
+  }
+
+  if (docPath === 'docs/docs_map.md') {
     return false;
   }
 
@@ -75,7 +79,7 @@ function requiresDocMetadata(docPath) {
   }
 
   if (docPath.startsWith('docs/generated/')) {
-    return true;
+    return false;
   }
 
   if (docPath.startsWith('docs/references/')) {
@@ -152,6 +156,7 @@ function shouldSkipDir(relativePath) {
   const base = path.basename(relativePath);
   return [
     '.git',
+    '.agents',
     '.tmp',
     '.venv',
     '.venv-playwright',
@@ -427,14 +432,9 @@ function validateCommandToken(docPath, token) {
 }
 
 function validateAgentRoutingContract() {
-  const compactGuide = path.join(repoRoot, 'docs/index.md');
-  if (!existsSync(compactGuide)) {
-    fail('docs/index.md: 缺少 agent 最短路径文档');
-  }
-
   const rootAgents = readRepoFile('AGENTS.md');
-  if (!rootAgents.includes('docs/index.md')) {
-    fail('AGENTS.md: 根导航未指向 docs/index.md');
+  if (!rootAgents.includes('docs/contracts/')) {
+    fail('AGENTS.md: 根导航未指向契约文档目录');
   }
   if (!rootAgents.includes('docs/AGENTS.md')) {
     fail('AGENTS.md: 根导航未列出 docs/AGENTS.md');
@@ -462,12 +462,7 @@ function validateHotDocBudgets() {
   const budgets = {
     'AGENTS.md': 90,
     'docs/AGENTS.md': 70,
-    'docs/index.md': 70,
-    'docs/web/index.md': 170,
-    'docs/core/index.md': 120,
     'apps/web/AGENTS.md': 26,
-    'apps/web/test/AGENTS.md': 24,
-    'packages/core/AGENTS.md': 27,
     'apps/cli/AGENTS.md': 24,
     'apps/server/AGENTS.md': 28,
   };
@@ -484,12 +479,12 @@ function main() {
   for (const docPath of governanceDocs) {
     const content = readRepoFile(docPath);
     validateDocMetadata(docPath, content);
-    validateDocPaths(docPath, content);
-    validateCommands(docPath, content);
   }
 
   for (const docPath of markdownDocs) {
     const content = readRepoFile(docPath);
+    validateDocPaths(docPath, content);
+    validateCommands(docPath, content);
     validateSensitiveContent(docPath, content);
   }
 

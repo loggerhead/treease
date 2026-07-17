@@ -1,22 +1,19 @@
 ---
-summary: "apps/cli 的职责边界、测试入口与复用约束。"
+summary: "apps/cli ownership boundaries, test entry points, and reuse constraints."
 read_when:
-  - 需要确认 CLI 改动的验证边界与协议复用路径
+  - Confirming verification boundaries and protocol reuse for CLI changes
 ---
 
-# apps/cli 导航
+# apps/cli Guide
 
-## 作用域
-- 本目录负责独立 CLI crate、CLI acceptance 测试与相关文档约束。
-- Rust CLI 入口在 `src/main.rs`，主要实现位于 `src/lib.rs` 与 `src/{parser,spec,catalog,errors}.rs`。
+## Scope
 
-## 硬约束
-- 不在本目录复制 Core 解析、格式化、算子或评估实现。
-- CLI 通过 `treease-core` 复用执行、格式和算子能力；不要把 CLI 解析/帮助/错误协议再塞回 `packages/core/`。
-- 用户可见 CLI 行为改动必须同时考虑 stdout、stderr、exit code 与文件写回。
-- 文档、命令、测试入口必须与 `Cargo.toml` 和 `tests/acceptance/run.sh` 保持一致。
+- This directory owns the standalone CLI crate, CLI acceptance tests, and related documentation contracts.
+- The Rust CLI entry point is `src/main.rs`; primary implementation lives in `src/lib.rs` and `src/{parser,spec,catalog,errors}.rs`.
 
-## 验证
-- CLI 逻辑：运行 `cd apps/cli && cargo nextest run --locked --lib`
-- CLI acceptance：运行 `cd apps/cli && bash tests/acceptance/run.sh`
-- CLI 元数据快照：运行 `cd apps/cli && cargo run --locked --bin export_cli_metadata`
+## Boundary Rules
+
+- Do not duplicate Core parsing, formatting, operator, or evaluation implementations here.
+- The CLI reuses execution, format, and operator capabilities through `treease-core`; do not move CLI parsing, help, or error contracts back into `packages/core/`.
+- User-visible CLI behavior changes must account for stdout, stderr, exit codes, and file writes together.
+- Keep documentation, commands, and test entry points aligned with `Cargo.toml` and `tests/acceptance/run.sh`.

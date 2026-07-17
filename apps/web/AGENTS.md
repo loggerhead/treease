@@ -1,25 +1,24 @@
 ---
-summary: "apps/web 的层级边界、职责与验证约束。"
+summary: "apps/web layer boundaries, responsibilities, and verification constraints."
 read_when:
-  - 需要确认 web 改动是否触达正确层级
+  - Confirming whether a web change reaches the correct layer
 ---
 
-# apps/web 导航
+# apps/web Guide
 
-## 作用域
-- 本目录负责前端 UI、交互、Worker、静态资源与 Web 测试。
+## Scope
 
-## 硬约束
-- 不在本目录实现解析、算子、评估、格式化等 Core 计算逻辑。
-- 所有 Core 能力调用必须通过 `src/workers` 与 `../../packages/core/wasm`。
-- `src/lib/components/GraphViewer.svelte` 与 `src/workers/wasm-runtime.worker.ts` 保持薄壳。
-- 协议字段改动只改 `../../packages/core/src/document/protocol.rs`；生成物不手改。
+- This directory owns frontend UI, interaction, Workers, static assets, and Web tests.
 
-## 代码分包约定
-- GraphViewer 逻辑优先进入 `src/lib/components/graph-viewer/`。
-- Worker runtime 逻辑优先进入 `src/workers/runtime/`，不要回灌到 `src/workers/wasm-runtime.worker.ts`。
-- 单元测试优先放相邻 `**/*.test.ts`。
+## Boundary Rules
 
-## 验证
-- 整体链路验证回到 `../../docs/testing/index.md`。
-- 改 protocol / WASM 时，在 `../../packages/core/` 运行 `cargo run --locked --bin export_document_protocol`，再在本目录按需运行 `pnpm wasm:bindgen`。
+- Do not implement Core computation—parsing, operators, evaluation, or formatting—here.
+- All Core capability calls go through `src/workers` and `../../packages/core/wasm`.
+- Keep `src/lib/components/GraphViewer.svelte` and `src/workers/wasm-runtime.worker.ts` thin shells.
+- Change protocol fields only in `../../packages/core/src/document/protocol.rs`; never hand-edit generated output.
+
+## Code Placement
+
+- GraphViewer logic belongs in `src/lib/components/graph-viewer/` first.
+- Worker runtime logic belongs in `src/workers/runtime/`; do not push it back into `src/workers/wasm-runtime.worker.ts`.
+- Put unit tests in adjacent `**/*.test.ts` files first.

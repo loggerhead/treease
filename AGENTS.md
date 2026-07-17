@@ -1,58 +1,89 @@
-电报式规范，仅根节点规则。处理子目录前先阅读范围代理文档。技能负责流程；根节点管控硬性策略与路由。
+# AGENTS.MD
 
-# Start
+Telegraph style. Root rules only. Read scoped `AGENTS.md` before subtree work. root owns hard policy and task routing.
 
-- 文档 / 用户可见操作：执行 pnpm docs:list 命令，之后仅读取相关文档。
-- 现有方案前置核查：在提出或开发自定义系统、功能、工作流、工具、集成方案或自动化脚本前，先快速核查是否已有成熟开源项目、持续维护类库、现成 OpenClaw 插件或免费平台可满足需求。现有方案够用则优先选用；仅当现有方案存在适配性差、成本过高、停止维护、存在安全隐患、不合规，或用户明确要求定制开发时，才自主开发定制内容。除非用户明确同意付费，否则不推荐付费服务。该环节仅做简短前置校验，不开展大范围深度调研。
+## Start
 
+- Replies: repo-root refs only: `apps/web/svelte.config.js`. No absolute paths, no `~/`.
+- Docs/user-visible work: `pnpm docs:list`, then read relevant docs only.
+- Existing-solutions preflight: before proposing or building a custom system, feature, workflow, tool, integration, or automation, do a lightweight check for open-source projects, maintained libraries, or free platforms that already solve it well enough. Prefer those when adequate. Build custom only when existing options are unsuitable, too expensive, unmaintained, unsafe, non-compliant, or the user explicitly asks for custom. Avoid paid-service recommendations unless the user explicitly approves spend. Keep this to a brief preflight gate, not a broad research assignment.
+- Fix/triage answers need source, unit tests, current/shipped behavior, and dependency contract proof.
+- Review default: read the whole changed function/module plus callers, callees, sibling implementations, adjacent tests, scoped docs, and dependency/Codex contracts before saying `good`, `bad`, `best fix`, `proof sufficient`, or posting a comment. If challenged, keep reading first; do not defend the earlier verdict until the missing path is checked.
+- Dependency-touching work: direct dependency inspection is mandatory when feasible; do not rely on assumptions, wrappers, or memory. Most dependencies are OSS, so read their source/docs/types.
+- Dependency-backed behavior: read upstream docs/source/types first. No API/default/error/timing guesses.
+- External API work: live test required. Google/search for additional proof. Prefer official docs/source/types; cite current proof. No memory-only API claims.
+- Live-verify when feasible. Never print secrets or private data.
 
+## Map
 
-## Project Overview
-- Treease 是一个多格式结构化文档工具链：`packages/core/` 负责 Rust 解析/格式化/算子/评估/建图，`apps/web/` 负责编辑器与图形界面，`apps/server/` 负责账号 / 计费 / 分享 / AI server 能力，`apps/cli/` 负责独立 CLI crate、acceptance 测试与文档入口。
-- 根文件只保留仓库级硬约束、跨层边界和稳定入口；文档层级、主题导航和内容组织下沉到 `docs/`。
+- `packages/core/`: Rust parsing, formatting, operators, evaluation, and graph construction.
+- `apps/web/`: editor and graph UI.
+- `apps/server/`: accounts, billing, sharing, and AI server capabilities.
+- `apps/cli/`: standalone CLI crate, acceptance tests, and documentation entry points.
+- Docs: read `docs/AGENTS.md`; use `pnpm docs:list` to select the minimum relevant guide in `docs/contracts/`.
 
-## Routing
-- docs 首页与主题入口：`docs/index.md`
-- docs 元规则：`docs/AGENTS.md`
-- scripts 层规则：`scripts/AGENTS.md`
-- Web：`apps/web/AGENTS.md` → `docs/web/index.md`
-- Core：`packages/core/AGENTS.md` → `docs/core/index.md`
-- CLI：`apps/cli/AGENTS.md` → `docs/cli/index.md`
-- 测试与验证：`docs/testing/index.md`
+## Architecture
 
-## Stable Entry Points
-- Web 主链：`apps/web/src/lib/components/Editor.svelte` → `apps/web/src/workers/wasm-runtime.worker.ts` → `packages/core/wasm/index.ts` → `packages/core/src/wasm_document.rs` → `packages/core/src/document/*`
-- Graph 链路：`apps/web/src/lib/components/GraphViewer.svelte` / `ViewportPanel.svelte` 消费 `DocumentJob` 事件、`SnapshotReady.mainGraph` 与 snapshot-bound 查询结果
-- CLI 主链：`apps/cli/src/main.rs` → `apps/cli/src/lib.rs` → `treease-core`
-- 协议真源：`packages/core/src/document/protocol.rs`；TypeScript 生成物是 `packages/core/wasm/document-protocol.generated.ts`
+- Fix shape: default to a clean bounded refactor, not the smallest patch. Move ownership to the right boundary; delete stale abstractions, duplicate policy, dead branches, wrappers, and fallback stacks.
+- Refactor default: one canonical path. Delete the old path unless the user explicitly wants compatibility or a public contract supports it.
+- Fallback is a product decision, not an implementation convenience. Before adding one, name the formal contract, failure mode, and removal plan. Otherwise delete it.
+- Do not fix logic or bugs with fallbacks, patch branches, silent degradation, dual-write semantics, or a special case for the current failure. Fix the main path, protocol source of truth, or real ownership boundary.
+- If unsure whether compatibility is needed, ask first. Do not keep aliases, shims, fallbacks, stale names, or obsolete tests just in case.
+- Tests alone do not make internals contracts. If compatibility stays, name the contract and migration/removal plan in code, tests, or PR documentation.
+- Lean code is a goal. No internal shims, aliases, legacy names, broad fallbacks, or defensive branches merely to reduce a diff or handle hypothetical edge cases.
+- Inline comments preserve reviewer context at the code site. Required for cross-module state invariants, execution order, ownership boundaries, resource-release coupling, fallback behavior, compact encoding, or intentional caller differences.
+- Comment shape: 1-3 short lines; state why the branch/helper exists, what contract it protects, and the bad outcome if removed. Cite nearby constants when useful. No syntax narration, PR history, or obvious mechanics.
+- No cross-layer shortcuts: Web does not import `packages/core/src`; Core does not own Svelte, DOM, or browser logic; CLI and desktop do not copy Core implementations.
+- Web owns presentation, interaction, and frontend state only. Parsing, formatting, operators, evaluation, and graph construction belong in Core.
+- Docs, comments, example commands, and screenshot annotations must not contain local identity data, absolute paths, or environment variable values.
+- Web async commits follow existing `FreshnessScope`/guard semantics. Discard stale results; never overwrite current UI state.
+- Cross-component shared state goes through existing stores; do not couple non-parent/child components directly.
+- Protocol source of truth: `packages/core/src/document/protocol.rs`. Never hand-edit `packages/core/wasm/document-protocol.generated.ts`.
 
-## Cross-Repo Rules
-- 不要跨层绕行：Web 不直接引用 `packages/core/src`，Core 不承载 Svelte/DOM/浏览器逻辑，CLI 不复制 Core 实现。
-- 稳定入口文件保持薄壳：`apps/web/src/lib/components/GraphViewer.svelte`、`apps/web/src/workers/wasm-runtime.worker.ts`、`packages/core/src/wasm_document.rs`。
-- Web 只负责展示、交互、前端状态；解析、格式化、算子、评估、graph build 必须下沉到 `packages/core/`。
-- 文档、注释、示例命令与截图说明中禁止写入本机身份信息；统一避免使用 shell 用户变量名、home 目录绝对路径或可反推用户名的本地路径。
-- 任何逻辑或 bug fix 都禁止通过 fallback、补丁式分支、静默降级、双写语义或“只修当前 case”的特判落地；必须直接修主链、协议真源或真实职责边界。
-- Worker 新能力先改 `apps/web/src/workers/runtime/protocol.ts`，再落 handler；跨边界错误统一走 `ok/error`。
-- snapshot-bound 读取必须显式带 `snapshotId`；不要在读取 API 内偷偷建 snapshot。
-- Web 异步落地遵循现有 `FreshnessScope` / guard 语义；过期结果直接丢弃，不覆盖当前 UI 状态。
-- 跨组件共享状态优先走现有 store；不要直接耦合非父子组件。
-- 不手改生成文件：`packages/core/wasm/document-protocol.generated.ts`。
-- 修改 `.rs` 文件后运行 `cargo fmt`。
+## Code
+
+- TS ESM, strict. Avoid `any`; prefer real types, `unknown`, and narrow adapters.
+- No `@ts-nocheck`. Disable checks only after careful consideration and with an explanatory comment.
+- External boundaries: prefer `zod` or existing schema helpers.
+- Runtime branching: discriminated unions/enums over freeform strings. Avoid semantic sentinels (`?? 0`, empty object/string).
+- Cross-function state: when valid combinations matter, return a closed mode/result shape. Avoid parallel nullable fields or derived booleans that callers must keep in sync; make impossible states unrepresentable.
+- Calls should be boring: complex decisions happen above; call args/object fields are names, literals, or simple property reads.
+- Prefer early returns over nested condition pyramids. Split code into gather -> normalize -> decide -> act.
+- Use named intermediates only for domain meaning or readability; avoid temporary-variable soup.
+- Code size matters. Prefer small clear code; maintainability includes not growing LOC without payoff.
+- Refactors should delete about as much local complexity as they add. If LOC grows, the new ownership/API needs to clearly pay for it.
+- Refactors should reduce non-test LOC unless they remove a larger architectural cost. Treat positive production LOC as a smell. Before closeout, run `git diff --numstat`; if non-test LOC grew, trim or explicitly explain how many paths were removed.
+- Prefer deleting branches, modes, adapters, and tests over preserving them. A refactor that adds a second path has probably failed unless the old path is a cited shipped contract.
+- New helpers/files must pay rent immediately: fewer call paths, fewer concepts, or less repeated logic. No helpers for one-off compatibility, field-name translation, or speculative resilience.
+- Before adding helpers/files, check whether existing code can absorb the behavior with less new surface.
+- Keep APIs narrow: export only current caller needs; keep types/helpers local by default.
+- Return the smallest useful shape. Avoid broad result objects, flags, or metadata unless callers use them.
+- Avoid adapter layers that only rename fields. Move real responsibility or leave code local.
+- Inline simple one-use objects/spreads when clearer. Extract only when it removes duplication or hard logic.
+- Tests prove behavior and regressions, not every internal branch.
+- Tests are welcome, but review them before landing for duplication and value. Delete weak tests and assertions for behavior or paths just removed.
+- Tests protect canonical behavior and migration boundaries, not obsolete internals. Delete tests for removed fallback paths instead of updating them.
+- Prefer existing narrow helpers over repeated casts/guards. Add local helpers when two or more nearby call sites share real boundary logic.
+- Prefer constructor parameter properties for injected dependencies/configuration. Do not ban them for erasable-syntax purity.
+- Prefer `satisfies` for registries/config maps; derive types from schemas when a runtime schema already exists.
+- Table-drive repetitive tests when it reduces code and keeps failure names clear.
+- Dynamic import: no static and dynamic import for the same production module. Use `*.runtime.ts` as the lazy boundary. After edits, run `pnpm build` and check `[INEFFECTIVE_DYNAMIC_IMPORT]`.
+- Web cycles: `pnpm check:circular` must pass.
+- Classes: no prototype mixins or mutations. Prefer inheritance/composition. Tests prefer per-instance stubs.
+- Split files around 700 LOC when clarity and testability improve.
 
 ## Commit Rules
-- Git commit message 使用英文 Conventional Commits 规范，优先采用 `type(scope): summary`；版本升级使用 `chore(scope): bump ... to vX.Y.Z`。
-- 需要触发 crate publish 的改动，提交时必须同时 bump 对应包的 version。
-- 修改 `packages/core` 并需要发布 `treease-core` 时，更新 `packages/core/Cargo.toml` 的 version，并使用版本升级 commit（例如 `chore(core): bump treease-core to vX.Y.Z`）。
-- 修改 `apps/cli` 并需要发布 `treease-cli` 时，更新 `apps/cli/Cargo.toml` 的 version，并使用版本升级 commit（例如 `chore(cli): bump treease-cli to vX.Y.Z`）。
+
+- Commit messages are English and follow `type(scope): summary`.
+- Changes that require `crate publish` must bump the affected package version in the same commit.
+- When publishing `treease-core` after changing `packages/core`, update `packages/core/Cargo.toml`.
+- When publishing `treease-cli` after changing `apps/cli`, update `apps/cli/Cargo.toml`.
 
 ## Verification
-- 默认从 `docs/testing/index.md` 选择最小相关验证，不无差别全跑。
-- Core 常用：`cd packages/core && cargo nextest run --locked`
-- CLI 常用：`cd apps/cli && cargo nextest run --locked --lib`；`cd apps/cli && bash tests/acceptance/run.sh`
-- Web 常用：`cd apps/web && pnpm test:unit` / `pnpm test:integration` / `pnpm test:e2e`
-- Server 常用：`cd apps/server && ./node_modules/.bin/tsc -p tsconfig.json --noEmit`；`cd apps/server && node --import tsx --test src/**/*.test.ts`
-- 文档变更：在仓库根目录运行 `node scripts/check-docs.mjs`
-- 改协议或 WASM 后：`cd packages/core && cargo run --locked --bin export_document_protocol`，再在 `apps/web/` 运行 `pnpm wasm:bindgen`；必要时继续 `pnpm wasm:sync`
 
-## Final Reminder
-- 如果这次任务还没有执行 `pnpm docs:list`，立刻先执行它；在此之前，不要进行任何其他仓库相关操作。
+- Select the smallest relevant check; do not run everything indiscriminately.
+- Core: `cd packages/core && cargo nextest run --locked`
+- CLI: `cd apps/cli && cargo nextest run --locked --lib`; `cd apps/cli && bash tests/acceptance/run.sh`
+- Web: `cd apps/web && pnpm test:unit` / `pnpm test:integration` / `pnpm test:e2e`
+- Server: `cd apps/server && node --import tsx --test src/**/*.test.ts`
+- Protocol or WASM changes: `cd packages/core && cargo run --locked --bin export_document_protocol`, then `cd apps/web && pnpm wasm:bindgen`; run `pnpm wasm:sync` when needed.

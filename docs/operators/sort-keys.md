@@ -14,19 +14,24 @@ Note that `treease` does not yet consider anchors when sorting by keys - this ma
 
 For more advanced sorting, you can use the [sort_by](sort.md) function on a map, and give it a custom function like `sort_by(key | downcase)`.
 
-
 ## Sort keys of map
+
 Given a sample.yml file of:
+
 ```yaml
 c: frog
 a: blah
 b: bing
 ```
+
 then
+
 ```bash
 treease 'sort_keys(.)' sample.yml
 ```
+
 will output
+
 ```yaml
 a: blah
 b: bing
@@ -34,9 +39,11 @@ c: frog
 ```
 
 ## Sort keys recursively
+
 Note the array elements are left unsorted, but maps inside arrays are sorted
 
 Given a sample.yml file of:
+
 ```yaml
 bParent:
   c: dog
@@ -52,11 +59,15 @@ aParent:
     - b: ew
       a: apple
 ```
+
 then
+
 ```bash
 treease 'sort_keys(..)' sample.yml
 ```
+
 will output
+
 ```yaml
 aParent:
   x:

@@ -1,9 +1,10 @@
 ---
-summary: "JavaScript Object 格式的支持范围、示例与边界说明。"
+summary: "JavaScript Object format support, examples, and boundaries."
 read_when:
-  - 需要理解或修改 JavaScript Object 编解码、导入或导出行为
-  - 需要核对格式文档与实际支持范围是否一致
+  - Understanding or changing JavaScript Object encoding, decoding, import, or export behavior
+  - Checking whether the format documentation matches the actual supported scope
 ---
+
 # JavaScript Object
 
 Parse JavaScript object or array literals into Treease's structured tree model.

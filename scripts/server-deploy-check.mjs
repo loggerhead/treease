@@ -16,7 +16,6 @@ const requiredFiles = [
   'vercel.json',
   '.env.example',
   'README.md',
-  'DEPLOY.md',
   'supabase/0001_treease_server.sql',
 ];
 
@@ -56,22 +55,16 @@ const envKeys = new Set(
 for (const key of [
   'HOST',
   'PORT',
-  'REQUEST_BODY_LIMIT_BYTES',
   'APP_ORIGIN',
-  'CORS_ORIGIN',
   'SUPABASE_URL',
   'SUPABASE_ANON_KEY',
   'SUPABASE_SERVICE_ROLE_KEY',
-  'REQUEST_BODY_LIMIT_BYTES',
   'APP_ORIGIN',
   'BILLING_WEBHOOK_SECRET',
   'LEMONSQUEEZY_WEBHOOK_SECRET',
-  'BILLING_CHECKOUT_URLS',
-  'BILLING_PORTAL_URL',
-  'LEMONSQUEEZY_API_KEY',
+  'LEMONSQUEEZY_STORE_URL',
   'LEMONSQUEEZY_VARIANT_MAP',
-  'AI_GATEWAY_API_KEY',
-  'TREEASE_AI_MODEL',
+  'AI_CREDENTIALS',
 ]) {
   assert(envKeys.has(key), `.env.example must include ${key}`);
 }
@@ -83,12 +76,9 @@ for (const key of [
   'SUPABASE_SERVICE_ROLE_KEY',
   'BILLING_WEBHOOK_SECRET',
   'LEMONSQUEEZY_WEBHOOK_SECRET',
-  'BILLING_CHECKOUT_URLS',
-  'BILLING_PORTAL_URL',
+  'LEMONSQUEEZY_STORE_URL',
   'LEMONSQUEEZY_VARIANT_MAP',
-  'AI_GATEWAY_API_KEY',
-  'VERCEL_OIDC_TOKEN',
-  'TREEASE_AI_MODEL',
+  'AI_CREDENTIALS',
 ]) {
   assert(envSource.includes(key), `src/env.ts must validate ${key}`);
 }

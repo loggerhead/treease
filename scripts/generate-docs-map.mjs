@@ -7,7 +7,17 @@ const ROOT = process.cwd();
 const DOCS_DIR = join(ROOT, 'docs');
 const OUTPUT_PATH = join(DOCS_DIR, 'docs_map.md');
 const MARKDOWN_EXTENSIONS = /\.mdx?$/i;
-const EXCLUDED_DIRS = new Set(['.generated', 'archive', 'assets', 'images', 'internal', 'research', 'snippets']);
+const EXCLUDED_DIRS = new Set([
+  '.generated',
+  'adr',
+  'archive',
+  'assets',
+  'images',
+  'internal',
+  'operators',
+  'research',
+  'snippets',
+]);
 const EXCLUDED_FILES = new Set(['AGENTS.md', 'CLAUDE.md', 'docs_map.md']);
 
 if (!existsSync(DOCS_DIR)) {
@@ -135,12 +145,6 @@ function walkMarkdownFiles(dir, base = dir) {
 function buildMapEntries() {
   const lines = [];
   const headingLine = [
-    '---',
-    'summary: "Generated heading map for Treease docs pages"',
-    'read_when: "Finding which docs page covers a topic before reading the page"',
-    'title: "Docs map"',
-    '---',
-    '',
     '# Treease docs map',
     '',
     'This file is generated from `docs/**/*.md` and `docs/**/*.mdx` headings to help agents navigate the documentation tree.',
@@ -172,7 +176,7 @@ function buildMapEntries() {
 }
 
 const expected = buildMapEntries();
-const expectedContent = expected.join('\n') + '\n';
+const expectedContent = `${expected.join('\n').trimEnd()}\n`;
 
 if (process.argv.includes('--check')) {
   if (!existsSync(OUTPUT_PATH)) {

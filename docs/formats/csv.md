@@ -1,9 +1,10 @@
 ---
-summary: "CSV 格式的支持范围、示例与边界说明。"
+summary: "CSV format support, examples, and boundaries."
 read_when:
-  - 需要理解或修改 CSV 编解码、导入或导出行为
-  - 需要核对格式文档与实际支持范围是否一致
+  - Understanding or changing CSV encoding, decoding, import, or export behavior
+  - Checking whether the format documentation matches the actual supported scope
 ---
+
 # CSV
 
 Encode, decode, and roundtrip CSV files.

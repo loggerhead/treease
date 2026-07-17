@@ -1,56 +1,56 @@
 ---
-summary: "常见 YAML 子集、fixture 分类与 rare 数据集边界。"
+summary: "Common YAML subset, fixture classification, and rare dataset boundaries."
 read_when:
-  - 任务涉及 YAML 支持边界、fixture 分类或 rare 数据集
-  - 需要说明为何某类 YAML 输入被支持或被限制
+  - A task involves YAML support boundaries, fixture classification, or the rare dataset
+  - Explaining why a category of YAML input is supported or restricted
 ---
-# YAML 常见子集
 
-本文档定义 Treease 在 fixture 与实现层优先保证的“常见 YAML 子集”。
+# Common YAML Subset
 
-## 目标
+This document defines the common YAML subset that Treease prioritizes in fixtures and implementation.
 
-- 覆盖真实用户最常手写的 YAML 结构。
-- 让 `test/fixtures/yaml/` 只承载常见子集的样例。
-- 将规范级、高级特性和边角语法移到 `test/fixtures/yaml-rare/`，避免它们持续污染常规回归集。
+## Purpose
 
-## 常见 YAML 子集
+- Cover the YAML structures that users most commonly write by hand.
+- Keep `test/fixtures/yaml/` limited to common-subset examples.
+- Move specification-level, advanced, and edge-case syntax to `test/fixtures/yaml-rare/` so it does not continually pollute the standard regression suite.
 
-当前常见子集包含：
+## Common YAML Subset
 
-- 单文档输入。
-- 基础多文档分隔：`---`。
-- block mapping：`key: value`。
-- block sequence：`- item`。
-- block mapping 与 block sequence 的常规嵌套。
-- plain scalar、single quoted scalar、double quoted scalar。
-- 常见 block scalar：`|`、`>`。
-- 空文档与空流。
-- 行内注释与独立注释行。
+The current common subset includes:
 
-## 不属于常见子集
+- Single-document input.
+- Basic multi-document separation: `---`.
+- block mapping: `key: value`.
+- block sequence: `- item`.
+- Standard nesting of block mappings and block sequences.
+- plain scalar, single quoted scalar, double quoted scalar.
+- Common block scalars: `|`, `>`.
+- Empty documents and empty streams.
+- Inline comments and standalone comment lines.
 
-以下语法暂不作为常规 YAML 子集的一部分：
+## Outside the Common Subset
 
-- `%YAML`、`%TAG`、reserved directives。
-- 显式 tag：`!!str`、`!!int`、`!!map`、`!!seq`、`!!set`、`!!omap`、`!!binary` 等。
-- 自定义 tag 与 tag shorthand。
-- anchor / alias。
-- 显式 mapping 语法：`? key` / `: value`。
-- 依赖复杂 stream 规则的多文档组合。
-- 以规范覆盖为目的的极端空 key、空 value、复杂 node property 组合。
+The following syntax is not currently part of the standard YAML subset:
 
-## 当前失败集分类
+- `%YAML`, `%TAG`, and reserved directives.
+- Explicit tags: `!!str`, `!!int`, `!!map`, `!!seq`, `!!set`, `!!omap`, `!!binary`, and others.
+- Custom tags and tag shorthands.
+- anchor / alias.
+- Explicit mapping syntax: `? key` / `: value`.
+- Multi-document combinations that depend on complex stream rules.
+- Extreme empty-key, empty-value, and complex node-property combinations intended for specification coverage.
 
-仓库当前不再维护集中式 YAML 失败清单文件；YAML fixture 是否进入常规回归集，直接以目录归属为准：
+## Current Failure-Set Classification
 
-- 保留在 `test/fixtures/yaml/`：只保留仍属于常见子集、需要继续修复的样例。
-- 迁移到 `test/fixtures/yaml-rare/`：凡是依赖上述高级特性的样例，统一视为罕见语法。
-- `test/fixtures/yaml-rare/README.md`：记录 rare fixture 的整体范围与排除原因。
+The repository no longer maintains a centralized YAML failure-list file. Whether a YAML fixture belongs in the standard regression suite is determined directly by its directory:
 
-当前保留在常规 YAML 目录中的失败样例只有空流：
+- Keep in `test/fixtures/yaml/`: only examples that are still in the common subset and still need to be fixed.
+- Move to `test/fixtures/yaml-rare/`: any example that depends on the advanced features above is classified as rare syntax.
+
+The only failing examples still retained in the standard YAML directory are empty streams:
 
 - `AVM7.1.yaml`
 - `empty-stream.1.yaml`
 
-其余当前失败的 YAML 样例均归为罕见语法样例，并迁移到 `test/fixtures/yaml-rare/`。
+All other currently failing YAML examples are classified as rare-syntax examples and moved to `test/fixtures/yaml-rare/`.

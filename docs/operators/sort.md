@@ -6,19 +6,24 @@ To sort by descending order, pipe the results through the `reverse` operator aft
 
 Note that at this stage, `treease` only sorts scalar fields.
 
-
 ## Sort by string field
+
 Given a sample.yml file of:
+
 ```yaml
 - a: banana
 - a: cat
 - a: apple
 ```
+
 then
+
 ```bash
 treease 'sort_by(.a)' sample.yml
 ```
+
 will output
+
 ```yaml
 - a: apple
 - a: banana
@@ -26,7 +31,9 @@ will output
 ```
 
 ## Sort by multiple fields
+
 Given a sample.yml file of:
+
 ```yaml
 - a: dog
 - a: cat
@@ -34,11 +41,15 @@ Given a sample.yml file of:
 - a: cat
   b: apple
 ```
+
 then
+
 ```bash
 treease 'sort_by(.a, .b)' sample.yml
 ```
+
 will output
+
 ```yaml
 - a: cat
   b: apple
@@ -48,19 +59,25 @@ will output
 ```
 
 ## Sort descending by string field
+
 Use sort with reverse to sort in descending order.
 
 Given a sample.yml file of:
+
 ```yaml
 - a: banana
 - a: cat
 - a: apple
 ```
+
 then
+
 ```bash
 treease 'sort_by(.a) | reverse' sample.yml
 ```
+
 will output
+
 ```yaml
 - a: cat
 - a: banana
@@ -68,18 +85,24 @@ will output
 ```
 
 ## Sort array in place
+
 Given a sample.yml file of:
+
 ```yaml
 cool:
   - a: banana
   - a: cat
   - a: apple
 ```
+
 then
+
 ```bash
 treease '.cool |= sort_by(.a)' sample.yml
 ```
+
 will output
+
 ```yaml
 cool:
   - a: apple
@@ -88,20 +111,26 @@ cool:
 ```
 
 ## Sort array of objects by key
+
 Note that you can give sort_by complex expressions, not just paths
 
 Given a sample.yml file of:
+
 ```yaml
 cool:
   - b: banana
   - a: banana
   - c: banana
 ```
+
 then
+
 ```bash
 treease '.cool |= sort_by(keys | .[0])' sample.yml
 ```
+
 will output
+
 ```yaml
 cool:
   - a: banana
@@ -110,19 +139,25 @@ cool:
 ```
 
 ## Sort a map
+
 Sorting a map, by default this will sort by the values
 
 Given a sample.yml file of:
+
 ```yaml
 y: b
 z: a
 x: c
 ```
+
 then
+
 ```bash
 treease 'sort' sample.yml
 ```
+
 will output
+
 ```yaml
 z: a
 y: b
@@ -130,19 +165,25 @@ x: c
 ```
 
 ## Sort a map by keys
+
 Use sort_by to sort a map using a custom function
 
 Given a sample.yml file of:
+
 ```yaml
 Y: b
 z: a
 x: c
 ```
+
 then
+
 ```bash
 treease 'sort_by(key | downcase)' sample.yml
 ```
+
 will output
+
 ```yaml
 x: c
 Y: b
@@ -150,9 +191,11 @@ z: a
 ```
 
 ## Sort is stable
+
 Note the order of the elements in unchanged when equal in sorting.
 
 Given a sample.yml file of:
+
 ```yaml
 - a: banana
   b: 1
@@ -163,11 +206,15 @@ Given a sample.yml file of:
 - a: banana
   b: 4
 ```
+
 then
+
 ```bash
 treease 'sort_by(.a)' sample.yml
 ```
+
 will output
+
 ```yaml
 - a: banana
   b: 1
@@ -180,17 +227,23 @@ will output
 ```
 
 ## Sort by numeric field
+
 Given a sample.yml file of:
+
 ```yaml
 - a: 10
 - a: 100
 - a: 1
 ```
+
 then
+
 ```bash
 treease 'sort_by(.a)' sample.yml
 ```
+
 will output
+
 ```yaml
 - a: 1
 - a: 10
@@ -198,7 +251,9 @@ will output
 ```
 
 ## Sort, nulls come first
+
 Given a sample.yml file of:
+
 ```yaml
 - 8
 - 3
@@ -206,20 +261,23 @@ Given a sample.yml file of:
 - 6
 - true
 - false
-- cat
-```
-then
-```bash
-treease 'sort' sample.yml
-```
-will output
-```yaml
-- null
-- false
-- true
-- 3
-- 6
-- 8
 - cat
 ```
 
+then
+
+```bash
+treease 'sort' sample.yml
+```
+
+will output
+
+```yaml
+- null
+- false
+- true
+- 3
+- 6
+- 8
+- cat
+```

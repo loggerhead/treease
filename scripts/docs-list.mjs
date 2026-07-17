@@ -5,8 +5,9 @@ import { fileURLToPath } from 'node:url';
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const docsDir = path.join(repoRoot, 'docs');
 
-const excludedDocDirs = new Set(['archive', 'research']);
-const excludedRootFiles = new Set(['README.md', 'README.zh.md', 'AGENTS.md', 'CLAUDE.md']);
+const excludedDocDirs = new Set(['adr', 'archive', 'generated', 'operators', 'research']);
+const excludedDocFiles = new Set(['docs_map.md']);
+const excludedRootFiles = new Set(['AGENTS.md', 'CLAUDE.md', 'README.md', 'README.zh.md', 'guess-failure.md']);
 
 process.stdout.on('error', (error) => {
   if (error?.code === 'EPIPE') {
@@ -33,7 +34,7 @@ function walkMarkdownFiles(dir, base = dir) {
       continue;
     }
 
-    if (entry.isFile() && entry.name.endsWith('.md')) {
+    if (entry.isFile() && entry.name.endsWith('.md') && !excludedDocFiles.has(entry.name)) {
       files.push(normalizePath(path.relative(base, fullPath)));
     }
   }

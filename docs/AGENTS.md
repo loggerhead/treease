@@ -1,59 +1,33 @@
 ---
-summary: "Treease 文档子树治理规则与导航契约。"
+summary: "Documentation ownership, discovery, and generated-artifact rules."
 read_when:
-  - 需要统一 docs 分层、生成文件、导航口径或新建主题文档时
-  - 需要确认文档引用是否应走导航页而非逐页堆砌
+  - Writing, moving, or deleting repository documentation
+  - Selecting the minimum documentation packet for a code or configuration change
 ---
+
 # Docs Guide
 
-本目录承载文档治理层规则，规定 docs 站点的层级、导航、生成物边界与入口承接关系。
+## Purpose
 
-## 层级
+Documentation helps an agent make one change with the smallest sufficient context. Put each fact in one owner; link to that owner instead of copying it elsewhere.
 
-1. 首页与索引层
-   - `docs/index.md`
-   - `docs/docs_map.md`
-2. 主题域入口层
-   - `docs/start/index.md`
-   - `docs/web/index.md`
-   - `docs/core/index.md`
-   - `docs/testing/index.md`
-   - `docs/cli/index.md`
-   - `docs/operators/index.md`
-   - `docs/formats/index.md`
-   - `docs/references/index.md`
-   - `docs/generated/index.md`
-3. 具体内容层
-   - 各主题域目录下的正文页面
-4. 生成与校验层
-   - `docs/generated/*`
-   - `docs/docs_map.md`
-   - `docs/docs.json`
+## Ownership
 
-## 元规则
+- `docs/contracts/` owns stable terms, authority, state transitions, and invariants.
+- Topic directories own focused domain guidance and user-facing references.
+- `docs/generated/`, `docs/docs_map.md`, and root generated snapshots report current state only. They never define product or implementation semantics.
+- `AGENTS.md` files own scoped development contracts: placement, interfaces, seams, local proof, and any task-specific extra reading.
 
-- 每个手写 Markdown 页面都必须包含 `summary` 和 `read_when` frontmatter。
-- 入口页负责导航、阅读顺序和边界说明；正文页负责具体知识内容，不重复承担总入口职责。
-- 任何正文都必须被某个主题域入口页收编。
-- 任何自动生成产物都必须在 `docs/generated/index.md` 或 `docs/docs_map.md` 中被声明为生成层资源。
-- `docs/docs.json` 是 docs 站点结构元数据入口；脚本应消费它，而不是旁路定义另一套结构。
-- 手写 Markdown、示例命令、链接目标与生成说明都不得写入本机身份信息；统一使用仓库相对路径、主题页相对路径或脱敏占位符。
+## Discovery and Metadata
 
-## 路径约定
+- `summary` and `read_when` belong only on hand-written, agent-discoverable guidance pages. Keep `read_when` to one to three concrete triggers.
+- Do not add frontmatter to `AGENTS.md`, `README*`, `SKILL.md`, operator reference leaves, fixtures, scratch files, or generated artifacts.
+- `pnpm docs:list` is the task-discovery index. It intentionally excludes `docs/operators/`, generated artifacts, and `docs/docs_map.md`; open those paths directly only when the task requires them.
+- `docs/docs_map.md` is the generated heading map. It excludes operator references; regenerate it with `pnpm docs:map:gen` rather than editing it.
+- Use repository-relative paths. Never place local identity data, absolute local paths, or secrets in documentation.
 
-- 主题域入口统一命名为 `index.md`。
-- `docs/` 根目录只保留治理层、首页与索引层、跨域规则页。
-- 专题正文优先下沉到所属主题域目录，不在 `docs/` 根目录长期悬挂。
+## Reading Rules
 
-## 生成层边界
-
-- `docs/docs_map.md` 由 `pnpm docs:map:gen` 生成，不手工维护。
-- `docs/generated/*.json`、`docs/generated/*.md` 是快照和校验产物，不承载新的真语义定义。
-- 当手写正文与生成产物冲突时，以手写正文和实现真源为准，生成产物用于核验。
-
-## 验证
-
-- `pnpm docs:list`
-- `pnpm docs:map:gen`
-- `pnpm docs:map:check`
-- `node scripts/check-docs.mjs`
+- Start with the root or nearest scoped `AGENTS.md`.
+- Add the relevant contract.
+- Read implementation sources and run the smallest relevant verification from the root `AGENTS.md`.

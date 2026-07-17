@@ -99,7 +99,7 @@ pnpm --dir apps/web build
 node ./scripts/treease-web-local.mjs . path/to/file.json
 ```
 
-`node ./scripts/treease-web-local.mjs` starts a local static server for `apps/web/build/cli-assets`, runs the current checkout's CLI through `cargo run`, and injects an isolated `TREEASE_WEB_CACHE_DIR` under `.tmp/`. That avoids stale cache hits when `wasm_release_date` stays the same but the local bundle changes.
+`node ./scripts/treease-web-local.mjs` starts a local static server for the built CLI-assets directory, runs the current checkout's CLI through `cargo run`, and injects an isolated `TREEASE_WEB_CACHE_DIR` under `.tmp/`. That avoids stale cache hits when `wasm_release_date` stays the same but the local bundle changes.
 
 If you need the env vars for manual commands, run:
 

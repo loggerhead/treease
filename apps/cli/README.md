@@ -21,7 +21,7 @@ treease web '.services.api' config.yaml
 
 - Source: <https://github.com/loggerhead/treease>
 - Core crate: `treease-core`
-- CLI usage guide: <https://github.com/loggerhead/treease/tree/main/docs/cli>
+- CLI source and usage: <https://github.com/loggerhead/treease/tree/main/apps/cli>
 
 ## Local Verification
 

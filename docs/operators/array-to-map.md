@@ -9,20 +9,25 @@ Behind the scenes, this is implemented using reduce:
 ```
 
 ## Simple example
+
 Given a sample.yml file of:
+
 ```yaml
 cool:
   - null
   - null
   - hello
 ```
+
 then
+
 ```bash
 treease '.cool |= array_to_map' sample.yml
 ```
+
 will output
+
 ```yaml
 cool:
   2: hello
 ```
-
