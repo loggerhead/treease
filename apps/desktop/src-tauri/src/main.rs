@@ -25,6 +25,7 @@ const RECENT_FILES_FILENAME: &str = "desktop-recent-files.json";
 const WORKSPACE_SESSION_FILENAME: &str = "desktop-workspace-session.json";
 const KEYRING_SERVICE: &str = "com.treease.desktop";
 const KEYRING_REFRESH_TOKEN_ACCOUNT: &str = "supabase-refresh-token";
+const OPEN_RECENT_MENU_PREFIX: &str = "workspace:open-recent:";
 
 #[derive(Deserialize)]
 struct RefreshTokenResponse {
@@ -222,6 +223,18 @@ fn persist_recent_files(app: &AppHandle, state: &FileAccessState) -> Result<(), 
     write_json_atomically(app, RECENT_FILES_FILENAME, &recent)
 }
 
+fn persist_recent_files_and_refresh_menu(
+    app: &AppHandle,
+    state: &FileAccessState,
+) -> Result<(), String> {
+    // Recent-file ownership stays in the host; rebuilding keeps the native menu in sync
+    // after every grant mutation without exposing paths to the Web workspace.
+    persist_recent_files(app, state)?;
+    let menu = create_application_menu(app, state).map_err(|error| error.to_string())?;
+    app.set_menu(menu).map_err(|error| error.to_string())?;
+    Ok(())
+}
+
 fn file_name(path: &Path) -> Result<String, String> {
     path.file_name()
         .and_then(|value| value.to_str())
@@ -334,7 +347,7 @@ async fn pick_file(
         .into_path()
         .map_err(|_| "The selected file is not a local file.".to_owned())?;
     let grant = state.grant(path)?;
-    persist_recent_files(&app, &state)?;
+    persist_recent_files_and_refresh_menu(&app, &state)?;
     let text = std::fs::read_to_string(state.path(&grant.id)?)
         .map_err(|error| format!("Cannot read the selected file: {error}"))?;
     Ok(Some(OpenedFile { grant, text }))
@@ -388,7 +401,7 @@ async fn save_new_file(
     std::fs::write(&path, text)
         .map_err(|error| format!("Cannot save the selected file: {error}"))?;
     let grant = state.grant(path)?;
-    persist_recent_files(&app, &state)?;
+    persist_recent_files_and_refresh_menu(&app, &state)?;
     Ok(Some(grant))
 }
 
@@ -400,7 +413,7 @@ async fn open_recent_file(
 ) -> Result<OpenedFile, String> {
     let path = state.recent_path(&recent_id)?;
     let grant = state.grant(path)?;
-    persist_recent_files(&app, &state)?;
+    persist_recent_files_and_refresh_menu(&app, &state)?;
     let text = std::fs::read_to_string(state.path(&grant.id)?)
         .map_err(|error| format!("Cannot read the recent file: {error}"))?;
     Ok(OpenedFile { grant, text })
@@ -469,7 +482,7 @@ async fn clear_recent_files(
     state: State<'_, FileAccessState>,
 ) -> Result<(), String> {
     state.clear_recent_files()?;
-    persist_recent_files(&app, &state)
+    persist_recent_files_and_refresh_menu(&app, &state)
 }
 
 #[tauri::command]
@@ -510,7 +523,10 @@ async fn open_external_url(app: AppHandle, url: String) -> Result<(), String> {
         .map_err(|error| format!("Cannot open the system browser: {error}"))
 }
 
-fn create_application_menu<R: tauri::Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
+fn create_application_menu<R: tauri::Runtime>(
+    app: &AppHandle<R>,
+    state: &FileAccessState,
+) -> tauri::Result<Menu<R>> {
     let command = |id: &str, title: &str, accelerator: Option<&str>| {
         let builder = MenuItemBuilder::with_id(id, title);
         let builder = match accelerator {
@@ -519,6 +535,27 @@ fn create_application_menu<R: tauri::Runtime>(app: &AppHandle<R>) -> tauri::Resu
         };
         builder.build(app)
     };
+    let open_recent = Submenu::new(app, "Open Recent", true)?;
+    let recent_files = state
+        .recent_files()
+        .map_err(|error| tauri::Error::Io(std::io::Error::other(error)))?;
+    if recent_files.is_empty() {
+        open_recent.append(
+            &MenuItemBuilder::with_id("workspace:no-recent", "No Recent Files")
+                .enabled(false)
+                .build(app)?,
+        )?;
+    } else {
+        for file in recent_files {
+            open_recent.append(&command(
+                &format!("{OPEN_RECENT_MENU_PREFIX}{}", file.id),
+                &file.name,
+                None,
+            )?)?;
+        }
+        open_recent.append(&PredefinedMenuItem::separator(app)?)?;
+        open_recent.append(&command("workspace:clear-recent", "Clear Recent", None)?)?;
+    }
     let file = Submenu::with_items(
         app,
         "File",
@@ -526,8 +563,13 @@ fn create_application_menu<R: tauri::Runtime>(app: &AppHandle<R>) -> tauri::Resu
         &[
             &command("workspace:new", "New", Some("CmdOrCtrl+N"))?,
             &command("workspace:open", "Open…", Some("CmdOrCtrl+O"))?,
+            &open_recent,
+            &PredefinedMenuItem::separator(app)?,
             &command("workspace:save", "Save", Some("CmdOrCtrl+S"))?,
             &command("workspace:save-as", "Save As…", Some("CmdOrCtrl+Shift+S"))?,
+            &PredefinedMenuItem::separator(app)?,
+            &command("workspace:import", "Import…", None)?,
+            &command("workspace:export", "Export…", None)?,
             &PredefinedMenuItem::separator(app)?,
             &command("workspace:close-tab", "Close Tab", Some("CmdOrCtrl+W"))?,
         ],
@@ -579,7 +621,7 @@ fn run() -> Result<(), tauri::Error> {
             let state = app.state::<FileAccessState>();
             let files = open_explicit_paths(&state, arguments.into_iter().map(PathBuf::from));
             if !files.is_empty() {
-                let _ = persist_recent_files(app, &state);
+                let _ = persist_recent_files_and_refresh_menu(app, &state);
                 let _ = app.emit("workspace-files-dropped", files);
                 if let Some(window) = app.get_webview_window("main") {
                     let _ = window.show();
@@ -619,8 +661,6 @@ fn run() -> Result<(), tauri::Error> {
         .setup(|app| {
             load_recent_files(app.handle(), &app.state::<FileAccessState>())
                 .map_err(|error| tauri::Error::Io(std::io::Error::other(error)))?;
-            let menu = create_application_menu(app.handle())?;
-            app.set_menu(menu)?;
             let startup_files = open_explicit_paths(
                 app.state::<FileAccessState>().inner(),
                 std::env::args_os().skip(1).map(PathBuf::from),
@@ -638,6 +678,9 @@ fn run() -> Result<(), tauri::Error> {
                 persist_recent_files(app.handle(), app.state::<FileAccessState>().inner())
                     .map_err(|error| tauri::Error::Io(std::io::Error::other(error)))?;
             }
+            let menu =
+                create_application_menu(app.handle(), app.state::<FileAccessState>().inner())?;
+            app.set_menu(menu)?;
             Ok(())
         })
         .on_menu_event(|app, event| {
@@ -654,7 +697,7 @@ fn run() -> Result<(), tauri::Error> {
             let state = window.state::<FileAccessState>();
             let files = open_explicit_paths(&state, paths.iter().cloned());
             if !files.is_empty() {
-                let _ = persist_recent_files(window.app_handle(), &state);
+                let _ = persist_recent_files_and_refresh_menu(window.app_handle(), &state);
                 let _ = window.emit("workspace-files-dropped", files);
             }
         })

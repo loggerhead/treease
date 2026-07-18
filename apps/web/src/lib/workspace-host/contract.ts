@@ -38,6 +38,10 @@ export type WorkspaceCommand =
   | 'workspace:open'
   | 'workspace:save'
   | 'workspace:save-as'
+  | 'workspace:import'
+  | 'workspace:export'
+  | 'workspace:clear-recent'
+  | `workspace:open-recent:${string}`
   | 'workspace:close-tab'
   | 'workspace:toggle-viewer'
   | 'workspace:help';

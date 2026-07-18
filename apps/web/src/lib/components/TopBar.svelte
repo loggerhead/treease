@@ -2,10 +2,10 @@
   import { onMount } from 'svelte'
   import { cubicOut } from 'svelte/easing'
   import { fly } from 'svelte/transition'
-  import { Plus, X, FileInput, FileOutput, BookOpen, MessageCircle, Share2, User, ArrowRight, Save, FolderOpen } from 'lucide-svelte'
+  import { Plus, X, FileInput, FileOutput, BookOpen, MessageCircle, Share2, ArrowRight } from 'lucide-svelte'
   import { trackEvent } from '../analytics/ga4'
   import { languageId as languageIdStore } from '../store/document-session-store'
-  import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from './ui/dropdown-menu'
+  import AccountMenu from './AccountMenu.svelte'
   import * as Select from './ui/select'
   import * as ButtonGroup from './ui/button-group'
   import { Button, IconButton } from './ui/button'
@@ -17,12 +17,6 @@
   export let showTabs = true
   export let showRightActions = true
   export let onAddTab: () => void = () => {}
-  export let onOpenDocument: () => Promise<void> = async () => {}
-  export let onSaveDocument: () => Promise<void> = async () => {}
-  export let onSaveAsDocument: () => Promise<void> = async () => {}
-  export let recentFiles: Array<{ id: string; name: string }> = []
-  export let onOpenRecentFile: (grant: { id: string; name: string }) => Promise<void> = async () => {}
-  export let onClearRecentFiles: () => Promise<void> = async () => {}
   export let onCloseTab: (id: string) => void = () => {}
   export let onActivateTab: (id: string) => void = () => {}
   export let formatOptions: Array<{ id: string; label: string; extensions: string[] }> = []
@@ -53,6 +47,16 @@
 
   const toggleExportPanel = () => {
     exportOpen = !exportOpen
+    importOpen = false
+  }
+
+  export function openImportPanel(): void {
+    importOpen = true
+    exportOpen = false
+  }
+
+  export function openExportPanel(): void {
+    exportOpen = true
     importOpen = false
   }
 
@@ -111,200 +115,14 @@
   })
 </script>
 
-<header class="grid h-[var(--topbar-height)] grid-cols-[auto_1fr_auto] items-center gap-3 border-b border-[var(--border-strong)] bg-[var(--topbar-bg)] px-3 text-[var(--text-primary)]">
+<header class="relative grid h-[var(--topbar-height)] grid-cols-[auto_1fr_auto] items-center gap-3 border-b border-[var(--border-strong)] bg-[var(--topbar-bg)] px-3 text-[var(--text-primary)]">
   <ButtonGroup.Root variant="segmented-outline" class="min-w-0">
-    <div class="relative flex h-full items-center" data-button-group-item>
-      <IconButton aria-label="Open document" title="Open document" data-testid="topbar-open-document" on:click={() => void onOpenDocument()}>
-        <FolderOpen size={12} />
-      </IconButton>
-    </div>
-    <div class="relative flex h-full items-center" data-button-group-item>
-      <IconButton aria-label="Save document" title="Save document" data-testid="topbar-save-document" on:click={() => void onSaveDocument()}>
-        <Save size={12} />
-      </IconButton>
-    </div>
-    <div class="relative flex h-full items-center" data-button-group-item>
-      <IconButton aria-label="Save document as" title="Save document as" data-testid="topbar-save-as-document" on:click={() => void onSaveAsDocument()}>
-        <Save size={12} />
-      </IconButton>
-    </div>
-    <div class="relative flex h-full items-center" data-button-group-item>
-      <DropdownMenu>
-        <DropdownMenuTrigger class="inline-flex h-6 items-center px-2 text-[11px]" aria-label="Recent documents" title="Recent documents">Recent</DropdownMenuTrigger>
-        <DropdownMenuContent align="start">
-          {#if recentFiles.length}
-            {#each recentFiles as file (file.id)}
-              <DropdownMenuItem onSelect={() => void onOpenRecentFile(file)}>{file.name}</DropdownMenuItem>
-            {/each}
-            <DropdownMenuItem onSelect={() => void onClearRecentFiles()}>Clear recent</DropdownMenuItem>
-          {:else}
-            <DropdownMenuItem disabled>No recent files</DropdownMenuItem>
-          {/if}
-        </DropdownMenuContent>
-      </DropdownMenu>
-    </div>
-    <div class="relative flex h-full items-center" data-button-group-item bind:this={importAnchor}>
-      <IconButton
-        aria-label="Import"
-        title="Import"
-        data-testid="topbar-import-button"
-        on:click={toggleImportPanel}
-      >
-        <FileInput size={12} />
-      </IconButton>
-      {#if importOpen}
-        <div
-          class="absolute left-0 top-[var(--topbar-height)] z-30 w-[360px] rounded-b-[16px] border border-[var(--border-muted)] border-t-0 bg-white p-4 shadow-[0_12px_40px_rgba(15,23,42,0.12)]"
-          data-testid="import-panel"
-          style:transform-origin="top left"
-          transition:fly={{ y: -6, duration: 150, opacity: 0.08, easing: cubicOut }}
-        >
-          <div class="text-[18px] font-semibold text-[var(--text-primary)]">Import</div>
-          <div class="mt-3 flex items-center justify-between text-[13px] text-[var(--text-muted)]">
-            <div class="flex items-center gap-2">
-              <span>File type:</span>
-              <div class="relative">
-                <Select.Root
-                  type="single"
-                  items={formatOptions.map((option) => ({ value: option.id, label: option.label }))}
-                  bind:value={importFormat}
-                >
-                  <Select.Trigger
-                    size="sm"
-                    class="rounded-[8px] border border-[var(--border-muted)] bg-white px-2 py-1 text-[13px] text-[var(--text-primary)] shadow-none focus-visible:border-[var(--accent)] focus-visible:shadow-[0_0_0_2px_rgba(56,189,248,0.25)]"
-                  >
-                    <span data-slot="select-value">{getFormatLabel(importFormat, formatOptions)}</span>
-                  </Select.Trigger>
-                  <Select.Content class="min-w-[180px]">
-                    {#each formatOptions as option}
-                      <Select.Item value={option.id} label={option.label} class="text-[13px]" />
-                    {/each}
-                  </Select.Content>
-                </Select.Root>
-              </div>
-            </div>
-            {#if importFormat !== $languageIdStore}
-              <div class="flex items-center gap-1.5 text-[12px] text-[var(--text-muted)]">
-                <span>{importConversion.srcLabel}</span>
-                <ArrowRight size={10} />
-                <span>{importConversion.dstLabel}</span>
-              </div>
-            {/if}
-          </div>
-          <button
-            class={`mt-4 flex h-[160px] w-full flex-col items-center justify-center gap-2 rounded-[12px] border border-dashed text-[13px] text-[var(--text-muted)] transition-[border-color,background-color,box-shadow,color] duration-150 ease-out ${
-              importDropActive
-                ? 'border-[var(--accent)] bg-[#eff6ff] text-[var(--text-primary)] shadow-[0_0_0_1px_rgba(37,99,235,0.08)]'
-                : 'border-[var(--border-muted)] bg-[var(--panel-bg)] hover:border-[var(--accent)]'
-            }`}
-            aria-label="Choose import file"
-            data-testid="import-drop-trigger"
-            on:click={() => void requestImportFile()}
-            on:dragenter={(event) => {
-              event.preventDefault()
-              importDropActive = true
-            }}
-            on:dragover={(event) => {
-              event.preventDefault()
-              importDropActive = true
-            }}
-            on:dragleave={(event) => {
-              event.preventDefault()
-              const nextTarget = event.relatedTarget as Node | null
-              if (!(event.currentTarget as HTMLElement).contains(nextTarget)) {
-                importDropActive = false
-              }
-            }}
-            on:drop={(event) => {
-              event.preventDefault()
-              importDropActive = false
-              const file = event.dataTransfer?.files?.[0]
-              void handleImportFile(file)
-            }}
-          >
-            <span class="text-[12px]">Click here to select file or drop a file right here</span>
-          </button>
-        </div>
-      {/if}
-    </div>
-    <div class="relative flex h-full items-center" data-button-group-item bind:this={exportAnchor}>
-      <IconButton
-        aria-label="Export"
-        title="Export"
-        data-testid="topbar-export-button"
-        on:click={toggleExportPanel}
-      >
-        <FileOutput size={12} />
-      </IconButton>
-      {#if exportOpen}
-        <div
-          class="absolute left-0 top-[var(--topbar-height)] z-30 w-[360px] rounded-b-[16px] border border-[var(--border-muted)] border-t-0 bg-white p-4 shadow-[0_12px_40px_rgba(15,23,42,0.12)]"
-          data-testid="export-panel"
-          style:transform-origin="top left"
-          transition:fly={{ y: -6, duration: 150, opacity: 0.08, easing: cubicOut }}
-        >
-          <div class="text-[18px] font-semibold text-[var(--text-primary)]">Export</div>
-          <div class="mt-3 flex items-center justify-between text-[13px] text-[var(--text-muted)]">
-            <div class="flex items-center gap-2">
-              <span>Export to</span>
-              <div class="relative">
-                <Select.Root
-                  type="single"
-                  items={formatOptions.map((option) => ({ value: option.id, label: option.label }))}
-                  bind:value={exportFormat}
-                >
-                  <Select.Trigger
-                    size="sm"
-                    class="rounded-[8px] border border-[var(--border-muted)] bg-white px-2 py-1 text-[13px] text-[var(--text-primary)] shadow-none focus-visible:border-[var(--accent)] focus-visible:shadow-[0_0_0_2px_rgba(56,189,248,0.25)]"
-                    aria-label="Export format"
-                    data-testid="export-format-trigger"
-                  >
-                    <span data-slot="select-value">{getFormatLabel(exportFormat, formatOptions)}</span>
-                  </Select.Trigger>
-                  <Select.Content class="min-w-[180px]">
-                    {#each formatOptions as option}
-                      <Select.Item value={option.id} label={option.label} class="text-[13px]" />
-                    {/each}
-                  </Select.Content>
-                </Select.Root>
-              </div>
-            </div>
-            {#if $languageIdStore !== exportFormat}
-              <div class="flex items-center gap-1.5 text-[12px] text-[var(--text-muted)]">
-                <span>{exportConversion.srcLabel}</span>
-                <ArrowRight size={10} />
-                <span>{exportConversion.dstLabel}</span>
-              </div>
-            {/if}
-          </div>
-          <div class="mt-3 flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              class="rounded-[10px] bg-white"
-              aria-label="Download export file"
-              on:click={() => {
-                onExportDownload(exportFormat)
-                exportOpen = false
-              }}
-            >
-              Download
-            </Button>
-            {#if $languageIdStore !== exportFormat}
-              <Button
-                variant="outline"
-                size="sm"
-                class="rounded-[10px]"
-                aria-label="Preview export result"
-                on:click={() => onExportPreview(exportFormat)}
-              >
-                Preview
-              </Button>
-            {/if}
-          </div>
-        </div>
-      {/if}
-    </div>
+    <IconButton aria-label="Import" title="Import" data-testid="topbar-import-button" on:click={toggleImportPanel}>
+      <FileInput size={12} />
+    </IconButton>
+    <IconButton aria-label="Export" title="Export" data-testid="topbar-export-button" on:click={toggleExportPanel}>
+      <FileOutput size={12} />
+    </IconButton>
   </ButtonGroup.Root>
   <div class="min-w-0">
     {#if showTabs}
@@ -383,23 +201,153 @@
           <Share2 size={12} />
         </IconButton>
         <div data-button-group-item>
-          <DropdownMenu>
-            <DropdownMenuTrigger
-              class="inline-flex h-6 w-6 shrink-0 items-center justify-center whitespace-nowrap rounded-none border-0 bg-transparent text-[var(--text-primary)] outline-none transition-[color,background-color,border-color,box-shadow] hover:bg-[var(--panel-bg-alt)] hover:text-[var(--accent)] focus-visible:ring-2 focus-visible:ring-[var(--accent)]/25 disabled:pointer-events-none disabled:opacity-50"
-              aria-label="Account"
-              title="Account"
-            >
-              <User size={12} />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem data-testid="account-login-menu-item" onSelect={onLogin}>Login</DropdownMenuItem>
-              <DropdownMenuItem data-testid="account-logout-menu-item" onSelect={() => void onLogout()}>Log out</DropdownMenuItem>
-              <DropdownMenuItem data-testid="account-check-updates-menu-item" onSelect={() => void onCheckForUpdates()}>Check for updates</DropdownMenuItem>
-              <DropdownMenuItem data-testid="account-settings-menu-item" onSelect={onOpenSettings}>Settings</DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <AccountMenu variant="editor" {onLogin} {onLogout} {onCheckForUpdates} {onOpenSettings} />
         </div>
       </ButtonGroup.Root>
     {/if}
   </div>
+  {#if importOpen}
+        <div
+          bind:this={importAnchor}
+          class="absolute left-0 top-[var(--topbar-height)] z-30 w-[360px] rounded-b-[16px] border border-[var(--border-muted)] border-t-0 bg-white p-4 shadow-[0_12px_40px_rgba(15,23,42,0.12)]"
+          data-testid="import-panel"
+          style:transform-origin="top left"
+          transition:fly={{ y: -6, duration: 150, opacity: 0.08, easing: cubicOut }}
+        >
+          <div class="text-[18px] font-semibold text-[var(--text-primary)]">Import</div>
+          <div class="mt-3 flex items-center justify-between text-[13px] text-[var(--text-muted)]">
+            <div class="flex items-center gap-2">
+              <span>File type:</span>
+              <div class="relative">
+                <Select.Root
+                  type="single"
+                  items={formatOptions.map((option) => ({ value: option.id, label: option.label }))}
+                  bind:value={importFormat}
+                >
+                  <Select.Trigger
+                    size="sm"
+                    class="rounded-[8px] border border-[var(--border-muted)] bg-white px-2 py-1 text-[13px] text-[var(--text-primary)] shadow-none focus-visible:border-[var(--accent)] focus-visible:shadow-[0_0_0_2px_rgba(56,189,248,0.25)]"
+                  >
+                    <span data-slot="select-value">{getFormatLabel(importFormat, formatOptions)}</span>
+                  </Select.Trigger>
+                  <Select.Content class="min-w-[180px]">
+                    {#each formatOptions as option}
+                      <Select.Item value={option.id} label={option.label} class="text-[13px]" />
+                    {/each}
+                  </Select.Content>
+                </Select.Root>
+              </div>
+            </div>
+            {#if importFormat !== $languageIdStore}
+              <div class="flex items-center gap-1.5 text-[12px] text-[var(--text-muted)]">
+                <span>{importConversion.srcLabel}</span>
+                <ArrowRight size={10} />
+                <span>{importConversion.dstLabel}</span>
+              </div>
+            {/if}
+          </div>
+          <button
+            class={`mt-4 flex h-[160px] w-full flex-col items-center justify-center gap-2 rounded-[12px] border border-dashed text-[13px] text-[var(--text-muted)] transition-[border-color,background-color,box-shadow,color] duration-150 ease-out ${
+              importDropActive
+                ? 'border-[var(--accent)] bg-[#eff6ff] text-[var(--text-primary)] shadow-[0_0_0_1px_rgba(37,99,235,0.08)]'
+                : 'border-[var(--border-muted)] bg-[var(--panel-bg)] hover:border-[var(--accent)]'
+            }`}
+            aria-label="Choose import file"
+            data-testid="import-drop-trigger"
+            on:click={() => void requestImportFile()}
+            on:dragenter={(event) => {
+              event.preventDefault()
+              importDropActive = true
+            }}
+            on:dragover={(event) => {
+              event.preventDefault()
+              importDropActive = true
+            }}
+            on:dragleave={(event) => {
+              event.preventDefault()
+              const nextTarget = event.relatedTarget as Node | null
+              if (!(event.currentTarget as HTMLElement).contains(nextTarget)) {
+                importDropActive = false
+              }
+            }}
+            on:drop={(event) => {
+              event.preventDefault()
+              importDropActive = false
+              const file = event.dataTransfer?.files?.[0]
+              void handleImportFile(file)
+            }}
+          >
+            <span class="text-[12px]">Click here to select file or drop a file right here</span>
+          </button>
+        </div>
+  {/if}
+  {#if exportOpen}
+        <div
+          bind:this={exportAnchor}
+          class="absolute left-0 top-[var(--topbar-height)] z-30 w-[360px] rounded-b-[16px] border border-[var(--border-muted)] border-t-0 bg-white p-4 shadow-[0_12px_40px_rgba(15,23,42,0.12)]"
+          data-testid="export-panel"
+          style:transform-origin="top left"
+          transition:fly={{ y: -6, duration: 150, opacity: 0.08, easing: cubicOut }}
+        >
+          <div class="text-[18px] font-semibold text-[var(--text-primary)]">Export</div>
+          <div class="mt-3 flex items-center justify-between text-[13px] text-[var(--text-muted)]">
+            <div class="flex items-center gap-2">
+              <span>Export to</span>
+              <div class="relative">
+                <Select.Root
+                  type="single"
+                  items={formatOptions.map((option) => ({ value: option.id, label: option.label }))}
+                  bind:value={exportFormat}
+                >
+                  <Select.Trigger
+                    size="sm"
+                    class="rounded-[8px] border border-[var(--border-muted)] bg-white px-2 py-1 text-[13px] text-[var(--text-primary)] shadow-none focus-visible:border-[var(--accent)] focus-visible:shadow-[0_0_0_2px_rgba(56,189,248,0.25)]"
+                    aria-label="Export format"
+                    data-testid="export-format-trigger"
+                  >
+                    <span data-slot="select-value">{getFormatLabel(exportFormat, formatOptions)}</span>
+                  </Select.Trigger>
+                  <Select.Content class="min-w-[180px]">
+                    {#each formatOptions as option}
+                      <Select.Item value={option.id} label={option.label} class="text-[13px]" />
+                    {/each}
+                  </Select.Content>
+                </Select.Root>
+              </div>
+            </div>
+            {#if $languageIdStore !== exportFormat}
+              <div class="flex items-center gap-1.5 text-[12px] text-[var(--text-muted)]">
+                <span>{exportConversion.srcLabel}</span>
+                <ArrowRight size={10} />
+                <span>{exportConversion.dstLabel}</span>
+              </div>
+            {/if}
+          </div>
+          <div class="mt-3 flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              class="rounded-[10px] bg-white"
+              aria-label="Download export file"
+              on:click={() => {
+                onExportDownload(exportFormat)
+                exportOpen = false
+              }}
+            >
+              Download
+            </Button>
+            {#if $languageIdStore !== exportFormat}
+              <Button
+                variant="outline"
+                size="sm"
+                class="rounded-[10px]"
+                aria-label="Preview export result"
+                on:click={() => onExportPreview(exportFormat)}
+              >
+                Preview
+              </Button>
+            {/if}
+          </div>
+        </div>
+  {/if}
 </header>

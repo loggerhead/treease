@@ -1,4 +1,18 @@
 describe('Desktop file lifecycle', () => {
+  it('keeps file open, save, and recent actions in the native menu', async () => {
+    const pageActionIds = [
+      'topbar-open-document',
+      'topbar-save-document',
+      'topbar-save-as-document',
+    ];
+    for (const testId of pageActionIds) {
+      expect(await (await browser.$(`[data-testid="${testId}"]`)).isExisting()).toBe(false);
+    }
+    expect(await (await browser.$('[aria-label="Recent documents"]')).isExisting()).toBe(false);
+    expect(await (await browser.$('[data-testid="topbar-import-button"]')).isExisting()).toBe(true);
+    expect(await (await browser.$('[data-testid="topbar-export-button"]')).isExisting()).toBe(true);
+  });
+
   it('starts the real Tauri editor and creates independent tabs', async () => {
     const editor = await browser.$('[data-testid="editor-tab-strip"]');
     await editor.waitForDisplayed();

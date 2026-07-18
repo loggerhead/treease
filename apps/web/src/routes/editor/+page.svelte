@@ -78,6 +78,7 @@
   import type { WorkspaceCommand, WorkspaceSession } from '../../lib/workspace-host';
 
   let editorRef: Editor | null = null;
+  let topBarRef: TopBar | null = null;
   let viewerRef: ViewportPanel | null = null;
   let yqInputRef: YqExpressionInput | null = null;
   let splitLayoutContainer: HTMLDivElement | null = null;
@@ -118,7 +119,6 @@
   let urlPreset: ResolvedEditorUrlPreset | null = null;
   let mirrorViewerFromSource = false;
   let externalFileConflict: { tabId: string; name: string; externalText: string; localText: string; languageId: SupportedEditorLanguageId } | null = null;
-  let recentFiles: Array<{ id: string; name: string }> = [];
   let autoSaveTimer: ReturnType<typeof setTimeout> | null = null;
   let sessionSaveTimer: ReturnType<typeof setTimeout> | null = null;
   let sessionRestoring = false;
@@ -424,14 +424,9 @@
     toast.success(`Opened ${file.name}`);
   }
 
-  async function refreshRecentFiles(): Promise<void> {
-    recentFiles = await (await workspaceHost).listRecentFiles();
-  }
-
   async function handleOpenDocument(): Promise<void> {
     const file = await (await workspaceHost).openFile({ accept: ['.json', '.jsonl', '.ndjson', '.yaml', '.yml', '.toml', '.csv'] });
     await openWorkspaceFile(file);
-    await refreshRecentFiles();
   }
 
   async function handleOpenRecentFile(grant: { id: string; name: string }): Promise<void> {
@@ -440,7 +435,6 @@
 
   async function handleClearRecentFiles(): Promise<void> {
     await (await workspaceHost).clearRecentFiles();
-    recentFiles = [];
   }
 
   async function saveActiveDocument(forceSaveAs = false, automatic = false): Promise<void> {
@@ -864,15 +858,38 @@
     });
   }
 
-  const workspaceCommands: Record<WorkspaceCommand, () => void | Promise<void>> = {
+  type StaticWorkspaceCommand = Exclude<WorkspaceCommand, `workspace:open-recent:${string}`>;
+
+  const workspaceCommands: Record<StaticWorkspaceCommand, () => void | Promise<void>> = {
     'workspace:new': handleAddTab,
     'workspace:open': handleOpenDocument,
     'workspace:save': () => saveActiveDocument(),
     'workspace:save-as': () => saveActiveDocument(true),
+    'workspace:import': () => topBarRef?.openImportPanel(),
+    'workspace:export': () => topBarRef?.openExportPanel(),
+    'workspace:clear-recent': handleClearRecentFiles,
     'workspace:close-tab': () => activeTabId && handleCloseTab(activeTabId),
     'workspace:toggle-viewer': () => { showViewerPane = !showViewerPane; },
     'workspace:help': () => void (async () => (await workspaceHost).openExternal(new URL('https://treease.io')) )(),
   };
+
+  function isOpenRecentCommand(command: WorkspaceCommand): command is `workspace:open-recent:${string}` {
+    return command.startsWith('workspace:open-recent:');
+  }
+
+  async function handleWorkspaceCommand(command: WorkspaceCommand): Promise<void> {
+    try {
+      if (isOpenRecentCommand(command)) {
+        const recentId = command.slice('workspace:open-recent:'.length);
+        await handleOpenRecentFile({ id: recentId, name: '' });
+        return;
+      }
+      await workspaceCommands[command]();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      toast.error(`Desktop command failed: ${message}`);
+    }
+  }
 
   $: {
     const nextSplitLayoutState = syncSplitRatio(splitLayoutState, containerWidth, splitLayoutConfig);
@@ -913,13 +930,12 @@
         if (session) await restoreWorkspaceSession(session);
         for (const file of await host.takeStartupFiles()) await openWorkspaceFile(file);
         await handleDesktopDeepLinks(await host.getInitialDeepLinks());
-        stopWorkspaceCommands = await host.onCommand((command) => void workspaceCommands[command]());
+        stopWorkspaceCommands = await host.onCommand((command) => void handleWorkspaceCommand(command));
         stopDeepLinks = await host.onDeepLinks((urls) => void handleDesktopDeepLinks(urls).catch((error) => {
           const message = error instanceof Error ? error.message : String(error);
           toast.error(`Desktop deep link failed: ${message}`);
         }));
       }
-      await refreshRecentFiles();
       stopWorkspaceSession = editorWorkspace.subscribe(() => scheduleWorkspaceSessionSave());
       scheduleWorkspaceSessionSave();
     })().catch((error) => {
@@ -939,7 +955,6 @@
     void (async () => {
       stopDroppedFiles = await (await workspaceHost).onFilesDropped((files) => {
         for (const file of files) void openWorkspaceFile(file);
-        void refreshRecentFiles();
       });
     })();
     const saveOnFocusChange = () => {
@@ -971,6 +986,7 @@
   <div class="grid h-full min-h-0 min-w-0 overflow-hidden" style:grid-template-rows={shellRowsClass}>
     {#if showTopBar}
       <TopBar
+        bind:this={topBarRef}
         tabs={tabSummaries}
         {activeTabId}
         canAddTab={tabSummaries.length < maxTabs}
@@ -978,12 +994,6 @@
         showRightActions={true}
         {formatOptions}
         onAddTab={workspaceCommands['workspace:new']}
-        onOpenDocument={async () => { await workspaceCommands['workspace:open'](); }}
-        onSaveDocument={async () => { await workspaceCommands['workspace:save'](); }}
-        onSaveAsDocument={async () => { await workspaceCommands['workspace:save-as'](); }}
-        {recentFiles}
-        onOpenRecentFile={handleOpenRecentFile}
-        onClearRecentFiles={handleClearRecentFiles}
         onCloseTab={handleCloseTab}
         onActivateTab={handleActivateTab}
         onRequestImportFile={handleRequestImportFile}
