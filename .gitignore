@@ -31,6 +31,7 @@ guess-failure.md
 # wasm-pack test build output
 wasm-pkg-*/
 packages/core/wasm-pkg-*/
+packages/core/wasm/.pkg-bindgen/
 
 __pycache__
 *wasm.version.ts

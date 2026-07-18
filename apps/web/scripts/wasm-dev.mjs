@@ -6,7 +6,6 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
 import { runBindgen } from './wasm-bindgen.mjs';
-import { optimizeWasmSync } from './wasm-optimize.mjs';
 import { loadCoreReleaseMetadata } from '../../../scripts/release-metadata.mjs';
 
 const copyOnly = process.argv.includes('--copy-only');
@@ -17,16 +16,8 @@ const rootDir = path.resolve(webDir, '..', '..');
 const coreDir = path.resolve(rootDir, 'packages', 'core');
 const versionFile = path.resolve(coreDir, 'output', 'core-web.version');
 const rustWasmOut = path.resolve(coreDir, 'target', 'wasm32-unknown-unknown', 'release', 'treease_core.wasm');
-const rustWasmOptimizedOut = path.resolve(
-  coreDir,
-  'target',
-  'wasm32-unknown-unknown',
-  'release',
-  'treease_core.opt.wasm'
-);
 const watchDirs = [
   path.resolve(coreDir, 'src'),
-  path.resolve(coreDir, 'tests'),
   path.resolve(coreDir, 'Cargo.toml'),
   path.resolve(coreDir, 'build.rs')
 ].filter((target) => existsSync(target));
@@ -36,6 +27,7 @@ let pending = false;
 let timer = null;
 let lastEventTime = 0;
 let currentVersion = null;
+let currentBuildInputsRevision = null;
 let vite = null;
 const debounceMs = 500;
 const minIntervalMs = 1000;
@@ -62,9 +54,25 @@ async function readVersion(wasmPath) {
   return createHash('sha256').update(bytes).digest('hex').slice(0, 6);
 }
 
-async function optimizeWasm() {
-  optimizeWasmSync(rustWasmOut, rustWasmOptimizedOut);
-  return rustWasmOptimizedOut;
+async function appendBuildInputRevision(target, revision) {
+  const details = await stat(target);
+  if (!details.isDirectory()) {
+    revision.push(`${target}:${details.size}:${details.mtimeMs}`);
+    return;
+  }
+
+  const entries = await readdir(target, { withFileTypes: true });
+  for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
+    await appendBuildInputRevision(path.join(target, entry.name), revision);
+  }
+}
+
+async function readBuildInputsRevision() {
+  const revision = [];
+  for (const target of watchDirs) {
+    await appendBuildInputRevision(target, revision);
+  }
+  return revision.join('|');
 }
 
 async function removeGeneratedStaticWasmFiles(staticDir) {
@@ -81,14 +89,13 @@ async function removeGeneratedStaticWasmFiles(staticDir) {
 }
 
 async function buildOnce() {
-  if (!copyOnly) runBindgen();
+  if (!copyOnly) runBindgen({ optimize: false });
   if (!existsSync(rustWasmOut)) {
     throw new Error(`missing Rust wasm output: ${rustWasmOut}`);
   }
   await stat(rustWasmOut);
 
-  const wasmSource = await optimizeWasm();
-  const version = await readVersion(wasmSource);
+  const version = await readVersion(rustWasmOut);
 
   const staticDir = path.resolve(webDir, 'static');
   await mkdir(staticDir, { recursive: true });
@@ -123,9 +130,14 @@ async function buildQueued() {
     pending = true;
     return currentVersion;
   }
+  const buildInputsRevision = await readBuildInputsRevision();
+  if (buildInputsRevision === currentBuildInputsRevision) {
+    return currentVersion;
+  }
   building = true;
   try {
     const version = await buildOnce();
+    currentBuildInputsRevision = buildInputsRevision;
     if (version && version !== currentVersion) {
       currentVersion = version;
       if (vite) {
