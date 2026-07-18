@@ -29,8 +29,6 @@ export type GraphCell = {
   isHeader?: boolean;
   isIndex?: boolean;
   isHeaderlessTable?: boolean;
-  /** True when this cell belongs to a table body with vertical scroll. */
-  isScrollableTable?: boolean;
   valueType: ValueType;
   path: any[];
   editable: boolean;

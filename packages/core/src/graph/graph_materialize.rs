@@ -391,7 +391,11 @@ fn sync_table_size(config: &BuilderConfig, node: &mut super::graph_builder::Grap
     table.count = table.rows.len() as i32;
     let base_rows = table.count.max(1);
     table.total_height = table.header_height + table.row_height * base_rows;
-    table.view_height = config.table_max_height.min(table.total_height);
+    table.view_height = if table.header_height == 0 {
+        table.total_height
+    } else {
+        config.table_max_height.min(table.total_height)
+    };
     node.width = table.width + config.node_border_width * 2;
     node.height = table.view_height + config.node_border_width * 2;
     node.box_args.width = node.width;
@@ -438,7 +442,8 @@ fn build_edge(model: &GraphModel, edge: &DirtyEdge) -> Option<GraphEdge> {
 mod tests {
     use super::*;
     use crate::graph::graph_builder::{
-        BezierArgs, GraphEdge, GraphKind, GraphModel, GraphNode, GraphNodeKey, PathSeg,
+        BezierArgs, GraphEdge, GraphKind, GraphModel, GraphNode, GraphNodeKey, GraphRow,
+        GraphTable, PathSeg,
     };
 
     fn graph_key(handle: u32) -> GraphNodeKey {
@@ -526,6 +531,28 @@ mod tests {
             }]
         );
         assert_eq!(patch.added_edge_indexes, vec![1]);
+    }
+
+    #[test]
+    fn sync_table_size_keeps_headerless_table_fully_visible() {
+        let mut node = graph_node(0);
+        node.kind = GraphKind::Table;
+        node.table = Some(GraphTable {
+            rows: vec![GraphRow::default(); 5],
+            width: 40,
+            header_height: 0,
+            row_height: 20,
+            ..GraphTable::default()
+        });
+        let mut config = crate::graph::graph_builder::default_config();
+        config.table_max_height = 40;
+
+        sync_table_size(&config, &mut node);
+
+        let table = node.table.expect("table exists");
+        assert_eq!(table.total_height, 100);
+        assert_eq!(table.view_height, 100);
+        assert_eq!(node.height, 100 + config.node_border_width * 2);
     }
 }
 #[cfg(test)]

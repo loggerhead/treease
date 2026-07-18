@@ -322,8 +322,9 @@ impl GraphEdgeIndex {
     }
 
     fn ensure_node_capacity(&mut self, len: usize) {
-        self.by_from.resize_with(len, Vec::new);
-        self.by_to.resize_with(len, Vec::new);
+        self.by_from
+            .resize_with(self.by_from.len().max(len), Vec::new);
+        self.by_to.resize_with(self.by_to.len().max(len), Vec::new);
     }
 
     fn insert(&mut self, edge_index: usize, edge: &GraphEdge) -> bool {
@@ -871,6 +872,23 @@ mod tests {
         assert_eq!(model.edges.len(), 2);
         assert_eq!(model.edge_index_len(), 2);
         assert_eq!(model.edge_indexes_incident_to_handles(&[0]), vec![0, 1]);
+    }
+
+    #[test]
+    fn graph_model_edge_index_does_not_shrink_for_out_of_order_edges() {
+        let mut model = GraphModel::default();
+        model.nodes = (0..=3).map(graph_node_for_edge_index_test).collect();
+
+        assert_eq!(
+            model.insert_edge_if_missing(graph_edge_for_edge_index_test(2, 3, 0, 0)),
+            Some(0),
+        );
+        assert_eq!(
+            model.insert_edge_if_missing(graph_edge_for_edge_index_test(0, 1, 0, 0)),
+            Some(1),
+        );
+
+        assert_eq!(model.edge_indexes_incident_to_handles(&[3]), vec![0]);
     }
 
     fn graph_node_for_edge_index_test(handle: u32) -> GraphNode {

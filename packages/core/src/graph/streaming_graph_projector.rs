@@ -1320,6 +1320,107 @@ mod tests {
     }
 
     #[test]
+    fn streaming_trajectory_edges_converge_to_current_node_columns() {
+        let source = include_str!("../../../../test/fixtures/json/trajectory.1.json");
+        let bytes = source.as_bytes();
+        let chunk_size = crate::stream::chunk_size::select_chunk_size(bytes.len());
+        let mut decoder = crate::stream::streaming_json::StreamDecoder::new(true);
+        let mut builder = Builder::new();
+        builder.enable_patches();
+        let mut projector = StreamingGraphProjector::new("json");
+        let mut consumer_nodes: HashMap<u32, crate::document::protocol::GraphNodeData> =
+            HashMap::new();
+        let mut consumer_edges: HashMap<
+            (u32, i32, u32, i32),
+            crate::document::protocol::GraphEdgeData,
+        > = HashMap::new();
+
+        let mut offset = 0;
+        while offset < bytes.len() {
+            let end = (offset + chunk_size).min(bytes.len());
+            let chunk_end = if end < bytes.len() {
+                let mut boundary = end;
+                while boundary > offset && bytes[boundary] & 0xC0 == 0x80 {
+                    boundary -= 1;
+                }
+                boundary
+            } else {
+                end
+            };
+            let chunk = std::str::from_utf8(&bytes[offset..chunk_end]).expect("utf-8 fixture");
+            decoder.feed(chunk).expect("trajectory chunk should decode");
+            for event in &decoder.take_events() {
+                builder.push(event).expect("trajectory event should build");
+            }
+            let patches = builder.take_patches();
+            let (store, root) = builder.tree_ref().expect("streaming trajectory tree");
+            let update = projector
+                .update(store, root, &patches)
+                .expect("trajectory projection update");
+            apply_streaming_delta_to_consumer(
+                &mut consumer_nodes,
+                &mut consumer_edges,
+                &update.delta,
+            );
+            offset = chunk_end;
+        }
+
+        for event in decoder
+            .finish_events()
+            .expect("trajectory stream should finish")
+        {
+            builder
+                .push(&event)
+                .expect("final trajectory event should build");
+        }
+        let patches = builder.take_patches();
+        let (store, root) = builder.tree_ref().expect("finished trajectory tree");
+        let update = projector
+            .update(store, root, &patches)
+            .expect("trajectory close projection update");
+        apply_streaming_delta_to_consumer(&mut consumer_nodes, &mut consumer_edges, &update.delta);
+
+        let model = projector
+            .previous_model
+            .as_ref()
+            .expect("trajectory model after close");
+        for edge in &model.edges {
+            let to = model
+                .nodes
+                .get(edge.to_render_handle as usize)
+                .expect("model edge child");
+            assert_eq!(
+                edge.bezier_args.to_x, to.box_args.x,
+                "model edge {:?}->{:?} must end at the current child left edge",
+                edge.from_key.path, edge.to_key.path,
+            );
+        }
+
+        for edge in consumer_edges.values() {
+            let from = consumer_nodes
+                .get(&edge.from_render_handle)
+                .expect("edge parent node");
+            let to = consumer_nodes
+                .get(&edge.to_render_handle)
+                .expect("edge child node");
+            assert_eq!(
+                edge.bezier_args.from_x,
+                from.box_args.x + from.box_args.width,
+                "edge {:?}->{:?} must start at the current parent right edge",
+                path_key(from),
+                path_key(to),
+            );
+            assert_eq!(
+                edge.bezier_args.to_x,
+                to.box_args.x,
+                "edge {:?}->{:?} must end at the current child left edge",
+                path_key(from),
+                path_key(to),
+            );
+        }
+    }
+
+    #[test]
     fn streaming_consumer_refreshes_existing_table_meta_when_node_moves() {
         let chunks = [
             r#"{"a":[{"id":0},{"id":1},{"id":2}]"#,
@@ -2170,7 +2271,8 @@ mod tests {
     /// 拼好后才把 Sequence 提升为 header-table。流式投影器要求：
     /// 不论中间经过怎样的「先非表后表」过渡，**任意时刻** consumer 看到
     /// 的累积视图（== 按顺序 apply 每个 delta 的 nodes_added/updated/removed）
-    /// 中，每个 table 节点的子 Mapping 都不允许作为独立节点存在。
+    /// 中，Header Table 节点的行 Mapping 不允许作为独立节点存在。Headerless
+    /// Table 的结构项可以展开，因而不适用这个约束。
     #[test]
     fn streaming_fixture_2mb_keeps_promoted_table_clean() {
         let source = include_str!("../../../../test/fixtures/json/2mb.1.json");
@@ -2223,10 +2325,15 @@ mod tests {
                         consumer.remove(&rh);
                     }
 
-                    // Collect current table paths from consumer state.
+                    // Only Header Table rows stay folded. Headerless tables expose
+                    // structural row values as expandable child nodes.
                     let table_paths: Vec<Vec<crate::document::protocol::GraphPathSeg>> = consumer
                         .values()
-                        .filter(|n| n.table.is_some())
+                        .filter(|n| {
+                            n.table
+                                .as_ref()
+                                .is_some_and(|table| table.header_height > 0)
+                        })
                         .map(|n| n.path.clone())
                         .collect();
 
@@ -2527,7 +2634,7 @@ mod tests {
     }
 
     #[test]
-    fn streaming_scrollable_headerless_seq_rows_do_not_publish_child_nodes_after_close() {
+    fn streaming_large_headerless_seq_rows_remain_inline_after_close() {
         let mut source = String::from(r#"{"items":["#);
         for i in 0..60 {
             if i > 0 {
@@ -2586,9 +2693,9 @@ mod tests {
         let items_handle = items_node.render_handle;
         let table = items_node.table.as_ref().expect("items should be a table");
         let (total_height, view_height) = (table.total_height, table.view_height);
-        assert!(
-            total_height > view_height,
-            "fixture must exercise the scrollable table branch"
+        assert_eq!(
+            total_height, view_height,
+            "headerless tables expose their full body height"
         );
 
         let leaked_child_paths: Vec<String> = consumer_nodes
@@ -2598,7 +2705,7 @@ mod tests {
             .collect();
         assert!(
             leaked_child_paths.is_empty(),
-            "scrollable table rows must stay inline; leaked child graph nodes: {leaked_child_paths:?}"
+            "large headerless table rows must stay inline; leaked child graph nodes: {leaked_child_paths:?}"
         );
         let leaked_edges: Vec<_> = consumer_edges
             .values()
@@ -2606,7 +2713,7 @@ mod tests {
             .collect();
         assert!(
             leaked_edges.is_empty(),
-            "scrollable table rows must not create outgoing child edges: {leaked_edges:?}"
+            "large headerless table rows must not create outgoing child edges: {leaked_edges:?}"
         );
     }
 
@@ -2976,7 +3083,7 @@ mod tests {
     }
 
     #[test]
-    fn baseline_header_table_nested_cells_stay_folded_in_main_graph() {
+    fn baseline_headerless_table_nested_items_remain_expandable_in_main_graph() {
         let source =
             r#"{"rows":[{"name":"a","meta":{"score":1}},{"name":"b","meta":{"score":2}}]}"#;
         let b = builder_from_source(source);
@@ -2986,7 +3093,13 @@ mod tests {
                 .expect("baseline model build");
 
         let table_path = vec![PathSeg::Key("rows".to_string())];
-        let leaked_rows: Vec<Vec<PathSeg>> = model
+        let table = model
+            .nodes
+            .iter()
+            .find(|node| node.path == table_path)
+            .and_then(|node| node.table.as_ref())
+            .expect("rows table exists");
+        let expandable_items: Vec<Vec<PathSeg>> = model
             .nodes
             .iter()
             .filter(|node| {
@@ -2997,9 +3110,14 @@ mod tests {
             .map(|node| node.path.clone())
             .collect();
 
-        assert!(
-            leaked_rows.is_empty(),
-            "header-table rows with nested cells must stay folded in the main graph; leaked rows: {leaked_rows:?}",
+        assert_eq!(table.header_height, 0);
+        assert_eq!(
+            expandable_items,
+            vec![
+                vec![PathSeg::Key("rows".to_string()), PathSeg::Index(0)],
+                vec![PathSeg::Key("rows".to_string()), PathSeg::Index(1)],
+            ],
+            "headerless structural items must remain expandable",
         );
     }
 

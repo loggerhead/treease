@@ -413,7 +413,6 @@ function bindTableRowSlot(
 ) {
   const hideBorders = isHeaderlessSequenceTable(options.node);
   const headerlessTable = isHeaderlessTable(options.node);
-  const scrollableTable = options.contentHeight > options.viewportHeight;
   if (entry.rowIndex === rowIndex && !options.force) return;
   if (entry.rowIndex != null) {
     for (const binding of entry.bindings) {
@@ -438,7 +437,6 @@ function bindTableRowSlot(
     cell.isHeader = false;
     cell.isIndex = cellIndex === 0;
     cell.isHeaderlessTable = headerlessTable;
-    cell.isScrollableTable = scrollableTable;
     const kind: GraphCellKind = cellIndex === 0 ? 'key' : 'value';
     const box = entry.cellBoxes[cellIndex];
     const borderBox = entry.borderBoxes[cellIndex];

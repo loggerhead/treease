@@ -371,6 +371,34 @@ fn assert_bezier_contract(model: &GraphModel) {
         );
     }
 }
+
+fn assert_outgoing_edges_do_not_cross(model: &GraphModel) {
+    let mut edges_by_source = std::collections::HashMap::<u32, Vec<(i32, i32, u32)>>::new();
+    for edge in &model.edges {
+        edges_by_source
+            .entry(edge.from_render_handle)
+            .or_default()
+            .push((
+                edge.bezier_args.from_y,
+                edge.bezier_args.to_y,
+                edge.to_render_handle,
+            ));
+    }
+
+    for (source, edges) in &mut edges_by_source {
+        edges.sort_unstable();
+        for pair in edges.windows(2) {
+            let (from_y_a, to_y_a, target_a) = pair[0];
+            let (from_y_b, to_y_b, target_b) = pair[1];
+            if from_y_a < from_y_b {
+                assert!(
+                    to_y_a <= to_y_b,
+                    "edges {source}->{target_a} and {source}->{target_b} cross: source anchors {from_y_a} < {from_y_b}, but target anchors {to_y_a} > {to_y_b}"
+                );
+            }
+        }
+    }
+}
 /// 按 docs/contracts/layout.md Graph layout 规则计算锚点 y：
 /// - Table：header row 为 header 高度中点，body row 为对应 body row 中点
 /// - Object/Scalar：使用 row.abs_bounds.y + height/2（abs_bounds 已包含 node.y）
@@ -421,6 +449,7 @@ fn assert_layout_relations(model: &GraphModel) {
     assert_edge_from_row_matches_parent_key(model);
     assert_edge_depth_contract(model);
     assert_bezier_contract(model);
+    assert_outgoing_edges_do_not_cross(model);
 
     for edge in &model.edges {
         let parent = node_by_render_handle(&model.nodes, edge.from_render_handle)
@@ -453,6 +482,7 @@ fn assert_incremental_layout_relations(model: &GraphModel) {
     assert_edge_from_row_matches_parent_key(model);
     assert_edge_depth_contract(model);
     assert_bezier_contract(model);
+    assert_outgoing_edges_do_not_cross(model);
 
     for edge in &model.edges {
         let parent = node_by_render_handle(&model.nodes, edge.from_render_handle)

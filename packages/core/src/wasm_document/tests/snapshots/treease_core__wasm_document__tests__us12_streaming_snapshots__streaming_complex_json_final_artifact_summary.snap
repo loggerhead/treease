@@ -1,5 +1,6 @@
 ---
 source: src/wasm_document/tests/us12_streaming_snapshots.rs
+assertion_line: 1458
 expression: summarize_artifacts(&baseline)
 ---
 tree:
@@ -26,50 +27,110 @@ tree:
     - "null"
   fingerprint: 536d20e78b1d641e
 graph:
-  node_count: 3
-  edge_count: 2
+  node_count: 1003
+  edge_count: 1002
   node_kind_counts:
-    1: 2
-    2: 1
-  max_depth: 1
-  table_node_count: 1
-  total_object_rows: 10
-  total_table_rows: 200
-  total_table_cells: 804
+    1: 802
+    2: 201
+  max_depth: 7
+  table_node_count: 201
+  total_object_rows: 2210
+  total_table_rows: 400
+  total_table_cells: 800
   node_path_samples:
     - k1|d0|$
     - k1|d1|$.simple object
     - k2|d1|$.we___are___such___stuff___as___dreams___are___made___on___and___our___little___life___is___rounded___with___sleep
+    - "k2|d3|$.we___are___such___stuff___as___dreams___are___made___on___and___our___little___life___is___rounded___with___sleep[0].inner object"
+    - "k1|d4|$.we___are___such___stuff___as___dreams___are___made___on___and___our___little___life___is___rounded___with___sleep[0].inner object[0]"
+    - "k1|d5|$.we___are___such___stuff___as___dreams___are___made___on___and___our___little___life___is___rounded___with___sleep[0].inner object[0].object1"
+    - "k1|d6|$.we___are___such___stuff___as___dreams___are___made___on___and___our___little___life___is___rounded___with___sleep[0].inner object[0].object1.object2"
+    - "k1|d7|$.we___are___such___stuff___as___dreams___are___made___on___and___our___little___life___is___rounded___with___sleep[0].inner object[0].object1.object2.object3"
   edge_samples:
     - "$:1 -> $.simple object:0"
     - "$:2 -> $.we___are___such___stuff___as___dreams___are___made___on___and___our___little___life___is___rounded___with___sleep:0"
+    - "$.we___are___such___stuff___as___dreams___are___made___on___and___our___little___life___is___rounded___with___sleep:0 -> $.we___are___such___stuff___as___dreams___are___made___on___and___our___little___life___is___rounded___with___sleep[0].inner object:0"
+    - "$.we___are___such___stuff___as___dreams___are___made___on___and___our___little___life___is___rounded___with___sleep:1 -> $.we___are___such___stuff___as___dreams___are___made___on___and___our___little___life___is___rounded___with___sleep[1].inner object:0"
+    - "$.we___are___such___stuff___as___dreams___are___made___on___and___our___little___life___is___rounded___with___sleep:2 -> $.we___are___such___stuff___as___dreams___are___made___on___and___our___little___life___is___rounded___with___sleep[2].inner object:0"
+    - "$.we___are___such___stuff___as___dreams___are___made___on___and___our___little___life___is___rounded___with___sleep:3 -> $.we___are___such___stuff___as___dreams___are___made___on___and___our___little___life___is___rounded___with___sleep[3].inner object:0"
+    - "$.we___are___such___stuff___as___dreams___are___made___on___and___our___little___life___is___rounded___with___sleep:4 -> $.we___are___such___stuff___as___dreams___are___made___on___and___our___little___life___is___rounded___with___sleep[4].inner object:0"
+    - "$.we___are___such___stuff___as___dreams___are___made___on___and___our___little___life___is___rounded___with___sleep:5 -> $.we___are___such___stuff___as___dreams___are___made___on___and___our___little___life___is___rounded___with___sleep[5].inner object:0"
   table_samples:
     - path: $.we___are___such___stuff___as___dreams___are___made___on___and___our___little___life___is___rounded___with___sleep
       node_kind: 2
       depth: 1
       row_count: 200
-      column_headers:
-        - ""
-        - index
-        - ""
-        - inner object
+      column_headers: []
       first_row:
         - "0"
-        - "0"
-        - empty string as key
-        - "[1]"
+        - "{3}"
       last_row:
         - "199"
-        - "0"
-        - empty string as key
-        - "[1]"
-      total_height: 5626
-      view_height: 1000
-      row_height: 28
+        - "{3}"
+      total_height: 3600
+      view_height: 3600
+      row_height: 18
       node_box:
         - 438
         - 116
-        - 472
-        - 1002
-  semantic_fingerprint: 7248370a17a63826
-  layout_fingerprint: 30d3b799fe2d3e18
+        - 140
+        - 3602
+    - path: "$.we___are___such___stuff___as___dreams___are___made___on___and___our___little___life___is___rounded___with___sleep[0].inner object"
+      node_kind: 2
+      depth: 3
+      row_count: 1
+      column_headers: []
+      first_row:
+        - "0"
+        - "{3}"
+      last_row:
+        - "0"
+        - "{3}"
+      total_height: 18
+      view_height: 18
+      row_height: 18
+      node_box:
+        - 964
+        - 116
+        - 125
+        - 20
+    - path: "$.we___are___such___stuff___as___dreams___are___made___on___and___our___little___life___is___rounded___with___sleep[100].inner object"
+      node_kind: 2
+      depth: 3
+      row_count: 1
+      column_headers: []
+      first_row:
+        - "0"
+        - "{3}"
+      last_row:
+        - "0"
+        - "{3}"
+      total_height: 18
+      view_height: 18
+      row_height: 18
+      node_box:
+        - 964
+        - 13516
+        - 125
+        - 20
+    - path: "$.we___are___such___stuff___as___dreams___are___made___on___and___our___little___life___is___rounded___with___sleep[101].inner object"
+      node_kind: 2
+      depth: 3
+      row_count: 1
+      column_headers: []
+      first_row:
+        - "0"
+        - "{3}"
+      last_row:
+        - "0"
+        - "{3}"
+      total_height: 18
+      view_height: 18
+      row_height: 18
+      node_box:
+        - 964
+        - 13650
+        - 125
+        - 20
+  semantic_fingerprint: 1a23483f29b06ceb
+  layout_fingerprint: 60fa346b7b7a6aa8

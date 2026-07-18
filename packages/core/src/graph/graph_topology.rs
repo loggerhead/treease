@@ -1884,15 +1884,7 @@ impl GraphTopology {
             None => self.path_from_root(store, id),
         };
         let depth = path.len() as u32;
-        let row_in_parent = if Some(id) == self.root {
-            0
-        } else {
-            store
-                .get(id)
-                .and_then(|node| node.parent)
-                .map(|parent_id| self.parent_row_index_cached(store, parent_id, id))
-                .unwrap_or(0)
-        };
+        let row_in_parent = parent.map(|(_, row)| row).unwrap_or(0);
         let slot = GraphSlot {
             node_id: id,
             children: Vec::new(),
@@ -1905,7 +1897,7 @@ impl GraphTopology {
         self.slots.push(slot);
         self.dirty.mark_added(handle);
 
-        if let Some(parent_handle) = parent {
+        if let Some((parent_handle, _)) = parent {
             let edge = DirtyEdge {
                 from: parent_handle,
                 to: handle,
@@ -1984,13 +1976,15 @@ impl GraphTopology {
         id: NodeId,
         visited: &mut HashSet<NodeId>,
         config: &BuilderConfig,
-    ) -> Option<GraphHandle> {
+    ) -> Option<(GraphHandle, i32)> {
+        // Edge rows belong to the visible parent. Advancing this child across folded
+        // ancestors prevents a nested mapping row from leaking into a sequence table edge.
+        let mut child_in_parent = id;
         let mut current = store.get(id).and_then(|node| node.parent);
-        let mut result = None;
         while let Some(parent_id) = current {
             if let Some(handle) = self.handle_for(parent_id) {
-                result = Some(handle);
-                break;
+                let row = self.parent_row_index_cached(store, parent_id, child_in_parent);
+                return Some((handle, row));
             }
             if matches!(
                 self.role_for(store, parent_id, config),
@@ -2004,16 +1998,17 @@ impl GraphTopology {
                     None,
                     ReconcileIntent::ParentLookup,
                 ) {
-                    result = Some(handle);
-                    break;
+                    let row = self.parent_row_index_cached(store, parent_id, child_in_parent);
+                    return Some((handle, row));
                 }
             }
             if Some(parent_id) == self.root {
                 break;
             }
+            child_in_parent = parent_id;
             current = store.get(parent_id).and_then(|node| node.parent);
         }
-        result
+        None
     }
 
     fn path_from_root(&mut self, store: &TreeStore, id: NodeId) -> Vec<PathSeg> {
@@ -2374,19 +2369,31 @@ fn sequence_state_from_store(store: &TreeStore, id: NodeId) -> Option<SequenceSt
 
     let first_child = node.content.first().copied();
     let first_child_kind = first_child.and_then(|child| store.get(child).map(|node| node.kind));
+    let first_mapping_has_object_or_array = matches!(first_child_kind, Some(TreeNodeKind::Mapping))
+        && first_child
+            .and_then(|child| store.get(child))
+            .is_some_and(|mapping| mapping_contains_object_or_array(store, mapping));
     let header_key_count =
         if matches!(first_child_kind, Some(TreeNodeKind::Mapping)) && !node.sequence_closed() {
             header_key_count(store, id)
         } else {
             0
         };
-    let presentation = match (first_child_kind, node.sequence_closed(), header_key_count) {
-        (None, true, _) => SequencePresentationState::EmptyClosed,
-        (None, false, _) => SequencePresentationState::EmptyOpen,
-        (Some(TreeNodeKind::Mapping), true, _) => SequencePresentationState::HeaderTable,
-        (Some(TreeNodeKind::Mapping), false, 0) => SequencePresentationState::PendingHeaderSchema,
-        (Some(TreeNodeKind::Mapping), false, _) => SequencePresentationState::HeaderTable,
-        (Some(_), _, _) => SequencePresentationState::HeaderlessTable,
+    let presentation = match (
+        first_child_kind,
+        node.sequence_closed(),
+        header_key_count,
+        first_mapping_has_object_or_array,
+    ) {
+        (None, true, _, _) => SequencePresentationState::EmptyClosed,
+        (None, false, _, _) => SequencePresentationState::EmptyOpen,
+        (Some(TreeNodeKind::Mapping), _, _, true) => SequencePresentationState::HeaderlessTable,
+        (Some(TreeNodeKind::Mapping), true, _, false) => SequencePresentationState::HeaderTable,
+        (Some(TreeNodeKind::Mapping), false, 0, false) => {
+            SequencePresentationState::PendingHeaderSchema
+        }
+        (Some(TreeNodeKind::Mapping), false, _, false) => SequencePresentationState::HeaderTable,
+        (Some(_), _, _, _) => SequencePresentationState::HeaderlessTable,
     };
 
     Some(SequenceState {
@@ -2440,6 +2447,20 @@ fn header_key_count(store: &TreeStore, sequence_id: NodeId) -> usize {
         }
     }
     0
+}
+
+fn mapping_contains_object_or_array(
+    store: &TreeStore,
+    mapping: &crate::tree::tree_node::TreeNode,
+) -> bool {
+    debug_assert_eq!(mapping.kind, TreeNodeKind::Mapping);
+    mapping
+        .content
+        .iter()
+        .skip(1)
+        .step_by(2)
+        .filter_map(|value_id| store.get(*value_id))
+        .any(|value| matches!(value.kind, TreeNodeKind::Mapping | TreeNodeKind::Sequence))
 }
 
 fn value_node_builds_child(node: &crate::tree::tree_node::TreeNode) -> bool {
@@ -2566,7 +2587,7 @@ mod tests {
 
     #[test]
     fn graph_topology_apply_folds_header_table_rows_and_tracks_dirty_handles() {
-        let (store, root) = store_from_json(r#"{"rows":[{"a":1,"nested":{"b":2}},{"a":3}]}"#);
+        let (store, root) = store_from_json(r#"{"rows":[{"a":1,"b":2},{"a":3}]}"#);
         let mut topology = GraphTopology::new();
 
         let cfg = crate::graph::graph_builder::default_config();
@@ -2591,14 +2612,28 @@ mod tests {
             .and_then(|node| node.content.first())
             .copied()
             .unwrap();
-        let nested = store
-            .get(first_row)
-            .and_then(|row| row.content.get(3))
-            .copied()
-            .unwrap();
         assert!(topology.handle_for(first_row).is_none());
-        assert!(topology.handle_for(nested).is_none());
         assert!(topology.folded_row(first_row).is_some());
+    }
+
+    #[test]
+    fn sequence_with_object_or_array_in_first_mapping_row_is_headerless() {
+        for source in [
+            r#"{"rows":[{"nested":{}},{"nested":{}}]}"#,
+            r#"{"rows":[{"nested":[]},{"nested":[]}]}"#,
+        ] {
+            let (store, root) = store_from_json(source);
+            let rows = store
+                .get(root)
+                .and_then(|node| node.content.get(1))
+                .copied()
+                .expect("rows sequence exists");
+
+            assert_eq!(
+                sequence_presentation_state(&store, rows),
+                Some(SequencePresentationState::HeaderlessTable)
+            );
+        }
     }
 
     #[test]
@@ -2669,8 +2704,38 @@ mod tests {
     }
 
     #[test]
+    fn complex_fixture_assigns_nested_edges_to_headerless_table_rows() {
+        let source = include_str!("../../../../test/fixtures/json/complex.1.json");
+        let (store, root) = store_from_json(source);
+        let mut topology = GraphTopology::new();
+        let cfg = crate::graph::graph_builder::default_config();
+        topology.build_full(&store, root, &cfg);
+
+        let key = "we___are___such___stuff___as___dreams___are___made___on___and___our___little___life___is___rounded___with___sleep";
+        let table_handle = topology
+            .slots()
+            .iter()
+            .position(|slot| slot.path == [PathSeg::Key(key.to_owned())])
+            .expect("complex sequence table should exist")
+            as GraphHandle;
+        let children = &topology.slots()[table_handle as usize].children;
+
+        assert_eq!(children.len(), 200);
+        for edge in children {
+            let child = &topology.slots()[edge.child as usize];
+            let PathSeg::Index(target_index) = child.path[1] else {
+                panic!("table child should retain its sequence index");
+            };
+            assert_eq!(
+                edge.from_row,
+                i32::try_from(target_index).expect("fixture index should fit i32")
+            );
+        }
+    }
+
+    #[test]
     fn graph_topology_apply_caches_folded_context_within_pass() {
-        let (store, root) = store_from_json(r#"{"rows":[{"nested":{"a":1}},{"nested":{"b":2}}]}"#);
+        let (store, root) = store_from_json(r#"{"rows":[{"value":1},{"value":2}]}"#);
         let mut topology = GraphTopology::new();
         let cfg = crate::graph::graph_builder::default_config();
         topology.build_full(&store, root, &cfg);
@@ -2685,18 +2750,18 @@ mod tests {
             .and_then(|node| node.content.first())
             .copied()
             .expect("first row exists");
-        let nested = store
+        let row_value = store
             .get(first_row)
             .and_then(|row| row.content.get(1))
             .copied()
-            .expect("nested value exists");
+            .expect("row value exists");
 
         let _ = topology.apply(
             &store,
             root,
             &[
-                crate::stream::tree_patch::TreePatch::NodeSealed { node_id: nested },
-                crate::stream::tree_patch::TreePatch::NodeSealed { node_id: nested },
+                crate::stream::tree_patch::TreePatch::NodeSealed { node_id: row_value },
+                crate::stream::tree_patch::TreePatch::NodeSealed { node_id: row_value },
             ],
             &cfg,
         );

@@ -192,7 +192,7 @@ function measureTableRuntime(ctx: DrawContext, node: GraphNode): TableRuntimeMet
 }
 
 function shouldEnableTableBodyScroll(metrics: TableRuntimeMetrics): boolean {
-  return metrics.contentHeight > metrics.viewportHeight;
+  return metrics.showHeader && metrics.contentHeight > metrics.viewportHeight;
 }
 
 export function describeTableRuntime(

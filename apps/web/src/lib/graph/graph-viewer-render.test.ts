@@ -1357,125 +1357,6 @@ describe('graph-viewer-render', () => {
     expect(runtime.bodyViewport.overflow).toBeUndefined();
   });
 
-  it('renders only the initial table window while keeping full content height', () => {
-    const nodeLayer = { add: vi.fn() };
-    const registerRowBox = vi.fn();
-    const rows = Array.from({ length: 12 }, (_, rowIndex) => ({
-      boxArgs: { x: 0, y: rowIndex * 20, width: 120, height: 20, cornerRadius: 0 },
-      cellBoxArgs: { x: 0, y: 0, width: 120, height: 20, cornerRadius: 0 },
-      cells: [
-        createCell(String(rowIndex), 'number', [{ row: rowIndex }], 0, 0, 40),
-        createCell(`value-${rowIndex}`, 'string', [{ row: rowIndex }], 40, 0, 80),
-      ],
-    }));
-    const ctx: DrawContext = {
-      nodeLayer,
-      styleConfig: {
-        layout: { nodeBorderWidth: 1, rowHeight: 20, rowPaddingInline: 8, headerFontWeight: 600, tableWindowOverscan: 1 },
-        colors: {
-          table: {
-            background: '#fff',
-            border: '#ccc',
-            headerBackground: '#fff',
-            headerBorder: '#ccc',
-            rowBackground: '#fff',
-            hoverRowBackground: '#eee',
-            rowBorder: '#ddd',
-            hoverCellBackground: '#f5f5f5',
-          },
-          semanticType: {
-            string: '#00f',
-            number: '#00f',
-            boolean: '#00f',
-            null: '#00f',
-            object: '#00f',
-            array: '#00f',
-            key: '#f00',
-          },
-          textMuted: '#999',
-        },
-        fontFamily: 'sans-serif',
-      },
-      languageIdValue: 'json',
-      fontSize: 12,
-      BoxCtor: MockBox,
-      TextCtor: MockText,
-      PenCtor: MockPen,
-      valueTypeToSemType: {
-        string: 'string',
-        number: 'number',
-        boolean: 'boolean',
-        null: 'null',
-        object: 'object',
-        array: 'array',
-      },
-      registerCellBox: vi.fn(),
-      registerRowBox,
-      registerClickTarget: vi.fn(),
-    };
-    const node: GraphNode = {
-      renderHandle: 7,
-      kind: 'table',
-      depth: 0,
-      path: [],
-      meta: createCell('items', 'array', [], 0),
-      boxArgs: { x: 0, y: 0, width: 120, height: 81, cornerRadius: 0 },
-      rows: [],
-      table: {
-        columns: [],
-        headerHeight: 0,
-        totalHeight: 240,
-        viewHeight: 80,
-        rowHeight: 20,
-        rows,
-      },
-    };
-
-    const runtime = expectDrawResult(drawTableNode(ctx, node)).tableRuntime;
-    expect(runtime.visibleRange).toEqual({ start: 0, end: 5 });
-    expect([...runtime.renderedRows.keys()]).toEqual([0, 1, 2, 3, 4]);
-    expect(runtime.bodyViewport.overflow).toBeUndefined();
-    expect(runtime.bodyHeight).toBe(80);
-    expect(runtime.bodyContent.height).toBe(240);
-    expect(runtime.bodyViewport.height).toBe(80);
-    expect((runtime.bodyViewport as any).__graphViewportHeight).toBe(80);
-    expect(runtime.rowHeight).toBe(20);
-    expect(registerRowBox).toHaveBeenCalledTimes(10);
-  });
-
-  it('marks visible cells from scrollable headerless tables', () => {
-    const rows = Array.from({ length: 12 }, (_, rowIndex) => ({
-      boxArgs: { x: 0, y: rowIndex * 20, width: 120, height: 20, cornerRadius: 0 },
-      cellBoxArgs: { x: 0, y: 0, width: 120, height: 20, cornerRadius: 0 },
-      cells: [
-        createCell(String(rowIndex), 'number', [{ row: rowIndex }], 0, 0, 40),
-        createCell(`value-${rowIndex}`, rowIndex === 0 ? 'object' : 'string', [{ row: rowIndex }], 40, 0, 80),
-      ],
-    }));
-    const node: GraphNode = {
-      renderHandle: 17,
-      kind: 'table',
-      depth: 0,
-      path: [],
-      meta: createCell('items', 'array', [], 0),
-      boxArgs: { x: 0, y: 0, width: 120, height: 81, cornerRadius: 0 },
-      rows: [],
-      table: {
-        columns: [],
-        headerHeight: 0,
-        totalHeight: 240,
-        viewHeight: 80,
-        rowHeight: 20,
-        rows,
-      },
-    };
-
-    expectDrawResult(drawTableNode(createTestDrawContext(), node));
-
-    expect((rows[0]!.cells[1] as any).isHeaderlessTable).toBe(true);
-    expect((rows[0]!.cells[1] as any).isScrollableTable).toBe(true);
-  });
-
   it('updates the rendered table window after scroll', () => {
     const rowStartY = 40;
     const refreshActiveHighlight = vi.fn();
@@ -2177,7 +2058,7 @@ describe('graph-viewer-render', () => {
     expect(runtime.bodyContent.width).toBe(158);
   });
 
-  it('enables y-scroll after table rows grow beyond 50 during structure patch', () => {
+  it('keeps a headerless table fully expanded after rows grow during structure patch', () => {
     const ctx: DrawContext = {
       nodeLayer: { add: vi.fn() },
       styleConfig: {
@@ -2258,7 +2139,7 @@ describe('graph-viewer-render', () => {
       table: {
         ...node.table!,
         totalHeight: 1200,
-        viewHeight: 1000,
+        viewHeight: 1200,
         rows: Array.from({ length: 60 }, (_, rowIndex) => ({
           boxArgs: { x: 0, y: rowIndex * 20, width: 120, height: 20, cornerRadius: 0 },
           cellBoxArgs: { x: 0, y: 0, width: 120, height: 20, cornerRadius: 0 },
@@ -2272,6 +2153,7 @@ describe('graph-viewer-render', () => {
 
     patchTableStructure(ctx, runtime, nextNode, tableRuntimeOps);
 
-    expect((runtime.bodyViewport.children[1] as any).visible).toBe(true);
+    expect(runtime.bodyViewport.overflow).toBeUndefined();
+    expect((runtime.bodyViewport.children[1] as any).visible).toBe(false);
   });
 });

@@ -35,12 +35,19 @@ pub(super) fn value_node_builds_child(node: &TreeNode) -> bool {
 }
 
 pub(super) fn sequence_has_header_table(node: &TreeNode) -> bool {
-    if node.content.is_empty() {
-        return false;
-    }
-    node.content
-        .first()
-        .is_some_and(|c| c.kind == NodeKind::Mapping)
+    node.content.first().is_some_and(|first_row| {
+        first_row.kind == NodeKind::Mapping && !mapping_contains_object_or_array(first_row)
+    })
+}
+
+fn mapping_contains_object_or_array(mapping: &TreeNode) -> bool {
+    debug_assert_eq!(mapping.kind, NodeKind::Mapping);
+    mapping
+        .content
+        .iter()
+        .skip(1)
+        .step_by(2)
+        .any(|value| matches!(value.kind, NodeKind::Mapping | NodeKind::Sequence))
 }
 
 pub(super) fn sequence_table_children_can_expand(builder: &GraphBuilder, node: &TreeNode) -> bool {
@@ -92,7 +99,7 @@ pub(super) fn infer_header_table_column_sem_type(node: &TreeNode, key: &str) -> 
 
 #[cfg(test)]
 mod tests {
-    use super::infer_header_table_column_sem_type;
+    use super::{infer_header_table_column_sem_type, sequence_has_header_table};
     use crate::language::SemType as CoreSemType;
     use crate::operators::{NodeKind, SemType, TreeNode};
 
@@ -124,6 +131,41 @@ mod tests {
             infer_header_table_column_sem_type(&table, "h1"),
             Some(CoreSemType::Str.tag().to_owned())
         );
+    }
+
+    #[test]
+    fn sequence_with_scalar_mapping_first_row_has_header() {
+        let mut table = TreeNode {
+            kind: NodeKind::Sequence,
+            ..TreeNode::default()
+        };
+        table
+            .content
+            .push(mapping_pair("name", TreeNode::scalar(SemType::Str, "Ada")));
+
+        assert!(sequence_has_header_table(&table));
+    }
+
+    #[test]
+    fn sequence_with_object_or_array_in_first_mapping_row_has_no_header() {
+        for value in [
+            TreeNode {
+                kind: NodeKind::Mapping,
+                ..TreeNode::default()
+            },
+            TreeNode {
+                kind: NodeKind::Sequence,
+                ..TreeNode::default()
+            },
+        ] {
+            let mut table = TreeNode {
+                kind: NodeKind::Sequence,
+                ..TreeNode::default()
+            };
+            table.content.push(mapping_pair("nested", value));
+
+            assert!(!sequence_has_header_table(&table));
+        }
     }
 }
 

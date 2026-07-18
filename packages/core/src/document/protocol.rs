@@ -209,6 +209,8 @@ pub struct GraphRowData {
 pub struct GraphTableData {
     pub columns: Vec<GraphCellData>,
     pub rows: Vec<GraphRowData>,
+    /// Core-owned table presentation discriminator: positive for Header Table,
+    /// zero for Headerless Table. Web must not infer it from row contents.
     pub header_height: i32,
     pub total_height: i32,
     pub view_height: i32,

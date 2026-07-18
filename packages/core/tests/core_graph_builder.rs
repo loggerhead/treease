@@ -1123,7 +1123,7 @@ fn graph_builder_renders_no_header_sequence_as_headerless_table_with_child_nodes
 }
 
 #[test]
-fn graph_builder_keeps_scrollable_headerless_table_rows_inline() {
+fn graph_builder_keeps_large_headerless_table_rows_inline() {
     let row_a = sequence_node(&[typed_scalar_node(SemType::Int, "1")]);
     let row_b = sequence_node(&[typed_scalar_node(SemType::Int, "2")]);
     let row_c = sequence_node(&[typed_scalar_node(SemType::Int, "3")]);
@@ -1139,18 +1139,18 @@ fn graph_builder_keeps_scrollable_headerless_table_rows_inline() {
         .table
         .as_ref()
         .expect("headerless sequence should render as table");
-    assert!(
-        table.total_height > table.view_height,
-        "fixture must exercise the scrollable table branch"
+    assert_eq!(
+        table.total_height, table.view_height,
+        "headerless tables expose their full body height"
     );
     assert_eq!(
         result.nodes.len(),
         1,
-        "scrollable table rows must stay inline instead of expanding child graph nodes"
+        "large headerless table rows must stay inline instead of expanding child graph nodes"
     );
     assert!(
         result.edges.is_empty(),
-        "scrollable table rows must not create outgoing child edges"
+        "large headerless table rows must not create outgoing child edges"
     );
 }
 

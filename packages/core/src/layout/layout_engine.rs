@@ -841,6 +841,34 @@ mod tests {
         (topology, model, root)
     }
 
+    fn assert_outgoing_edges_do_not_cross(model: &GraphModel) {
+        let mut edges_by_source = BTreeMap::<u32, Vec<(i32, i32, u32)>>::new();
+        for edge in &model.edges {
+            edges_by_source
+                .entry(edge.from_render_handle)
+                .or_default()
+                .push((
+                    edge.bezier_args.from_y,
+                    edge.bezier_args.to_y,
+                    edge.to_render_handle,
+                ));
+        }
+
+        for (source, edges) in &mut edges_by_source {
+            edges.sort_unstable();
+            for pair in edges.windows(2) {
+                let (from_y_a, to_y_a, target_a) = pair[0];
+                let (from_y_b, to_y_b, target_b) = pair[1];
+                if from_y_a < from_y_b {
+                    assert!(
+                        to_y_a <= to_y_b,
+                        "edges {source}->{target_a} and {source}->{target_b} cross: source anchors {from_y_a} < {from_y_b}, but target anchors {to_y_a} > {to_y_b}"
+                    );
+                }
+            }
+        }
+    }
+
     #[test]
     fn full_layout_with_topology_does_not_build_sorted_children_index() {
         let (topology, mut model, root) =
@@ -854,6 +882,19 @@ mod tests {
         assert!(!changed.node_handles().is_empty());
         assert_eq!(state.metrics().children_index_sorts, 0);
         assert_eq!(state.metrics().edge_indexes_refreshed, model.edges.len());
+    }
+
+    #[test]
+    fn complex_fixture_layout_has_no_crossing_edges() {
+        let (topology, mut model, root) = model_from_json(include_str!(
+            "../../../../test/fixtures/json/complex.1.json"
+        ));
+        let cfg = graph_projection_service::projection_builder_config().to_graph_builder_config();
+        let mut state = LayoutState::default();
+
+        LayoutEngine::new(cfg).layout_full_with_topology(&mut state, &topology, &mut model, root);
+
+        assert_outgoing_edges_do_not_cross(&model);
     }
 
     #[test]

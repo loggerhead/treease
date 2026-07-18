@@ -351,7 +351,7 @@ fn build_table_scalar_cell_delta(
     if new_table_source_node.kind != TreeNodeKind::Sequence {
         return None;
     }
-    if !sequence_is_header_table(new_store, new_table_source) {
+    if !super::graph_topology::is_header_table_sequence(new_store, new_table_source) {
         return None;
     }
 
@@ -617,19 +617,6 @@ fn build_header_table_columns(store: &TreeStore, node_id: NodeId) -> Vec<GraphCe
         });
     }
     cols
-}
-
-fn sequence_is_header_table(store: &TreeStore, node_id: NodeId) -> bool {
-    let Some(node) = store.get(node_id) else {
-        return false;
-    };
-    if node.kind != TreeNodeKind::Sequence {
-        return false;
-    }
-    node.content
-        .first()
-        .and_then(|child| store.get(*child))
-        .is_some_and(|child| child.kind == TreeNodeKind::Mapping)
 }
 
 fn header_table_needs_fallback_value_column(store: &TreeStore, node_id: NodeId) -> bool {

@@ -137,13 +137,13 @@ describe('renderGraphEdges', () => {
     expect(layer.add).toHaveBeenCalledTimes(1);
   });
 
-  it('uses current node layout when rendering edges after incremental relayout', () => {
+  it('preserves Core edge geometry instead of recalculating it from nodes', () => {
     const layer = { removeAll: vi.fn(), add: vi.fn() };
     const nodes = [
       makeObjectNode(1, 486, 0, ['root_step']),
       makeObjectNode(8, 1572, 2230, ['root_step', 'metrics_info']),
     ];
-    const staleEdge: GraphEdge = {
+    const coreEdge: GraphEdge = {
       fromRenderHandle: 1,
       fromRow: 5,
       toRenderHandle: 8,
@@ -162,7 +162,7 @@ describe('renderGraphEdges', () => {
 
     const rendered = renderGraphEdges({
       nodes,
-      edges: [staleEdge],
+      edges: [coreEdge],
       layer,
       PenCtor: MockPen,
       renderConfig: { colors: { edge: '#999' } } as any,
@@ -171,9 +171,9 @@ describe('renderGraphEdges', () => {
 
     expect(rendered).toHaveLength(1);
     expect(rendered[0]?.bezierArgs.fromX).toBe(792);
-    expect(rendered[0]?.bezierArgs.toX).toBe(1572);
+    expect(rendered[0]?.bezierArgs.toX).toBe(1116);
     const pen = vi.mocked(layer.add).mock.calls[0]?.[0] as MockPen;
     expect(pen.moves[0]).toEqual({ x: 792, y: 132 });
-    expect(pen.curves[0]?.toX).toBe(1572);
+    expect(pen.curves[0]?.toX).toBe(1116);
   });
 });

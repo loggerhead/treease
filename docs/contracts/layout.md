@@ -96,13 +96,15 @@ flowchart LR
 Whether a `Sequence` appears as a `Header Table` depends only on its first item under the current rules:
 
 - An empty sequence is not a `Header Table`; treat it as a `Headerless Table`.
-- If the first item is a `Mapping`, treat the entire sequence as a `Header Table`.
+- If the first item is a `Mapping` and none of its direct values is a `Mapping` or `Sequence`, treat the entire sequence as a `Header Table`.
+- If the first item is a `Mapping` with a direct `Mapping` or `Sequence` value, treat the entire sequence as a `Headerless Table`.
 - If the first item is not a `Mapping`, treat the entire sequence as a `Headerless Table`.
 
 Therefore:
 
 - `Header Table` classification is neither “whether most items are objects” nor “whether every item has the same shape.”
-- Once the first item is a `Mapping`, the whole sequence remains a `Header Table` even when later items are not `Mapping`; those items go in the fallback `value` column.
+- Once the first item qualifies for a `Header Table`, the whole sequence remains a `Header Table` even when later items are not `Mapping`; those items go in the fallback `value` column.
+- A first-item `Mapping` with a direct object or array value remains a `Headerless Table`; nested structure is not projected into header columns.
 - Once the first item is not a `Mapping`, the whole sequence remains a `Headerless Table` even if a later item is a `Mapping`; it is not promoted to a header table.
 
 ### Consistency Requirements for Classification
@@ -134,14 +136,15 @@ Therefore:
 
 ### `Headerless Table`
 
-- It is used for a sequence whose first item is not a `Mapping`.
+- It is used when the first item is not a `Mapping`, or when the first-item `Mapping` has a direct object or array value.
 - Its reading semantics resemble an object node's `key/value` rows, but the key area displays the sequence index.
 - Every row is exactly two columns: index + value.
-- Row values may still correspond to structural values. If an item is an independently expandable container, it may connect to a child node through an edge.
+- A row is not an independent primary-graph row node. A non-empty `Mapping` or `Sequence` item is nevertheless a structural value that Core may expose as an expandable child at that sequence index; its edge anchors at that row.
+- It always exposes its full body height and does not use a vertical scrollbar or virtual row window.
 
 ### `Header Table`
 
-- It is used for a sequence whose first item is a `Mapping`.
+- It is used for a sequence whose first item is a `Mapping` whose direct values contain no object or array.
 - It uses header + body table semantics rather than object-style two-column rows.
 - Its columns are the stable union of visible keys across all mapping items.
 - Column 0 is always the index column.
@@ -156,13 +159,13 @@ Therefore:
 
 ### Virtual Table
 
-`virtual table` is not a new node type. It is how a `Table` node appears when its body height exceeds the visible height.
+`virtual table` is not a new node type. It is how a `Header Table` appears when its body height exceeds the visible height. A `Headerless Table` is never virtualized.
 
 It is triggered when:
 
 - `table.total_height > table.view_height`
 - Equivalently, table-body content height exceeds the currently allowed viewport height.
-- `view_height` is capped by `table_max_height`, so large tables enter this branch.
+- For a `Header Table`, `view_height` is capped by `table_max_height`, so large tables enter this branch.
 
 Presentation requirements:
 
@@ -195,6 +198,9 @@ Presentation requirements:
 - The start `y` binds to the value position in the parent associated with that child, not the parent geometry center.
 - The end `y` binds to the child's first visible semantic entry point, not the child geometry center.
 - For a table parent, the edge's vertical anchor follows the real position of the corresponding row. After table growth or local reordering, the edge must not remain attached to the old row.
+- Outgoing edges from one node preserve vertical order: when one start anchor is above another, its end anchor must not be below the other's end anchor. Reversing that order makes the edges cross.
+- Core owns edge anchor and Bézier geometry. Web may filter and draw edges, but it must not recompute layout geometry from rendered node boxes.
+- Core encodes table presentation in the protocol: `header_height > 0` is a `Header Table`, while `header_height == 0` is a `Headerless Table`. Core alone determines `view_height` and virtual-table eligibility; Web consumes those fields and must not reclassify or virtualize a headerless table.
 
 ## IV. Consistency Constraints
 
@@ -214,6 +220,7 @@ Presentation requirements:
 - Nodes at the same depth share the same column semantics.
 - Nodes at the same depth do not overlap.
 - Edges bind to current real semantic positions and must not remain at obsolete geometry.
+- Edges from the same source preserve start-to-end vertical order and do not cross.
 - A virtual table's visible window may change, but its node identity, row-index semantics, and reveal / anchor semantics must not change.
 - Empty `Mapping` and `Sequence` must keep single-scalar geometry on every build path, never object/table geometry on some paths.
 
@@ -226,6 +233,7 @@ Any of these results means the layout is wrong:
 - Same-depth nodes overlap vertically, or a later node crosses above the previous node's bottom.
 - An edge attaches to a parent or child geometry center rather than the corresponding semantic position.
 - After table growth, row-height changes, or local reordering, an edge remains attached to an old row.
+- Two outgoing edges reverse their vertical endpoint order and cross.
 - Full build and streaming give the same structure different node visibility or final layout.
 - Changed-region relayout rewrites an established region's order or column alignment without necessity.
 - The same sequence is a `Headerless Table` in one build and a `Header Table` on another path.

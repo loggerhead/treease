@@ -53,7 +53,7 @@ fn build_headerless_table(builder: &GraphBuilder, node: &TreeNode, path: &[PathS
     let base_rows = if row_count == 0 { 1 } else { row_count };
     let row_height = builder.config.row_height;
     let total_height = row_height * base_rows;
-    let view_height = builder.config.table_max_height.min(total_height);
+    let view_height = total_height;
     let key = canonical_path_key(path);
     let mut table = GraphTable {
         columns: Vec::new(),
@@ -455,5 +455,32 @@ fn graph_table_row(index: i32, cells: Vec<GraphCell>) -> GraphRow {
         value,
         cells,
         ..GraphRow::default()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::build_headerless_table;
+    use crate::graph::graph_builder::{GraphBuilder, GraphLanguage, default_config};
+    use crate::operators::{NodeKind, SemType, TreeNode};
+
+    #[test]
+    fn headerless_table_ignores_the_table_viewport_limit() {
+        let mut config = default_config();
+        config.table_max_height = 20;
+        let builder = GraphBuilder::new(config, GraphLanguage::Json);
+        let table_node = TreeNode {
+            kind: NodeKind::Sequence,
+            content: vec![
+                TreeNode::scalar(SemType::Int, "1"),
+                TreeNode::scalar(SemType::Int, "2"),
+            ],
+            ..TreeNode::default()
+        };
+
+        let table = build_headerless_table(&builder, &table_node, &[]);
+
+        assert_eq!(table.view_height, table.total_height);
+        assert!(table.view_height > builder.config.table_max_height);
     }
 }
