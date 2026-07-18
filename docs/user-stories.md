@@ -41,6 +41,7 @@ Treease focuses on a continuous experience: users open content, understand its s
 10. Open a specified editor, viewer, or compare scenario through a URL preset to reproduce a demo, shared link, or issue state.
 11. Open Settings to adjust editor, formatting, view, and interaction preferences and save them locally.
 12. Use `treease` on the command line to process input, inspect output, or update files directly.
+13. Log in from the current page, return to the same work after authentication, and manage the active account from the header.
 
 ## User Stories
 
@@ -222,6 +223,19 @@ As a command-line user, I want to use `treease` to process input, control the ou
   - Standard processing results are written to the terminal.
   - When users request a file update, its contents are updated.
   - Errors produce clear error messages.
+
+### US-15 Continue the Current Journey After Login
+
+As a user enabling account-backed features, I want to log in without losing the page and URL state I was using, and then see which account is active, so authentication does not interrupt my work or leave my session ambiguous.
+
+- User behavior: Open login from the current page, authenticate with a provider or email code, inspect the account menu, and log out when finished.
+- User expectation: Provider login returns to the exact same local page and URL state; the header replaces Login with the user's avatar and exposes account identity and Log out.
+- User value: Account-backed actions feel continuous with editing, sharing, and billing journeys instead of becoming a separate navigation dead end.
+- Expected experience:
+  - The login dialog remains an overlay on the current page.
+  - OAuth callbacks return only to a safe same-origin page captured before login.
+  - Logged-in headers show the provider avatar when available and a readable initial otherwise.
+  - The account menu shows the user's name or email and provides Log out.
 
 ## Product Boundaries
 

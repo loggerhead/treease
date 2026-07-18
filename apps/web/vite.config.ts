@@ -1,6 +1,7 @@
 /// <reference types="vitest/config" />
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { loadEnv } from 'vite';
 import { defineConfig } from 'vite-plus';
 import { sveltekit } from '@sveltejs/kit/vite';
 import tailwindcss from '@tailwindcss/vite';
@@ -54,75 +55,80 @@ const buildDefines = {
   ),
 };
 
-export default defineConfig({
-  plugins: [
-    sveltekit(),
-    tailwindcss(),
-    ...(bundleAnalyzeEnabled
-      ? [
-          analyzer({
-            analyzerMode: bundleAnalyzeMode,
-            reportTitle: 'Treease Web Bundle Report',
-            defaultSizes: 'gzip',
-            openAnalyzer: false,
-          }),
-        ]
-      : []),
-  ],
-  // 以编译期常量注入，保证 benchmark 可复现，避免运行时代码各自解析环境变量。
-  define: {
-    ...Object.fromEntries(Object.entries(buildDefines).map(([key, value]) => [key, JSON.stringify(value)])),
-    // Keep the public Supabase names aligned with apps/server and Vercel production.
-    'import.meta.env.SUPABASE_URL': JSON.stringify(process.env.SUPABASE_URL ?? ''),
-    'import.meta.env.SUPABASE_ANON_KEY': JSON.stringify(process.env.SUPABASE_ANON_KEY ?? ''),
-    'import.meta.env.GA_MEASUREMENT_ID': JSON.stringify(process.env.GA_MEASUREMENT_ID ?? ''),
-    'import.meta.env.GA_CONSENT_REQUIRED': JSON.stringify(process.env.GA_CONSENT_REQUIRED ?? '0'),
-    'import.meta.env.PUBLIC_WORKSPACE_SURFACE': JSON.stringify(workspaceSurface),
-    'import.meta.env.PUBLIC_WDIO_TEST': JSON.stringify(process.env.TREEASE_WDIO_TEST ?? '0'),
-  },
-  build: bundleAnalyzeEnabled
-    ? {
-        sourcemap: 'hidden',
-      }
-    : undefined,
-  resolve: {
-    alias: [
-      {
-        find: /^@core-wasm(\/.*)?$/,
-        replacement: `${coreWasmDir}$1`,
-      },
-      ...wdioPluginAlias,
+export default defineConfig(({ mode }) => {
+  // Vite loads .env after evaluating this config; load it explicitly before injecting browser constants.
+  const env = loadEnv(mode, configDir, '');
+
+  return {
+    plugins: [
+      sveltekit(),
+      tailwindcss(),
+      ...(bundleAnalyzeEnabled
+        ? [
+            analyzer({
+              analyzerMode: bundleAnalyzeMode,
+              reportTitle: 'Treease Web Bundle Report',
+              defaultSizes: 'gzip',
+              openAnalyzer: false,
+            }),
+          ]
+        : []),
     ],
-  },
-  ssr: {
-    noExternal: [/^@core-wasm(\/|$)/],
-  },
-  server: {
-    port: 8080,
-    hmr: process.env.BENCHMARK_MODE ? false : undefined,
-    fs: {
-      allow: allowFsDirs,
+    // 以编译期常量注入，保证 benchmark 可复现，避免运行时代码各自解析环境变量。
+    define: {
+      ...Object.fromEntries(Object.entries(buildDefines).map(([key, value]) => [key, JSON.stringify(value)])),
+      // Keep the public Supabase names aligned with apps/server and Vercel production.
+      'import.meta.env.SUPABASE_URL': JSON.stringify(env.SUPABASE_URL ?? ''),
+      'import.meta.env.SUPABASE_ANON_KEY': JSON.stringify(env.SUPABASE_ANON_KEY ?? ''),
+      'import.meta.env.GA_MEASUREMENT_ID': JSON.stringify(env.GA_MEASUREMENT_ID ?? ''),
+      'import.meta.env.GA_CONSENT_REQUIRED': JSON.stringify(env.GA_CONSENT_REQUIRED ?? '0'),
+      'import.meta.env.PUBLIC_WORKSPACE_SURFACE': JSON.stringify(workspaceSurface),
+      'import.meta.env.PUBLIC_WDIO_TEST': JSON.stringify(process.env.TREEASE_WDIO_TEST ?? '0'),
     },
-  },
-  test: {
-    environment: 'node',
-    include: ['src/**/*.test.ts', 'test/integration/**/*.test.ts'],
-    coverage: {
-      provider: 'v8',
-      exclude: ['src/lib/components/ui/**', 'test/**', 'src/**/*_gen.ts'],
-      reporter: ['text', 'html', 'lcov'],
-      reportsDirectory: 'coverage',
-      thresholds: {
-        statements: 35,
-        branches: 38,
-        functions: 25,
-        lines: 35,
+    build: bundleAnalyzeEnabled
+      ? {
+          sourcemap: 'hidden',
+        }
+      : undefined,
+    resolve: {
+      alias: [
+        {
+          find: /^@core-wasm(\/.*)?$/,
+          replacement: `${coreWasmDir}$1`,
+        },
+        ...wdioPluginAlias,
+      ],
+    },
+    ssr: {
+      noExternal: [/^@core-wasm(\/|$)/],
+    },
+    server: {
+      port: 8080,
+      hmr: process.env.BENCHMARK_MODE ? false : undefined,
+      fs: {
+        allow: allowFsDirs,
       },
     },
-  },
-  lint: {
-    rules: {
-      'no-unassigned-vars': 'off',
+    test: {
+      environment: 'node',
+      include: ['src/**/*.test.ts', 'test/integration/**/*.test.ts'],
+      coverage: {
+        provider: 'v8',
+        exclude: ['src/lib/components/ui/**', 'test/**', 'src/**/*_gen.ts'],
+        reporter: ['text', 'html', 'lcov'],
+        reportsDirectory: 'coverage',
+        thresholds: {
+          statements: 35,
+          branches: 38,
+          functions: 25,
+          lines: 35,
+        },
+      },
     },
-  },
+    lint: {
+      rules: {
+        'no-unassigned-vars': 'off',
+      },
+    },
+  };
 });

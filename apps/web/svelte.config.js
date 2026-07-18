@@ -12,7 +12,7 @@ const buildDirectory = workspaceSurface === 'desktop' ? '../desktop/dist' : 'bui
 const config = {
   preprocess: vitePreprocess(),
   kit: {
-    adapter: adapter({ pages: buildDirectory, assets: buildDirectory, fallback: 'index.html' }),
+    adapter: adapter({ pages: buildDirectory, assets: buildDirectory, fallback: '200.html' }),
     alias: {
       '@core-wasm': coreWasmDir,
       '@core-wasm/index': path.resolve(coreWasmDir, 'index.ts'),

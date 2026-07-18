@@ -1,9 +1,12 @@
 <script lang="ts">
   import { assetUrl } from '$lib/assets';
+  import AccountMenu from './AccountMenu.svelte';
 
   export let navItems: Array<{ href: string; label: string }> = [];
   export let ctaHref = '/editor';
   export let ctaLabel = 'Editor';
+  export let onLogin: () => void = () => {};
+  export let onLogout: () => Promise<void> = async () => {};
 </script>
 
 <header class="site-header">
@@ -21,7 +24,10 @@
     {/each}
   </nav>
 
-  <a class="header-cta" href={ctaHref}>{ctaLabel}</a>
+  <div class="header-actions">
+    <AccountMenu variant="landing" {onLogin} {onLogout} />
+    <a class="header-cta" href={ctaHref}>{ctaLabel}</a>
+  </div>
 </header>
 
 <style>
@@ -114,6 +120,12 @@
 
   .header-cta:hover {
     transform: translateY(-1px);
+  }
+
+  .header-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 14px;
   }
 
   @media (max-width: 900px) {

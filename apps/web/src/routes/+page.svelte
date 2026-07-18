@@ -2,11 +2,25 @@
   import { assetUrl } from '$lib/assets';
   import HomeHeroDemoDeck from '$lib/components/HomeHeroDemoDeck.svelte';
   import LandingHeader from '$lib/components/LandingHeader.svelte';
+  import LoginDialog from '$lib/components/LoginDialog.svelte';
   import { pricingConfig } from '$lib/config/pricing';
   import { homeHeaderNavItems } from '$lib/navigation/home-header-nav';
   import { trackEvent } from '$lib/analytics/ga4';
+  import { toast } from 'svelte-sonner';
+  import { signOut } from '$lib/auth/supabase-auth';
 
   let cliInstallExpanded = false;
+  let loginOpen = false;
+
+  async function handleLogout(): Promise<void> {
+    try {
+      await signOut();
+      toast.success('You are now logged out.');
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : String(cause);
+      toast.error(`Logout failed: ${message}`);
+    }
+  }
 
   const valuePoints = [
     'Open a local file and see its structure without leaving the source.',
@@ -45,7 +59,7 @@
 
 <div class="landing">
   <div class="landing-shell">
-    <LandingHeader navItems={[...homeHeaderNavItems]} />
+    <LandingHeader navItems={[...homeHeaderNavItems]} onLogin={() => (loginOpen = true)} onLogout={handleLogout} />
 
     <main class="landing-main" id="top" aria-labelledby="hero-title">
       <section class="hero">
@@ -366,6 +380,7 @@
       </nav>
     </footer>
   </div>
+  <LoginDialog bind:open={loginOpen} />
 </div>
 
 <style>

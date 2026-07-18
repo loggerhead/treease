@@ -24,8 +24,6 @@
   export let onImportFileStream: (payload: { file: File; sourceFormat: string; targetFormat: string; fileName: string }) => void = () => {}
   export let onExportPreview: (format: string) => void = () => {}
   export let onExportDownload: (format: string) => void = () => {}
-  export let onTutorial: () => void = () => {}
-  export let onFeedback: () => void = () => {}
   export let onShare: () => void = () => {}
   export let onOpenSettings: () => void = () => {}
   export let onLogin: () => void = () => {}
@@ -176,20 +174,36 @@
   <div class="flex items-center justify-end gap-2">
     {#if showRightActions}
       <ButtonGroup.Root variant="segmented-outline">
-        <IconButton
+        <a
+          class="inline-flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center whitespace-nowrap rounded-none border-0 bg-transparent text-[var(--text-primary)] outline-none transition-[color,background-color,border-color,box-shadow] hover:bg-[var(--panel-bg-alt)] hover:text-[var(--accent)] focus-visible:ring-2 focus-visible:ring-[var(--accent)]/25"
+          data-slot="button"
+          data-variant="ghost"
+          data-size="xs"
+          data-icon-only="true"
           aria-label="Tutorial"
           title="Tutorial"
-          on:click={onTutorial}
+          data-testid="topbar-tutorial-link"
+          href="/tutorial"
+          target="_blank"
+          rel="noopener noreferrer"
         >
           <BookOpen size={12} />
-        </IconButton>
-        <IconButton
+        </a>
+        <a
+          class="inline-flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center whitespace-nowrap rounded-none border-0 bg-transparent text-[var(--text-primary)] outline-none transition-[color,background-color,border-color,box-shadow] hover:bg-[var(--panel-bg-alt)] hover:text-[var(--accent)] focus-visible:ring-2 focus-visible:ring-[var(--accent)]/25"
+          data-slot="button"
+          data-variant="ghost"
+          data-size="xs"
+          data-icon-only="true"
           aria-label="Feedback"
           title="Feedback"
-          on:click={onFeedback}
+          data-testid="topbar-feedback-link"
+          href="https://github.com/loggerhead/treease/issues/new"
+          target="_blank"
+          rel="noopener noreferrer"
         >
           <MessageCircle size={12} />
-        </IconButton>
+        </a>
         <IconButton
           aria-label="Share"
           title="Share"

@@ -1,6 +1,7 @@
 import { createClient, type Provider, type SupabaseClient } from '@supabase/supabase-js';
 import type { Session } from '@supabase/supabase-js';
 import { workspaceHost } from '../workspace-host';
+import { authCallbackUrl } from './auth-redirect';
 
 let client: SupabaseClient | null = null;
 
@@ -21,17 +22,17 @@ export function getSupabaseClient(): SupabaseClient {
   const desktop = import.meta.env.PUBLIC_WORKSPACE_SURFACE === 'desktop';
   client = createClient(url, anonKey, {
     auth: {
+      flowType: 'pkce',
       persistSession: !desktop,
       autoRefreshToken: !desktop,
-      detectSessionInUrl: !desktop,
+      detectSessionInUrl: false,
     },
   });
   return client;
 }
 
 function authRedirectUrl(): string {
-  if (import.meta.env.PUBLIC_WORKSPACE_SURFACE === 'desktop') return 'treease://auth/callback';
-  return `${window.location.origin}/auth/callback`;
+  return authCallbackUrl(window.location, import.meta.env.PUBLIC_WORKSPACE_SURFACE === 'desktop');
 }
 
 export async function signInWithProvider(provider: Extract<Provider, 'google' | 'github'>): Promise<void> {

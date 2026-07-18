@@ -1,5 +1,11 @@
 import { error } from '@sveltejs/kit';
-import { getTutorialArticle } from '$lib/content/tutorials';
+import { getTutorialArticle, tutorialArticles } from '$lib/content/tutorials';
+
+export const prerender = true;
+
+export function entries() {
+  return tutorialArticles.map(({ slug }) => ({ slug }));
+}
 
 export function load({ params }) {
   const article = getTutorialArticle(params.slug);
