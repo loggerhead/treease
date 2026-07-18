@@ -3,6 +3,13 @@
 	"private": true,
 	"version": "1.1.0",
 	"type": "module",
+	"madge": {
+		"detectiveOptions": {
+			"ts": {
+				"skipTypeImports": true
+			}
+		}
+	},
 	"scripts": {
 		"assets:r2:upload": "node ./scripts/upload-r2-assets.mjs",
 		"assets:r2:check": "node ./scripts/check-r2-assets.mjs",
@@ -18,7 +25,7 @@
 		"analyze:bundle": "pnpm wasm:bindgen:check && pnpm wasm:sync && TREEASE_BUNDLE_ANALYZE=1 WASM_VERSION=$(node ./scripts/wasm-version.mjs) vp build && node ./scripts/cli-assets.mjs",
 		"preview": "vp preview",
 		"deploy:pages": "pnpm build && pnpm assets:r2:check && npx wrangler pages deploy build && pnpm cli-assets:check",
-		"check:circular": "npx madge --circular --extensions ts ./",
+		"check:circular": "pnpm exec madge --circular --extensions ts --ts-config ./tsconfig.json src",
 		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json && tsc -p tsconfig.json --noEmit",
 		"check:watch": "svelte-check --tsconfig ./tsconfig.json --watch",
 		"lint": "vp lint",

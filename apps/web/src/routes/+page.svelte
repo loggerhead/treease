@@ -3,14 +3,109 @@
   import HomeHeroDemoDeck from '$lib/components/HomeHeroDemoDeck.svelte';
   import LandingHeader from '$lib/components/LandingHeader.svelte';
   import LoginDialog from '$lib/components/LoginDialog.svelte';
-  import { pricingConfig } from '$lib/config/pricing';
+  import {
+    openPreparedBillingCheckout,
+    prewarmBillingCheckout,
+    startBillingCheckout,
+    type PreparedBillingCheckout,
+  } from '$lib/billing/checkout-flow';
+  import { authUser } from '$lib/auth/auth-user-store';
+  import { pricingConfig, type BillingPriceId, type PricingFeature } from '$lib/config/pricing';
   import { homeHeaderNavItems } from '$lib/navigation/home-header-nav';
   import { trackEvent } from '$lib/analytics/ga4';
   import { toast } from 'svelte-sonner';
   import { signOut } from '$lib/auth/supabase-auth';
+  import { annualSavingsPercent } from '$lib/billing/pricing-display';
+  import type { BillingPlanPrice, BillingPricingPrewarm } from '$lib/services/treease-server';
 
   let cliInstallExpanded = false;
+  let checkoutBusy = false;
   let loginOpen = false;
+  let pricingInViewport = false;
+  let pricingPrewarmKey: string | null = null;
+  let pricingPrewarm: Promise<BillingPricingPrewarm> | null = null;
+  let checkoutPreparations: Partial<Record<BillingPriceId, Promise<PreparedBillingCheckout>>> = {};
+  let planPrices: Partial<Record<BillingPriceId, BillingPlanPrice>> = {};
+  let yearlySavings: number | null = null;
+
+  function checkoutReturnUrl() {
+    return { successUrl: new URL('/editor', window.location.origin).toString() };
+  }
+
+  function formatPlanPrice(price: BillingPlanPrice): string {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: price.currency,
+    }).format(price.amount / 100);
+  }
+
+  function formatPlanCadence(price: BillingPlanPrice): string {
+    const unit = price.intervalCount === 1 ? price.interval : `${price.interval}s`;
+    return `/ ${price.intervalCount === 1 ? unit : `${price.intervalCount} ${unit}`}`;
+  }
+
+  function loadingCadence(priceId: BillingPriceId): string {
+    return priceId === 'monthly' ? '/ month' : '/ year';
+  }
+
+  function splitFeatureLabel(feature: PricingFeature): [string, string | null, string] {
+    if (!feature.emphasis) return [feature.label, null, ''];
+
+    const index = feature.label.indexOf(feature.emphasis);
+    if (index === -1) return [feature.label, null, ''];
+
+    return [
+      feature.label.slice(0, index),
+      feature.emphasis,
+      feature.label.slice(index + feature.emphasis.length),
+    ];
+  }
+
+  function startPricingPrewarm(): void {
+    const key = $authUser?.id ?? 'anonymous';
+    if (pricingPrewarmKey === key && pricingPrewarm) return;
+
+    pricingPrewarmKey = key;
+    checkoutPreparations = {};
+    const prewarm = prewarmBillingCheckout(checkoutReturnUrl());
+    pricingPrewarm = prewarm;
+    void prewarm.then((result) => {
+      if (pricingPrewarm !== prewarm) return;
+      planPrices = Object.fromEntries(result.plans.map((plan) => [plan.priceId, plan]));
+      checkoutPreparations = Object.fromEntries(
+        (result.checkouts ?? []).map((checkout) => [
+          checkout.priceId,
+          Promise.resolve({ priceId: checkout.priceId, checkoutUrl: checkout.url }),
+        ]),
+      );
+    }).catch(() => {
+      if (pricingPrewarm === prewarm) pricingPrewarm = null;
+    });
+  }
+
+  function observePricingSection(section: HTMLElement) {
+    if (!('IntersectionObserver' in window)) {
+      pricingInViewport = true;
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (!entry?.isIntersecting) return;
+        pricingInViewport = true;
+        observer.disconnect();
+      },
+      { rootMargin: '320px 0px' },
+    );
+    observer.observe(section);
+    return { destroy: () => observer.disconnect() };
+  }
+
+  $: if (pricingInViewport) {
+    startPricingPrewarm();
+  }
+
+  $: yearlySavings = annualSavingsPercent(planPrices.monthly, planPrices.yearly);
 
   async function handleLogout(): Promise<void> {
     try {
@@ -19,6 +114,33 @@
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : String(cause);
       toast.error(`Logout failed: ${message}`);
+    }
+  }
+
+  async function startCheckout(priceId: 'monthly' | 'yearly'): Promise<void> {
+    checkoutBusy = true;
+    try {
+      const preparation = checkoutPreparations[priceId];
+      let outcome;
+      try {
+        let prepared: PreparedBillingCheckout | null = preparation ? await preparation : null;
+        if (!prepared) {
+          const checkout = (await pricingPrewarm)?.checkouts?.find((entry) => entry.priceId === priceId);
+          prepared = checkout ? { priceId: checkout.priceId, checkoutUrl: checkout.url } : null;
+        }
+        outcome = prepared
+          ? await openPreparedBillingCheckout(prepared)
+          : await startBillingCheckout(priceId, checkoutReturnUrl());
+      } catch {
+        outcome = await startBillingCheckout(priceId, checkoutReturnUrl());
+      }
+      if (outcome.status === 'login-required') {
+        loginOpen = true;
+        return;
+      }
+      if (outcome.status === 'failed') toast.error(outcome.message);
+    } finally {
+      checkoutBusy = false;
     }
   }
 
@@ -308,7 +430,7 @@
         </div>
       </section>
 
-      <section class="pricing-section" id="pricing" aria-labelledby="pricing-title">
+      <section use:observePricingSection class="pricing-section" id="pricing" aria-labelledby="pricing-title">
         <div class="section-copy pricing-intro">
           <p class="section-kicker">Pricing</p>
           <h2 id="pricing-title">{pricingConfig.title}</h2>
@@ -317,22 +439,53 @@
 
         <div class="pricing-grid">
           {#each pricingConfig.plans as plan}
-            <article class:pricing-card--featured={plan.featured} class="pricing-card">
-              {#if plan.eyebrow}
+            <article
+              class:pricing-card--featured={plan.featured}
+              class:pricing-card--free={plan.id === 'free'}
+              class="pricing-card"
+            >
+              {#if plan.billingPriceId === 'yearly'}
+                <p class="pricing-card__eyebrow" aria-label={yearlySavings === null ? 'Loading annual saving' : undefined}>
+                  SAVE {#if yearlySavings === null}<span class="pricing-card__loading-dash" aria-hidden="true">-</span>{:else}{yearlySavings}{/if}%
+                </p>
+              {:else if plan.eyebrow}
                 <p class="pricing-card__eyebrow">{plan.eyebrow}</p>
               {/if}
               <div class="pricing-card__heading">
                 <h3>{plan.name}</h3>
                 <p class="pricing-card__description">{plan.description}</p>
               </div>
-              <div class="pricing-card__price" aria-label={`${plan.price} ${plan.cadence}`}>
-                <strong>{plan.price}</strong>
-                <span>{plan.cadence}</span>
+              <div class="pricing-card__price" aria-label={plan.billingPriceId && !planPrices[plan.billingPriceId] ? 'Loading price' : `${plan.price ?? ''} ${plan.cadence ?? ''}`}>
+                {#if plan.billingPriceId}
+                  {@const price = planPrices[plan.billingPriceId]}
+                  {#if price}
+                    <strong>{formatPlanPrice(price)}</strong>
+                    <span>{formatPlanCadence(price)}</span>
+                  {:else}
+                    <strong class="pricing-card__price-loading" aria-label="Loading price">$<span class="pricing-card__loading-dash" aria-hidden="true">-</span></strong>
+                    <span class="pricing-card__cadence-loading">{loadingCadence(plan.billingPriceId)}</span>
+                  {/if}
+                {:else}
+                  <strong>{plan.price}</strong>
+                  <span>{plan.cadence}</span>
+                {/if}
               </div>
-              <a class="pricing-card__cta" href={plan.ctaHref}>{plan.ctaLabel}</a>
+              {#if plan.billingPriceId}
+                <button
+                  type="button"
+                  class="pricing-card__cta"
+                  disabled={checkoutBusy}
+                  on:click={() => startCheckout(plan.billingPriceId!)}
+                >{checkoutBusy ? 'Opening checkout…' : plan.ctaLabel}</button>
+              {:else}
+                <a class="pricing-card__cta" href={plan.ctaHref}>{plan.ctaLabel}</a>
+              {/if}
               <ul class="pricing-card__features">
                 {#each plan.features as feature}
-                  <li>{feature}</li>
+                  {@const [prefix, emphasis, suffix] = splitFeatureLabel(feature)}
+                  <li class:pricing-card__feature--without-check={feature.showCheck === false}>
+                    {prefix}{#if emphasis}<mark class="pricing-card__feature-emphasis">{emphasis}</mark>{/if}{suffix}
+                  </li>
                 {/each}
               </ul>
             </article>
@@ -1014,6 +1167,45 @@
     letter-spacing: -0.06em;
   }
 
+  .pricing-card__price-loading {
+    display: inline-flex;
+    gap: 0.22em;
+    align-items: baseline;
+  }
+
+  .pricing-card__loading-dash {
+    display: inline-block;
+    animation: pricing-loading-dash 0.9s ease-in-out infinite;
+  }
+
+  .pricing-card__price .pricing-card__price-loading .pricing-card__loading-dash {
+    color: inherit;
+    font: inherit;
+    letter-spacing: inherit;
+  }
+
+  @keyframes pricing-loading-dash {
+    0%, 100% {
+      opacity: 0.3;
+      transform: translateY(0);
+    }
+
+    50% {
+      opacity: 1;
+      transform: translateY(-0.06em);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .pricing-card__loading-dash {
+      animation: none;
+    }
+  }
+
+  .pricing-card__cadence-loading {
+    min-width: 6.5ch;
+  }
+
   .pricing-card__price span {
     color: var(--muted-soft);
     font-size: 14px;
@@ -1041,6 +1233,12 @@
   .pricing-card__cta:hover {
     transform: translateY(-1px);
     background: #ffffff;
+  }
+
+  .pricing-card__cta:disabled {
+    cursor: wait;
+    opacity: 0.72;
+    transform: none;
   }
 
   .pricing-card--featured .pricing-card__cta {
@@ -1073,12 +1271,34 @@
     font-weight: 900;
   }
 
+  .pricing-card__features .pricing-card__feature--without-check::before {
+    content: none;
+  }
+
+  .pricing-card__feature-emphasis {
+    padding: 1px 3px;
+    border-radius: 3px;
+    color: var(--accent-strong);
+    background: rgba(45, 99, 226, 0.12);
+    font-weight: 700;
+  }
+
+  .pricing-card--free .pricing-card__feature-emphasis {
+    color: inherit;
+    font-weight: inherit;
+  }
+
   .pricing-card--featured .pricing-card__features li {
     color: rgba(226, 232, 240, 0.88);
   }
 
   .pricing-card--featured .pricing-card__features li::before {
     color: #93c5fd;
+  }
+
+  .pricing-card--featured .pricing-card__feature-emphasis {
+    color: #dbeafe;
+    background: rgba(147, 197, 253, 0.18);
   }
 
   .faq-list {

@@ -7,6 +7,7 @@
   import { workspaceHost } from '../workspace-host';
 
   export let open = false;
+  export let onAuthenticated: () => void = () => {};
 
   let email = '';
   let otp = '';
@@ -67,6 +68,7 @@
         await (await workspaceHost).storeRefreshToken(session.refresh_token);
       }
       open = false;
+      onAuthenticated();
       toast.success('You are now logged in.');
     } catch (cause) {
       error = cause instanceof Error ? cause.message : 'The verification code is invalid.';
@@ -137,7 +139,7 @@
       {:else}
         <label class="flex flex-col gap-2 text-[13px] font-medium text-[#61738f]" for="login-otp">
           Verification code sent to {email}
-          <input id="login-otp" bind:value={otp} type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="8" placeholder="Enter 6-digit code" class="h-12 rounded-[11px] border border-[#dce5f0] px-4 text-[18px] tracking-[0.2em] text-[#071126] outline-none focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent)]/15" on:keydown={(event) => event.key === 'Enter' && handleOtpSubmit()} />
+          <input id="login-otp" bind:value={otp} type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="8" placeholder="Enter 6-digit code" class="h-12 rounded-[11px] border border-[#dce5f0] px-4 text-[17px] font-medium tabular-nums tracking-[0.12em] text-[#071126] outline-none placeholder:text-[15px] placeholder:font-normal placeholder:tracking-normal placeholder:text-[#9aa9bd] focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent)]/15" on:keydown={(event) => event.key === 'Enter' && handleOtpSubmit()} />
         </label>
         <div class="flex gap-3">
           <Button variant="outline" class="h-11 flex-1 rounded-[11px]" on:click={() => (otpSent = false)}>Change email</Button>

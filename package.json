@@ -5,7 +5,7 @@
     "docs:list": "node ./scripts/docs-list.mjs",
     "dev": "pnpm --dir apps/web dev",
     "bump:version": "node ./scripts/bump-version.mjs",
-    "server:dev": "cd apps/server && ./node_modules/.bin/tsx watch src/dev.ts",
+    "server": "pnpm --dir apps/server dev",
     "server:check": "node ./scripts/server-check.mjs",
     "server:test": "node ./scripts/server-test.mjs",
     "server:smoke": "node ./scripts/server-smoke.mjs",

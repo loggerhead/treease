@@ -9,10 +9,6 @@ importers:
   .: {}
 
   apps/desktop:
-    dependencies:
-      '@tauri-apps/plugin-updater':
-        specifier: ^2.10.1
-        version: 2.10.1
     devDependencies:
       '@tauri-apps/cli':
         specifier: ^2.0.0
@@ -47,6 +43,9 @@ importers:
       '@fastify/cors':
         specifier: ^11.1.0
         version: 11.2.0
+      '@lemonsqueezy/lemonsqueezy.js':
+        specifier: ^4.0.0
+        version: 4.0.0
       '@supabase/supabase-js':
         specifier: ^2.57.4
         version: 2.110.0
@@ -1134,6 +1133,10 @@ packages:
 
   '@leafer/web-core@2.1.10':
     resolution: {integrity: sha512-f3lIJMP7KgZ9W1KOF7K0pU19a7B6yMsl8cOGTIwKJEVTFFYUMcQvbGh/mo5mcVNyXmIMuvuN/pWMkCcDypRd1w==}
+
+  '@lemonsqueezy/lemonsqueezy.js@4.0.0':
+    resolution: {integrity: sha512-xcY1/lDrY7CpIF98WKiL1ElsfoVhddP7FT0fw7ssOzrFqQsr44HgolKrQZxd9SywsCPn12OTOUieqDIokI3mFg==}
+    engines: {node: '>=20'}
 
   '@lucide/svelte@0.561.0':
     resolution: {integrity: sha512-vofKV2UFVrKE6I4ewKJ3dfCXSV6iP6nWVmiM83MLjsU91EeJcEg7LoWUABLp/aOTxj1HQNbJD1f3g3L0JQgH9A==}
@@ -6081,6 +6084,8 @@ snapshots:
       '@leafer/image-web': 2.1.10
       '@leafer/interface': 2.1.10
       '@leafer/partner': 2.1.10
+
+  '@lemonsqueezy/lemonsqueezy.js@4.0.0': {}
 
   '@lucide/svelte@0.561.0(svelte@5.56.1(@typescript-eslint/types@8.62.1))':
     dependencies:
