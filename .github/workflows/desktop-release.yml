@@ -35,11 +35,46 @@ jobs:
           version: 10
       - uses: actions/setup-node@v5
         with:
-          node-version: 20
+          node-version: 22
           cache: pnpm
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.runner == 'macos-latest' && 'aarch64-apple-darwin' || '' }}
+      - name: Install WebAssembly target
+        run: rustup target add wasm32-unknown-unknown
+      - name: Install wasm-pack
+        run: cargo install wasm-pack --version 0.15.0 --locked
+      - name: Install Zig on macOS
+        if: matrix.runner == 'macos-latest'
+        shell: bash
+        run: |
+          set -euo pipefail
+          version=0.16.0
+          install_dir="$RUNNER_TEMP/zig-$version"
+          archive="$RUNNER_TEMP/zig-$version.tar.xz"
+          curl -fsSL "https://ziglang.org/download/$version/zig-aarch64-macos-$version.tar.xz" -o "$archive"
+          rm -rf "$install_dir"
+          mkdir -p "$install_dir"
+          tar -xJf "$archive" --strip-components=1 -C "$install_dir"
+          echo "$install_dir" >> "$GITHUB_PATH"
+          "$install_dir/zig" version
+      - name: Install Zig on Windows
+        if: matrix.runner == 'windows-latest'
+        shell: pwsh
+        run: |
+          $version = '0.16.0'
+          $archive = Join-Path $env:RUNNER_TEMP "zig-$version.zip"
+          $installRoot = Join-Path $env:RUNNER_TEMP "zig-$version"
+          Invoke-WebRequest "https://ziglang.org/download/$version/zig-x86_64-windows-$version.zip" -OutFile $archive
+          if (Test-Path $installRoot) { Remove-Item $installRoot -Recurse -Force }
+          Expand-Archive $archive -DestinationPath $env:RUNNER_TEMP
+          Move-Item (Join-Path $env:RUNNER_TEMP "zig-x86_64-windows-$version") $installRoot
+          Add-Content $env:GITHUB_PATH $installRoot
+          & (Join-Path $installRoot 'zig.exe') version
+      - name: Use Bash Zig wrapper on Windows
+        if: matrix.runner == 'windows-latest'
+        shell: pwsh
+        run: Add-Content $env:GITHUB_ENV "CC_wasm32_unknown_unknown=cmd /c $env:GITHUB_WORKSPACE/scripts/zig-wasm32-cc.cmd"
       - uses: swatinem/rust-cache@v2
         with:
           workspaces: apps/desktop/src-tauri -> target

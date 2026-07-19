@@ -9,7 +9,7 @@
     "build": "tauri build",
     "check": "tauri build --debug --no-bundle",
     "test:policy": "node --test test/desktop-policy.test.mjs",
-    "build:e2e": "TREEASE_WDIO_TEST=1 tauri build --debug --no-bundle --config src-tauri/tauri.wdio.conf.json",
+    "build:e2e": "cross-env TREEASE_WDIO_TEST=1 tauri build --debug --no-bundle --config src-tauri/tauri.wdio.conf.json",
     "test:e2e": "pnpm build:e2e && wdio run wdio.conf.mjs"
   },
   "devDependencies": {
@@ -21,6 +21,7 @@
     "@wdio/spec-reporter": "^9.27.1",
     "@wdio/tauri-plugin": "1.0.0",
     "@wdio/tauri-service": "^1.0.0",
+    "cross-env": "10.0.0",
     "webdriverio": "^9.27.1"
   }
 }

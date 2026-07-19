@@ -15,8 +15,85 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  core-test:
+    uses: ./.github/workflows/core.yml
+
+  tests:
+    uses: ./.github/workflows/cli-tests.yml
+
+  metadata:
+    runs-on: ubuntu-latest
+    outputs:
+      core_name: ${{ steps.meta.outputs.coreName }}
+      core_version: ${{ steps.meta.outputs.coreVersion }}
+      core_release_tag: ${{ steps.meta.outputs.coreReleaseTag }}
+      cli_name: ${{ steps.meta.outputs.cliName }}
+      cli_version: ${{ steps.meta.outputs.cliVersion }}
+      cli_release_tag: ${{ steps.meta.outputs.cliReleaseTag }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: recursive
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - name: Read release metadata
+        id: meta
+        run: node scripts/release-metadata.mjs --github-output >> "$GITHUB_OUTPUT"
+      - name: Check tag matches CLI version
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        run: test "${GITHUB_REF_NAME}" = "${{ steps.meta.outputs.cliReleaseTag }}"
+
+  publish-core:
+    if: startsWith(github.ref, 'refs/tags/cli-v') || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    needs: [metadata, core-test]
+    environment: crates-io
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: recursive
+      - uses: ./.github/actions/setup-rust
+      - name: Check crates.io for existing core release
+        id: exists
+        shell: bash
+        run: |
+          url="https://crates.io/api/v1/crates/${{ needs.metadata.outputs.core_name }}/${{ needs.metadata.outputs.core_version }}"
+          status="$(curl -fsS -A "treease-cli-release-workflow" -o /dev/null -w '%{http_code}' "$url" || true)"
+          echo "exists=$([[ "$status" = "200" ]] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+      - name: Verify core package
+        if: steps.exists.outputs.exists != 'true'
+        working-directory: packages/core
+        run: cargo publish --dry-run --locked
+      - name: Authenticate to crates.io
+        if: steps.exists.outputs.exists != 'true'
+        id: auth
+        uses: rust-lang/crates-io-auth-action@v1
+      - name: Publish core crate
+        if: steps.exists.outputs.exists != 'true'
+        working-directory: packages/core
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
+        run: cargo publish --locked
+      - name: Wait for crates.io index to expose core release
+        shell: bash
+        run: |
+          url="https://crates.io/api/v1/crates/${{ needs.metadata.outputs.core_name }}/${{ needs.metadata.outputs.core_version }}"
+          for attempt in $(seq 1 30); do
+            status="$(curl -fsS -A "treease-cli-release-workflow" -o /dev/null -w '%{http_code}' "$url" || true)"
+            if [ "$status" = "200" ]; then exit 0; fi
+            sleep 10
+          done
+          echo "core crate did not become visible on crates.io: $url" >&2
+          exit 1
+
   publish:
     runs-on: ubuntu-latest
+    needs: [tests, metadata, publish-core]
     environment: crates-io
     steps:
       - uses: actions/checkout@v5
@@ -24,32 +101,48 @@ jobs:
           submodules: recursive
 
       - uses: ./.github/actions/setup-rust
-      - uses: ./.github/actions/setup-web
+      - uses: actions/setup-node@v5
         with:
-          zig-version: 0.16.0
+          node-version: 22
 
-      - name: Read package metadata
-        id: meta
-        run: node scripts/release-metadata.mjs --github-output >> "$GITHUB_OUTPUT"
-
-      - name: Check tag matches CLI version
-        if: startsWith(github.ref, 'refs/tags/')
+      - name: Check whether CLI release already exists
+        id: exists
         shell: bash
-        run: test "${GITHUB_REF_NAME}" = "${{ steps.meta.outputs.cliReleaseTag }}"
+        run: |
+          url="https://crates.io/api/v1/crates/${{ needs.metadata.outputs.cli_name }}/${{ needs.metadata.outputs.cli_version }}"
+          status="$(curl -fsS -o /dev/null -w '%{http_code}' "$url" || true)"
+          echo "exists=$([[ "$status" = 200 ]] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+
+      - name: Wait for core crate to be available
+        shell: bash
+        run: |
+          url="https://crates.io/api/v1/crates/${{ needs.metadata.outputs.core_name }}/${{ needs.metadata.outputs.core_version }}"
+          for attempt in $(seq 1 30); do
+            status="$(curl -fsS -A "treease-cli-release-workflow" -o /dev/null -w '%{http_code}' "$url" || true)"
+            if [ "$status" = "200" ]; then
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "core crate did not become visible on crates.io: $url" >&2
+          exit 1
 
       - name: Verify package
+        if: steps.exists.outputs.exists != 'true'
         working-directory: apps/cli
         run: cargo publish --dry-run --locked
 
-      - name: Build web cli-assets and verify deployed assetVersion
+      - name: Verify deployed CLI assets
         working-directory: apps/web
-        run: pnpm build && pnpm cli-assets:check
+        run: node scripts/check-cli-assets.mjs --remote-only
 
       - name: Authenticate to crates.io
+        if: steps.exists.outputs.exists != 'true'
         id: auth
         uses: rust-lang/crates-io-auth-action@v1
 
       - name: Publish crate
+        if: steps.exists.outputs.exists != 'true'
         working-directory: apps/cli
         env:
           CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}

@@ -1,0 +1,130 @@
+name: Main CI
+
+on:
+  push:
+    branches: ["**"]
+    tags:
+      - "v*"
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  changes:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    outputs:
+      web: ${{ steps.paths.outputs.web }}
+      server: ${{ steps.paths.outputs.server }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 2
+      - name: Detect deploy paths
+        id: paths
+        shell: bash
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            echo "web=true" >> "$GITHUB_OUTPUT"
+            echo "server=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          changed="$(git diff --name-only HEAD^ HEAD)"
+          if printf '%s\n' "$changed" | grep -Eq '^(apps/web/|packages/core/|packages/share-protocol/|apps/web/pnpm-lock.yaml$|scripts/release-metadata\.mjs$|package\.json$|pnpm-lock\.yaml$|pnpm-workspace\.yaml$|\.github/actions/setup-(rust|web)/)'; then
+            echo "web=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "web=false" >> "$GITHUB_OUTPUT"
+          fi
+          if printf '%s\n' "$changed" | grep -Eq '^(apps/server/|packages/share-protocol/|scripts/server-.*\.mjs$|package\.json$|pnpm-lock\.yaml$|pnpm-workspace\.yaml$)'; then
+            echo "server=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "server=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  core-test:
+    uses: ./.github/workflows/core.yml
+
+  web:
+    if: github.event_name != 'push' || !startsWith(github.ref, 'refs/tags/')
+    uses: ./.github/workflows/web.yml
+
+  deploy-web:
+    if: always() && (startsWith(github.ref, 'refs/tags/v') && needs.core-test.result == 'success' || github.ref == 'refs/heads/main' && needs.changes.outputs.web == 'true' || github.event_name == 'workflow_dispatch' && needs.changes.outputs.web == 'true')
+    runs-on: ubuntu-latest
+    needs: [changes, core-test]
+    environment: Production
+    permissions:
+      contents: read
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      SUPABASE_URL: ${{ vars.SUPABASE_URL }}
+      SUPABASE_ANON_KEY: ${{ vars.SUPABASE_ANON_KEY }}
+      GA_MEASUREMENT_ID: ${{ vars.GA_MEASUREMENT_ID }}
+      GA_CONSENT_REQUIRED: ${{ vars.GA_CONSENT_REQUIRED }}
+      PUBLIC_PRICING_MONTHLY_PRICE: ${{ vars.PUBLIC_PRICING_MONTHLY_PRICE }}
+      PUBLIC_PRICING_YEARLY_PRICE: ${{ vars.PUBLIC_PRICING_YEARLY_PRICE }}
+      PUBLIC_ASSET_BASE_URL: ${{ vars.PUBLIC_ASSET_BASE_URL }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: recursive
+      - uses: ./.github/actions/setup-rust
+      - uses: ./.github/actions/setup-web
+        with:
+          zig-version: 0.16.0
+      - name: Restore recent immutable web assets
+        uses: actions/cache/restore@v4
+        with:
+          path: apps/web/.cache/immutable-assets
+          key: web-immutable-assets-main-${{ github.run_id }}
+          restore-keys: web-immutable-assets-main-
+      - name: Verify web public configuration
+        shell: bash
+        run: |
+          test -n "$SUPABASE_URL" || { echo "SUPABASE_URL is missing from the Production environment" >&2; exit 1; }
+          test -n "$SUPABASE_ANON_KEY" || { echo "SUPABASE_ANON_KEY is missing from the Production environment" >&2; exit 1; }
+      - name: Deploy production web bundle
+        working-directory: apps/web
+        run: pnpm build && TREEASE_IMMUTABLE_ASSET_SNAPSHOT=${{ github.run_id }} pnpm assets:retain && pnpm assets:r2:check && pnpm exec wrangler pages deploy build --project-name treease --branch main
+      - name: Save recent immutable web assets
+        uses: actions/cache/save@v4
+        with:
+          path: apps/web/.cache/immutable-assets
+          key: web-immutable-assets-main-${{ github.run_id }}
+
+  deploy-server:
+    if: always() && (github.ref == 'refs/heads/main' && needs.changes.outputs.server == 'true' || github.event_name == 'workflow_dispatch' && needs.changes.outputs.server == 'true')
+    runs-on: ubuntu-latest
+    needs: changes
+    environment: Production
+    permissions:
+      contents: read
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: recursive
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Verify server deploy prerequisites
+        run: node scripts/server-deploy-check.mjs
+      - name: Run server checks
+        run: pnpm server:check
+      - name: Run server tests
+        run: pnpm server:test
+      - name: Run Node server smoke check
+        run: pnpm server:smoke
+      - name: Run Cloudflare Worker smoke check
+        run: pnpm server:worker:smoke
+      - name: Deploy production Worker
+        run: pnpm --dir apps/server worker:deploy
