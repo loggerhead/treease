@@ -57,7 +57,8 @@ type WorkspaceRuntimeDeps = {
   };
   getRenderConfig: () => GraphViewerConfig;
   getLanguageId: () => SupportedEditorLanguageId;
-  getValueTypeToSemType: () => Record<string, string>;
+  /** @deprecated Workspace rendering reads GraphCell.semType. */
+  getValueTypeToSemType?: () => Record<string, string>;
   isReadonly?: () => boolean;
   bindGraphEditorLifecycle: (editor: LeaferEditor | null) => void;
   bindPointerClick: (target: LeaferBox, handler: (event: unknown) => void | Promise<void>) => void;
@@ -487,7 +488,6 @@ export async function renderSubgraphWorkspaceGraph(
     BoxCtor,
     TextCtor,
     PenCtor,
-    valueTypeToSemType: deps.getValueTypeToSemType(),
     editable: deps.isReadonly?.() ? false : true,
     registerCellBox: cellEntryBindings.registerCellBox,
     unregisterCellBox: cellEntryBindings.unregisterCellBox,

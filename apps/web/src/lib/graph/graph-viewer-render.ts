@@ -1,4 +1,5 @@
 import { resolveGraphCellDisplayText } from './literal-display';
+import { resolveSemanticTypeColor } from '../semantic-type-color';
 import {
   createTableRuntime,
   describeTableRuntime,
@@ -125,13 +126,15 @@ function buildCellTextProps(
   const mutedText = ctx.styleConfig.colors.textMuted;
   const useMutedText =
     kind === 'value' &&
+    // Counts and delimiters such as {6}, [3], {} and [] are graph structure summaries,
+    // not source scalar values. Monaco renders their counterparts as punctuation.
     (cell.isMissing === true || cell.valueType === 'object' || cell.valueType === 'array' || Boolean(cell.isIndex));
   const baseColor =
     kind === 'header' || kind === 'key'
       ? semanticColors.key
       : kind === 'meta'
         ? mutedText
-        : semanticColors[ctx.valueTypeToSemType[cell.valueType]];
+        : resolveSemanticTypeColor(semanticColors, cell.semType);
   const textColor = useMutedText ? mutedText : baseColor;
   const rowPaddingInline = ctx.styleConfig.layout.rowPaddingInline;
   const hitX = useCellBounds ? 0 : textArgs.x;

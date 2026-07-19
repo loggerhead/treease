@@ -7,6 +7,8 @@ export type SubgraphWorkspaceContentState = {
   tabName: string;
   sourceText: string;
   valueType: ValueType;
+  /** Exact Core SemType for this scalar content pane; never a Web value-type guess. */
+  rootSemType: number | null;
 };
 
 export type SubgraphWorkspacePaneState = {

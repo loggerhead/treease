@@ -241,17 +241,15 @@
     },
     setTreeState: treeState.set,
   });
-  const valueTypeToSemType = {
-    string: 'str',
-    number: 'int',
-    boolean: 'boolean',
-    null: 'nil',
-    object: 'map',
-    array: 'seq',
-  } as const;
-
   let renderConfig: GraphViewerConfig = $settings.viewer.graphViewer;
-  $: renderConfig = $settings.viewer.graphViewer;
+  $: renderConfig = {
+    ...$settings.viewer.graphViewer,
+    colors: {
+      ...$settings.viewer.graphViewer.colors,
+      // Graph cells and Monaco always consume the same user-configured semantic palette.
+      semanticType: $settings.editor.semanticTypeColors,
+    },
+  };
   $: if (subgraphWorkspaceVisiblePanes.length) {
     subgraphWorkspaceController.syncHeightToShell();
   }
@@ -528,7 +526,6 @@
     getReadonly: () => readonly,
     getShellHeight: () => graphViewerShellHeight,
     getConstructors: () => ({ LeaferCtor, PlainLeaferCtor, BoxCtor, TextCtor, PenCtor }),
-    getValueTypeToSemType: () => valueTypeToSemType as Record<string, string>,
     inferGraphPaths: (nodes, edges) => graphSceneController.inferGraphPaths(nodes, edges),
     clearSearchHighlight,
     clearActiveGraphSelection: () => {
@@ -799,7 +796,6 @@
     getPenCtor: () => PenCtor,
     getRenderConfig: () => renderConfig,
     getLanguageId: () => languageIdValue,
-    getValueTypeToSemType: () => valueTypeToSemType as Record<string, string>,
     isReadonly: () => readonly,
     getLastAutoOffset: () => lastAutoOffset,
     setLastAutoOffset: (value) => {
@@ -1326,6 +1322,7 @@
                       tabName={pane.content.tabName}
                       language={languageIdValue}
                       sourceText={pane.content.sourceText}
+                      rootSemType={pane.content.rootSemType}
                       runtimeHookId={pane.content.tabId}
                       containerTestId="graph-subgraph-monaco-editor"
                       attachToPane={false}

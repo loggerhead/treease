@@ -61,6 +61,7 @@ export type TreeaseGraphProbe = {
   coord?: { x?: number; y?: number } | null;
   rect?: { left?: number; top?: number; width?: number; height?: number } | null;
   worldRect?: { left?: number; top?: number; width?: number; height?: number } | null;
+  textColor?: string | null;
   cell?: {
     text?: string;
     valueType?: string;

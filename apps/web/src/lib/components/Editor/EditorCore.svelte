@@ -50,8 +50,8 @@
   import { attachMonacoTestHook } from '../../monaco/test-hook';
   import { toast } from 'svelte-sonner';
   import { getActiveDocumentText, resolveCommitBaseSnapshotId } from '../../store/active-document-authority';
-  import { resolvePathSelectionRangeResult } from '../../services/TreePathService';
   import { getWorkspaceSnapshotId } from '../../store/workspace-store';
+  import { resolvePathSelectionRangeResult } from '../../services/TreePathService';
   import { resolveEditorRuntimeOverlay, type RuntimeStateEventDetail } from '../../runtime-loading';
   import {
     markCursorPathRequested,
@@ -69,11 +69,6 @@
   import { createEditorFullEditController } from './editor-full-edit-controller';
   import { resolveLanguageSwitchPolicy } from './language-switch-policy';
   import { createEditorRuntimeController } from './editor-runtime-controller';
-  import { queryRootValueKind } from '../../services/SnapshotProjectionService';
-  import {
-    buildRootScalarHighlightDecorations,
-    resolveRootScalarHighlightKindFromSnapshotKind,
-  } from './root-scalar-highlight';
   import { commitEditorTabTextChange } from './editor-tab-edit-commit';
   import { settleWholeDocumentReplacement } from './whole-document-replacement';
   import type { EditorModelWithDocumentKey, EditorTab, TabSummary } from './types';
@@ -117,12 +112,10 @@
   let lastExternalTreeSelectionSignature = '';
   let diffDecorations: Monaco.editor.IEditorDecorationsCollection | null = null;
   let jsonBlockDecorations: Monaco.editor.IEditorDecorationsCollection | null = null;
-  let rootScalarDecorations: Monaco.editor.IEditorDecorationsCollection | null = null;
   let diffBlankZoneIds: string[] = [];
   let suppressGraphHighlightSync = 0;
   let suppressTreePathUpdate = 0;
   let unfocusedExternalRevealSelection = false;
-  let rootScalarHighlightToken = 0;
   let wholeDocumentReplacementToken = 0;
   let formattingOptionsValue;
   let suppressNextWholeDocumentAutoGuess = false;
@@ -178,29 +171,6 @@
   function clearDocumentSemanticState(documentKey: string): void {
     clearSemanticTokensForDocument(documentKey);
     refreshSemanticTokensForLanguage(languageIdValue);
-  }
-
-  function applyRootScalarHighlight(
-    _analysis: import('./editor-analysis-apply').EditorAnalysisLike | null | undefined,
-  ): void {
-    if (!editor) return;
-    rootScalarDecorations ??= editor.createDecorationsCollection();
-    const requestToken = ++rootScalarHighlightToken;
-    const requestDocumentKey = getDocumentKey();
-    const requestSnapshotId = getWorkspaceSnapshotId(requestDocumentKey);
-    if (jsonBlockSelectionValue || !requestDocumentKey || requestSnapshotId == null) {
-      rootScalarDecorations.set([]);
-      return;
-    }
-    void queryRootValueKind({ documentKey: requestDocumentKey, snapshotId: requestSnapshotId }).then((rootKind) => {
-      if (requestToken !== rootScalarHighlightToken) return;
-      if (requestDocumentKey !== getDocumentKey()) return;
-      if (getWorkspaceSnapshotId(requestDocumentKey) !== requestSnapshotId) return;
-      const highlightKind = resolveRootScalarHighlightKindFromSnapshotKind(
-        rootKind.status === 'ready' ? rootKind.data : null,
-      );
-      rootScalarDecorations?.set(buildRootScalarHighlightDecorations(monaco, model, highlightKind));
-    });
   }
 
   function setActiveEditorIo(): void {
@@ -290,13 +260,6 @@
   };
   const maxTabs = EDITOR_CONFIG.maxTabs;
   const initialCode = getLanguageExample('json');
-  $: rootScalarStyle = [
-    `--treease-root-scalar-str:${$settings.editor.semanticTypeColors.str}`,
-    `--treease-root-scalar-int:${$settings.editor.semanticTypeColors.int}`,
-    `--treease-root-scalar-float:${$settings.editor.semanticTypeColors.float}`,
-    `--treease-root-scalar-boolean:${$settings.editor.semanticTypeColors.boolean}`,
-    `--treease-root-scalar-nil:${$settings.editor.semanticTypeColors.nil}`,
-  ].join(';');
 
   let tabManager: TabManager;
   let dropZone: EditorDropZone;
@@ -336,7 +299,6 @@
     setJsonBlockSelection: (selection) => jsonBlockSelection.set(selection),
     updateActiveTempModel: updateCurrentTempModel,
     setTreeState: (value) => treeState.set(value),
-    applyRootScalarHighlight,
     primeSemanticTokensForDocument: (documentKey, semanticTokens) =>
       primeSemanticTokensForDocument(documentKey, semanticTokens),
     clearSemanticTokensForDocument: clearDocumentSemanticTokens,
@@ -571,7 +533,6 @@
       'source-editor',
       monaco.editor.tokenize,
     );
-    rootScalarDecorations = editor.createDecorationsCollection();
     ensureLanguageRegistered(languageIdValue);
     monaco.editor.setModelLanguage(model, languageIdValue);
     initWorkspaceFromPrimaryTab({ id: firstTab.id, name: firstTab.name });
@@ -625,7 +586,6 @@
       const nextText = activeModel.getValue();
       const changes = (event as unknown as { changes?: MonacoTextChange[] }).changes ?? [];
       const isFlush = (event as unknown as { isFlush?: boolean }).isFlush ?? false;
-      applyRootScalarHighlight(null);
       syncColorViewportState('content');
       isStoreUpdateSuppressed = true;
       notifyCompareEdit();
@@ -821,7 +781,6 @@
       jsonBlockSelectionValue = value;
       applyJsonBlockDecoration(value);
       if (value) {
-        applyRootScalarHighlight(null);
       }
     });
   }
@@ -1557,8 +1516,6 @@
     tabManager?.disposeAll();
     hoverPreviewDisposable?.dispose();
     hoverPreviewDisposable = null;
-    rootScalarDecorations?.clear();
-    rootScalarDecorations = null;
     storeUnsub?.();
     storeUnsub = null;
     languageUnsub?.();
@@ -1609,7 +1566,7 @@
   }
 </script>
 
-<div class="contents" style={rootScalarStyle}>
+<div class="contents">
   <EditorDropZone
     bind:this={dropZone}
     onDrop={handleDrop}
@@ -1620,25 +1577,3 @@
   />
   <TabManager bind:this={tabManager} {monaco} {maxTabs} initialLanguageId={languageIdValue} {initialCode} />
 </div>
-
-<style>
-  :global(.treease-root-scalar-str) {
-    color: var(--treease-root-scalar-str) !important;
-  }
-
-  :global(.treease-root-scalar-int) {
-    color: var(--treease-root-scalar-int) !important;
-  }
-
-  :global(.treease-root-scalar-float) {
-    color: var(--treease-root-scalar-float) !important;
-  }
-
-  :global(.treease-root-scalar-boolean) {
-    color: var(--treease-root-scalar-boolean) !important;
-  }
-
-  :global(.treease-root-scalar-nil) {
-    color: var(--treease-root-scalar-nil) !important;
-  }
-</style>

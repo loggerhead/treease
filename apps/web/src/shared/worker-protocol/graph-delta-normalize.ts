@@ -124,6 +124,7 @@ function emptyCellValue() {
     text: '',
     value: '',
     isMissing: false,
+    semType: SemType.STR,
     valueType: 'string' as const,
     isIndex: false,
     path: [],
@@ -139,6 +140,7 @@ export function normalizeRawCell(cell: any) {
   }
   const boxArgs = cell.boxArgs ?? { x: 0, y: 0, width: 0, height: 0, cornerRadius: 0 };
   const valueType = semTypeToValueType(cell.semType);
+  const semType = typeof cell.semType === 'number' ? cell.semType as SemType : SemType.STR;
   const displayText = cell.text ?? cell.value ?? '';
   const rawValue = cell.value ?? '';
   const value =
@@ -161,6 +163,7 @@ export function normalizeRawCell(cell: any) {
     text: displayText,
     value,
     isMissing: cell.isMissing === true || cell.is_missing === true,
+    semType,
     valueType,
     isIndex: cell.isIndex === true,
     path: normalizeDeltaPath(cell.path),

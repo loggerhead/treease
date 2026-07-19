@@ -818,6 +818,7 @@ type GraphClickProbeSnapshot = {
   rawPath: TreeaseRuntimePathSeg[];
   coord: { x: number; y: number } | null;
   rect: { left: number; top: number; width: number; height: number } | null;
+  textColor: string | null;
 };
 
 async function readGraphClickProbesByKeys(page: Page, scope: GraphRuntimeScope): Promise<GraphClickProbeSnapshot[]> {
@@ -851,6 +852,7 @@ async function readGraphClickProbesByKeys(page: Page, scope: GraphRuntimeScope):
           isTableCell: !!probe.cell?.isTableCell,
           isHeader: !!probe.cell?.isHeader,
           nodeType: probe.nodeType ?? '',
+          textColor: typeof probe.textColor === 'string' ? probe.textColor : null,
           path: formatPath(probe.cell?.path),
           rawPath,
           coord:

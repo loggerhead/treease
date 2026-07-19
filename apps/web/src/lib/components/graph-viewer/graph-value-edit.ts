@@ -1,5 +1,4 @@
 // 职责：GraphViewer 单元格值编辑：inline editor 创建/提交/取消、WASM applyValueEdit 调用
-import { InnerEditorEvent } from '@leafer-in/editor';
 import type { DocumentTextEdit } from '@core-wasm/index';
 import type { SupportedEditorLanguageId } from '../../monaco/language-support';
 import type { GraphCell, GraphCellKind } from '../../graph/graph-viewer-render';
@@ -13,6 +12,11 @@ import type { LeaferEditor, LeaferText } from './model';
 import { resolveCellPath } from './graph-anchor-index';
 import { createFreshnessScope } from '../../guards/freshness-scope';
 import { trackEvent } from '../../analytics/ga4';
+
+// These public Leafer event names let this controller stay outside the lazy
+// Leafer runtime chunk; importing the package here defeats GraphRuntimeHost's boundary.
+const INNER_EDITOR_BEFORE_OPEN = 'innerEditor.before_open';
+const INNER_EDITOR_CLOSE = 'innerEditor.close';
 
 type GraphEditEventType = 'graph-edit-open' | 'graph-edit-commit' | 'graph-edit-replace-fallback';
 
@@ -337,7 +341,7 @@ export function createGraphValueEditController(deps: GraphValueEditControllerDep
     if (textEditor?.config) {
       textEditor.config.selectAll = true;
     }
-    editor.on?.(InnerEditorEvent.BEFORE_OPEN, (event: unknown) => {
+    editor.on?.(INNER_EDITOR_BEFORE_OPEN, (event: unknown) => {
       const target = (event as { editTarget?: LeaferText })?.editTarget ?? null;
       const cell = target?.__graphCell ?? null;
       if (!cell) return;
@@ -359,7 +363,7 @@ export function createGraphValueEditController(deps: GraphValueEditControllerDep
         });
       }
     });
-    editor.on?.(InnerEditorEvent.CLOSE, () => {
+    editor.on?.(INNER_EDITOR_CLOSE, () => {
       void commitTextEdit(editor);
     });
   }

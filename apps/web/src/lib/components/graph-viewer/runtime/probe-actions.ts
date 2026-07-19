@@ -89,6 +89,7 @@ export function createGraphRuntimeProbeActions(deps: ProbeActionDeps) {
                 : null,
             rect: getClientRectFromBoxLike(entry.box, app),
             worldRect: getWorldRectFromBoxLike(entry.box),
+            textColor: typeof (entry.box as { fill?: unknown }).fill === 'string' ? (entry.box as { fill: string }).fill : null,
             cell: entry.cell
               ? {
                   text: deps.resolveCellText(entry),

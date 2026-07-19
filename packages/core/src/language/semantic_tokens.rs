@@ -288,6 +288,13 @@ fn collect_query_token_spans_uncached(
         let Some(token_type) = token_type_from_capture(capture_name) else {
             continue;
         };
+        let token_type = classify_number_token(
+            token_type,
+            capture
+                .node
+                .utf8_text(source.as_bytes())
+                .unwrap_or_default(),
+        );
         let start = capture.node.start_position();
         let end = capture.node.end_position();
         spans.push(TokenSpan {
@@ -337,6 +344,13 @@ pub fn collect_token_spans_with_tree(
         let Some(token_type) = token_type_from_capture(capture_name) else {
             continue;
         };
+        let token_type = classify_number_token(
+            token_type,
+            capture
+                .node
+                .utf8_text(source.as_bytes())
+                .unwrap_or_default(),
+        );
         let start = capture.node.start_position();
         let end = capture.node.end_position();
         spans.push(TokenSpan {
@@ -846,6 +860,16 @@ fn token_type_from_capture(name: &str) -> Option<u32> {
     None
 }
 
+/// Tree-sitter commonly exposes all numeric literals through `@number`.
+/// Keep the exact source spelling so semantic tokens agree with Core's scalar type.
+fn classify_number_token(token_type: u32, literal: &str) -> u32 {
+    if token_type == INT && literal.contains(|c: char| matches!(c, '.' | 'e' | 'E')) {
+        FLOAT
+    } else {
+        token_type
+    }
+}
+
 fn encode_delta_tokens(source: &str, spans: &[TokenSpan]) -> Vec<u32> {
     crate::wasm::semantic_tokens_shared::encode_token_spans_to_u32(spans, source)
 }
@@ -860,7 +884,7 @@ fn source_bound_cache_key(cache_key: &str, source: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{BOOLEAN, INT, KEY, STR, TOKEN_TYPES, encode_semantic_tokens};
+    use super::{BOOLEAN, FLOAT, INT, KEY, STR, TOKEN_TYPES, encode_semantic_tokens};
 
     fn utf16_column_to_byte_offset(line: &str, column: u32) -> usize {
         let mut utf16 = 0_u32;
@@ -939,5 +963,15 @@ mod tests {
     fn json_root_string_emits_str_semantic_token() {
         let string_snippets = semantic_token_snippets(r#""left-string""#, STR);
         assert_eq!(string_snippets, vec![r#""left-string""#.to_owned()]);
+    }
+
+    #[test]
+    fn numeric_literal_spelling_distinguishes_int_from_float() {
+        let source = r#"{"int":42,"float":1.0}"#;
+        assert_eq!(semantic_token_snippets(source, INT), vec!["42".to_owned()]);
+        assert_eq!(
+            semantic_token_snippets(source, FLOAT),
+            vec!["1.0".to_owned()]
+        );
     }
 }

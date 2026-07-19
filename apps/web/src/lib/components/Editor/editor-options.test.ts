@@ -5,6 +5,7 @@ describe('createTreeaseMonacoEditorOptions', () => {
   it('returns the shared json4u-aligned baseline', () => {
     expect(createTreeaseMonacoEditorOptions('tree-sitter-light')).toEqual({
       theme: 'tree-sitter-light',
+      'semanticHighlighting.enabled': true,
       fontSize: 13,
       scrollBeyondLastLine: false,
       automaticLayout: true,

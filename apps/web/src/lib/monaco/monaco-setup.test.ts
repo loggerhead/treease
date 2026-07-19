@@ -208,6 +208,23 @@ describe('monaco-setup', () => {
     expect(listener).toHaveBeenCalledTimes(1);
   });
 
+  it('notifies Monaco when a Core semantic-token snapshot is primed', () => {
+    const ensure = createSemanticTokensRegistrar({
+      monaco: monaco as any,
+      callWasmWorker,
+      tokenTypes: ['type'],
+    });
+
+    ensure('json');
+    const provider = monaco.languages.registerDocumentSemanticTokensProvider.mock.calls.at(-1)?.[1];
+    const listener = vi.fn();
+    provider.onDidChange(listener);
+
+    ensure.primeSemanticTokens('file://primed-json', new Uint32Array([0, 0, 4, 0, 0]).buffer);
+
+    expect(listener).toHaveBeenCalledTimes(1);
+  });
+
   it('refreshes active semantic token listeners across language switches', () => {
     const ensure = createSemanticTokensRegistrar({
       monaco: monaco as any,

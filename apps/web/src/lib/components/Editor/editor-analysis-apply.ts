@@ -28,7 +28,6 @@ type ApplyDocumentAnalysisToEditorOptions = {
   analysis?: EditorAnalysisLike | null;
   hasCurrentJsonBlockSelection?: (documentKey: string) => boolean;
   onResolvedAnalysis?: (analysis: EditorAnalysisLike) => void;
-  applyRootScalarHighlight?: (analysis: EditorAnalysisLike | null | undefined) => void;
   updateTempModel: (updater: (current: any) => any) => void;
   primeSemanticTokensForDocument: (documentKey: string, semanticTokens: ArrayBuffer) => void;
   clearSemanticTokensForDocument: (documentKey?: string) => void;
@@ -122,6 +121,5 @@ export async function applyDocumentAnalysisToEditor(
     if (!options.freshness.isCurrent()) return null;
   }
   options.refreshSemanticTokensForLanguage(options.requestLanguage);
-  options.applyRootScalarHighlight?.(resolved.analysis);
   return resolved.analysis;
 }

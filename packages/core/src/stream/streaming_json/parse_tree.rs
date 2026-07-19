@@ -13,7 +13,7 @@ use super::{
 // NormalizedNumber
 // ---------------------------------------------------------------------------
 
-/// Result of normalising a JSON number literal.
+/// Result of validating a JSON number literal while preserving its source semantics.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NormalizedNumber {
     pub sem_type: SemType,
@@ -24,10 +24,8 @@ pub struct NormalizedNumber {
 ///
 /// * Integer literals (no `.`, `e`, or `E`) are returned as-is with
 ///   `SemType::Int`.
-/// * Float literals that represent a whole number within `i64` range are
-///   normalised to their integer representation (e.g. `"1.0e2"` becomes
-///   `"100"` with `SemType::Int`).
-/// * All other float literals are returned as-is with `SemType::Float`.
+/// * Float literals (containing `.`, `e`, or `E`) are returned as-is with
+///   `SemType::Float`, including whole-number spellings such as `"1.0"`.
 ///
 pub fn normalized_number_value(raw: &str) -> NormalizedNumber {
     normalized_number_value_inner(raw)
@@ -43,18 +41,10 @@ fn normalized_number_value_inner(raw: &str) -> NormalizedNumber {
     }
 
     match raw.parse::<f64>() {
-        Ok(f) if f.is_finite() && f == f.trunc() => {
-            if f >= i64::MIN as f64 && f <= i64::MAX as f64 {
-                return NormalizedNumber {
-                    sem_type: SemType::Int,
-                    value: (f as i64).to_string(),
-                };
-            }
-            NormalizedNumber {
-                sem_type: SemType::Float,
-                value: raw.to_string(),
-            }
-        }
+        Ok(value) if value.is_finite() => NormalizedNumber {
+            sem_type: SemType::Float,
+            value: raw.to_string(),
+        },
         _ => NormalizedNumber {
             sem_type: SemType::Float,
             value: raw.to_string(),
@@ -215,10 +205,10 @@ mod tests {
     }
 
     #[test]
-    fn normalizes_float_to_int() {
+    fn preserves_whole_number_float_literal() {
         let result = normalized_number_value("1.0e2");
-        assert_eq!(result.sem_type, SemType::Int);
-        assert_eq!(result.value, "100");
+        assert_eq!(result.sem_type, SemType::Float);
+        assert_eq!(result.value, "1.0e2");
     }
 
     #[test]

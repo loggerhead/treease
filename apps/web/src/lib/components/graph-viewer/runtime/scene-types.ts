@@ -21,6 +21,8 @@ export type GraphRuntimeProbeTarget = {
   coord: GraphRuntimePoint | null;
   rect: GraphRuntimeRect | null;
   worldRect: GraphRuntimeRect | null;
+  /** Final Leafer text fill, exposed only through the test runtime bridge. */
+  textColor: string | null;
   cell: {
     text: string;
     valueType: string;

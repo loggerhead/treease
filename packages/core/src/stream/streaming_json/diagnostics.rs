@@ -6,6 +6,7 @@ use super::scanner::{Position, Scanner, Token, TokenTag};
 const TOKEN_TYPE_KEY: u32 = 1;
 const TOKEN_TYPE_STRING: u32 = 3;
 const TOKEN_TYPE_INT: u32 = 4;
+const TOKEN_TYPE_FLOAT: u32 = 5;
 const TOKEN_TYPE_BOOLEAN: u32 = 6;
 const TOKEN_TYPE_NULL: u32 = 7;
 const TOKEN_TYPE_PUNCTUATION: u32 = 8;
@@ -295,11 +296,17 @@ fn scan_token_spans(source: &str) -> Result<Vec<TokenSpan>, JsonStreamError> {
             }
             '-' | '0'..='9' => {
                 cursor = scan_number(source, cursor)?;
+                let token_type =
+                    if source[start..cursor].contains(|c: char| matches!(c, '.' | 'e' | 'E')) {
+                        TOKEN_TYPE_FLOAT
+                    } else {
+                        TOKEN_TYPE_INT
+                    };
                 emit_token_span(
                     &mut spans,
                     start_position,
                     &source[start..cursor],
-                    TOKEN_TYPE_INT,
+                    token_type,
                     &mut position,
                 );
                 update_parent_after_value(&mut stack);

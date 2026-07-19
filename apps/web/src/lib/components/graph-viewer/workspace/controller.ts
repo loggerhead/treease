@@ -2,7 +2,7 @@ import { tick } from 'svelte';
 import type { SnapshotId } from '@core-wasm/index';
 import type { SupportedEditorLanguageId } from '../../../monaco/language-support';
 import type { GraphViewerConfig } from '../../../settings/ui-settings';
-import { queryPathValue } from '../../../services/SnapshotProjectionService';
+import { queryNodePreview, queryPathValue } from '../../../services/SnapshotProjectionService';
 import { buildPathKey } from '../../../graph/graph-viewer-path';
 import type { GraphCell, GraphEdge, GraphNode } from '../../../graph/graph-viewer-render';
 import { getClampedPaneSize } from '../../ui/split-layout';
@@ -61,6 +61,8 @@ export type SubgraphWorkspaceControllerDeps = {
   getWorkspaceSnapshotId: () => SnapshotId | null;
   getDocumentKey: () => string;
   getLanguageId: () => SupportedEditorLanguageId;
+  /** @deprecated Workspace rendering reads GraphCell.semType. */
+  getValueTypeToSemType?: () => Record<string, string>;
   getRevision: () => number;
   getRenderConfig: () => GraphViewerConfig;
   getEnableNest: () => boolean;
@@ -77,7 +79,6 @@ export type SubgraphWorkspaceControllerDeps = {
       bezierCurveTo: (c1x: number, c1y: number, c2x: number, c2y: number, toX: number, toY: number) => void;
     };
   };
-  getValueTypeToSemType: () => Record<string, string>;
   inferGraphPaths: (nodes: GraphNode[], edges: GraphEdge[]) => void;
   clearSearchHighlight: () => void;
   clearActiveGraphSelection: () => void;
@@ -230,7 +231,10 @@ export function createSubgraphWorkspaceController(deps: SubgraphWorkspaceControl
 
   async function buildContentState(path: PathSeg[]): Promise<SubgraphWorkspaceContentState | null> {
     const snapshotId = deps.getWorkspaceSnapshotId();
-    const pathValue = await queryPathValue({ documentKey: deps.getDocumentKey(), snapshotId, path });
+    const [pathValue, nodePreview] = await Promise.all([
+      queryPathValue({ documentKey: deps.getDocumentKey(), snapshotId, path }),
+      queryNodePreview({ documentKey: deps.getDocumentKey(), snapshotId, path }),
+    ]);
     if (pathValue.status !== 'ready' || !pathValue.data) return null;
     const valueType = pathValue.data.valueType as SubgraphWorkspaceContentState['valueType'];
     if (!shouldOpenSubgraphWorkspaceContent(pathValue.data)) return null;
@@ -239,6 +243,7 @@ export function createSubgraphWorkspaceController(deps: SubgraphWorkspaceControl
       tabName: formatSubgraphWorkspacePath(path, deps.getRenderConfig()),
       sourceText: pathValue.data.displayText,
       valueType,
+      rootSemType: nodePreview.status === 'ready' ? (nodePreview.data?.semType ?? null) : null,
     };
   }
 
@@ -352,7 +357,6 @@ export function createSubgraphWorkspaceController(deps: SubgraphWorkspaceControl
               getConstructors: deps.getConstructors,
               getRenderConfig: deps.getRenderConfig,
               getLanguageId: deps.getLanguageId,
-              getValueTypeToSemType: deps.getValueTypeToSemType,
               isReadonly: deps.getReadonly,
               bindGraphEditorLifecycle: deps.bindGraphEditorLifecycle,
               bindPointerClick: deps.bindPointerClick,

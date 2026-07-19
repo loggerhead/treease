@@ -251,7 +251,8 @@ type GraphSceneRuntimeDeps = {
   getPenCtor: () => any;
   getRenderConfig: () => GraphViewerConfig;
   getLanguageId: () => string;
-  getValueTypeToSemType: () => Record<string, string>;
+  /** @deprecated Scene rendering reads GraphCell.semType. */
+  getValueTypeToSemType?: () => Record<string, string>;
   isReadonly?: () => boolean;
   getLastAutoOffset: () => { x: number; y: number } | null;
   setLastAutoOffset: (value: { x: number; y: number } | null) => void;
@@ -599,7 +600,6 @@ export function createGraphSceneRuntime(deps: GraphSceneRuntimeDeps) {
       BoxCtor,
       TextCtor,
       PenCtor,
-      valueTypeToSemType: deps.getValueTypeToSemType(),
       editable: deps.isReadonly?.() ? false : undefined,
       registerCellBox: (cell, kind, box) => {
         if (box && typeof box === 'object') {

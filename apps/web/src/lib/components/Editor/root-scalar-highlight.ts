@@ -1,59 +1,48 @@
-import type * as Monaco from 'monaco-editor';
-
 import type { EditorAnalysisLike } from './editor-analysis-apply';
-import type { RootValueKind } from '../../services/SnapshotProjectionService';
+import { semanticTypeToColorKey } from '../../semantic-type-color';
 
 export type RootScalarHighlightKind = 'str' | 'int' | 'float' | 'boolean' | 'nil';
 
-export function resolveRootScalarHighlightKindFromSnapshotKind(
-  value: RootValueKind | null | undefined,
-): RootScalarHighlightKind | null {
-  if (value === 'string') return 'str';
-  if (value === 'int') return 'int';
-  if (value === 'float') return 'float';
-  if (value === 'boolean') return 'boolean';
-  if (value === 'null') return 'nil';
-  return null;
+/** The analysis tree is Core output, unlike lexical Monaco tokens or source-text parsing. */
+export function resolveRootScalarHighlightKindFromTree(tree: unknown): RootScalarHighlightKind | null {
+  if (!tree || typeof tree !== 'object' || !('semType' in tree)) return null;
+  return resolveRootScalarHighlightKindFromSemType((tree as { semType?: unknown }).semType as number | undefined);
 }
 
-export function resolveRootScalarHighlightKindFromValue(value: unknown): RootScalarHighlightKind | null {
-  if (typeof value === 'string') return 'str';
-  if (typeof value === 'number') return Number.isInteger(value) ? 'int' : 'float';
-  if (typeof value === 'boolean') return 'boolean';
-  if (value === null) return 'nil';
-  return null;
+/** This projection is the exact SemType returned by Core for the selected node. */
+export function resolveRootScalarHighlightKindFromSemType(
+  semType: number | null | undefined,
+): RootScalarHighlightKind | null {
+  const key = semanticTypeToColorKey(semType);
+  return key === 'str' || key === 'int' || key === 'float' || key === 'boolean' || key === 'nil' ? key : null;
 }
 
 export function resolveRootScalarHighlightKind(
   analysis: EditorAnalysisLike | null | undefined,
 ): RootScalarHighlightKind | null {
-  return resolveRootScalarHighlightKindFromValue(analysis?.value);
+  return resolveRootScalarHighlightKindFromTree(analysis?.tree);
 }
 
-export function resolveJsonRootScalarHighlightKindFromText(
-  text: string,
-  language: string | null | undefined,
-): RootScalarHighlightKind | null {
-  if (language !== 'json') return null;
-  try {
-    return resolveRootScalarHighlightKindFromValue(JSON.parse(text));
-  } catch {
-    return null;
+/**
+ * Seed Monaco's existing semantic-token provider from a Core snapshot when a
+ * detached scalar pane mounts before its document analysis is available.
+ */
+export function buildRootScalarSemanticTokens(
+  sourceText: string,
+  semType: number | null | undefined,
+  tokenTypes: readonly string[],
+): ArrayBuffer | null {
+  const kind = resolveRootScalarHighlightKindFromSemType(semType);
+  if (!kind) return null;
+  const tokenType = tokenTypes.indexOf(kind);
+  if (tokenType < 0) return null;
+
+  const data: number[] = [];
+  let previousLine = 0;
+  for (const [line, text] of sourceText.split(/\r?\n/).entries()) {
+    if (!text) continue;
+    data.push(line - previousLine, 0, text.length, tokenType, 0);
+    previousLine = line;
   }
-}
-
-export function buildRootScalarHighlightDecorations(
-  monaco: typeof import('monaco-editor') | undefined,
-  model: Monaco.editor.ITextModel | null,
-  kind: RootScalarHighlightKind | null,
-): Monaco.editor.IModelDeltaDecoration[] {
-  if (!monaco || !model || !kind) return [];
-  return [
-    {
-      range: model.getFullModelRange(),
-      options: {
-        inlineClassName: `treease-root-scalar-${kind}`,
-      },
-    },
-  ];
+  return data.length === 0 ? null : new Uint32Array(data).buffer;
 }

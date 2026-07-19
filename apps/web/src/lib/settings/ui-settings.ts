@@ -1,4 +1,5 @@
 import { TOKEN_TYPES, TOKEN_TYPE_LAYER, TOKEN_TYPE_THEME_KEY, type TokenType } from '@core-wasm/index';
+import type * as Monaco from 'monaco-editor';
 import { defaultSettings, editorUiColors, graphViewerConfig, neutralSyntaxColors, semanticTypeColors } from './ui-settings-data';
 
 type JsonSchema =
@@ -32,16 +33,19 @@ function createSemanticTokenColors(colors: SemanticTypeColors) {
 }
 
 function createLexicalTokenRules(colors: SemanticTypeColors) {
+  const pendingSemanticColor = neutralSyntaxColors.operator.slice(1);
   return [
-    { token: 'string', foreground: colors.str.slice(1) },
-    { token: 'string.value', foreground: colors.str.slice(1) },
-    { token: 'string.value.json', foreground: colors.str.slice(1) },
-    { token: 'string.key', foreground: colors.key.slice(1) },
-    { token: 'string.key.json', foreground: colors.key.slice(1) },
-    { token: 'number', foreground: colors.int.slice(1) },
-    { token: 'number.float', foreground: colors.float.slice(1) },
-    { token: 'keyword', foreground: colors.boolean.slice(1) },
-    { token: 'keyword.json', foreground: colors.boolean.slice(1) },
+    // Lexical tokenizers cannot distinguish null from boolean or int from float in every
+    // supported language. They stay neutral until Core semantic tokens are available.
+    { token: 'string', foreground: pendingSemanticColor },
+    { token: 'string.value', foreground: pendingSemanticColor },
+    { token: 'string.value.json', foreground: pendingSemanticColor },
+    { token: 'string.key', foreground: pendingSemanticColor },
+    { token: 'string.key.json', foreground: pendingSemanticColor },
+    { token: 'number', foreground: pendingSemanticColor },
+    { token: 'number.float', foreground: pendingSemanticColor },
+    { token: 'keyword', foreground: pendingSemanticColor },
+    { token: 'keyword.json', foreground: pendingSemanticColor },
     { token: 'delimiter', foreground: neutralSyntaxColors.punctuation.slice(1) },
     { token: 'delimiter.bracket', foreground: neutralSyntaxColors.punctuation.slice(1) },
     { token: 'delimiter.array', foreground: neutralSyntaxColors.punctuation.slice(1) },
@@ -161,6 +165,16 @@ export function buildEditorTheme(settings: Settings) {
     semanticTokenColors,
     colors: settings.editor.uiColors,
   };
+}
+
+/** Apply the one shared semantic palette to every Monaco surface. */
+export function applyEditorTheme(
+  monaco: typeof import('monaco-editor'),
+  themeName: string,
+  settings: Settings,
+): void {
+  monaco.editor.defineTheme(themeName, buildEditorTheme(settings) as Monaco.editor.IStandaloneThemeData);
+  monaco.editor.setTheme(themeName);
 }
 
 function mergeObject(target: any, source: any) {

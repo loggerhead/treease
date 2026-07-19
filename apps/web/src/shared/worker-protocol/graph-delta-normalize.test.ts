@@ -67,6 +67,11 @@ describe('graph-delta-normalize', () => {
     expect(cell.textArgs.editable).toBe(true);
   });
 
+  it('preserves Core float and nil semantic types for graph rendering', () => {
+    expect(normalizeRawCell(rawCell({ text: '1.0', value: '1.0', semType: SemType.FLOAT })).semType).toBe(SemType.FLOAT);
+    expect(normalizeRawCell(rawCell({ text: 'null', value: 'null', semType: SemType.NIL })).semType).toBe(SemType.NIL);
+  });
+
   it('normalizes flat core edge bezier fields into renderer camelCase fields', () => {
     const edge = normalizeRawEdge({
       fromRenderHandle: 1,

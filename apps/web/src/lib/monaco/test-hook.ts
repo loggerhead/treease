@@ -152,7 +152,9 @@ export function attachMonacoTestHook(editor: TestHookEditor, hookId: string, tok
           : allLines;
       const line = candidateLines[0] ?? null;
       const spans = candidateLines.flatMap((candidateLine) =>
-        Array.from(candidateLine.querySelectorAll('span, *')) as HTMLElement[],
+        Array.from(candidateLine.querySelectorAll('span')).filter(
+          (element): element is HTMLElement => element instanceof HTMLElement && element.childElementCount === 0,
+        ),
       );
       const candidates = spans.filter((span) => (span.textContent ?? '').includes(tokenText));
       const target = candidates.sort((a, b) => (a.textContent ?? '').length - (b.textContent ?? '').length)[0];

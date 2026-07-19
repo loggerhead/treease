@@ -10,6 +10,7 @@ import type { MonacoApi } from './public-types';
 
 export type MonacoRuntime = {
   monaco: MonacoApi;
+  semanticTokenTypes: readonly string[];
   ensureSemanticTokensProvider: (languageId: string) => void;
   refreshSemanticTokens: (languageId?: string) => void;
   primeSemanticTokens: (documentKey: string, semanticTokens: ArrayBuffer) => void;
@@ -25,6 +26,7 @@ export type MonacoShell = {
 };
 
 export type MonacoLanguageServices = {
+  semanticTokenTypes: readonly string[];
   ensureSemanticTokensProvider: (languageId: string) => void;
   refreshSemanticTokens: (languageId?: string) => void;
   primeSemanticTokens: (documentKey: string, semanticTokens: ArrayBuffer) => void;
@@ -57,7 +59,9 @@ export async function initMonacoShell(): Promise<MonacoShell> {
     },
   };
   const configurationService = StandaloneServices.get(IConfigurationService);
-  configurationService.updateValue('editor.semanticHighlighting.enabled', true);
+  // Monaco's semantic-token contribution reads this object setting, not the
+  // dotted editor-option key. Without it providers register but never color.
+  configurationService.updateValue('editor.semanticHighlighting', { enabled: true });
   return { monaco };
 }
 
@@ -81,6 +85,7 @@ export async function initMonacoLanguageServices(
   const ensureYqLanguageSupport = createYqLanguageSupportRegistrar({ monaco });
 
   return {
+    semanticTokenTypes: tokenTypes,
     ensureSemanticTokensProvider,
     refreshSemanticTokens: ensureSemanticTokensProvider.refreshSemanticTokens,
     primeSemanticTokens: ensureSemanticTokensProvider.primeSemanticTokens,

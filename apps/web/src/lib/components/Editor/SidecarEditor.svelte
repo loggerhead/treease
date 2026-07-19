@@ -10,6 +10,7 @@
   import { attachMonacoTestHook } from '../../monaco/test-hook';
   import type { DiffPlan } from '../../graph/diff-plan';
   import { settings } from '../../settings/settings-store';
+  import { applyEditorTheme } from '../../settings/ui-settings';
   import { callSharedWasmWorker, getSharedWasmWorkerClient } from '../../wasm/wasm-worker-singleton';
   import type { DocumentAnalysisResult } from '../../../shared/worker-protocol/protocol';
   import { getActiveTempModelSnapshot } from '../../store/graph-selection-store';
@@ -22,18 +23,13 @@
     updateWorkspaceTab,
   } from '../../store/workspace-store';
   import { clearWorkspaceSnapshotBinding, getWorkspaceSnapshotId } from '../../store/workspace-store';
-  import { queryRootValueKind } from '../../services/SnapshotProjectionService';
   import { monacoChangesToDocumentTextEdits, type MonacoTextChange } from '../../../shared/document-text-edits';
   import { markSidecarRequested, markSidecarSettled } from '../../test-bridge/runtime-readiness';
   import { applyDocumentAnalysisToEditor } from './editor-analysis-apply';
   import { createEditorFullEditController } from './editor-full-edit-controller';
   import { createWorkspaceTabFullEditSink } from './editor-full-edit-sink';
   import { commitEditorTabTextChange } from './editor-tab-edit-commit';
-  import {
-    buildRootScalarHighlightDecorations,
-    resolveJsonRootScalarHighlightKindFromText,
-    resolveRootScalarHighlightKindFromSnapshotKind,
-  } from './root-scalar-highlight';
+  import { buildRootScalarSemanticTokens } from './root-scalar-highlight';
   import { createSidecarExternalSync } from './sidecar-external-sync';
   import { createTreeaseMonacoEditorOptions } from './editor-options';
 
@@ -41,6 +37,8 @@
   export let tabName = 'Right Editor';
   export let language: SupportedEditorLanguageId = editorLanguageFallback;
   export let sourceText: string | null = null;
+  /** Exact Core SemType projection for this pane's root scalar. */
+  export let rootSemType: number | null = null;
   export let runtimeHookId = 'right-editor';
   export let containerTestId = 'right-text-editor-container';
   export let attachToPane = true;
@@ -65,11 +63,9 @@
   let model: Monaco.editor.ITextModel | null = null;
   let cleanupTestHook: (() => void) | null = null;
   let diffDecorations: Monaco.editor.IEditorDecorationsCollection | null = null;
-  let rootScalarDecorations: Monaco.editor.IEditorDecorationsCollection | null = null;
   let diffBlankZoneIds: string[] = [];
   let runtimeToken = 0;
   let sidecarAnalysisSyncToken = 0;
-  let rootScalarHighlightToken = 0;
   let sidecarReadinessRequestId = 0;
   let suppressChange = false;
   let lastModelLength = 0;
@@ -82,15 +78,14 @@
   let primeSemanticTokensForDocument: (documentKey: string, semanticTokens: ArrayBuffer) => void = () => {};
   let refreshSemanticTokensForLanguage: (languageId?: string) => void = () => {};
   let clearSemanticTokensForDocument: (documentKey?: string) => void = () => {};
-  $: rootScalarStyle = [
-    `--treease-root-scalar-str:${$settings.editor.semanticTypeColors.str}`,
-    `--treease-root-scalar-int:${$settings.editor.semanticTypeColors.int}`,
-    `--treease-root-scalar-float:${$settings.editor.semanticTypeColors.float}`,
-    `--treease-root-scalar-boolean:${$settings.editor.semanticTypeColors.boolean}`,
-    `--treease-root-scalar-nil:${$settings.editor.semanticTypeColors.nil}`,
-  ].join(';');
-
+  let semanticTokenTypes: readonly string[] = [];
   $: sidecarTab = $editorWorkspace.tabsById[tabId] ?? null;
+  $: if (model && rootSemType != null) {
+    primeProjectedRootSemanticTokens();
+  }
+  $: if (monaco) {
+    applyEditorTheme(monaco, themeName, $settings);
+  }
 
   const fullEditSink = createWorkspaceTabFullEditSink(tabId);
 
@@ -107,6 +102,9 @@
     setModelDocumentKey,
     setActiveTabDocumentKey: (documentKey) => setModelDocumentKey(model, documentKey),
     clearSemanticTokensForDocument: (documentKey) => clearSemanticTokensForDocument(documentKey),
+    primeInitialSemanticTokens: (documentKey) => {
+      primeProjectedRootSemanticTokens(documentKey);
+    },
     setEditorValue,
     setEditorValueForFullEdit: setEditorValue,
     setSourceText: (value) => {
@@ -134,6 +132,14 @@
   function setModelDocumentKey(target: Monaco.editor.ITextModel | null, documentKey: string): void {
     if (!target || !documentKey) return;
     (target as Monaco.editor.ITextModel & { __treeaseDocumentKey?: string }).__treeaseDocumentKey = documentKey;
+  }
+
+  function primeProjectedRootSemanticTokens(documentKey: string | undefined = undefined): void {
+    if (!model || rootSemType == null) return;
+    const tokens = buildRootScalarSemanticTokens(model.getValue(), rootSemType, semanticTokenTypes);
+    if (!tokens) return;
+    const modelDocumentKey = (model as Monaco.editor.ITextModel & { __treeaseDocumentKey?: string }).__treeaseDocumentKey;
+    primeSemanticTokensForDocument(documentKey ?? modelDocumentKey ?? sidecarDocumentKey(), tokens);
   }
 
   function syncLastModelSnapshot(): string {
@@ -171,43 +177,6 @@
     updateWorkspaceTab(tabId, { languageId });
   }
 
-  function applyRootScalarHighlight(
-    _analysis: import('./editor-analysis-apply').EditorAnalysisLike | null | undefined,
-  ): void {
-    if (!editor) return;
-    rootScalarDecorations ??= editor.createDecorationsCollection();
-    const requestToken = ++rootScalarHighlightToken;
-    const requestDocumentKey = sidecarDocumentKey();
-    const requestSnapshotId = getWorkspaceSnapshotId(requestDocumentKey);
-    if (!requestDocumentKey || requestSnapshotId == null) {
-      rootScalarDecorations.set([]);
-      return;
-    }
-    void queryRootValueKind({ documentKey: requestDocumentKey, snapshotId: requestSnapshotId }).then((rootKind) => {
-      if (requestToken !== rootScalarHighlightToken) return;
-      if (requestDocumentKey !== sidecarDocumentKey()) return;
-      if (getWorkspaceSnapshotId(requestDocumentKey) !== requestSnapshotId) return;
-      rootScalarDecorations?.set(
-        buildRootScalarHighlightDecorations(
-          monaco,
-          model,
-          resolveRootScalarHighlightKindFromSnapshotKind(rootKind.status === 'ready' ? rootKind.data : null),
-        ),
-      );
-    });
-  }
-
-  function applyRootScalarHighlightFromText(
-    text: string,
-    nextLanguage: SupportedEditorLanguageId = activeLanguage,
-  ): void {
-    if (!editor) return;
-    rootScalarDecorations ??= editor.createDecorationsCollection();
-    rootScalarDecorations.set(
-      buildRootScalarHighlightDecorations(monaco, model, resolveJsonRootScalarHighlightKindFromText(text, nextLanguage)),
-    );
-  }
-
   function commitSidecarEditorState(): number {
     const current = getWorkspaceTab(tabId);
     const revision = (current?.revision ?? 0) + 1;
@@ -227,6 +196,7 @@
   ): Promise<void> {
     if (requestModel !== model) return;
     setModelDocumentKey(requestModel, requestDocumentKey);
+    primeProjectedRootSemanticTokens();
     ensureSemanticTokensProvider(requestLanguage);
     const token = ++sidecarAnalysisSyncToken;
     const freshness = createFreshnessScope(
@@ -257,11 +227,12 @@
       freshness,
       analysis,
       updateTempModel: updateSidecarTempModel,
-      applyRootScalarHighlight,
       primeSemanticTokensForDocument,
       clearSemanticTokensForDocument,
       refreshSemanticTokensForLanguage,
     });
+    if (!freshness.isCurrent()) return;
+    primeProjectedRootSemanticTokens();
   }
 
   function updateSidecarSourceText(
@@ -334,7 +305,6 @@
   ): Promise<void> {
     syncModelTextIfNeeded(value);
     externalSync.acceptExternalText(value);
-    applyRootScalarHighlightFromText(value, nextLanguage);
     settleSidecarReadinessRequest(request, value);
     await runFullEditForCurrentText('whole-document-replacement', value, nextLanguage);
     settleSidecarReadinessRequest(request, value);
@@ -405,6 +375,7 @@
     primeSemanticTokensForDocument = runtime.primeSemanticTokens;
     refreshSemanticTokensForLanguage = runtime.refreshSemanticTokens;
     clearSemanticTokensForDocument = runtime.clearSemanticTokens;
+    semanticTokenTypes = runtime.semanticTokenTypes;
     ensureSemanticTokensProvider(activeLanguage);
     ensureDocumentColorProvider(activeLanguage);
 
@@ -414,12 +385,11 @@
     model = monaco.editor.createModel(tab?.sourceText ?? '', activeLanguage, uri);
     syncLastModelSnapshot();
     setModelDocumentKey(model, tab?.documentKey ?? sidecarDocumentKey());
+    primeProjectedRootSemanticTokens();
     editor = monaco.editor.create(container, {
       model,
       ...editorOptions,
     });
-    rootScalarDecorations = editor.createDecorationsCollection();
-    applyRootScalarHighlightFromText(tab?.sourceText ?? '', activeLanguage);
     cleanupTestHook = attachMonacoTestHook(editor, runtimeHookId, monaco.editor.tokenize);
     editor.onDidChangeModelContent((event) => {
       const activeModel = model;
@@ -432,7 +402,6 @@
       const previousText = lastModelText;
       const nextText = activeModel.getValue();
       externalSync.recordLocalText(nextText);
-      applyRootScalarHighlight(null);
       const changes = (event as unknown as { changes?: MonacoTextChange[] }).changes ?? [];
       if (fullEditController.isImportActive()) {
         if (fullEditController.isActiveSessionText(nextText)) {
@@ -669,8 +638,6 @@
     runtimeToken += 1;
     sidecarAnalysisSyncToken += 1;
     clearDiffPlan();
-    rootScalarDecorations?.clear();
-    rootScalarDecorations = null;
     cleanupTestHook?.();
     cleanupTestHook = null;
     editor?.dispose();
@@ -687,28 +654,5 @@
 <div
   bind:this={container}
   class="min-h-0 min-w-0 flex-1 overflow-hidden"
-  style={rootScalarStyle}
   data-testid={containerTestId}
 ></div>
-
-<style>
-  :global(.treease-root-scalar-str) {
-    color: var(--treease-root-scalar-str) !important;
-  }
-
-  :global(.treease-root-scalar-int) {
-    color: var(--treease-root-scalar-int) !important;
-  }
-
-  :global(.treease-root-scalar-float) {
-    color: var(--treease-root-scalar-float) !important;
-  }
-
-  :global(.treease-root-scalar-boolean) {
-    color: var(--treease-root-scalar-boolean) !important;
-  }
-
-  :global(.treease-root-scalar-nil) {
-    color: var(--treease-root-scalar-nil) !important;
-  }
-</style>

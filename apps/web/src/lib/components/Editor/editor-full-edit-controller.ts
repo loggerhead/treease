@@ -126,6 +126,8 @@ type CreateEditorFullEditControllerOptions = {
   setModelDocumentKey: (target: Monaco.editor.ITextModel | null, documentKey: string) => void;
   setActiveTabDocumentKey?: (documentKey: string) => void;
   clearSemanticTokensForDocument: (documentKey?: string) => void;
+  /** Seeds Core-confirmed tokens immediately after a session clears its prior cache. */
+  primeInitialSemanticTokens?: (documentKey: string) => void;
   setEditorValue: (value: string) => boolean;
   setEditorValueForFullEdit: (value: string) => boolean;
   setSourceText: (value: string) => void;
@@ -505,6 +507,7 @@ export function createEditorFullEditController(options: CreateEditorFullEditCont
       graphJobSession: null,
     };
     options.clearSemanticTokensForDocument(documentKey);
+    options.primeInitialSemanticTokens?.(documentKey);
     fullEditSink.begin({
       sessionId: `${documentKey}:${revision}`,
       ownerKey: model.uri.toString(),

@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { SemType } from '@core-wasm/index';
 import {
   createCellText,
   drawSimpleNode,
@@ -151,12 +152,13 @@ function createTestDrawContext(overrides: Partial<DrawContext> = {}): DrawContex
           hoverCellBackground: '#f5f5f5',
         },
         semanticType: {
-          string: '#00f',
-          number: '#00f',
+          map: '#00f',
+          seq: '#00f',
+          str: '#00f',
+          int: '#00f',
+          float: '#0f0',
           boolean: '#00f',
-          null: '#00f',
-          object: '#00f',
-          array: '#00f',
+          nil: '#00f',
           key: '#f00',
         },
         textMuted: '#999',
@@ -224,6 +226,51 @@ function expectDrawResult(result: ReturnType<typeof drawTableNode>) {
 
 
 describe('graph-viewer-render', () => {
+  it('keeps structural summaries muted while scalar cells use their exact Core SemType', () => {
+    const baseContext = createTestDrawContext();
+    const ctx = createTestDrawContext({
+      styleConfig: {
+        ...baseContext.styleConfig,
+        colors: {
+          ...baseContext.styleConfig.colors,
+          semanticType: {
+            ...baseContext.styleConfig.colors.semanticType,
+            map: '#c00',
+            seq: '#a0c',
+            int: '#080',
+            float: '#b50',
+          },
+        },
+      },
+    });
+
+    const objectSummary = createCellText(
+      ctx,
+      new MockBox(),
+      { ...createCell('{6}', 'object', [], 0), semType: SemType.MAP },
+      'value',
+      'object',
+    ) as MockText;
+    const arraySummary = createCellText(
+      ctx,
+      new MockBox(),
+      { ...createCell('[3]', 'array', [], 0), semType: SemType.SEQ },
+      'value',
+      'scalar',
+    ) as MockText;
+    const floatScalar = createCellText(
+      ctx,
+      new MockBox(),
+      { ...createCell('1.0', 'number', [], 0), semType: SemType.FLOAT },
+      'value',
+      'scalar',
+    ) as MockText;
+
+    expect(objectSummary.fill).toBe('#999');
+    expect(arraySummary.fill).toBe('#999');
+    expect(floatScalar.fill).toBe('#b50');
+  });
+
   it('renders structured value text even when textArgs text is empty', () => {
     const valueCell = {
       ...createCell('[3]', 'array', [{ key: 'table_without_header' }], 40, 0, 80),

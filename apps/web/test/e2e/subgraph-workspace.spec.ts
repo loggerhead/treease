@@ -3,6 +3,7 @@ import {
   applyMonacoEdits,
   clickGraphProbeAt,
   clickSubgraphWorkspaceProbeAt,
+  getMonacoRenderedTokenColor,
   getMonacoValue,
   readEditorState,
   readGraphClickProbes,
@@ -13,6 +14,75 @@ import {
   waitForGraphRendered,
   waitForSubgraphSettled,
 } from './utils';
+
+const semanticPalette = {
+  map: '#9b1c31',
+  key: '#7c2d12',
+  seq: '#7e22ce',
+  str: '#0369a1',
+  int: '#15803d',
+  float: '#b45309',
+  boolean: '#4338ca',
+  nil: '#be123c',
+};
+
+test('graph cells and Monaco use the identical Core semantic color across supported languages', async ({ page }, testInfo) => {
+  // The test app loads the production Turnstile script, which is outside this
+  // editor scenario and rejects its invisible test configuration in Chromium.
+  testInfo.annotations.push({ type: 'allow-browser-error', description: '[Cloudflare Turnstile]' });
+  testInfo.annotations.push({ type: 'allow-browser-error', description: 'challenges.cloudflare.com/cdn-cgi' });
+  await page.goto('/editor');
+  await waitForEditorReady(page);
+  await page.evaluate(async (colors) => {
+    const current = window._treease?.settings.getState().settings;
+    if (!current) throw new Error('settings bridge unavailable');
+    await window._treease.settings.save({ editor: { ...current.editor, semanticTypeColors: colors } });
+  }, semanticPalette);
+
+  const cases = [
+    { language: 'json', sourceText: '{"value":null}', text: 'null', color: semanticPalette.nil },
+    { language: 'json', sourceText: '{"value":true}', text: 'true', color: semanticPalette.boolean },
+    { language: 'json', sourceText: '{"value":42}', text: '42', color: semanticPalette.int },
+    { language: 'json', sourceText: '{"value":1.0}', text: '1.0', color: semanticPalette.float },
+    { language: 'json', sourceText: '{"value":"text"}', text: '"text"', color: semanticPalette.str },
+    { language: 'yaml', sourceText: 'value: 1.0', text: '1.0', color: semanticPalette.float },
+    { language: 'toml', sourceText: 'value = 42', text: '42', color: semanticPalette.int },
+    { language: 'python', sourceText: '{"value": None}', text: 'None', color: semanticPalette.nil },
+  ] as const;
+
+  for (const entry of cases) {
+    await setEditorContent(page, { sourceText: entry.sourceText, language: entry.language });
+    await waitForGraphRendered(page);
+    const probe = (await readGraphClickProbes(page)).find(
+      (candidate) =>
+        candidate.target === 'value' &&
+        candidate.nodeType === 'Text' &&
+        candidate.path.join('.') === 'value' &&
+        candidate.coord,
+    );
+    expect(probe, `${entry.language}: graph value probe`).toBeTruthy();
+    expect(probe?.textColor, `${entry.language}: final graph text fill`).toBe(entry.color);
+    if (!probe?.coord) throw new Error(`${entry.language}: graph value probe missing`);
+    const expectedColor = await page.evaluate((color) => {
+      const sample = document.createElement('span');
+      sample.style.color = color;
+      document.body.append(sample);
+      const resolved = getComputedStyle(sample).color;
+      sample.remove();
+      return resolved;
+    }, entry.color);
+    await expect
+      .poll(() => getMonacoRenderedTokenColor(page, 'source-editor', entry.text), { timeout: 5_000 })
+      .toBe(expectedColor);
+
+    await clickGraphProbeAt(page, probe.coord);
+    await waitForSubgraphSettled(page, 'k:value');
+    const hookId = 'subgraph-content:k:value';
+    await expect
+      .poll(() => getMonacoRenderedTokenColor(page, hookId, entry.text), { timeout: 5_000 })
+      .toBe(expectedColor);
+  }
+});
 
 function parseSourceText(sourceText: string): any {
   return JSON.parse(sourceText);

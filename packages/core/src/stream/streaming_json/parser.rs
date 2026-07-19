@@ -654,13 +654,11 @@ fn normalize_number(
             let parsed = literal
                 .parse::<f64>()
                 .map_err(|_| JsonStreamError::InvalidNumber { offset })?;
-            if parsed.is_finite()
-                && parsed == parsed.trunc()
-                && parsed >= i64::MIN as f64
-                && parsed <= i64::MAX as f64
-            {
-                return Ok((SemType::Int, (parsed as i64).to_string()));
+            if !parsed.is_finite() {
+                return Err(JsonStreamError::InvalidNumber { offset });
             }
+            // The literal spelling is semantic: 1.0 and 1 are distinct Core
+            // types even when their numeric values compare equal.
             Ok((SemType::Float, literal.to_string()))
         }
         _ => Err(JsonStreamError::InvalidNumber { offset }),
@@ -717,12 +715,12 @@ mod tests {
     }
 
     #[test]
-    fn normalizes_integer_like_float_literals() {
+    fn preserves_integer_like_float_literals() {
         let events = decode(r#"{"value":1.0e2}"#).expect("json decode should succeed");
         assert!(events.iter().any(|event| matches!(
             event,
             StreamingEvent::Scalar { value, meta, .. }
-                if value == "100" && meta.sem_type == Some(SemType::Int)
+                if value == "1.0e2" && meta.sem_type == Some(SemType::Float)
         )));
     }
 

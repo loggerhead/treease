@@ -5,6 +5,7 @@ import { PathSegTag } from '@core-wasm/index';
 
 const mocks = vi.hoisted(() => ({
   queryPathValue: vi.fn(),
+  queryNodePreview: vi.fn(async () => ({ status: 'ready', data: { semType: 4 } })),
   cacheClear: vi.fn(),
   prepareGraph: vi.fn(),
   destroyRuntime: vi.fn(),
@@ -13,6 +14,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('../../../services/SnapshotProjectionService', () => ({
   queryPathValue: mocks.queryPathValue,
+  queryNodePreview: mocks.queryNodePreview,
 }));
 
 vi.mock('../graph-subgraph-workspace', () => ({
@@ -92,6 +94,11 @@ describe('Subgraph Workspace Module', () => {
     await controller.openPath(keyPath('count'), -1);
 
     expect(mocks.queryPathValue).toHaveBeenCalledWith({
+      documentKey: 'document-1',
+      snapshotId: 'snapshot-workspace',
+      path: keyPath('count'),
+    });
+    expect(mocks.queryNodePreview).toHaveBeenCalledWith({
       documentKey: 'document-1',
       snapshotId: 'snapshot-workspace',
       path: keyPath('count'),

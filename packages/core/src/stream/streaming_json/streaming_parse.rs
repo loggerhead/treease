@@ -20,6 +20,7 @@ use super::{
 const TOKEN_TYPE_KEY: u32 = 1;
 const TOKEN_TYPE_STRING: u32 = 3;
 const TOKEN_TYPE_INT: u32 = 4;
+const TOKEN_TYPE_FLOAT: u32 = 5;
 const TOKEN_TYPE_BOOLEAN: u32 = 6;
 const TOKEN_TYPE_NULL: u32 = 7;
 const TOKEN_TYPE_PUNCTUATION: u32 = 8;
@@ -1014,7 +1015,13 @@ impl StreamingParser {
                     Some(TOKEN_TYPE_STRING)
                 }
             }
-            TokenTag::Number => Some(TOKEN_TYPE_INT),
+            TokenTag::Number => Some(
+                if tok.value.contains(|c: char| matches!(c, '.' | 'e' | 'E')) {
+                    TOKEN_TYPE_FLOAT
+                } else {
+                    TOKEN_TYPE_INT
+                },
+            ),
             TokenTag::TrueKw | TokenTag::FalseKw => Some(TOKEN_TYPE_BOOLEAN),
             TokenTag::NullKw => Some(TOKEN_TYPE_NULL),
             TokenTag::LeftBrace

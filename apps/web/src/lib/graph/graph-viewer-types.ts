@@ -1,3 +1,5 @@
+import type { SemType } from '@core-wasm/index';
+
 export type ValueType = 'string' | 'number' | 'boolean' | 'null' | 'object' | 'array';
 
 export type GraphBoxArgs = {
@@ -22,6 +24,8 @@ export type GraphTextArgs = {
 export type GraphCellKind = 'meta' | 'key' | 'value' | 'header';
 
 export type GraphCell = {
+  /** Unmodified Core semantic classification; rendering must not infer this from valueType. */
+  semType?: SemType;
   text: string;
   value: string;
   isMissing?: boolean;
@@ -138,7 +142,8 @@ export type DrawContext = {
   BoxCtor: any;
   TextCtor: any;
   PenCtor: any;
-  valueTypeToSemType: Record<ValueType, string>;
+  /** @deprecated Kept only for test fixtures; renderer ignores it. */
+  valueTypeToSemType?: Partial<Record<ValueType, string>>;
   editable?: boolean;
   registerCellBox: (cell: GraphCell, kind: GraphCellKind, box: any) => void;
   unregisterCellBox?: (cell: GraphCell, kind: GraphCellKind, box: any) => void;

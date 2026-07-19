@@ -12,7 +12,8 @@ type GraphSceneControllerDeps = {
   getPenCtor: () => any;
   getRenderConfig: () => GraphViewerConfig;
   getLanguageId: () => string;
-  getValueTypeToSemType: () => Record<string, string>;
+  /** @deprecated Scene rendering reads GraphCell.semType. */
+  getValueTypeToSemType?: () => Record<string, string>;
   isReadonly?: () => boolean;
   getLastAutoOffset: () => { x: number; y: number } | null;
   setLastAutoOffset: (value: { x: number; y: number } | null) => void;
@@ -71,7 +72,6 @@ export function createGraphSceneController(deps: GraphSceneControllerDeps) {
     getPenCtor: deps.getPenCtor,
     getRenderConfig: deps.getRenderConfig,
     getLanguageId: deps.getLanguageId,
-    getValueTypeToSemType: deps.getValueTypeToSemType,
     isReadonly: deps.isReadonly,
     getLastAutoOffset: deps.getLastAutoOffset,
     setLastAutoOffset: deps.setLastAutoOffset,

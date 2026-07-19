@@ -8,6 +8,7 @@ import {
   settingsJsonSchema,
 } from './ui-settings';
 import type { Settings } from './ui-settings';
+import { neutralSyntaxColors } from './ui-settings-data';
 
 describe('ui-settings', () => {
   describe('mergeSettings', () => {
@@ -129,16 +130,16 @@ describe('ui-settings', () => {
       expect(attributeRule?.foreground).toBe(theme.semanticTokenColors.attribute.slice(1));
     });
 
-    it('maps Monaco lexical fallback tokens to the same semantic colors', () => {
+    it('keeps Monaco lexical fallback tokens neutral until Core semantic tokens arrive', () => {
       const theme = buildEditorTheme(defaultSettings);
       expect(theme.rules).toEqual(
         expect.arrayContaining([
-          expect.objectContaining({ token: 'string', foreground: defaultSettings.editor.semanticTypeColors.str.slice(1) }),
-          expect.objectContaining({ token: 'string.value.json', foreground: defaultSettings.editor.semanticTypeColors.str.slice(1) }),
-          expect.objectContaining({ token: 'string.key.json', foreground: defaultSettings.editor.semanticTypeColors.key.slice(1) }),
-          expect.objectContaining({ token: 'number', foreground: defaultSettings.editor.semanticTypeColors.int.slice(1) }),
-          expect.objectContaining({ token: 'number.float', foreground: defaultSettings.editor.semanticTypeColors.float.slice(1) }),
-          expect.objectContaining({ token: 'keyword.json', foreground: defaultSettings.editor.semanticTypeColors.boolean.slice(1) }),
+          expect.objectContaining({ token: 'string', foreground: neutralSyntaxColors.operator.slice(1) }),
+          expect.objectContaining({ token: 'string.value.json', foreground: neutralSyntaxColors.operator.slice(1) }),
+          expect.objectContaining({ token: 'string.key.json', foreground: neutralSyntaxColors.operator.slice(1) }),
+          expect.objectContaining({ token: 'number', foreground: neutralSyntaxColors.operator.slice(1) }),
+          expect.objectContaining({ token: 'number.float', foreground: neutralSyntaxColors.operator.slice(1) }),
+          expect.objectContaining({ token: 'keyword.json', foreground: neutralSyntaxColors.operator.slice(1) }),
           expect.objectContaining({ token: 'delimiter.colon', foreground: '4b5563' }),
         ]),
       );

@@ -1,5 +1,4 @@
-import type * as Monaco from 'monaco-editor';
-import { buildEditorTheme } from '../../settings/ui-settings';
+import { applyEditorTheme } from '../../settings/ui-settings';
 import {
   getSharedMonacoShell,
   getSharedMonacoLanguageServices,
@@ -48,9 +47,7 @@ export function createEditorRuntimeController(options: CreateEditorRuntimeContro
 
   function applyTheme(monaco: typeof import('monaco-editor')): void {
     const themeName = options.getThemeName();
-    const theme = buildEditorTheme(options.getSettings());
-    monaco.editor.defineTheme(themeName, theme as unknown as Monaco.editor.IStandaloneThemeData);
-    monaco.editor.setTheme(themeName);
+    applyEditorTheme(monaco, themeName, options.getSettings());
   }
 
   function scheduleWorkerWarmup(): void {

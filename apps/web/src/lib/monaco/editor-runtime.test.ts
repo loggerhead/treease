@@ -65,7 +65,7 @@ describe('editor-runtime', () => {
     expect(createSemanticTokensRegistrar).toHaveBeenCalledWith(expect.objectContaining({ tokenTypes: TOKEN_TYPES }));
     expect(createColorProviderRegistrar).toHaveBeenCalledTimes(1);
     expect(StandaloneServices.get).toHaveBeenCalledWith('config');
-    expect(configurationService.updateValue).toHaveBeenCalledWith('editor.semanticHighlighting.enabled', true);
+    expect(configurationService.updateValue).toHaveBeenCalledWith('editor.semanticHighlighting', { enabled: true });
 
     const env = (self as any).MonacoEnvironment;
     expect(env).toBeTruthy();

@@ -187,6 +187,7 @@ export function createGraphRuntimeProbeController(options: CreateGraphRuntimePro
         coord: toRelativeClientPoint(options.getClientProbeCoordFromBox(entry.box, app), containerRect),
         rect: options.getClientRectFromBox(entry.box, app),
         worldRect: options.getWorldRectFromBox(entry.box),
+        textColor: typeof (entry.box as { fill?: unknown }).fill === 'string' ? (entry.box as { fill: string }).fill : null,
         cell: entry.cell
           ? {
               text: resolveGraphCellDisplayText(

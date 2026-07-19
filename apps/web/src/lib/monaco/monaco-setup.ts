@@ -110,6 +110,9 @@ export function createSemanticTokensRegistrar(options: SemanticTokensRegistrarOp
     const tokens = semanticTokens.slice(0);
     semanticTokensByDocumentKey.set(documentKey, tokens);
     settlePending(documentKey, tokens);
+    // Priming changes the provider's result for a live model. Monaco otherwise
+    // keeps its last lexical rendering until a later, unrelated editor change.
+    refreshSemanticTokens();
   };
 
   const clearSemanticTokens = (documentKey?: string) => {
