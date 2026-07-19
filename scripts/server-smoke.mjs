@@ -13,28 +13,21 @@ const env = {
   HOST: '127.0.0.1',
   PORT: String(port),
   APP_ORIGIN: 'https://treease.com',
-  CORS_ORIGIN: 'https://treease.com',
   SUPABASE_URL: 'https://example.supabase.co',
   SUPABASE_ANON_KEY: 'anon-key',
   SUPABASE_SERVICE_ROLE_KEY: 'service-role-key',
-  BILLING_WEBHOOK_SECRET: 'treease-sync-secret',
   LEMONSQUEEZY_WEBHOOK_SECRET: 'billing-secret',
-  BILLING_CHECKOUT_URLS: JSON.stringify({
-    'pro-monthly': 'https://billing.example.com/checkout/pro-monthly',
-    'pro-yearly': 'https://billing.example.com/checkout/pro-yearly',
-    'max-monthly': 'https://billing.example.com/checkout/max-monthly',
-    'max-yearly': 'https://billing.example.com/checkout/max-yearly',
-  }),
-  BILLING_PORTAL_URL: 'https://billing.example.com/portal',
   LEMONSQUEEZY_API_KEY: 'lemonsqueezy-api-key',
+  LEMONSQUEEZY_STORE_ID: '1',
+  LEMONSQUEEZY_STORE_URL: 'https://billing.example.com',
   LEMONSQUEEZY_VARIANT_MAP: JSON.stringify({
-    'pro-monthly': 101,
-    'pro-yearly': 102,
-    'max-monthly': 201,
-    'max-yearly': 202,
+    monthly: 101,
+    yearly: 102,
   }),
-  AI_GATEWAY_API_KEY: 'gateway-key',
-  TREEASE_AI_MODEL: 'anthropic/claude-sonnet-4.5',
+  AI_CREDENTIALS: JSON.stringify({
+    'vercel-gateway-sonnet': ['gateway-key'],
+    'agnes-flash': ['agnes-key'],
+  }),
 };
 
 const child = spawn(process.execPath, [tsx, 'src/dev.ts'], {
