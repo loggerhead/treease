@@ -9,10 +9,10 @@ use crate::operators::operator_helpers::*;
 use crate::operators::*;
 // ── Regex wrapper ──────────────────────────────────────────────────
 //
-// Uses regex-lite internally for lightweight regular expression support.
+// Uses the workspace's regex implementation for regular expression support.
 
 struct RegexStub {
-    inner: regex_lite::Regex,
+    inner: regex::Regex,
 }
 
 struct RegexMatch {
@@ -31,7 +31,7 @@ struct RegexCapture {
 
 impl RegexStub {
     fn new(pattern: &str) -> Result<Self, CoreError> {
-        let inner = regex_lite::Regex::new(pattern)
+        let inner = regex::Regex::new(pattern)
             .map_err(|_| CoreError::Parse(ParseError::InvalidSyntax))?;
         Ok(Self { inner })
     }
@@ -92,7 +92,7 @@ impl RegexStub {
 ///
 /// For non-zero-width matches, returns `match_end`.
 /// For zero-width matches, advances to the next UTF-8 boundary because
-/// regex-lite searches `&str` and requires valid string offsets.
+/// The regex crate searches `&str` and requires valid string offsets.
 fn next_search_start(input: &str, match_start: usize, match_end: usize) -> usize {
     if match_end > match_start {
         return match_end;

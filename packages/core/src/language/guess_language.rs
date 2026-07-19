@@ -1,4 +1,4 @@
-use regex_lite::Regex;
+use regex::Regex;
 
 use crate::language::Language;
 

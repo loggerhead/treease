@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use regex_lite::Regex;
+use regex::Regex;
 
 use super::lang_spec::{LangSpec, StreamKind, lang_from_name, stream_kind_for_language};
 use super::tree_sitter_support::{ensure_tree_sitter_runtime, tree_sitter_language_for_spec};
