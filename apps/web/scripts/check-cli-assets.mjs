@@ -10,6 +10,11 @@ const assetVersionPattern =
   /data-treease-cli-asset-version\s*=\s*(?:"([^"]+)"|'([^']+)')/i;
 
 async function main() {
+  if (process.argv.includes('--remote-only')) {
+    await checkRemoteAssets();
+    return;
+  }
+
   const latestPath = resolveArg('--latest-path') ?? defaultLatestPath;
   const localLatest = JSON.parse(await readFile(latestPath, 'utf8'));
   const manifestPath = resolveArg('--manifest-path') ?? localLatest.manifestPath;
@@ -45,6 +50,38 @@ async function main() {
   process.stdout.write(
     `[check-cli-assets] verified /cli-assets/${localManifest.version} assetVersion ${localManifest.assetVersion}\n`
   );
+}
+
+async function checkRemoteAssets() {
+  const version = resolveArg('--version') ?? await readWasmReleaseDate();
+  const siteBaseUrl = (process.env.TREEASE_CLI_ASSET_SITE_BASE_URL ?? 'https://treease.com').replace(/\/+$/, '');
+  const manifestUrl = `${siteBaseUrl}/cli-assets/${version}/manifest.json`;
+  const manifestResponse = await fetch(manifestUrl);
+  if (!manifestResponse.ok) {
+    throw new Error(`unexpected ${manifestResponse.status} for ${manifestUrl}`);
+  }
+  const manifest = await manifestResponse.json();
+  assertManifestVersion(version, manifest.version, 'remote');
+  assertAssetVersionPresent(manifest.assetVersion, 'remote manifest');
+
+  const indexUrl = `${siteBaseUrl}/cli-assets/${version}/index.html`;
+  const indexResponse = await fetch(indexUrl);
+  if (!indexResponse.ok) {
+    throw new Error(`unexpected ${indexResponse.status} for ${indexUrl}`);
+  }
+  assertIndexAssetVersion(manifest.assetVersion, readIndexAssetVersion(await indexResponse.text()), 'remote');
+  process.stdout.write(
+    `[check-cli-assets] verified remote /cli-assets/${version} assetVersion ${manifest.assetVersion}\n`
+  );
+}
+
+async function readWasmReleaseDate() {
+  const manifest = await readFile(path.resolve(webDir, '..', '..', 'packages', 'core', 'Cargo.toml'), 'utf8');
+  const match = manifest.match(/wasm_release_date\s*=\s*"(\d{8})"/);
+  if (!match) {
+    throw new Error('packages/core/Cargo.toml is missing a valid wasm_release_date');
+  }
+  return match[1];
 }
 
 function readIndexAssetVersion(html) {

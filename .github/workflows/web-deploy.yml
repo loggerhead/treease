@@ -8,6 +8,7 @@ on:
       - apps/web/**
       - packages/core/**
       - packages/share-protocol/**
+      - apps/web/pnpm-lock.yaml
       - scripts/release-metadata.mjs
       - package.json
       - pnpm-lock.yaml
@@ -29,6 +30,7 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    environment: Production
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -44,4 +46,4 @@ jobs:
           zig-version: ${{ env.ZIG_VERSION }}
       - name: Deploy production web bundle
         working-directory: apps/web
-        run: pnpm build && pnpm assets:r2:check && npx wrangler pages deploy build --project-name treease --branch main && pnpm cli-assets:check
+        run: pnpm build && pnpm assets:r2:check && pnpm exec wrangler pages deploy build --project-name treease --branch main && pnpm cli-assets:check

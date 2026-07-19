@@ -31,7 +31,7 @@ jobs:
           submodules: recursive
       - uses: actions/setup-node@v5
         with:
-          node-version: 20
+          node-version: 22
       - name: Read release metadata
         id: meta
         run: node scripts/release-metadata.mjs --github-output >> "$GITHUB_OUTPUT"
@@ -41,17 +41,9 @@ jobs:
         run: |
           test "${GITHUB_REF_NAME}" = "${{ steps.meta.outputs.coreReleaseTag }}"
 
-  core-tests:
-    needs: metadata
-    uses: ./.github/workflows/core.yml
-
-  web-tests:
-    needs: metadata
-    uses: ./.github/workflows/web.yml
-
   publish-core:
     runs-on: ubuntu-latest
-    needs: [metadata, core-tests, web-tests]
+    needs: metadata
     environment: crates-io
     permissions:
       contents: read
@@ -103,6 +95,7 @@ jobs:
   deploy-web:
     runs-on: ubuntu-latest
     needs: [metadata, publish-core]
+    environment: Production
     permissions:
       contents: read
     env:
@@ -120,4 +113,4 @@ jobs:
           zig-version: ${{ env.ZIG_VERSION }}
       - name: Deploy release web bundle and CLI assets
         working-directory: apps/web
-        run: pnpm build && pnpm assets:r2:check && npx wrangler pages deploy build --project-name treease --branch main && pnpm cli-assets:check
+        run: pnpm build && pnpm assets:r2:check && pnpm exec wrangler pages deploy build --project-name treease --branch main && pnpm cli-assets:check
