@@ -453,7 +453,7 @@ fn graph_builder_expands_table_children_for_subtree_panels_when_enabled() {
         .iter()
         .find(|e| e.from_render_handle == 0)
         .expect("should have edge from table");
-    assert_eq!(table_edge.from_row, 1);
+    assert_eq!(table_edge.from_row, 0);
     assert_eq!(table_edge.to_render_handle, 1);
 
     // Child node paths include "Groups" prefix
@@ -518,8 +518,11 @@ fn graph_builder_builds_hover_panel_subtree_for_demo_group_like_fixture() {
     let table = result.nodes[0].table.as_ref().expect("table root expected");
     assert_eq!(result.nodes[0].kind, GraphKind::Table);
     assert_eq!(table.rows.len(), 1);
-    assert_eq!(table.columns[3].text, "Request");
-    assert_eq!(table.columns[4].text, "Response");
+    assert_eq!(table.header_height, 0);
+    assert!(table.columns.is_empty());
+    assert_eq!(table.rows[0].cells.len(), 2);
+    assert_eq!(table.rows[0].cells[0].text, "0");
+    assert_eq!(table.rows[0].cells[1].text, "{4}");
     assert!(matches!(result.nodes[1].path[3], PathSeg::Index(0)));
     assert!(matches!(&result.nodes[2].path[4], PathSeg::Key(key) if key == "Response"));
     assert!(matches!(&result.nodes[3].path[5], PathSeg::Key(key) if key == "ResponseMetadata"));

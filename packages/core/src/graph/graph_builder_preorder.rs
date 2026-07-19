@@ -9,6 +9,7 @@ use super::graph_builder::{
     BuilderConfig, GraphBuilder, GraphCell, GraphEdge, GraphLanguage, GraphModel, GraphNode,
     GraphRow, PathSeg, SequencePresentation, graph_kind_for_node, graph_node_key,
 };
+use super::graph_builder::shared::sequence_has_header_table;
 use crate::tree::{NodeId, TreeNodeKind, TreeStore};
 
 // ---------------------------------------------------------------------------
@@ -504,7 +505,7 @@ impl Builder {
             .pop_frame()
             .ok_or("InvalidSyntax: map_end without frame")?;
         self.sync_finished_child_to_parent(&finished);
-        if finished.owns_view && self.try_drop_empty_container(&finished)? {
+        if finished.owns_view && self.try_drop_inline_container(&finished)? {
             return Ok(());
         }
         if finished.owns_view {
@@ -559,7 +560,7 @@ impl Builder {
             .ok_or("InvalidSyntax: seq_end without frame")?;
         self.node_pool[finished.node_index].sequence_closed = true;
         self.sync_finished_child_to_parent(&finished);
-        if finished.owns_view && self.try_drop_empty_container(&finished)? {
+        if finished.owns_view && self.try_drop_inline_container(&finished)? {
             return Ok(());
         }
         if finished.owns_view {
@@ -733,12 +734,7 @@ impl Builder {
         if node.kind != NodeKind::Sequence {
             return SequencePresentation::HeaderlessTable;
         }
-        if !node.content.is_empty()
-            && node
-                .content
-                .first()
-                .is_some_and(|c| c.kind == NodeKind::Mapping)
-        {
+        if sequence_has_header_table(node) {
             SequencePresentation::HeaderTable
         } else {
             SequencePresentation::HeaderlessTable
@@ -1019,15 +1015,24 @@ impl Builder {
             Some(f) => f,
             None => return false,
         };
-        if self.frame_hides_containers_in_parent_view(parent_frame) {
+        let parent_node = &self.node_pool[parent_index];
+        // The first mapping row is still incomplete when MapStart arrives. Let it
+        // render provisionally; try_drop_inline_container removes it once the
+        // completed row proves that the sequence is a header table.
+        let first_row_is_incomplete = parent_node.kind == NodeKind::Sequence
+            && parent_node.content.len() <= 1
+            && parent_node.content.first().is_none_or(|row| {
+                row.kind == NodeKind::Mapping && row.content.is_empty()
+            });
+        if self.frame_hides_containers_in_parent_view(parent_frame) && !first_row_is_incomplete {
             return true;
         }
-        let parent_node = &self.node_pool[parent_index];
         let node = &self.node_pool[node_index];
         parent_frame.owns_view
             && parent_node.kind == NodeKind::Sequence
             && parent_node.content.is_empty()
             && node.kind == NodeKind::Mapping
+            && !first_row_is_incomplete
     }
 
     // ------------------------------------------------------------------
@@ -1279,7 +1284,7 @@ impl Builder {
     // Try drop empty container
     // ------------------------------------------------------------------
 
-    fn try_drop_empty_container(&mut self, finished: &Frame) -> Result<bool, String> {
+    fn try_drop_inline_container(&mut self, finished: &Frame) -> Result<bool, String> {
         let (parent_handle, parent_view_source_index, parent_view_path, parent_depth) =
             match self.current_frame() {
                 Some(p) => (
@@ -1291,7 +1296,10 @@ impl Builder {
                 None => return Ok(false),
             };
         let node = &self.node_pool[finished.node_index];
-        if !node.content.is_empty() {
+        let header_row_is_inline = self.node_pool[parent_view_source_index].kind == NodeKind::Sequence
+            && sequence_has_header_table(&self.node_pool[parent_view_source_index])
+            && matches!(finished.path.last(), Some(PathSeg::Index(0)));
+        if !node.content.is_empty() && !header_row_is_inline {
             return Ok(false);
         }
         if finished.node_render_handle + 1 != self.nodes.len() as u32 {
@@ -1299,6 +1307,9 @@ impl Builder {
         }
 
         let dropped_render_handle = finished.node_render_handle;
+        self.deferred_refresh_nodes
+            .retain(|handle| *handle != dropped_render_handle);
+        self.deferred_refresh_set.remove(&dropped_render_handle);
         let dropped_view = self.nodes.pop().unwrap();
         if self
             .pending_nodes

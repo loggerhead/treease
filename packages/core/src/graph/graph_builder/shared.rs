@@ -34,7 +34,7 @@ pub(super) fn value_node_builds_child(node: &TreeNode) -> bool {
     !node.content.is_empty()
 }
 
-pub(super) fn sequence_has_header_table(node: &TreeNode) -> bool {
+pub(crate) fn sequence_has_header_table(node: &TreeNode) -> bool {
     node.content.first().is_some_and(|first_row| {
         first_row.kind == NodeKind::Mapping && !mapping_contains_object_or_array(first_row)
     })

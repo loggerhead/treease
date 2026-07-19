@@ -214,7 +214,7 @@ fn hover_subgraph_projection_for_header_table_nested_object_stays_inside_request
 }
 
 #[test]
-fn hover_subgraph_projection_marks_missing_header_table_fields_as_miss_without_clickable_path() {
+fn hover_subgraph_projection_uses_headerless_rows_for_nested_objects() {
     init_wasm();
     reset_runtime_for_tests();
     store_analysis_snapshot(
@@ -229,7 +229,7 @@ fn hover_subgraph_projection_marks_missing_header_table_fields_as_miss_without_c
             snapshot_id: SnapshotId(92),
             path: "$.agent_steps[0].steps".into(),
         })
-        .expect("header-table missing-field hover projection should build");
+        .expect("headerless-table hover projection should build");
 
     let SnapshotReadResult::Ready { data } = projection else {
         panic!("hover projection should be ready");
@@ -239,33 +239,18 @@ fn hover_subgraph_projection_marks_missing_header_table_fields_as_miss_without_c
         .as_ref()
         .expect("hover projection should include graph data");
     let table = find_table_node(delta, &["agent_steps", "[0]", "steps"]);
-    let model_info_col = table
-        .columns
-        .iter()
-        .position(|cell| cell.text == "model_info")
-        .expect("model_info column should exist");
-
-    let missing = &table.rows[1].cells[model_info_col];
-    assert!(missing.is_missing);
-    assert_eq!(missing.text, "miss");
-    assert_eq!(missing.value, "miss");
-    assert_eq!(missing.path, Vec::<GraphPathSeg>::new());
-    assert_eq!(missing.sem_type, SemType::Str as u32);
-
-    let present = &table.rows[2].cells[model_info_col];
-    assert!(!present.is_missing);
-    assert_eq!(present.text, "{1}");
-    assert_eq!(present.path.len(), 5);
-    assert_eq!(present.path[0].tag, 0);
-    assert_eq!(present.path[0].key, "agent_steps");
-    assert_eq!(present.path[1].tag, 1);
-    assert_eq!(present.path[1].index, 0);
-    assert_eq!(present.path[2].tag, 0);
-    assert_eq!(present.path[2].key, "steps");
-    assert_eq!(present.path[3].tag, 1);
-    assert_eq!(present.path[3].index, 2);
-    assert_eq!(present.path[4].tag, 0);
-    assert_eq!(present.path[4].key, "model_info");
+    assert!(table.columns.is_empty());
+    assert_eq!(table.rows.len(), 3);
+    for (index, row) in table.rows.iter().enumerate() {
+        assert_eq!(row.cells.len(), 2);
+        assert_eq!(row.cells[0].text, index.to_string());
+        assert_eq!(row.cells[1].text, "{2}");
+        assert!(!row.cells[1].is_missing);
+        assert!(graph_path_matches(
+            &row.cells[1].path,
+            &["agent_steps", "[0]", "steps", &format!("[{index}]")]
+        ));
+    }
 }
 
 #[test]

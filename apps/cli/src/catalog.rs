@@ -172,7 +172,9 @@ fn operator_category(name: &str) -> &'static str {
         "add" | "subtract" | "multiply" | "divide" | "modulo" => "math",
         "equals" | "not_equals" | "relational" | "min" | "max" => "relational",
         "create_map" | "collect" | "collect_object" | "map" | "map_values" | "pick" | "omit"
-        | "union" | "unique" | "unique_by" | "group_by" | "flatten" | "length" => "collection",
+        | "union" | "unique" | "unique_by" | "group_by" | "flatten" | "length" | "compact" => {
+            "collection"
+        }
         "encode" | "decode" | "to_entries" | "from_entries" | "with_entries" | "to_number" => {
             "codec"
         }
@@ -237,6 +239,7 @@ fn operator_summary(name: &str) -> &'static str {
         "unique_by" => "Remove duplicates based on a derived key.",
         "group_by" => "Group values by a derived key.",
         "flatten" => "Flatten nested arrays.",
+        "compact" => "Remove zero-valued members recursively from arrays and maps.",
         "length" => "Return the length of strings, arrays, maps, and null.",
         "encode" => "Encode values into a target format.",
         "decode" => "Decode formatted text into structured values.",
@@ -327,6 +330,7 @@ fn operator_syntax(name: &str) -> &'static str {
         "unique_by" => "unique_by(EXPR)",
         "group_by" => "group_by(EXPR)",
         "flatten" => "flatten(DEPTH?)",
+        "compact" => "compact",
         "length" => "length",
         "encode" => "@json | to_json",
         "decode" => "@jsond | from_json",
@@ -409,7 +413,8 @@ fn operator_input_kinds(name: &str) -> &'static [&'static str] {
         | "with"
         | "filter"
         | "first"
-        | "union" => ANY_INPUT_KINDS,
+        | "union"
+        | "compact" => ANY_INPUT_KINDS,
         "select" => SELECT_INPUT_KINDS,
         "traverse_path" => &["map"],
         "traverse_array" => &["array", "map"],
@@ -457,6 +462,7 @@ fn operator_output_kind(name: &str) -> &'static str {
         "map" | "unique" | "unique_by" | "reverse" | "shuffle" | "sort" => "array",
         "map_values" => "map",
         "pick" | "omit" => "same collection shape as input",
+        "compact" => "same collection shape as input",
         "group_by" => "array of groups",
         "encode" | "join" | "sub" | "get_key" | "get_kind" | "get_tag" | "to_string" | "trim"
         | "change_case" => "string",
@@ -506,6 +512,7 @@ fn operator_related(name: &str) -> &'static [&'static str] {
         "unique" | "unique_by" => &["group_by", "sort", "map"],
         "group_by" => &["sort_by", "unique_by", "map"],
         "flatten" => &["map", "collect", "traverse_array"],
+        "compact" => &["select", "filter", "flatten", "omit"],
         "length" => &LENGTH_RELATED,
         "encode" | "decode" => &["to_string", "to_number", "with_entries"],
         "to_entries" | "from_entries" | "with_entries" => &["create_map", "collect_object", "keys"],
@@ -679,6 +686,7 @@ fn operator_examples(name: &str) -> &'static [&'static str] {
         "unique_by" => &["treease '.users | unique_by(.id)' sample.yml"],
         "group_by" => &["treease '.users | group_by(.team)' sample.yml"],
         "flatten" => &["treease '.items | flatten(1)' sample.yml"],
+        "compact" => &["treease '.payload | compact' sample.yml"],
         "length" => LENGTH_EXAMPLES,
         "encode" => &["treease '.value | to_json(0)' sample.yml"],
         "decode" => &["treease '.raw | from_json' sample.yml"],

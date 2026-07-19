@@ -1,5 +1,5 @@
 use treease_core::core::graph_builder::{
-    GraphCell, GraphEdge, GraphModel, GraphNode, GraphRow, GraphTable,
+    GraphEdge, GraphModel, GraphNode, GraphRow,
 };
 use treease_core::core::{GraphBuilderPreorder, GraphKind, GraphLanguage, PathSeg, default_config};
 use treease_core::operators::{NodeKind, SemType, TreeNode};
@@ -83,15 +83,6 @@ fn subtree_bottom(nodes: &[GraphNode], edges: &[GraphEdge], node_id: u32) -> i32
         bottom = bottom.max(subtree_bottom(nodes, edges, edge.to_render_handle));
     }
     bottom
-}
-
-fn find_table_cell<'a>(table: &'a GraphTable, row_index: usize, column: &str) -> &'a GraphCell {
-    let column_index = table
-        .columns
-        .iter()
-        .position(|cell| cell.text == column)
-        .unwrap_or_else(|| panic!("missing table column {column}"));
-    &table.rows[row_index][column_index]
 }
 
 // Graph layout 规则验证（docs/contracts/layout.md）
@@ -275,55 +266,37 @@ fn graph_builder_preorder_reconstructs_paths_from_split_streamed_json_fixture() 
         .expect("ApiList table not found");
     let table = table_node.table.as_ref().unwrap();
     assert!(table.rows.len() > 20);
+    assert_eq!(table.header_height, 0);
+    assert!(table.columns.is_empty());
 
-    // Row 18 Action
-    let row18_action = &table.rows[18][1];
-    assert_eq!(row18_action.text, "DssQqltltKniu");
+    // Headerless row 18 keeps the reconstructed item path in its value cell.
+    let row18 = &table.rows[18][1];
+    assert_eq!(row18.text, "{42}");
     assert_eq!(
-        row18_action.path,
+        row18.path,
         vec![
             PathSeg::Key("ApiList".to_string()),
             PathSeg::Index(18),
-            PathSeg::Key("Action".to_string()),
         ]
     );
 
-    // Row 19 Action
-    let row19_action = &table.rows[19][1];
-    assert_eq!(row19_action.text, "AdxvXnovykFcxgxao");
+    // Row 19 keeps the same item-level path after the split.
+    let row19 = &table.rows[19][1];
     assert_eq!(
-        row19_action.path,
+        row19.path,
         vec![
             PathSeg::Key("ApiList".to_string()),
             PathSeg::Index(19),
-            PathSeg::Key("Action".to_string()),
         ]
     );
 
-    // Row 19 Description
-    let row19_desc = find_table_cell(table, 19, "Description");
+    // Row 20 also retains its item-level path.
+    let row20 = &table.rows[20][1];
     assert_eq!(
-        row19_desc.text,
-        "\u{5143}\u{4e0b}\u{51b3}\u{59d4}\u{95ee}\u{5165}\u{89c1}\u{590d}"
-    );
-    assert_eq!(
-        row19_desc.path,
-        vec![
-            PathSeg::Key("ApiList".to_string()),
-            PathSeg::Index(19),
-            PathSeg::Key("Description".to_string()),
-        ]
-    );
-
-    // Row 20 Action
-    let row20_action = &table.rows[20][1];
-    assert_eq!(row20_action.text, "UsdugeCsspejrwsov");
-    assert_eq!(
-        row20_action.path,
+        row20.path,
         vec![
             PathSeg::Key("ApiList".to_string()),
             PathSeg::Index(20),
-            PathSeg::Key("Action".to_string()),
         ]
     );
 }
@@ -366,26 +339,25 @@ fn graph_builder_preorder_works_with_stream_decoder_split_fixture() {
         .expect("ApiList table not found");
     let table = table_node.table.as_ref().unwrap();
     assert!(table.rows.len() > 20);
+    assert_eq!(table.header_height, 0);
+    assert!(table.columns.is_empty());
 
-    let row18_action = &table.rows[18][1];
-    assert_eq!(row18_action.text, "DssQqltltKniu");
+    let row18 = &table.rows[18][1];
+    assert_eq!(row18.text, "{42}");
     assert_eq!(
-        row18_action.path,
+        row18.path,
         vec![
             PathSeg::Key("ApiList".to_string()),
             PathSeg::Index(18),
-            PathSeg::Key("Action".to_string()),
         ]
     );
 
-    let row19_action = &table.rows[19][1];
-    assert_eq!(row19_action.text, "AdxvXnovykFcxgxao");
+    let row19 = &table.rows[19][1];
     assert_eq!(
-        row19_action.path,
+        row19.path,
         vec![
             PathSeg::Key("ApiList".to_string()),
             PathSeg::Index(19),
-            PathSeg::Key("Action".to_string()),
         ]
     );
 }
@@ -433,9 +405,18 @@ fn graph_builder_preorder_still_finishes_after_state_move_like_stream_view_finis
         .expect("ApiList table not found");
     let table = table_node.table.as_ref().unwrap();
     assert!(table.rows.len() > 20);
+    assert_eq!(table.header_height, 0);
+    assert!(table.columns.is_empty());
 
-    let row18_action = &table.rows[18][1];
-    assert_eq!(row18_action.text, "DssQqltltKniu");
+    let row18 = &table.rows[18][1];
+    assert_eq!(row18.text, "{42}");
+    assert_eq!(
+        row18.path,
+        vec![
+            PathSeg::Key("ApiList".to_string()),
+            PathSeg::Index(18),
+        ]
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -921,13 +902,19 @@ fn graph_builder_preorder_keeps_object_and_headerless_edges_while_header_tables_
         .as_ref()
         .expect("rows table payload missing");
     assert_eq!(rows_table.rows.len(), 1);
-    assert_eq!(rows_table.rows[0][2].text, "{1}");
-    assert!(
-        !model
-            .edges
-            .iter()
-            .any(|edge| edge.from_render_handle == rows_node.render_handle),
-        "header table rows should stay inline in the main graph"
+    assert_eq!(rows_table.header_height, 0);
+    assert!(rows_table.columns.is_empty());
+    assert_eq!(rows_table.rows[0][0].text, "0");
+    assert_eq!(rows_table.rows[0][1].text, "{2}");
+    let rows_edge = model
+        .edges
+        .iter()
+        .find(|edge| edge.from_render_handle == rows_node.render_handle)
+        .expect("headerless table should expose its structured row");
+    assert_eq!(rows_edge.from_row, 0);
+    assert_eq!(
+        model.nodes[rows_edge.to_render_handle as usize].path,
+        vec![PathSeg::Key("rows".to_owned()), PathSeg::Index(0)]
     );
 }
 
