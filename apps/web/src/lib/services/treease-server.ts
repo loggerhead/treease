@@ -34,6 +34,21 @@ export type BillingPricingPrewarm = {
   checkouts: BillingCheckoutLink[] | null;
 };
 
+export type CurrentSubscription = {
+  id: string;
+  userId: string;
+  plan: 'free' | 'monthly' | 'yearly';
+  status: 'active' | 'inactive' | 'past_due' | 'canceled';
+  creditsMonthly: number;
+  shareMaxAgeDays: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type BillingPortalLink = {
+  url: string;
+};
+
 export class BillingAuthenticationRequiredError extends Error {
   constructor() {
     super('请先登录 Treease，再继续购买。');
@@ -114,6 +129,33 @@ export async function prewarmBillingPricing(
   });
   if (!response.ok) throw await readError(response);
   return (await response.json()) as BillingPricingPrewarm;
+}
+
+export async function getCurrentSubscription(): Promise<CurrentSubscription> {
+  const token = await getAccessToken();
+  if (!token) throw new BillingAuthenticationRequiredError();
+
+  const response = await fetch(`${apiOrigin}/v1/billing/subscription`, {
+    headers: { authorization: `Bearer ${token}` },
+  });
+  if (!response.ok) throw await readError(response);
+  return (await response.json()) as CurrentSubscription;
+}
+
+export async function createBillingPortalLink(returnUrl: string): Promise<BillingPortalLink> {
+  const token = await getAccessToken();
+  if (!token) throw new BillingAuthenticationRequiredError();
+
+  const response = await fetch(`${apiOrigin}/v1/billing/portal-link`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ returnUrl }),
+  });
+  if (!response.ok) throw await readError(response);
+  return (await response.json()) as BillingPortalLink;
 }
 
 export type PublicShare = {

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { assetUrl } from '$lib/assets';
-  import { onMount, tick } from 'svelte';
+  import { onMount } from 'svelte';
 
   type DemoItem = {
     id: string;
@@ -43,10 +43,15 @@
   ];
 
   let activeDemo = 0;
-  let deckPaused = false;
-  let loadRequested = demos.map((_, index) => index === 0);
+  let userControlsDeck = false;
+  let videoReady = demos.map(() => false);
   let videoRefs: Array<HTMLVideoElement | null> = demos.map(() => null);
-  let deckStage: HTMLDivElement | null = null;
+  let visibleDemoIndex: number | null = null;
+  let previewRequested = false;
+  let playbackRequest = 0;
+  let loadingDemoIndex: number | null = null;
+  let loadingStartedAt = 0;
+  let loadingTimer: number | null = null;
 
   function getLayer(index: number): number {
     return (index - activeDemo + demos.length) % demos.length;
@@ -56,29 +61,87 @@
     activeDemo = index;
   }
 
-  async function ensureVideo(index: number): Promise<HTMLVideoElement | null> {
-    if (!loadRequested[index]) {
-      loadRequested = loadRequested.map((value, currentIndex) =>
-        currentIndex === index ? true : value
-      );
-      await tick();
-    }
-
-    const video = videoRefs[index];
-    if (!video) return null;
-    video.load();
-    return video;
+  function isCurrentPreview(index: number, request: number): boolean {
+    return previewRequested && playbackRequest === request && activeDemo === index;
   }
 
-  async function playDemo(index: number): Promise<void> {
-    const video = await ensureVideo(index);
+  function revealAfterFirstFrame(index: number, request: number, video: HTMLVideoElement): void {
+    const reveal = () => {
+      if (!isCurrentPreview(index, request)) return;
+      visibleDemoIndex = index;
+      finishLoading(index);
+    };
+
+    if ('requestVideoFrameCallback' in video) {
+      video.requestVideoFrameCallback(reveal);
+      return;
+    }
+
+    window.requestAnimationFrame(reveal);
+  }
+
+  async function playDemo(index: number, request: number): Promise<void> {
+    const video = videoRefs[index];
     if (!video) return;
+    if (!videoReady[index]) video.load();
     video.currentTime = 0;
     try {
       await video.play();
+      revealAfterFirstFrame(index, request, video);
     } catch {
-      // Ignore autoplay failures on non-hover surfaces.
+      // Keep the poster visible when the browser rejects playback.
+      if (isCurrentPreview(index, request)) finishLoading(index);
     }
+  }
+
+  function clearLoadingTimer(): void {
+    if (loadingTimer === null) return;
+    window.clearTimeout(loadingTimer);
+    loadingTimer = null;
+  }
+
+  function finishLoading(index: number): void {
+    if (loadingDemoIndex !== index) return;
+
+    const minimumVisibleMs = 600;
+    const remainingMs = Math.max(0, minimumVisibleMs - (Date.now() - loadingStartedAt));
+    clearLoadingTimer();
+    if (remainingMs === 0) {
+      loadingDemoIndex = null;
+      return;
+    }
+
+    loadingTimer = window.setTimeout(() => {
+      if (loadingDemoIndex === index) loadingDemoIndex = null;
+      loadingTimer = null;
+    }, remainingMs);
+  }
+
+  function markVideoReady(index: number): void {
+    videoReady = videoReady.map((ready, currentIndex) =>
+      currentIndex === index ? true : ready
+    );
+  }
+
+  function markVideoUnavailable(index: number): void {
+    if (loadingDemoIndex === index) {
+      clearLoadingTimer();
+      loadingDemoIndex = null;
+    }
+    videoReady = videoReady.map((ready, currentIndex) =>
+      currentIndex === index ? false : ready
+    );
+  }
+
+  function startDemoLoad(index: number): void {
+    const request = ++playbackRequest;
+    visibleDemoIndex = null;
+    if (!videoReady[index]) {
+      clearLoadingTimer();
+      loadingStartedAt = Date.now();
+      loadingDemoIndex = index;
+    }
+    void playDemo(index, request);
   }
 
   function pauseAll(): void {
@@ -87,33 +150,50 @@
     }
   }
 
-  function handleCardEnter(index: number): void {
-    if (index !== activeDemo) return;
-    deckPaused = true;
-    void playDemo(index);
+  function takeControl(): void {
+    userControlsDeck = true;
   }
 
-  function handleCardSelect(index: number): void {
-    deckPaused = true;
+  function handleDeckPointerEnter(): void {
+    takeControl();
+    previewRequested = true;
+    startDemoLoad(activeDemo);
+  }
+
+  function handleDeckFocusIn(): void {
+    takeControl();
+  }
+
+  function handleDemoSelect(index: number): void {
+    takeControl();
+    previewRequested = true;
     pauseAll();
     setActiveDemo(index);
+    startDemoLoad(index);
   }
 
   function handleDeckLeave(): void {
-    deckPaused = false;
+    previewRequested = false;
+    playbackRequest += 1;
+    visibleDemoIndex = null;
+    clearLoadingTimer();
+    loadingDemoIndex = null;
     pauseAll();
   }
 
   onMount(() => {
-    deckStage?.addEventListener('mouseleave', handleDeckLeave);
+    previewRequested = true;
+    startDemoLoad(activeDemo);
 
     const interval = window.setInterval(() => {
-      if (deckPaused) return;
-      activeDemo = (activeDemo + 1) % demos.length;
+      if (userControlsDeck) return;
+      pauseAll();
+      setActiveDemo((activeDemo + 1) % demos.length);
+      startDemoLoad(activeDemo);
     }, 4200);
 
     return () => {
-      deckStage?.removeEventListener('mouseleave', handleDeckLeave);
+      clearLoadingTimer();
       pauseAll();
       window.clearInterval(interval);
     };
@@ -121,7 +201,14 @@
 </script>
 
 <section class="hero-demo-deck" aria-label="Treease feature demos">
-  <div class="deck-stage" bind:this={deckStage}>
+  <div
+    class="deck-stage"
+    role="group"
+    aria-label="Demo stage"
+    on:pointerenter={handleDeckPointerEnter}
+    on:pointerleave={handleDeckLeave}
+    on:focusin={handleDeckFocusIn}
+  >
     {#each demos as demo, index}
       {@const layer = getLayer(index)}
       <article
@@ -133,9 +220,7 @@
           type="button"
           class="demo-card__button"
           aria-label={`${demo.label} demo`}
-          on:mouseenter={() => handleCardEnter(index)}
-          on:focus={() => handleCardEnter(index)}
-          on:click={() => handleCardSelect(index)}
+          on:click={() => handleDemoSelect(index)}
         >
           <div class="demo-card__media">
             <img
@@ -144,19 +229,26 @@
               loading={index === 0 ? 'eager' : 'lazy'}
             />
 
-            {#if loadRequested[index]}
-              <video
-                bind:this={videoRefs[index]}
-                class:demo-card__video--visible={index === activeDemo}
-                class="demo-card__video"
-                muted
-                loop
-                playsinline
-                preload="none"
-                poster={demo.poster}
-              >
-                <source src={demo.video} type="video/mp4" />
-              </video>
+            <video
+              bind:this={videoRefs[index]}
+              class:demo-card__video--visible={index === visibleDemoIndex}
+              class="demo-card__video"
+              muted
+              loop
+              playsinline
+              preload="none"
+              poster={demo.poster}
+              on:loadeddata={() => markVideoReady(index)}
+              on:error={() => markVideoUnavailable(index)}
+            >
+              <source src={demo.video} type="video/mp4" />
+            </video>
+
+            {#if index === loadingDemoIndex}
+              <div class="demo-card__loading" role="status" aria-live="polite">
+                <span class="demo-card__spinner" aria-hidden="true"></span>
+                <span>Loading demo…</span>
+              </div>
             {/if}
 
             <div class="demo-card__glow" aria-hidden="true"></div>
@@ -173,6 +265,21 @@
       </article>
     {/each}
   </div>
+
+  <nav class="demo-deck__controls" aria-label="Choose a feature demo">
+    {#each demos as demo, index}
+      <button
+        type="button"
+        class:demo-deck__control--active={index === activeDemo}
+        class="demo-deck__control"
+        aria-label={`Show ${demo.label} demo`}
+        aria-pressed={index === activeDemo}
+        on:click={() => handleDemoSelect(index)}
+      >
+        {demo.label}
+      </button>
+    {/each}
+  </nav>
 </section>
 
 <style>
@@ -182,8 +289,43 @@
 
   .deck-stage {
     position: relative;
-    min-height: 500px;
+    min-height: 560px;
     padding: 0 72px 12px 0;
+  }
+
+  .demo-deck__controls {
+    position: relative;
+    z-index: 4;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: flex-end;
+    margin-top: 52px;
+    padding-right: 72px;
+  }
+
+  .demo-deck__control {
+    min-height: 34px;
+    padding: 7px 12px;
+    border: 1px solid rgba(100, 116, 139, 0.24);
+    border-radius: 999px;
+    color: var(--muted, #4b5563);
+    background: rgba(255, 255, 255, 0.72);
+    font: inherit;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+  }
+
+  .demo-deck__control--active {
+    border-color: color-mix(in srgb, var(--accent, #2563eb) 45%, transparent);
+    color: var(--ink, #0f172a);
+    background: color-mix(in srgb, var(--accent, #2563eb) 14%, white);
+  }
+
+  .demo-deck__control:focus-visible {
+    outline: 3px solid color-mix(in srgb, var(--accent, #2563eb) 24%, transparent);
+    outline-offset: 2px;
   }
 
   .demo-card {
@@ -270,7 +412,6 @@
 
   .demo-card__video {
     opacity: 0;
-    transition: opacity 220ms ease;
   }
 
   .demo-card__button:focus-visible {
@@ -283,6 +424,38 @@
 
   .demo-card__video--visible {
     opacity: 1;
+    transition: opacity 220ms ease;
+  }
+
+  .demo-card__loading {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 9px;
+    color: #334155;
+    background: rgba(248, 251, 255, 0.72);
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.01em;
+    pointer-events: none;
+  }
+
+  .demo-card__spinner {
+    width: 15px;
+    height: 15px;
+    border: 2px solid rgba(37, 99, 235, 0.22);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: demo-card-spin 720ms linear infinite;
+  }
+
+  @keyframes demo-card-spin {
+    to {
+      transform: rotate(360deg);
+    }
   }
 
   .demo-card__glow {
@@ -312,7 +485,7 @@
 
   @media (max-width: 1080px) {
     .deck-stage {
-      min-height: 452px;
+      min-height: 512px;
       padding-right: 54px;
     }
   }
@@ -338,6 +511,12 @@
 
     .demo-card__button {
       border-radius: 26px;
+    }
+
+    .demo-deck__controls {
+      justify-content: flex-start;
+      margin-top: 12px;
+      padding: 0;
     }
   }
 

@@ -10,13 +10,17 @@
     type PreparedBillingCheckout,
   } from '$lib/billing/checkout-flow';
   import { authUser } from '$lib/auth/auth-user-store';
-  import { pricingConfig, type BillingPriceId, type PricingFeature } from '$lib/config/pricing';
+  import {
+    fixedYearlySavingsPercent,
+    pricingConfig,
+    type BillingPriceId,
+    type PricingFeature,
+  } from '$lib/config/pricing';
   import { homeHeaderNavItems } from '$lib/navigation/home-header-nav';
   import { trackEvent } from '$lib/analytics/ga4';
   import { toast } from 'svelte-sonner';
   import { signOut } from '$lib/auth/supabase-auth';
-  import { annualSavingsPercent } from '$lib/billing/pricing-display';
-  import type { BillingPlanPrice, BillingPricingPrewarm } from '$lib/services/treease-server';
+  import type { BillingPricingPrewarm } from '$lib/services/treease-server';
 
   let cliInstallExpanded = false;
   let checkoutBusy = false;
@@ -25,27 +29,10 @@
   let pricingPrewarmKey: string | null = null;
   let pricingPrewarm: Promise<BillingPricingPrewarm> | null = null;
   let checkoutPreparations: Partial<Record<BillingPriceId, Promise<PreparedBillingCheckout>>> = {};
-  let planPrices: Partial<Record<BillingPriceId, BillingPlanPrice>> = {};
-  let yearlySavings: number | null = null;
+  const yearlySavings = fixedYearlySavingsPercent;
 
   function checkoutReturnUrl() {
     return { successUrl: new URL('/editor', window.location.origin).toString() };
-  }
-
-  function formatPlanPrice(price: BillingPlanPrice): string {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: price.currency,
-    }).format(price.amount / 100);
-  }
-
-  function formatPlanCadence(price: BillingPlanPrice): string {
-    const unit = price.intervalCount === 1 ? price.interval : `${price.interval}s`;
-    return `/ ${price.intervalCount === 1 ? unit : `${price.intervalCount} ${unit}`}`;
-  }
-
-  function loadingCadence(priceId: BillingPriceId): string {
-    return priceId === 'monthly' ? '/ month' : '/ year';
   }
 
   function splitFeatureLabel(feature: PricingFeature): [string, string | null, string] {
@@ -71,7 +58,6 @@
     pricingPrewarm = prewarm;
     void prewarm.then((result) => {
       if (pricingPrewarm !== prewarm) return;
-      planPrices = Object.fromEntries(result.plans.map((plan) => [plan.priceId, plan]));
       checkoutPreparations = Object.fromEntries(
         (result.checkouts ?? []).map((checkout) => [
           checkout.priceId,
@@ -104,8 +90,6 @@
   $: if (pricingInViewport) {
     startPricingPrewarm();
   }
-
-  $: yearlySavings = annualSavingsPercent(planPrices.monthly, planPrices.yearly);
 
   async function handleLogout(): Promise<void> {
     try {
@@ -455,20 +439,9 @@
                 <h3>{plan.name}</h3>
                 <p class="pricing-card__description">{plan.description}</p>
               </div>
-              <div class="pricing-card__price" aria-label={plan.billingPriceId && !planPrices[plan.billingPriceId] ? 'Loading price' : `${plan.price ?? ''} ${plan.cadence ?? ''}`}>
-                {#if plan.billingPriceId}
-                  {@const price = planPrices[plan.billingPriceId]}
-                  {#if price}
-                    <strong>{formatPlanPrice(price)}</strong>
-                    <span>{formatPlanCadence(price)}</span>
-                  {:else}
-                    <strong class="pricing-card__price-loading" aria-label="Loading price">$<span class="pricing-card__loading-dash" aria-hidden="true">-</span></strong>
-                    <span class="pricing-card__cadence-loading">{loadingCadence(plan.billingPriceId)}</span>
-                  {/if}
-                {:else}
-                  <strong>{plan.price}</strong>
-                  <span>{plan.cadence}</span>
-                {/if}
+              <div class="pricing-card__price" aria-label={`${plan.price ?? ''} ${plan.cadence ?? ''}`}>
+                <strong>{plan.price}</strong>
+                <span>{plan.cadence}</span>
               </div>
               {#if plan.billingPriceId}
                 <button
@@ -1165,45 +1138,6 @@
     font-family: var(--font-display);
     font-size: clamp(2.2rem, 4vw, 3rem);
     letter-spacing: -0.06em;
-  }
-
-  .pricing-card__price-loading {
-    display: inline-flex;
-    gap: 0.22em;
-    align-items: baseline;
-  }
-
-  .pricing-card__loading-dash {
-    display: inline-block;
-    animation: pricing-loading-dash 0.9s ease-in-out infinite;
-  }
-
-  .pricing-card__price .pricing-card__price-loading .pricing-card__loading-dash {
-    color: inherit;
-    font: inherit;
-    letter-spacing: inherit;
-  }
-
-  @keyframes pricing-loading-dash {
-    0%, 100% {
-      opacity: 0.3;
-      transform: translateY(0);
-    }
-
-    50% {
-      opacity: 1;
-      transform: translateY(-0.06em);
-    }
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    .pricing-card__loading-dash {
-      animation: none;
-    }
-  }
-
-  .pricing-card__cadence-loading {
-    min-width: 6.5ch;
   }
 
   .pricing-card__price span {

@@ -82,6 +82,8 @@ export default defineConfig(({ mode }) => {
       'import.meta.env.SUPABASE_ANON_KEY': JSON.stringify(env.SUPABASE_ANON_KEY ?? ''),
       'import.meta.env.GA_MEASUREMENT_ID': JSON.stringify(env.GA_MEASUREMENT_ID ?? ''),
       'import.meta.env.GA_CONSENT_REQUIRED': JSON.stringify(env.GA_CONSENT_REQUIRED ?? '0'),
+      'import.meta.env.PUBLIC_PRICING_MONTHLY_PRICE': JSON.stringify(env.PUBLIC_PRICING_MONTHLY_PRICE ?? ''),
+      'import.meta.env.PUBLIC_PRICING_YEARLY_PRICE': JSON.stringify(env.PUBLIC_PRICING_YEARLY_PRICE ?? ''),
       'import.meta.env.PUBLIC_WORKSPACE_SURFACE': JSON.stringify(workspaceSurface),
       'import.meta.env.PUBLIC_WDIO_TEST': JSON.stringify(process.env.TREEASE_WDIO_TEST ?? '0'),
     },

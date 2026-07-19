@@ -20,6 +20,29 @@ export type PricingPlan = {
   features: PricingFeature[];
 };
 
+const monthlyPrice = String(import.meta.env.PUBLIC_PRICING_MONTHLY_PRICE ?? '').trim();
+const yearlyPrice = String(import.meta.env.PUBLIC_PRICING_YEARLY_PRICE ?? '').trim();
+
+function parsePrice(value: string): number | null {
+  const amount = Number(value.replace(/[^\d.-]/g, ''));
+  return Number.isFinite(amount) && amount > 0 ? amount : null;
+}
+
+function formatPrice(amount: number | null): string {
+  return amount === null
+    ? ''
+    : new Intl.NumberFormat('en-US', {
+        style: 'currency',
+        currency: 'USD',
+        minimumFractionDigits: 2,
+      }).format(amount);
+}
+
+const monthlyAmount = parsePrice(monthlyPrice);
+const yearlyAmount = parsePrice(yearlyPrice);
+const monthlyDisplayPrice = formatPrice(monthlyAmount);
+const yearlyDisplayPrice = formatPrice(yearlyAmount);
+
 const proFeatures = [
   { label: 'Visualize structured documents' },
   { label: 'Trace fields from graph to source' },
@@ -61,6 +84,8 @@ export const pricingConfig: { title: string; description: string; plans: Pricing
       id: 'pro-monthly',
       name: 'Pro',
       eyebrow: 'MOST POPULAR',
+      price: monthlyDisplayPrice,
+      cadence: '/ month',
       description: 'More space for the documents and decisions in your day-to-day work.',
       ctaLabel: 'Get started',
       ctaHref: '/editor',
@@ -71,6 +96,8 @@ export const pricingConfig: { title: string; description: string; plans: Pricing
     {
       id: 'pro-yearly',
       name: 'Pro yearly',
+      price: yearlyDisplayPrice,
+      cadence: '/ month, billed annually',
       description: 'The full Pro workflow with a lower effective monthly price.',
       ctaLabel: 'Choose yearly',
       ctaHref: '/editor',
@@ -79,3 +106,7 @@ export const pricingConfig: { title: string; description: string; plans: Pricing
     }
   ] satisfies PricingPlan[]
 };
+
+export const fixedYearlySavingsPercent = monthlyAmount && yearlyAmount && yearlyAmount < monthlyAmount
+  ? Math.round((1 - yearlyAmount / monthlyAmount) * 100)
+  : null;

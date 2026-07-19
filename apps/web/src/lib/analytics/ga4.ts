@@ -12,7 +12,9 @@ export type AnalyticsEventName =
   | 'graph_edit'
   | 'share_started'
   | 'parse_failed'
-  | 'language_selected';
+  | 'language_selected'
+  | 'subscription_viewed'
+  | 'subscription_management_started';
 
 export type AnalyticsEventParams = Record<string, string | number | boolean>;
 
@@ -29,6 +31,12 @@ const allowedParamKeys = new Set([
   'operation',
   'mode',
   'edit_type',
+  'plan',
+  'surface',
+  'status',
+  'feature',
+  'reason',
+  'threshold',
 ]);
 
 let initialized = false;
