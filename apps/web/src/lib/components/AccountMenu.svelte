@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onDestroy, onMount } from 'svelte';
-  import { ChevronDown, Gauge, LogOut, RefreshCw, Settings, User as UserIcon } from 'lucide-svelte';
+  import { ChevronDown, Gauge, LogIn, LogOut, RefreshCw, Settings, User as UserIcon } from 'lucide-svelte';
   import { toast } from 'svelte-sonner';
   import { trackEvent } from '../analytics/ga4';
   import { authUser, authUserDetails, observeAuthUser } from '../auth/auth-user-store';
@@ -152,7 +152,7 @@
 </script>
 
 {#if variant === 'landing' && !details}
-  <button class="landing-login" type="button" data-testid="account-login-button" on:click={onLogin}>Login</button>
+  <button class="landing-login" type="button" data-testid="account-login-button" on:click={onLogin}><LogIn size={14} />Login</button>
 {:else}
   <div class:landing-account-actions={variant === 'landing' && isAnonymous}>
   <DropdownMenu bind:open={accountMenuOpen}>
@@ -254,7 +254,7 @@
         {/if}
         <DropdownMenuSeparator class="my-1" />
         {#if isAnonymous}
-          <DropdownMenuItem data-testid="account-login-menu-item" onSelect={onLogin}>Login</DropdownMenuItem>
+          <DropdownMenuItem data-testid="account-login-menu-item" onSelect={onLogin}><LogIn size={14} />Login</DropdownMenuItem>
         {:else}
           <DropdownMenuItem
             variant="destructive"
@@ -277,7 +277,7 @@
           </DropdownMenuItem>
         {/if}
       {:else}
-        <DropdownMenuItem data-testid="account-login-menu-item" onSelect={onLogin}>Login</DropdownMenuItem>
+        <DropdownMenuItem data-testid="account-login-menu-item" onSelect={onLogin}><LogIn size={14} />Login</DropdownMenuItem>
         {#if desktop}
           <DropdownMenuItem data-testid="account-check-updates-menu-item" onSelect={() => void onCheckForUpdates()}>Check for updates</DropdownMenuItem>
         {/if}
@@ -286,13 +286,16 @@
     </DropdownMenuContent>
   </DropdownMenu>
   {#if variant === 'landing' && isAnonymous}
-    <button class="landing-login" type="button" data-testid="account-login-button" on:click={onLogin}>Login</button>
+    <button class="landing-login" type="button" data-testid="account-login-button" on:click={onLogin}><LogIn size={14} />Login</button>
   {/if}
   </div>
 {/if}
 
 <style>
   .landing-login {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
     border: 0;
     background: transparent;
     color: var(--muted);
