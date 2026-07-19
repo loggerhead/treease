@@ -10,6 +10,13 @@ describe('command-registry', () => {
     expect(ids).toContain('show-yq-input');
     expect(ids).toContain('escape');
     expect(ids).toContain('unescape');
+    expect(ids).not.toEqual(expect.arrayContaining([
+      'workspace:new',
+      'workspace:open',
+      'workspace:save',
+      'workspace:save-as',
+      'workspace:close-tab',
+    ]));
     expect(new Set(ids).size).toBe(ids.length);
     for (const cmd of commandItems) {
       expect(cmd.label).toBeTruthy();

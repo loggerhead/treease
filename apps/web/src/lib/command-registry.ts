@@ -15,11 +15,6 @@ export type CommandItem = {
 }
 
 export const commandItems: CommandItem[] = [
-  { id: 'workspace:new', label: 'New document', keywords: ['file', 'tab', 'create'], type: 'action', langs: ['*'] },
-  { id: 'workspace:open', label: 'Open document', keywords: ['file', 'import'], type: 'action', langs: ['*'] },
-  { id: 'workspace:save', label: 'Save document', keywords: ['file', 'write'], type: 'action', langs: ['*'] },
-  { id: 'workspace:save-as', label: 'Save document as', keywords: ['file', 'write', 'copy'], type: 'action', langs: ['*'] },
-  { id: 'workspace:close-tab', label: 'Close tab', keywords: ['file', 'document'], type: 'action', langs: ['*'] },
   { id: 'format', label: 'Format', keywords: ['pretty', 'beautify'], type: 'action', langs: ['*'] },
   { id: 'minify', label: 'Minify', keywords: ['compress', 'compact'], type: 'action', langs: ['*'] },
   { id: 'sort', label: 'Sort', keywords: ['order', 'stable'], type: 'action', langs: ['*'] },
