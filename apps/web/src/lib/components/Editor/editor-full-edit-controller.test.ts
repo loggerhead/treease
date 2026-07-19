@@ -154,10 +154,12 @@ describe('editor-full-edit-controller', () => {
   function createReadableFile(chunks: string[], name = 'data.json', sizeOverride?: number) {
     const encoder = new TextEncoder();
     const encodedChunks = chunks.map((chunk) => encoder.encode(chunk));
+    const text = chunks.join('');
     const byteLength = encodedChunks.reduce((total, chunk) => total + chunk.byteLength, 0);
     return {
       name,
       size: sizeOverride ?? byteLength,
+      slice: (start?: number, end?: number) => new Blob([text.slice(start, end)]),
       stream: () =>
         new ReadableStream<Uint8Array>({
           start(controller) {
@@ -738,6 +740,7 @@ describe('editor-full-edit-controller', () => {
     const file = {
       name: 'data.json',
       size: 7,
+      slice: (start?: number, end?: number) => new Blob(['{"a":1}'.slice(start, end)]),
       stream: () => stream,
     };
 
@@ -995,6 +998,7 @@ describe('editor-full-edit-controller', () => {
     const file = {
       name: 'region_and_currency.csv',
       size: new TextEncoder().encode(csvText).byteLength,
+      slice: (start?: number, end?: number) => new Blob([csvText.slice(start, end)]),
       text: vi.fn(async () => csvText),
     };
     await controller.importStream(file as any, 'csv' as any, 'import-file');
@@ -1006,6 +1010,24 @@ describe('editor-full-edit-controller', () => {
       options: undefined,
     });
     expect(options.applyImportLanguage).toHaveBeenCalledWith('json');
+  });
+
+  it('meters a converted file import once with its original file sample', async () => {
+    const runBidirectionalEdit = vi.fn(async (_source: string, execute: () => Promise<unknown>) => execute());
+    const options = createOptions({ runBidirectionalEdit });
+    const controller = createEditorFullEditController(options as any);
+    const csvText = 'region,currency\nEurope,EUR\n';
+    const file = {
+      name: 'currencies.csv',
+      size: new TextEncoder().encode(csvText).byteLength,
+      slice: (start?: number, end?: number) => new Blob([csvText.slice(start, end)]),
+      text: vi.fn(async () => csvText),
+    };
+
+    await controller.importStream(file as any, 'csv' as any, 'import-file');
+
+    expect(runBidirectionalEdit).toHaveBeenCalledTimes(1);
+    expect(runBidirectionalEdit).toHaveBeenCalledWith(csvText, expect.any(Function));
   });
 
   it('handles graph rebuild errors from startDocumentJobForGraph', async () => {
@@ -1024,5 +1046,25 @@ describe('editor-full-edit-controller', () => {
     await vi.waitFor(() => {
       expect(options.updateActiveTempModel).toHaveBeenCalled();
     });
+  });
+
+  it('meters only graph full-build reasons and passes their source to the quota gate', async () => {
+    const runBidirectionalEdit = vi.fn(async (_source: string, execute: () => Promise<unknown>) => execute());
+    const options = createOptions({ runBidirectionalEdit });
+    const controller = createEditorFullEditController(options as any);
+
+    await controller.runFullEditSessionToTerminal({
+      language: 'json' as any,
+      text: '{ "full": true }',
+      reason: 'whole-document-replacement',
+    });
+    await controller.runFullEditSessionToTerminal({
+      language: 'json' as any,
+      text: '{ "incremental": true }',
+      reason: 'tab-reactivate',
+    });
+
+    expect(runBidirectionalEdit).toHaveBeenCalledTimes(1);
+    expect(runBidirectionalEdit).toHaveBeenCalledWith('{ "full": true }', expect.any(Function));
   });
 });

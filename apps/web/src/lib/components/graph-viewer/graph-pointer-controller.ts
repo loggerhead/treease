@@ -70,6 +70,10 @@ export function createGraphPointerController(options: CreateGraphPointerControll
         const now = Date.now();
         if (now - lastHandledAt < 16) return;
         lastHandledAt = now;
+        const graphCell = (target as { __graphCell?: { path?: Array<{ key?: string }> } }).__graphCell;
+        if (graphCell?.path?.[0]?.key === 'object') {
+          console.debug('[DEBUG-graph-highlight-race]', 'pointer.accepted', { eventName, now });
+        }
         void handler(event);
       });
     }

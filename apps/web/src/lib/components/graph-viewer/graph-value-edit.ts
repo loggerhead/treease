@@ -67,6 +67,7 @@ type GraphValueEditControllerDeps = {
   }) => void;
   updateActiveTempModel: (updater: (current: any) => any) => void;
   dispatchGraphEditEvent: (type: GraphEditEventType, detail: unknown) => void;
+  runBidirectionalEdit?: <T>(documentKey: string, execute: () => Promise<T>) => Promise<T>;
   handleError: (
     error: unknown,
     context: { component: string; operation: string; metadata?: Record<string, unknown> },
@@ -85,6 +86,8 @@ export function createGraphValueEditController(deps: GraphValueEditControllerDep
 
   const activeEditStateByEditor = new Map<LeaferEditor, ActiveEditState>();
   const boundGraphEditors = new Set<LeaferEditor>();
+
+  class GraphEditNotAppliedError extends Error {}
 
   function isReadonly(): boolean {
     return deps.isReadonly?.() === true;
@@ -181,15 +184,15 @@ export function createGraphValueEditController(deps: GraphValueEditControllerDep
     if (!editPath?.length) {
       return false;
     }
+    if (!editorIO || editorIO.context !== 'editor') {
+      return false;
+    }
     deps.dispatchGraphEditEvent('graph-edit-commit', {
       path: editPath,
       kind: editKind,
       text: raw,
       valueType: editCell?.valueType,
     });
-    if (!editorIO || editorIO.context !== 'editor') {
-      return false;
-    }
     const parseGraphValue = async ({
       language,
       path,
@@ -256,31 +259,44 @@ export function createGraphValueEditController(deps: GraphValueEditControllerDep
     if (planned.mode === 'snapshotNotReady') {
       return false;
     }
-    if (planned.mode === 'replace') {
-      const graphEditFallback = {
-        reason: planned.reason,
-        path: editPath,
-        kind: editKind,
-      };
-      deps.dispatchGraphEditEvent('graph-edit-replace-fallback', {
-        ...graphEditFallback,
-        documentKey: deps.getDocumentKey(),
-        language: deps.getLanguageId(),
-        snapshotId: deps.getActiveSnapshotId(),
-      });
-      deps.emitEditorMutation({
-        type: 'replaceSourceText',
-        payload: {
-          text: planned.text,
-          graphEditFallback,
-        },
-      });
-      trackEvent('graph_edit', { edit_type: editKind, result: 'success' });
+    const apply = async (): Promise<boolean> => {
+      if (planned.mode === 'replace') {
+        const graphEditFallback = {
+          reason: planned.reason,
+          path: editPath,
+          kind: editKind,
+        };
+        deps.dispatchGraphEditEvent('graph-edit-replace-fallback', {
+          ...graphEditFallback,
+          documentKey: deps.getDocumentKey(),
+          language: deps.getLanguageId(),
+          snapshotId: deps.getActiveSnapshotId(),
+        });
+        deps.emitEditorMutation({
+          type: 'replaceSourceText',
+          payload: {
+            text: planned.text,
+            graphEditFallback,
+          },
+        });
+        return true;
+      }
+      if (!editorIO.applyTextEdits(planned.edits)) {
+        throw new GraphEditNotAppliedError('Graph edit was not applied');
+      }
       return true;
+    };
+
+    try {
+      const applied = deps.runBidirectionalEdit
+        ? await deps.runBidirectionalEdit(deps.getDocumentKey(), apply)
+        : await apply();
+      if (applied) trackEvent('graph_edit', { edit_type: editKind, result: 'success' });
+      return applied;
+    } catch (error) {
+      if (error instanceof GraphEditNotAppliedError) return false;
+      throw error;
     }
-    const applied = editorIO.applyTextEdits(planned.edits);
-    if (applied) trackEvent('graph_edit', { edit_type: editKind, result: 'success' });
-    return applied;
   }
 
   async function commitTextEdit(editor?: LeaferEditor | null): Promise<void> {

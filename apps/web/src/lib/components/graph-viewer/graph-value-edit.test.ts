@@ -109,6 +109,50 @@ describe('graph-value-edit', () => {
     });
   });
 
+  it('meters a successful graph cell edit with the stable document key', async () => {
+    const canonicalNode = scalarNode('next-value');
+    mocked.callSharedWasmWorker.mockImplementation(async (type: string) => {
+      if (type === 'parseValueForPath') return canonicalNode;
+      if (type === 'planGraphValueEdit') {
+        return {
+          mode: 'replace',
+          reason: 'graph-edit-not-single-range',
+          text: '{"name":"next-value"}',
+          tree: canonicalNode,
+          value: 'next-value',
+        };
+      }
+      throw new Error(`unexpected worker call: ${type}`);
+    });
+
+    const runBidirectionalEditMock = vi.fn();
+    const runBidirectionalEdit = runBidirectionalEditMock as unknown as <T>(documentKey: string, execute: () => Promise<T>) => Promise<T>;
+    runBidirectionalEditMock.mockImplementation((_documentKey, execute) => execute());
+    const model = { getVersionId: () => 1 };
+    const controller = createGraphValueEditController({
+      getCurrentData: () => ({ name: 'current' }),
+      getSourceText: () => '{"name":"current"}',
+      getDocumentKey: () => 'foo.json:1',
+      getLanguageId: () => 'json',
+      getEnableNest: () => true,
+      getEditorIO: () => ({ context: 'editor', getModel: () => model as any, applyTextEdits: vi.fn(() => true) } as any),
+      getEditorRevision: () => 3,
+      getActiveSnapshotId: () => 42,
+      resolveTreePathByPosition: vi.fn(async () => []),
+      nextTreeStateToken: () => 5,
+      publishTreeState: vi.fn(() => true),
+      emitEditorMutation: vi.fn(),
+      updateActiveTempModel: vi.fn(),
+      dispatchGraphEditEvent: vi.fn(),
+      runBidirectionalEdit,
+      handleError: vi.fn(),
+    });
+
+    await expect(controller.applyGraphEdit({ path: [{ key: 'name' }], valueType: 'string' } as any, 'value', 'next-value')).resolves.toBe(true);
+
+    expect(runBidirectionalEditMock).toHaveBeenCalledWith('foo.json:1', expect.any(Function));
+  });
+
   it('treats string value edits as snapshot-bound parsed replacements', async () => {
     const canonicalNode = scalarNode('next-value');
     mocked.callSharedWasmWorker.mockImplementation(async (type: string, payload: any) => {

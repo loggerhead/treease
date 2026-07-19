@@ -73,7 +73,8 @@
   import * as ButtonGroup from '../../lib/components/ui/button-group';
   import { IconButton } from '../../lib/components/ui/button';
   import { trackEvent } from '../../lib/analytics/ga4';
-  import { runMeteredCapability } from '../../lib/billing/entitlement-gate';
+  import { runPostpaidCapability } from '../../lib/billing/entitlement-gate';
+  import { createUsageIdempotencyKey } from '../../lib/billing/usage-idempotency';
   import { workspaceHost } from '../../lib/workspace-host';
   import { exchangeAuthCode, signOut } from '../../lib/auth/supabase-auth';
   import { editorWorkspace, getWorkspaceState, updateWorkspaceTab } from '../../lib/store/workspace-store';
@@ -84,7 +85,7 @@
   import { restoreShareResource } from '../../lib/share/share-restore';
   import type { WorkspaceCommand, WorkspaceSession } from '../../lib/workspace-host';
 
-  const LARGE_FILE_PROCESSING_THRESHOLD_BYTES = 1024 * 1024;
+  const LARGE_FILE_PROCESSING_THRESHOLD_BYTES = 500 * 1024;
 
   let editorRef: Editor | null = null;
   let topBarRef: TopBar | null = null;
@@ -456,12 +457,13 @@
           : (payload.targetFormat as SupportedEditorLanguageId);
       const importFile = () => editorRef?.importStream(payload.file, effectiveSource, targetFormat);
       if (payload.file.size >= LARGE_FILE_PROCESSING_THRESHOLD_BYTES) {
-        await runMeteredCapability({
+        await runPostpaidCapability({
           capability: 'large_file_processing',
-          idempotencyKey: crypto.randomUUID(),
+          createIdempotencyKey: async () => await createUsageIdempotencyKey('large_file_processing', sample),
           metadata: { byteLength: payload.file.size },
           surface: 'file_import',
           execute: importFile,
+          onBlocked: (block) => viewerRef?.showEntitlementOverlay(block),
         });
       } else {
         await importFile();

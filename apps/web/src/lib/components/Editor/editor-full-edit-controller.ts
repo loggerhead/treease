@@ -143,6 +143,7 @@ type CreateEditorFullEditControllerOptions = {
     analysis: DocumentAnalysisResult | null,
   ) => Promise<void>;
   triggerGraphSync: (position: Monaco.IPosition) => void;
+  runBidirectionalEdit?: <T>(source: string, execute: () => Promise<T>) => Promise<T>;
 };
 
 export function createEditorFullEditController(options: CreateEditorFullEditControllerOptions) {
@@ -150,6 +151,17 @@ export function createEditorFullEditController(options: CreateEditorFullEditCont
   let importConversionOperation: ViewRuntimeOperation | null = null;
   let suppressNextWholeDocumentIntake = false;
   const fullEditSink = options.fullEditSink ?? createPrimaryFullEditSink();
+  const meteredFullEditReasons = new Set<FullEditReason>([
+    'import-file',
+    'drop-file',
+    'language-switch',
+    'whole-document-replacement',
+  ]);
+
+  function runMeteredFullEdit<T>(reason: FullEditReason, source: string, execute: () => Promise<T>): Promise<T> {
+    if (!meteredFullEditReasons.has(reason) || !options.runBidirectionalEdit) return execute();
+    return options.runBidirectionalEdit(source, execute);
+  }
 
   const defaultFormattingOptions = {
     indent: 2,
@@ -548,14 +560,18 @@ export function createEditorFullEditController(options: CreateEditorFullEditCont
     formatSourceOnClose?: boolean;
     documentKey?: string;
     isFresh?: () => boolean;
+    skipUsageMetering?: boolean;
   }): Promise<number> {
-    const prepared = await prepareMemoryFullEditSession({
-      ...params,
-      editorReadOnly: false,
-    });
-    if (!prepared) return 0;
-    void runMemoryFullEditSessionToTerminal(prepared.session, prepared.isSessionCurrent);
-    return prepared.session.revision;
+    const execute = async () => {
+      const prepared = await prepareMemoryFullEditSession({
+        ...params,
+        editorReadOnly: false,
+      });
+      if (!prepared) return 0;
+      void runMemoryFullEditSessionToTerminal(prepared.session, prepared.isSessionCurrent);
+      return prepared.session.revision;
+    };
+    return params.skipUsageMetering ? execute() : runMeteredFullEdit(params.reason, params.text, execute);
   }
 
   async function runFullEditSessionToTerminal(params: {
@@ -577,20 +593,24 @@ export function createEditorFullEditController(options: CreateEditorFullEditCont
     documentKey?: string;
     editorReadOnly?: boolean;
     isFresh?: () => boolean;
+    skipUsageMetering?: boolean;
   }): Promise<FullEditTerminalOutcome> {
-    const prepared = await prepareMemoryFullEditSession({
-      ...params,
-      editorReadOnly: params.editorReadOnly ?? false,
-    });
-    if (!prepared) {
-      return {
-        revision: 0,
-        status: 'skipped',
-        snapshotId: null,
-        result: null,
-      };
-    }
-    return runMemoryFullEditSessionToTerminal(prepared.session, prepared.isSessionCurrent);
+    const execute = async () => {
+      const prepared = await prepareMemoryFullEditSession({
+        ...params,
+        editorReadOnly: params.editorReadOnly ?? false,
+      });
+      if (!prepared) {
+        return {
+          revision: 0,
+          status: 'skipped' as const,
+          snapshotId: null,
+          result: null,
+        };
+      }
+      return runMemoryFullEditSessionToTerminal(prepared.session, prepared.isSessionCurrent);
+    };
+    return params.skipUsageMetering ? execute() : runMeteredFullEdit(params.reason, params.text, execute);
   }
 
   async function prepareMemoryFullEditSession(params: {
@@ -912,6 +932,9 @@ export function createEditorFullEditController(options: CreateEditorFullEditCont
           reason,
           transportKind: 'memory',
           isFresh: operation.isCurrent,
+          // importStream owns the reservation using the original file sample.
+          // The converted text must not reserve the same full build a second time.
+          skipUsageMetering: true,
         });
       },
     });
@@ -922,6 +945,16 @@ export function createEditorFullEditController(options: CreateEditorFullEditCont
     sourceLanguage: string,
     reason: Extract<FullEditReason, 'import-file' | 'drop-file'> = 'import-file',
     targetLanguage: SupportedEditorLanguageId = options.getLanguageId(),
+  ): Promise<void> {
+    const sourceSample = await readImportSourceSample(file);
+    return runMeteredFullEdit(reason, sourceSample, () => importStreamUnmetered(file, sourceLanguage, reason, targetLanguage));
+  }
+
+  async function importStreamUnmetered(
+    file: File,
+    sourceLanguage: string,
+    reason: Extract<FullEditReason, 'import-file' | 'drop-file'>,
+    targetLanguage: SupportedEditorLanguageId,
   ): Promise<void> {
     const model = options.getModel();
     const monaco = options.getMonaco();

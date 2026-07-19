@@ -92,6 +92,7 @@ export type TreeaseGraphRuntime = {
   getHighlightTarget?: () => {
     path?: TreeaseRuntimePathSeg[];
     target?: 'key' | 'value' | 'node';
+    fill?: string | null;
     rect?: { left?: number; top?: number; width?: number; height?: number } | null;
     world?: { highlight?: { x?: number; y?: number }; viewportCenter?: { x?: number; y?: number } } | null;
   } | null;
@@ -135,7 +136,7 @@ export type TreeaseGraphRuntime = {
   revealPath?: (
     path: TreeaseBridgePathSeg[],
     options?: { target?: 'key' | 'value' | 'node'; navigate?: boolean },
-  ) => Promise<boolean>;
+  ) => void;
   activateProbe?: (probeId: string) => Promise<void>;
   commitProbe?: (probeId: string, text: string) => Promise<boolean>;
   scrollTableToRow?: (rowIndex: number) => void;

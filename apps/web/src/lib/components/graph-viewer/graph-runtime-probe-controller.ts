@@ -15,6 +15,7 @@ import type {
 
 type ActiveHighlightState = { path: any[]; target?: GraphHighlightTarget; box: LeaferBox | null } | null;
 type RegisteredTargetScope = 'root';
+const GRAPH_HIGHLIGHT_DEBUG = '[DEBUG-graph-highlight-race]';
 
 type CreateGraphRuntimeProbeControllerOptions = {
   shouldAttachGraphViewerTestHooks: () => boolean;
@@ -110,18 +111,27 @@ export function createGraphRuntimeProbeController(options: CreateGraphRuntimePro
     scope: RegisteredTargetScope,
     optionsOverride?: { waitForPathIndex?: boolean },
   ): Promise<void> {
-    if (options.isFullEditStreaming()) return;
+    if (options.isFullEditStreaming()) {
+      console.debug(GRAPH_HIGHLIGHT_DEBUG, 'click.blocked-full-edit');
+      return;
+    }
     const targetCell = target.__graphCell as GraphCell | undefined;
     const targetKind = toGraphClickTarget((target.__graphCellKind as GraphCellKind | undefined) ?? 'meta');
     if (!targetCell) return;
     const path = targetCell.path ?? [];
+    const isObjectScalarProbe = path[0]?.key === 'object';
+    const startedAt = performance.now();
+    if (isObjectScalarProbe) console.debug(GRAPH_HIGHLIGHT_DEBUG, 'click.start', { targetKind, path });
     const interactivePath = targetKind === 'node' ? path : await options.resolveInteractiveCellPath(targetCell, path);
     if (!interactivePath.length) return;
+    if (isObjectScalarProbe) console.debug(GRAPH_HIGHLIGHT_DEBUG, 'click.path-resolved', { elapsedMs: performance.now() - startedAt });
     if (optionsOverride?.waitForPathIndex !== false) {
       await options.ensurePathIndex(interactivePath);
     }
+    if (isObjectScalarProbe) console.debug(GRAPH_HIGHLIGHT_DEBUG, 'click.path-indexed', { elapsedMs: performance.now() - startedAt });
     setGraphRevealTestState(interactivePath, targetKind);
     options.emitReveal(interactivePath, targetKind, 'click');
+    if (isObjectScalarProbe) console.debug(GRAPH_HIGHLIGHT_DEBUG, 'click.emitted', { elapsedMs: performance.now() - startedAt });
     await options.onRegisteredTargetClick?.({
       path: interactivePath,
       target: targetKind,
@@ -151,6 +161,23 @@ export function createGraphRuntimeProbeController(options: CreateGraphRuntimePro
     target.__graphCell = cell;
     target.__graphCellKind = kind;
     target.__graphNodeKind = nodeKind;
+    if (cell.path?.[0]?.key === 'object' && !(target as { __graphHoverDebugBound?: boolean }).__graphHoverDebugBound) {
+      (target as { __graphHoverDebugBound?: boolean }).__graphHoverDebugBound = true;
+      target.on?.('pointer.enter', () => {
+        console.debug(GRAPH_HIGHLIGHT_DEBUG, 'hover.enter', JSON.stringify({
+          path: cell.path,
+          fill: target.fill,
+          hoverStyle: target.hoverStyle,
+        }));
+      });
+      target.on?.('pointer.leave', () => {
+        console.debug(GRAPH_HIGHLIGHT_DEBUG, 'hover.leave', JSON.stringify({
+          path: cell.path,
+          fill: target.fill,
+          hoverStyle: target.hoverStyle,
+        }));
+      });
+    }
     const clickTargetId = upsertClickTargetProbe(target, cell, kind);
     bindClickReveal(target, clickBoundTargets, 'root');
     return clickTargetId;
@@ -244,6 +271,7 @@ export function createGraphRuntimeProbeController(options: CreateGraphRuntimePro
     return {
       path: runtimeActiveHighlightState.path,
       target: resolvedHighlight.target,
+      fill: typeof resolvedBox.fill === 'string' ? resolvedBox.fill : null,
       rect: highlightRect,
       probe: probeCoord
         ? {

@@ -33,6 +33,7 @@ export type GraphRuntimeProbeTarget = {
 export type GraphRuntimeHighlightState = {
   path: PathSeg[];
   target?: GraphHighlightTarget;
+  fill: string | null;
   rect: GraphRuntimeRect | null;
   probe: (GraphRuntimePoint & { source: 'matched-probe' | 'highlight-box' }) | null;
   world:

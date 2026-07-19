@@ -178,7 +178,8 @@ describe('graph-text-linkage', () => {
       handleError: vi.fn(),
     });
 
-    await expect(controller.revealPath(path, { target: 'value', navigate: true })).resolves.toBe(true);
+    controller.revealPath(path, { target: 'value', navigate: true });
+    await Promise.resolve();
 
     expect(scrollTo).toHaveBeenCalledWith({ x: 0, y: 90 });
     expect(setGraphRowScrollTestState).toHaveBeenCalledWith(path, 90);

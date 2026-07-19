@@ -1,6 +1,5 @@
 import { z } from 'zod';
 
-export const MAX_SHARE_PAYLOAD_BYTES = 100_000;
 export const MAX_SHARE_PATH_DEPTH = 64;
 export const MAX_SHARE_WORKSPACE_PANES = 32;
 
@@ -42,7 +41,6 @@ export const shareResourceSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('text_snapshot'), payload: z.object({ schemaVersion: z.literal(1), left: textDocumentSchema, right: textDocumentSchema.nullable(), layout: z.object({ viewMode: z.enum(['graph', 'text']), activePane: z.enum(['left', 'right']) }).strict(), interaction: interactionSchema }).strict() }).strict(),
 ]).superRefine((resource, context) => {
   if (resource.type === 'compare' && !resource.payload.actions.some((action) => action.type === 'compare')) context.addIssue({ code: z.ZodIssueCode.custom, path: ['payload', 'actions'], message: 'compare resources must include a compare action' });
-  if (serializedPayloadBytes(resource.payload) > MAX_SHARE_PAYLOAD_BYTES) context.addIssue({ code: z.ZodIssueCode.custom, path: ['payload'], message: `resource.payload must be <= ${MAX_SHARE_PAYLOAD_BYTES} bytes when serialized to JSON` });
 });
 
 export type TextDocument = z.infer<typeof textDocumentSchema>;
@@ -52,10 +50,6 @@ export type ShareInteraction = z.infer<typeof interactionSchema>;
 export type CompareAction = z.infer<typeof compareActionSchema>;
 export type ShareResource = z.infer<typeof shareResourceSchema>;
 export type ShareResourceType = ShareResource['type'];
-
-export function serializedPayloadBytes(payload: unknown): number {
-  return new TextEncoder().encode(JSON.stringify(payload)).byteLength;
-}
 
 export function parseShareResource(value: unknown): ShareResource | null {
   const parsed = shareResourceSchema.safeParse(value);

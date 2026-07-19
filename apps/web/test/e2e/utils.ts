@@ -681,7 +681,7 @@ export async function getLatestGraphProbes(page: Page): Promise<Array<{ x: numbe
 
 export async function readGraphHighlight(
   page: Page,
-): Promise<{ path: string[]; target?: 'key' | 'value' | 'node' } | null> {
+): Promise<{ path: string[]; target?: 'key' | 'value' | 'node'; fill?: string | null } | null> {
   return evaluateGraphRuntime(page, (runtime) => {
     const highlight = runtime.getHighlightTarget?.();
     if (!highlight?.path?.length) return null;
@@ -699,6 +699,7 @@ export async function readGraphHighlight(
           .filter((segment) => segment.length > 0),
       ],
       target: highlight.target,
+      fill: typeof highlight.fill === 'string' ? highlight.fill : null,
     };
   });
 }

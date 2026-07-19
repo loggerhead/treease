@@ -2,6 +2,7 @@
 <script lang="ts">
   import { createEventDispatcher } from 'svelte';
   import type { RuntimeStateEventDetail } from '../runtime-loading';
+  import type { UsageBlock } from '../billing/entitlement-gate';
   import type { PathSeg } from '../store/tree-path';
   import GraphViewRuntime from './GraphViewRuntime.svelte';
 
@@ -55,6 +56,10 @@
 
   export function zoomOut(): void {
     runtime?.zoomOut();
+  }
+
+  export function showEntitlementOverlay(block: UsageBlock): void {
+    runtime?.showEntitlementOverlay(block);
   }
 </script>
 

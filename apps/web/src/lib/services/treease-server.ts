@@ -68,12 +68,7 @@ export type UsageSummary = {
 };
 
 export type UsageCapability = 'bidirectional_edit' | 'large_file_processing' | 'ai_suggestion';
-
-export type UsageReservation = {
-  id: string;
-  capability: UsageCapability;
-  state: 'reserved' | 'consumed' | 'released';
-};
+export type RecordedUsageCapability = Exclude<UsageCapability, 'ai_suggestion'>;
 
 export class TreeaseServerError extends Error {
   constructor(
@@ -220,14 +215,14 @@ export async function getUsageSummary(): Promise<UsageSummary> {
   return (await response.json()) as UsageSummary;
 }
 
-export async function createUsageReservation(input: {
-  capability: UsageCapability;
+export async function recordUsageEvent(input: {
+  capability: RecordedUsageCapability;
   idempotencyKey: string;
   metadata?: Record<string, unknown>;
-}): Promise<UsageReservation> {
+}): Promise<UsageSummary | null> {
   const token = await getAccessToken();
-  if (!token) throw new BillingAuthenticationRequiredError();
-  const response = await fetch(`${apiOrigin}/v1/usage/reservations`, {
+  if (!token) return null;
+  const response = await fetch(`${apiOrigin}/v1/usage/events`, {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
@@ -236,24 +231,7 @@ export async function createUsageReservation(input: {
     body: JSON.stringify(input),
   });
   if (!response.ok) throw await readError(response);
-  return (await response.json()) as UsageReservation;
-}
-
-export async function finalizeUsageReservation(
-  id: string,
-  state: 'consumed' | 'released',
-): Promise<void> {
-  const token = await getAccessToken();
-  if (!token) throw new BillingAuthenticationRequiredError();
-  const response = await fetch(`${apiOrigin}/v1/usage/reservations/${encodeURIComponent(id)}`, {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify({ state }),
-  });
-  if (!response.ok) throw await readError(response);
+  return (await response.json()) as UsageSummary;
 }
 
 export type PublicShare = {

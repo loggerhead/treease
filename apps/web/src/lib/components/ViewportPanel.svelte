@@ -36,6 +36,7 @@
   import { Button, IconButton } from './ui/button'
   import { escapeHtml } from '../preview/utils'
   import { trackEvent } from '../analytics/ga4'
+  import type { UsageBlock } from '../billing/entitlement-gate'
 
   export let viewMode: 'graph' | 'text' = 'graph'
   export let onRevealError: (line: number, column: number) => void = () => {}
@@ -323,6 +324,10 @@
 
   export async function waitForGraphReady(): Promise<boolean> {
     return await graphViewer?.waitForGraphReady?.() ?? false;
+  }
+
+  export function showEntitlementOverlay(block: UsageBlock): void {
+    graphViewer?.showEntitlementOverlay?.(block)
   }
 
   export function getSubgraphWorkspacePaths(): PathSeg[][] {

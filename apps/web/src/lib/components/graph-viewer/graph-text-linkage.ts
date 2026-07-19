@@ -10,6 +10,8 @@ import type { CellBoxEntry, GraphViewerClickTarget, LeaferBox } from './model';
 import { getCellEntry, getHighlightTarget, getScrollContext } from './graph-anchor-index';
 import type { TableCellAnchor } from './graph-table-anchor-index';
 
+const GRAPH_HIGHLIGHT_DEBUG = '[DEBUG-graph-highlight-race]';
+
 export type GraphTextLinkageSearchResult = {
   target: 'key' | 'value' | 'node';
   path: PathSeg[];
@@ -66,6 +68,9 @@ export function createGraphTextLinkageController(deps: GraphTextLinkageControlle
 
   function clearRenderedSearchHighlights(): void {
     if (activeSearchHighlights.length === 0) return;
+    if (activeHighlightState?.path.map((segment) => segment?.key).join('.') === 'object.bool') {
+      console.debug(GRAPH_HIGHLIGHT_DEBUG, 'highlight.cleared', { target: activeHighlightState.target });
+    }
     const renderConfig = deps.getRenderConfig();
     const cellBoxByPathMap = deps.getCellBoxByPathMap();
     activeSearchHighlights.forEach((entry) => {
@@ -188,6 +193,9 @@ export function createGraphTextLinkageController(deps: GraphTextLinkageControlle
   function syncTreeSelection(path: PathSeg[], target?: GraphHighlightTarget, trigger?: string): void {
     if (!path?.length || deps.getEnableRevealSync?.() === false) return;
     const source = trigger === 'search' ? 'search' : 'graph';
+    if (path[0]?.key === 'object') {
+      console.debug(GRAPH_HIGHLIGHT_DEBUG, 'selection.written', { target, source });
+    }
     deps.updateActiveTempModel((current) => ({
       ...current,
       treePath: path,
@@ -402,6 +410,7 @@ export function createGraphTextLinkageController(deps: GraphTextLinkageControlle
     if (!path || path.length === 0) return false;
     const { renderHandle, node } = resolveNodeForPath(path);
     let entry = getCellEntry(cellBoxByPathMap, path);
+    const isObjectScalarPath = path[0]?.key === 'object';
     if (options?.navigate && !entry) {
       const anchor = deps.getTableCellAnchorMap?.().get(buildPathKey(path));
       if (anchor && deps.scrollTableCellAnchorIntoView?.(anchor)) {
@@ -415,6 +424,7 @@ export function createGraphTextLinkageController(deps: GraphTextLinkageControlle
       missingRenderableContext = !hasRenderableEntry(entry) && renderHandle == null && !node;
     }
     if (missingRenderableContext) {
+      if (isObjectScalarPath) console.debug(GRAPH_HIGHLIGHT_DEBUG, 'highlight.missing-binding', { options, renderHandle: renderHandle ?? null });
       clearRenderedSearchHighlights();
       activeHighlightState = { path: [...path], target: options?.target };
       return false;
@@ -437,6 +447,7 @@ export function createGraphTextLinkageController(deps: GraphTextLinkageControlle
     }
     const focusBox = highlightBox ?? entry?.row ?? null;
     deps.setGraphHighlightTestState(path, resolvedTarget, focusBox ?? entry?.row ?? null);
+    if (isObjectScalarPath) console.debug(GRAPH_HIGHLIGHT_DEBUG, 'highlight.applied', { target: resolvedTarget, hasBox: Boolean(highlightBox) });
     if (options?.navigate) {
       deps.setGraphRevealTestState(path, resolvedTarget);
       const centeredOnBox = focusBox ? deps.centerOnBox(focusBox) : false;

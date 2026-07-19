@@ -572,6 +572,10 @@ export function createGraphSceneRuntime(deps: GraphSceneRuntimeDeps) {
   }
 
   function beginFullSceneReplace(graphData: GraphSceneViewData): void {
+    console.debug('[DEBUG-graph-highlight-race]', 'scene.replace.start', {
+      nodeCount: graphData.nodes.length,
+      edgeCount: graphData.edges.length,
+    });
     deps.clearSearchHighlight();
     clearRenderedMainGraph();
     deps.beginMainGraphRedraw(graphData.nodes);

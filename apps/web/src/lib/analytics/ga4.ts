@@ -14,7 +14,9 @@ export type AnalyticsEventName =
   | 'parse_failed'
   | 'language_selected'
   | 'subscription_viewed'
-  | 'subscription_management_started';
+  | 'subscription_management_started'
+  | 'entitlement_blocked'
+  | 'quota_threshold_reached';
 
 export type AnalyticsEventParams = Record<string, string | number | boolean>;
 

@@ -1,6 +1,6 @@
 <!-- 职责：Graph View Runtime：Leafer 生命周期、controller 装配、跨域编排、DOM 模板 -->
 <script lang="ts">
-  import { onDestroy, tick, createEventDispatcher } from 'svelte';
+  import { onDestroy, onMount, tick, createEventDispatcher } from 'svelte';
   import { cubicOut } from 'svelte/easing';
   import { fly } from 'svelte/transition';
   import { X } from 'lucide-svelte';
@@ -27,6 +27,7 @@
   import { type MinimapViewData } from '../leafer-minimap';
   import { GraphRuntimeHost, GraphRuntimeLoading } from './graph-viewer/runtime';
   import GraphStreamProgressOverlay from './graph-viewer/GraphStreamProgressOverlay.svelte';
+  import GraphEntitlementOverlay from './graph-viewer/GraphEntitlementOverlay.svelte';
   import SidecarEditor from './Editor/SidecarEditor.svelte';
   import { splitLayoutDrag } from './ui/split-layout';
   import {
@@ -99,13 +100,18 @@
   import { editorLanguageFallback, type SupportedEditorLanguageId } from '../monaco/language-support';
   import type { EditorIO } from '../store/document-session-store';
   import { handleError } from '../utils/error-handler';
-  import { runMeteredCapability } from '../billing/entitlement-gate';
   import { GRAPH_CONFIG } from '../config/constants';
   import { resolveGraphCellDisplayText } from '../graph/literal-display';
   import { type GraphCell, type GraphCellKind, type GraphNode } from '../graph/graph-viewer-render';
   import { buildPathKey } from '../graph/graph-viewer-path';
   import { isDocumentRevisionGuardCurrent } from '../guards/document-revision-guard';
   import { clearGraphSelectionForFullEdit } from './GraphViewer.graph-highlight';
+  import {
+    refreshUsageGate,
+    runPostpaidCapability,
+    type UsageBlock,
+  } from '../billing/entitlement-gate';
+  import { createUsageIdempotencyKey } from '../billing/usage-idempotency';
   import {
     clearGraphBridge,
     installGraphBridge,
@@ -156,11 +162,13 @@
   let graphRuntimeReady = false;
   let showRuntimeLoading = true;
   let renderRuntimeReady = false;
+  let entitlementOverlay: UsageBlock | null = null;
   const graphReadinessWaiters = new Set<{
     resolve: (ready: boolean) => void;
     timeout: ReturnType<typeof setTimeout>;
   }>();
   let documentKeyValue = '';
+  let lastEntitlementDocumentKey = '';
   let languageIdValue: SupportedEditorLanguageId = editorLanguageFallback;
   let editorRevisionValue = 0;
   let graphRenderGuard: GraphRenderGuard | null = null;
@@ -415,7 +423,13 @@
     },
     onRegisteredTargetClick: async ({ path, scope }) => {
       if (scope !== 'root') return;
+      if (path[0]?.key === 'object') {
+        console.debug('[DEBUG-graph-highlight-race]', 'workspace.open.start', { path });
+      }
       await openSubgraphWorkspacePath(path, -1);
+      if (path[0]?.key === 'object') {
+        console.debug('[DEBUG-graph-highlight-race]', 'workspace.open.done', { path });
+      }
     },
     commitProbe: async ({ cell, kind }, text) => {
       if (kind !== 'key' && kind !== 'value') return false;
@@ -492,12 +506,15 @@
     emitEditorMutation,
     updateActiveTempModel: (updater) => activeTempModel.update(updater),
     dispatchGraphEditEvent: (type, detail) => dispatchGraphEditEvent(container, type, detail),
-    runBidirectionalEdit: (documentKey, execute) => runMeteredCapability({
+    runBidirectionalEdit: async (documentKey, execute) => runPostpaidCapability({
       capability: 'bidirectional_edit',
-      idempotencyKey: `document:${documentKey}`,
-      metadata: { surface: 'graph_edit' },
+      createIdempotencyKey: async () => await createUsageIdempotencyKey('bidirectional_edit', documentKey),
+      metadata: { surface: 'graph_cell' },
       surface: 'graph_edit',
       execute,
+      onBlocked: (block) => {
+        entitlementOverlay = block;
+      },
     }),
     handleError,
   });
@@ -1060,6 +1077,19 @@
     applyZoom(1 / 1.1);
   }
 
+  export function showEntitlementOverlay(block: UsageBlock): void {
+    entitlementOverlay = block;
+  }
+
+  async function refreshEntitlementOverlay(): Promise<void> {
+    const block = await refreshUsageGate(entitlementOverlay?.capability);
+    entitlementOverlay = block;
+  }
+
+  onMount(() => {
+    void refreshUsageGate();
+  });
+
   onDestroy(() => {
     graphReadinessWaiters.forEach((waiter) => {
       clearTimeout(waiter.timeout);
@@ -1095,6 +1125,11 @@
     graphAppliedRevision: $graphAppliedRevision,
     lastAutoOffset,
   });
+
+  $: if (documentKeyValue !== lastEntitlementDocumentKey) {
+    lastEntitlementDocumentKey = documentKeyValue;
+    entitlementOverlay = null;
+  }
 
   $: {
     graphRuntimeReady;
@@ -1136,6 +1171,16 @@
     const graphHighlight = $activeTempModel?.graphHighlight ?? null;
     const graphHighlightSignature = buildGraphHighlightSignature(graphHighlight, buildPathKey);
     const appliedRevision = $graphAppliedRevision;
+    const isObjectScalarHighlight = graphHighlight?.path?.[0]?.key === 'object';
+    if (isObjectScalarHighlight) {
+      console.debug('[DEBUG-graph-highlight-race]', 'reactive.observed', {
+        signature: graphHighlightSignature,
+        appliedRevision,
+        lastSignature: lastAppliedGraphHighlightSignature,
+        lastRevision: lastAppliedGraphHighlightRevision,
+        blocked: isFullEditInteractionBlocked(),
+      });
+    }
     if (isFullEditInteractionBlocked()) {
       resetAppliedGraphHighlightState({ clearHighlight: true });
     } else if (!graphHighlightSignature) {
@@ -1239,6 +1284,9 @@
       <GraphRuntimeLoading />
     {/if}
     <GraphStreamProgressOverlay state={streamProgressState} />
+    {#if entitlementOverlay}
+      <GraphEntitlementOverlay block={entitlementOverlay} onRefresh={refreshEntitlementOverlay} />
+    {/if}
     {#if errorMessage}
       <div
         data-testid="graph-error-message"
