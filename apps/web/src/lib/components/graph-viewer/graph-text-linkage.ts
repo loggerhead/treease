@@ -10,8 +10,6 @@ import type { CellBoxEntry, GraphViewerClickTarget, LeaferBox } from './model';
 import { getCellEntry, getHighlightTarget, getScrollContext } from './graph-anchor-index';
 import type { TableCellAnchor } from './graph-table-anchor-index';
 
-const GRAPH_HIGHLIGHT_DEBUG = '[DEBUG-graph-highlight-race]';
-
 export type GraphTextLinkageSearchResult = {
   target: 'key' | 'value' | 'node';
   path: PathSeg[];
@@ -63,24 +61,18 @@ type TableRowMetrics = {
 
 export function createGraphTextLinkageController(deps: GraphTextLinkageControllerDeps) {
   let revealPathToken = 0;
-  let activeSearchHighlights: Array<{ target: LeaferBox; fill?: string; stroke?: string }> = [];
+  let activeSearchHighlights: Array<{
+    target: LeaferBox;
+    selected: boolean;
+    selectedStyle?: LeaferBox['selectedStyle'];
+  }> = [];
   let activeHighlightState: { path: PathSeg[]; target?: GraphHighlightTarget } | null = null;
 
   function clearRenderedSearchHighlights(): void {
     if (activeSearchHighlights.length === 0) return;
-    if (activeHighlightState?.path.map((segment) => segment?.key).join('.') === 'object.bool') {
-      console.debug(GRAPH_HIGHLIGHT_DEBUG, 'highlight.cleared', { target: activeHighlightState.target });
-    }
-    const renderConfig = deps.getRenderConfig();
-    const cellBoxByPathMap = deps.getCellBoxByPathMap();
     activeSearchHighlights.forEach((entry) => {
-      if (entry.fill !== undefined) entry.target.fill = entry.fill;
-      if (entry.stroke !== undefined) entry.target.stroke = entry.stroke;
-    });
-    cellBoxByPathMap.forEach((entry) => {
-      if (entry.row) entry.row.fill = renderConfig.colors.table.rowBackground;
-      if (entry.key) entry.key.fill = 'transparent';
-      if (entry.value) entry.value.fill = 'transparent';
+      entry.target.selected = entry.selected;
+      entry.target.selectedStyle = entry.selectedStyle;
     });
     activeSearchHighlights = [];
     deps.setGraphHighlightTestState(null);
@@ -98,11 +90,14 @@ export function createGraphTextLinkageController(deps: GraphTextLinkageControlle
     if (!target) return;
     activeSearchHighlights.push({
       target,
-      fill: target.fill as string | undefined,
-      stroke: target.stroke as string | undefined,
+      selected: target.selected,
+      selectedStyle: target.selectedStyle,
     });
-    if (style.fill) target.fill = style.fill;
-    if (style.stroke) target.stroke = style.stroke;
+    target.selectedStyle = {
+      ...(target.selectedStyle ?? {}),
+      ...style,
+    };
+    target.selected = true;
   }
 
   async function resolveTreePathByPosition(row: number, column: number): Promise<PathSeg[]> {
@@ -193,9 +188,6 @@ export function createGraphTextLinkageController(deps: GraphTextLinkageControlle
   function syncTreeSelection(path: PathSeg[], target?: GraphHighlightTarget, trigger?: string): void {
     if (!path?.length || deps.getEnableRevealSync?.() === false) return;
     const source = trigger === 'search' ? 'search' : 'graph';
-    if (path[0]?.key === 'object') {
-      console.debug(GRAPH_HIGHLIGHT_DEBUG, 'selection.written', { target, source });
-    }
     deps.updateActiveTempModel((current) => ({
       ...current,
       treePath: path,
@@ -410,7 +402,6 @@ export function createGraphTextLinkageController(deps: GraphTextLinkageControlle
     if (!path || path.length === 0) return false;
     const { renderHandle, node } = resolveNodeForPath(path);
     let entry = getCellEntry(cellBoxByPathMap, path);
-    const isObjectScalarPath = path[0]?.key === 'object';
     if (options?.navigate && !entry) {
       const anchor = deps.getTableCellAnchorMap?.().get(buildPathKey(path));
       if (anchor && deps.scrollTableCellAnchorIntoView?.(anchor)) {
@@ -424,7 +415,6 @@ export function createGraphTextLinkageController(deps: GraphTextLinkageControlle
       missingRenderableContext = !hasRenderableEntry(entry) && renderHandle == null && !node;
     }
     if (missingRenderableContext) {
-      if (isObjectScalarPath) console.debug(GRAPH_HIGHLIGHT_DEBUG, 'highlight.missing-binding', { options, renderHandle: renderHandle ?? null });
       clearRenderedSearchHighlights();
       activeHighlightState = { path: [...path], target: options?.target };
       return false;
@@ -447,7 +437,6 @@ export function createGraphTextLinkageController(deps: GraphTextLinkageControlle
     }
     const focusBox = highlightBox ?? entry?.row ?? null;
     deps.setGraphHighlightTestState(path, resolvedTarget, focusBox ?? entry?.row ?? null);
-    if (isObjectScalarPath) console.debug(GRAPH_HIGHLIGHT_DEBUG, 'highlight.applied', { target: resolvedTarget, hasBox: Boolean(highlightBox) });
     if (options?.navigate) {
       deps.setGraphRevealTestState(path, resolvedTarget);
       const centeredOnBox = focusBox ? deps.centerOnBox(focusBox) : false;

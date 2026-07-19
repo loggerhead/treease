@@ -423,13 +423,7 @@
     },
     onRegisteredTargetClick: async ({ path, scope }) => {
       if (scope !== 'root') return;
-      if (path[0]?.key === 'object') {
-        console.debug('[DEBUG-graph-highlight-race]', 'workspace.open.start', { path });
-      }
       await openSubgraphWorkspacePath(path, -1);
-      if (path[0]?.key === 'object') {
-        console.debug('[DEBUG-graph-highlight-race]', 'workspace.open.done', { path });
-      }
     },
     commitProbe: async ({ cell, kind }, text) => {
       if (kind !== 'key' && kind !== 'value') return false;
@@ -1171,16 +1165,6 @@
     const graphHighlight = $activeTempModel?.graphHighlight ?? null;
     const graphHighlightSignature = buildGraphHighlightSignature(graphHighlight, buildPathKey);
     const appliedRevision = $graphAppliedRevision;
-    const isObjectScalarHighlight = graphHighlight?.path?.[0]?.key === 'object';
-    if (isObjectScalarHighlight) {
-      console.debug('[DEBUG-graph-highlight-race]', 'reactive.observed', {
-        signature: graphHighlightSignature,
-        appliedRevision,
-        lastSignature: lastAppliedGraphHighlightSignature,
-        lastRevision: lastAppliedGraphHighlightRevision,
-        blocked: isFullEditInteractionBlocked(),
-      });
-    }
     if (isFullEditInteractionBlocked()) {
       resetAppliedGraphHighlightState({ clearHighlight: true });
     } else if (!graphHighlightSignature) {

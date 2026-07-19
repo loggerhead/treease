@@ -127,6 +127,28 @@ test('graph click updates tree path and selects editor text from emitted reveal 
   await expect.poll(async () => (await readEditorState(page)).tempModel.selectionLength, { timeout: 5_000 }).toBeGreaterThan(0);
 });
 
+test('graph click highlight survives leaving the hovered value cell', async ({ page }) => {
+  await page.goto('/editor');
+  await waitForEditorReady(page);
+  await waitForGraphRendered(page);
+
+  const boolProbe = (await readGraphClickProbes(page)).find(
+    (probe) => probe.target === 'value' && probe.path.join('.') === 'object.bool' && probe.text === 'true' && probe.coord,
+  );
+  expect(boolProbe?.coord).toBeTruthy();
+  if (!boolProbe?.coord) throw new Error('example JSON boolean graph cell missing');
+
+  await clickGraphProbeAt(page, boolProbe.coord);
+  const canvas = page.getByTestId('graph-viewer-canvas');
+  const canvasBounds = await canvas.boundingBox();
+  if (!canvasBounds) throw new Error('graph canvas bounds missing');
+  await page.mouse.move(canvasBounds.x + 20, canvasBounds.y + 20);
+
+  await expect
+    .poll(async () => readGraphHighlight(page), { timeout: 5_000 })
+    .toEqual(expect.objectContaining({ path: ['$', 'object', 'bool'], target: 'value', fill: '#ffe27a' }));
+});
+
 test('graph click reveals header-table cell paths back to editor', async ({ page }) => {
   await page.goto('/editor');
   await waitForEditorReady(page);

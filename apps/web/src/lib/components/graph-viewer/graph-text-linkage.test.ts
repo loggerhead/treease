@@ -11,6 +11,8 @@ import { resolveTreePathFromTextResult } from '../../services/TreePathService';
 class MockBox {
   fill: string | undefined;
   stroke: string | undefined;
+  selected = false;
+  selectedStyle: { fill?: string; stroke?: string } | undefined;
 
   constructor(fill = 'transparent') {
     this.fill = fill;
@@ -111,8 +113,25 @@ describe('graph-text-linkage', () => {
       cellIndex: 1,
       target: 'value',
     });
-    expect(highlightedBox.fill).toBe('#ff0');
+    expect(highlightedBox.selected).toBe(true);
+    expect(highlightedBox.selectedStyle?.fill).toBe('#ff0');
     expect(setGraphHighlightTestState).toHaveBeenCalledWith(path, 'value', highlightedBox);
+  });
+
+  it('keeps a value cell selected after the pointer leaves the cell', async () => {
+    const path = ['$', 'object', 'bool'] as any[];
+    const pathKey = buildPathKey(path);
+    const highlightedBox = new MockBox();
+    const cellMap = new Map([[pathKey, { value: highlightedBox, row: new MockBox('#fff') }]]);
+    const controller = createGraphTextLinkageController(
+      createBaseDeps({ getCellBoxByPathMap: () => cellMap }),
+    );
+
+    controller.revealPath(path, { target: 'value', navigate: false });
+    await Promise.resolve();
+
+    expect(highlightedBox.selected).toBe(true);
+    expect(highlightedBox.selectedStyle?.fill).toBe('#ff0');
   });
 
   it('scrolls the table row into view when revealPath navigates', async () => {
@@ -243,7 +262,7 @@ describe('graph-text-linkage', () => {
 
     controller.revealPath(path, { target: 'value', navigate: false });
     await Promise.resolve();
-    expect(highlightedBox.fill).toBe('#ff0');
+    expect(highlightedBox.selected).toBe(true);
 
     cellMap.delete(pathKey);
     cellMap.set('$.library.book[46].title', {
@@ -252,7 +271,7 @@ describe('graph-text-linkage', () => {
     });
 
     controller.refreshActiveHighlight();
-    expect(highlightedBox.fill).toBe('transparent');
+    expect(highlightedBox.selected).toBe(false);
   });
 
   it('preserves the requested highlight path when local render bindings are temporarily missing', async () => {
@@ -310,7 +329,8 @@ describe('graph-text-linkage', () => {
     });
 
     controller.refreshActiveHighlight();
-    expect(highlightedBox.fill).toBe('#ff0');
+    expect(highlightedBox.selected).toBe(true);
+    expect(highlightedBox.selectedStyle?.fill).toBe('#ff0');
     expect(updateActiveTempModel).not.toHaveBeenCalled();
   });
 
@@ -358,7 +378,8 @@ describe('graph-text-linkage', () => {
     controller.revealPath(path, { target: 'node', navigate: false });
     await Promise.resolve();
 
-    expect(nodeBox.fill).toBe('#eee');
+    expect(nodeBox.selected).toBe(true);
+    expect(nodeBox.selectedStyle?.fill).toBe('#eee');
   });
 
   it('derives headerless table row scroll fallback directly from the target path', async () => {
