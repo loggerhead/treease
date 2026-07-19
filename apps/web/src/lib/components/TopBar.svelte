@@ -13,6 +13,7 @@
 
   export let tabs: Array<{ id: string; name: string; languageId: SupportedEditorLanguageId; dirty?: boolean }> = []
   export let activeTabId = ''
+  export let showTabDirty = false
   export let canAddTab = true
   export let showTabs = true
   export let showRightActions = true
@@ -141,7 +142,7 @@
               data-testid={`tab-open-${tab.id}`}
               on:click={() => onActivateTab(tab.id)}
             >
-              {tab.dirty ? `${tab.name} •` : tab.name}
+              {showTabDirty && tab.dirty ? `${tab.name} •` : tab.name}
             </button>
             <button
               class="inline-flex items-center justify-center p-0.5"

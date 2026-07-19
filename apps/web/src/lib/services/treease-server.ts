@@ -1,16 +1,12 @@
 import { getSupabaseClient, getSupabaseConfiguration } from '../auth/supabase-auth';
 import type { BillingPriceId } from '../config/pricing';
 import { workspaceHost } from '../workspace-host';
+import { parseShareResource, type ShareResource } from '../share/share-resource';
 
-export type ShareResourceType = 'editor_text_snapshot' | 'command_run';
-
-export type ShareResource = {
-  type: ShareResourceType;
-  payload: Record<string, unknown>;
-};
+export type { ShareResource } from '../share/share-resource';
 
 export type ShareLink = {
-  slug: string;
+  id: string;
   shareUrl: string;
   expiresAt: string;
   createdAt: string;
@@ -37,10 +33,10 @@ export type BillingPricingPrewarm = {
 export type CurrentSubscription = {
   id: string;
   userId: string;
-  plan: 'free' | 'monthly' | 'yearly';
+  tier: 'free' | 'pro';
+  billingCadence: 'monthly' | 'yearly' | null;
   status: 'active' | 'inactive' | 'past_due' | 'canceled';
-  creditsMonthly: number;
-  shareMaxAgeDays: number;
+  currentPeriodEnd: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -48,6 +44,38 @@ export type CurrentSubscription = {
 export type BillingPortalLink = {
   url: string;
 };
+
+export type UsageSummary = {
+  tier: 'free' | 'pro';
+  periodKey: string;
+  limits: {
+    bidirectionalEditDocumentsMonthly: { kind: 'limited'; limit: number } | { kind: 'unlimited' };
+    largeFileProcessingRunsMonthly: { kind: 'limited'; limit: number } | { kind: 'unlimited' };
+    aiSuggestionsMonthly: { kind: 'limited'; limit: number } | { kind: 'unlimited' };
+    shareMaxAgeDays: number;
+  };
+  usage: Partial<Record<UsageCapability, number>>;
+};
+
+export type UsageCapability = 'bidirectional_edit' | 'large_file_processing' | 'ai_suggestion';
+
+export type UsageReservation = {
+  id: string;
+  capability: UsageCapability;
+  state: 'reserved' | 'consumed' | 'released';
+};
+
+export class TreeaseServerError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly code: string | null,
+    readonly details: Record<string, unknown> | null,
+  ) {
+    super(message);
+    this.name = 'TreeaseServerError';
+  }
+}
 
 export class BillingAuthenticationRequiredError extends Error {
   constructor() {
@@ -69,15 +97,21 @@ async function getAccessToken(): Promise<string | null> {
   return data.session?.access_token ?? null;
 }
 
-async function readError(response: Response): Promise<Error> {
+async function readError(response: Response): Promise<TreeaseServerError> {
   let message = `Treease server request failed (${response.status})`;
+  let code: string | null = null;
+  let details: Record<string, unknown> | null = null;
   try {
-    const body = (await response.json()) as { message?: string; error?: string };
+    const body = (await response.json()) as { message?: string; error?: string; details?: unknown };
     message = body.message || body.error || message;
+    code = body.error ?? null;
+    details = body.details && typeof body.details === 'object' && !Array.isArray(body.details)
+      ? body.details as Record<string, unknown>
+      : null;
   } catch {
     // Keep the HTTP status when the server does not return JSON.
   }
-  return new Error(message);
+  return new TreeaseServerError(message, response.status, code, details);
 }
 
 export async function createShareLink(resource: ShareResource, expiresInDays = 7): Promise<ShareLink> {
@@ -158,16 +192,59 @@ export async function createBillingPortalLink(returnUrl: string): Promise<Billin
   return (await response.json()) as BillingPortalLink;
 }
 
+export async function getUsageSummary(): Promise<UsageSummary> {
+  const token = await getAccessToken();
+  if (!token) throw new BillingAuthenticationRequiredError();
+  const response = await fetch(`${apiOrigin}/v1/usage`, { headers: { authorization: `Bearer ${token}` } });
+  if (!response.ok) throw await readError(response);
+  return (await response.json()) as UsageSummary;
+}
+
+export async function createUsageReservation(input: {
+  capability: UsageCapability;
+  idempotencyKey: string;
+  metadata?: Record<string, unknown>;
+}): Promise<UsageReservation> {
+  const token = await getAccessToken();
+  if (!token) throw new BillingAuthenticationRequiredError();
+  const response = await fetch(`${apiOrigin}/v1/usage/reservations`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(input),
+  });
+  if (!response.ok) throw await readError(response);
+  return (await response.json()) as UsageReservation;
+}
+
+export async function finalizeUsageReservation(
+  id: string,
+  state: 'consumed' | 'released',
+): Promise<void> {
+  const token = await getAccessToken();
+  if (!token) throw new BillingAuthenticationRequiredError();
+  const response = await fetch(`${apiOrigin}/v1/usage/reservations/${encodeURIComponent(id)}`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ state }),
+  });
+  if (!response.ok) throw await readError(response);
+}
+
 export type PublicShare = {
-  slug: string;
-  resourceType: ShareResourceType;
-  resourcePayload: Record<string, unknown>;
-  expiresAt: string;
-  createdAt: string;
+  resource: ShareResource;
 };
 
-export async function getPublicShare(slug: string): Promise<PublicShare> {
-  const response = await fetch(`${apiOrigin}/v1/public/shares/${encodeURIComponent(slug)}`);
+export async function getPublicShare(shareID: string): Promise<PublicShare> {
+  const response = await fetch(`${apiOrigin}/v1/public/shares/${encodeURIComponent(shareID)}`);
   if (!response.ok) throw await readError(response);
-  return (await response.json()) as PublicShare;
+  const body = await response.json() as { resourceType?: unknown; resourcePayload?: unknown };
+  const resource = parseShareResource({ type: body.resourceType, payload: body.resourcePayload });
+  if (!resource) throw new Error('分享内容无效或已损坏。');
+  return { resource };
 }

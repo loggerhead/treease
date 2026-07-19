@@ -1377,6 +1377,27 @@
     editor.setScrollPosition(position);
   }
 
+  export function getViewportAnchor(): { topLine: number; scrollLeft: number } | null {
+    if (!editor) return null;
+    return { topLine: editor.getVisibleRanges()[0]?.startLineNumber ?? 1, scrollLeft: editor.getScrollLeft() };
+  }
+
+  export function restoreViewportAnchor(anchor: { topLine: number; scrollLeft: number }): void {
+    if (!editor) return;
+    editor.setScrollPosition({ scrollTop: editor.getTopForLineNumber(anchor.topLine), scrollLeft: anchor.scrollLeft });
+  }
+
+  export function getSelection(): { startLine: number; startColumn: number; endLine: number; endColumn: number } | null {
+    const selection = editor?.getSelection();
+    return selection ? { startLine: selection.startLineNumber, startColumn: selection.startColumn, endLine: selection.endLineNumber, endColumn: selection.endColumn } : null;
+  }
+
+  export function restoreSelection(selection: { startLine: number; startColumn: number; endLine: number; endColumn: number }): void {
+    if (!editor || !monaco) return;
+    editor.setSelection(new monaco.Selection(selection.startLine, selection.startColumn, selection.endLine, selection.endColumn));
+    editor.revealPositionInCenter({ lineNumber: selection.startLine, column: selection.startColumn });
+  }
+
   function clearDiffPlan() {
     diffDecorations?.clear();
     diffDecorations = null;

@@ -623,6 +623,16 @@
     editor?.setScrollPosition(position);
   }
 
+  export function getViewportAnchor(): { topLine: number; scrollLeft: number } | null {
+    if (!editor) return null;
+    return { topLine: editor.getVisibleRanges()[0]?.startLineNumber ?? 1, scrollLeft: editor.getScrollLeft() };
+  }
+
+  export function restoreViewportAnchor(anchor: { topLine: number; scrollLeft: number }): void {
+    if (!editor) return;
+    editor.setScrollPosition({ scrollTop: editor.getTopForLineNumber(anchor.topLine), scrollLeft: anchor.scrollLeft });
+  }
+
   $: if (container) {
     void ensureEditor();
   }

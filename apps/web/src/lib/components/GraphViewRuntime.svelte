@@ -99,6 +99,7 @@
   import { editorLanguageFallback, type SupportedEditorLanguageId } from '../monaco/language-support';
   import type { EditorIO } from '../store/document-session-store';
   import { handleError } from '../utils/error-handler';
+  import { runMeteredCapability } from '../billing/entitlement-gate';
   import { GRAPH_CONFIG } from '../config/constants';
   import { resolveGraphCellDisplayText } from '../graph/literal-display';
   import { type GraphCell, type GraphCellKind, type GraphNode } from '../graph/graph-viewer-render';
@@ -487,6 +488,13 @@
     emitEditorMutation,
     updateActiveTempModel: (updater) => activeTempModel.update(updater),
     dispatchGraphEditEvent: (type, detail) => dispatchGraphEditEvent(container, type, detail),
+    runBidirectionalEdit: (documentKey, execute) => runMeteredCapability({
+      capability: 'bidirectional_edit',
+      idempotencyKey: `document:${documentKey}`,
+      metadata: { surface: 'graph_edit' },
+      surface: 'graph_edit',
+      execute,
+    }),
     handleError,
   });
   const hasActiveEdit = graphValueEditController.hasActiveEdit;
@@ -938,6 +946,22 @@
   ): void {
     if (isFullEditInteractionBlocked()) return;
     graphTextLinkageController.revealPath(path, options);
+  }
+
+  export function getSubgraphWorkspacePaths(): PathSeg[][] {
+    return subgraphWorkspaceController.getChain().map((pane) => pane.path.map((segment) => ({ ...segment })));
+  }
+
+  export async function restoreSubgraphWorkspacePaths(paths: PathSeg[][]): Promise<boolean> {
+    subgraphWorkspaceController.reset();
+    for (let index = 0; index < paths.length; index += 1) {
+      try {
+        await subgraphWorkspaceController.openPath(paths[index]!, index - 1);
+      } catch {
+        return false;
+      }
+    }
+    return true;
   }
 
   const graphViewerRuntimeApi = {

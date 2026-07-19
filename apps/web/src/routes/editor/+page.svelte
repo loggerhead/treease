@@ -54,7 +54,8 @@
   import { importFormatOptions, supportedEditorLanguageSet, editorLanguageFallback, findSupportedLanguageByExtension, type SupportedEditorLanguageId } from '../../lib/monaco/language-support';
   import { computeSynchronizedRuntimeLoading, type RuntimeStateEventDetail } from '../../lib/runtime-loading';
   import { getActiveDocumentText } from '../../lib/store/active-document-authority';
-  import { breadcrumbTargetForPath, type PathSeg } from '../../lib/store/tree-path';
+  import { breadcrumbTargetForPath, isPathSegIndex, pathSegKeyValue, type PathSeg } from '../../lib/store/tree-path';
+  import { PathSegTag } from '@core-wasm/index';
   import { markPreviewCompleted, markPreviewRequested } from '../../lib/test-bridge/runtime-readiness';
   import { setTreeaseUrlPresetState } from '../../lib/test-bridge/window-treease';
   import type { DiffPlan } from '../../lib/graph/diff-plan';
@@ -72,10 +73,18 @@
   import * as ButtonGroup from '../../lib/components/ui/button-group';
   import { IconButton } from '../../lib/components/ui/button';
   import { trackEvent } from '../../lib/analytics/ga4';
+  import { runMeteredCapability } from '../../lib/billing/entitlement-gate';
   import { workspaceHost } from '../../lib/workspace-host';
   import { exchangeAuthCode, signOut } from '../../lib/auth/supabase-auth';
   import { editorWorkspace, getWorkspaceState, updateWorkspaceTab } from '../../lib/store/workspace-store';
+  import { isWorkspaceTabDirty, type EditorWorkspaceTabSummary } from '../../lib/store/editor-workspace';
+  import { clearCompareState, compareState } from '../../lib/store/compare-state';
+  import { getPublicShare } from '../../lib/services/treease-server';
+  import { createShareResource as createResourceFromState, type ShareInteraction, type SharePathSegment, type ShareResource } from '../../lib/share/share-resource';
+  import { restoreShareResource } from '../../lib/share/share-restore';
   import type { WorkspaceCommand, WorkspaceSession } from '../../lib/workspace-host';
+
+  const LARGE_FILE_PROCESSING_THRESHOLD_BYTES = 1024 * 1024;
 
   let editorRef: Editor | null = null;
   let topBarRef: TopBar | null = null;
@@ -83,7 +92,8 @@
   let yqInputRef: YqExpressionInput | null = null;
   let splitLayoutContainer: HTMLDivElement | null = null;
   let containerWidth = 0;
-  let tabSummaries: Array<{ id: string; name: string; languageId: SupportedEditorLanguageId }> = [];
+  let tabSummaries: EditorWorkspaceTabSummary[] = [];
+  let showTabDirty = false;
   let activeTabId = '';
   let scrollSyncLock: 'editor' | 'viewer' | null = null;
   let splitLayoutState = createSplitLayoutState(0.28);
@@ -124,6 +134,8 @@
   let sessionRestoring = false;
   let lastMirroredViewerText = '';
   let lastTrackedGraphViewRevision = -1;
+  let shareLoadError = '';
+  let shareLoading = false;
   const maxTabs = 9;
   const wasmUrl = getDefaultWasmURL();
   type ScrollPosition = { scrollTop: number; scrollLeft: number };
@@ -265,10 +277,83 @@
     }
   }
 
+  async function restoreShare(shareID: string): Promise<void> {
+    shareLoading = true;
+    shareLoadError = '';
+    try {
+      const { resource } = await getPublicShare(shareID);
+      await tick();
+      if (!editorRef || !viewerRef) throw new Error('Editor is not ready.');
+      await restoreShareResource(resource, {
+        editor: editorRef,
+        viewer: viewerRef,
+        setViewMode: (mode) => { viewerViewMode = mode; },
+        clearCompareState,
+        restoreTreePath: (path) => {
+          activeTempModel.update((current) => ({ ...current, treePath: fromSharePath(path) }));
+          return true;
+        },
+        restoreGraphFocus: (path, target) => {
+          const localPath = fromSharePath(path);
+          viewerRef?.revealPath(localPath, { target });
+          return true;
+        },
+        rebuildSubgraphWorkspace: async (panePaths) => await viewerRef.restoreSubgraphWorkspacePaths(panePaths.map(fromSharePath)),
+        reportNavigationWarning: () => toast.warning('The shared document opened, but part of its saved navigation could not be restored.'),
+      });
+    } catch (error) {
+      shareLoadError = error instanceof Error ? error.message : 'Unable to load shared content.';
+      clearCompareState();
+    } finally {
+      shareLoading = false;
+    }
+  }
+
+  async function createShareResource(): Promise<ShareResource> {
+    if (!editorRef) throw new Error('编辑器尚未准备好。');
+    const left = { text: editorRef.getActiveText() ?? '', languageId: editorRef.getActiveLanguage() ?? $languageIdStore };
+    const rightText = viewerRef?.getActiveText();
+    const rightLanguage = viewerRef?.getActiveLanguage();
+    const treePath = toSharePath(get(activeTempModel).treePath);
+    const graphHighlight = get(activeTempModel).graphHighlight;
+    const selection = editorRef.getSelection();
+    const interaction: ShareInteraction = {
+      treePath,
+      focus: graphHighlight
+        ? { type: 'graph', path: toSharePath(graphHighlight.path), target: graphHighlight.target }
+        : selection ? { type: 'editor', selection } : null,
+      subgraphWorkspace: { panePaths: viewerRef?.getSubgraphWorkspacePaths().map(toSharePath) ?? [] },
+    };
+    return createResourceFromState({
+      compareKind: $compareState.kind,
+      left,
+      right: viewerViewMode !== 'text' || rightText === undefined || !rightLanguage ? null : { text: rightText, languageId: rightLanguage },
+      layout: { viewMode: viewerViewMode, activePane: 'left' },
+      viewport: { left: editorRef.getViewportAnchor() ?? { topLine: 1, scrollLeft: 0 }, right: viewerRef?.getViewportAnchor() ?? { topLine: 1, scrollLeft: 0 } },
+      interaction,
+    });
+  }
+
+  function toSharePath(path: PathSeg[]): SharePathSegment[] {
+    return path.map((segment) => isPathSegIndex(segment)
+      ? { type: 'index' as const, index: segment.index }
+      : { type: 'key' as const, key: pathSegKeyValue(segment) });
+  }
+
+  function fromSharePath(path: SharePathSegment[]): PathSeg[] {
+    return path.map((segment) => segment.type === 'index'
+      ? { tag: PathSegTag.INDEX, index: segment.index }
+      : { tag: PathSegTag.KEY, key: segment.key, index: 0 }) as PathSeg[];
+  }
+
   if (typeof window !== 'undefined') {
     urlPreset = resolveEditorUrlPreset(window.location.search);
-    applyUrlPresetUi(urlPreset);
-    setUrlPresetBridgeState(urlPreset);
+    if (urlPreset.shareID.present && urlPreset.shareID.valid) shareLoading = true;
+    if (urlPreset.shareID.present && !urlPreset.shareID.valid) shareLoadError = 'The share link contains an invalid share ID.';
+    if (!urlPreset.shareID.present) {
+      applyUrlPresetUi(urlPreset);
+      setUrlPresetBridgeState(urlPreset);
+    }
   }
 
   function getContainerWidth() {
@@ -369,7 +454,18 @@
         supportedEditorLanguageSet.has(effectiveSource as SupportedEditorLanguageId)
           ? (effectiveSource as SupportedEditorLanguageId)
           : (payload.targetFormat as SupportedEditorLanguageId);
-      await editorRef?.importStream(payload.file, effectiveSource, targetFormat);
+      const importFile = () => editorRef?.importStream(payload.file, effectiveSource, targetFormat);
+      if (payload.file.size >= LARGE_FILE_PROCESSING_THRESHOLD_BYTES) {
+        await runMeteredCapability({
+          capability: 'large_file_processing',
+          idempotencyKey: crypto.randomUUID(),
+          metadata: { byteLength: payload.file.size },
+          surface: 'file_import',
+          execute: importFile,
+        });
+      } else {
+        await importFile();
+      }
       trackEvent('document_import', { source: 'file', language: targetFormat, result: 'success' });
       toast.success(`Imported ${payload.fileName}`);
     } catch (error) {
@@ -730,7 +826,7 @@
 
   function handleCloseTab(id: string) {
     const tab = getWorkspaceState().tabsById[id];
-    if (tab && tab.sourceText !== tab.savedText && !window.confirm(`Close ${tab.name} without saving local changes?`)) {
+    if (showTabDirty && tab && isWorkspaceTabDirty(tab) && !window.confirm(`Close ${tab.name} without saving local changes?`)) {
       return;
     }
     const stop = fileWatchUnsubscribers.get(id);
@@ -920,12 +1016,15 @@
 
   onMount(() => {
     urlPreset ??= resolveEditorUrlPreset(window.location.search);
+    const shareID = urlPreset.shareID;
     let stopWorkspaceSession: (() => void) | null = null;
     let stopWorkspaceCommands: (() => void) | null = null;
     let stopDeepLinks: (() => void) | null = null;
     void (async () => {
       const host = await workspaceHost;
-        if (host.surface === 'desktop') {
+      showTabDirty = host.surface === 'desktop';
+      if (shareID.present) return;
+      if (host.surface === 'desktop') {
         const session = await host.loadSession();
         if (session) await restoreWorkspaceSession(session);
         for (const file of await host.takeStartupFiles()) await openWorkspaceFile(file);
@@ -942,11 +1041,15 @@
       const message = error instanceof Error ? error.message : String(error);
       toast.error(`Desktop workspace initialization failed: ${message}`);
     });
-    void applyEditorUrlPreset(urlPreset).catch((error) => {
-      const message = error instanceof Error ? error.message : String(error);
-      console.error('[editor] failed to apply url preset', { error: message });
-      toast.error(`Editor URL preset failed: ${message}`);
-    });
+    if (shareID.present) {
+      if (shareID.valid && shareID.value) void restoreShare(shareID.value);
+    } else {
+      void applyEditorUrlPreset(urlPreset).catch((error) => {
+        const message = error instanceof Error ? error.message : String(error);
+        console.error('[editor] failed to apply url preset', { error: message });
+        toast.error(`Editor URL preset failed: ${message}`);
+      });
+    }
     const handleResize = () => {
       syncSplitLayoutState(syncSplitRatio(splitLayoutState, getContainerWidth(), splitLayoutConfig));
     };
@@ -983,11 +1086,19 @@
 </svelte:head>
 
 <main class="grid h-screen w-screen bg-[var(--app-bg)] text-[var(--text-primary)]">
+  {#if shareLoadError}
+    <section class="m-auto max-w-md rounded-[18px] border border-[var(--border-muted)] bg-white p-8 text-center shadow-sm" data-testid="share-load-error">
+      <h1 class="text-xl font-semibold">Unable to open share link</h1>
+      <p class="mt-2 text-sm text-[var(--text-muted)]">{shareLoadError}</p>
+      <a class="mt-6 inline-flex rounded-[9px] bg-[var(--accent)] px-4 py-2 text-sm text-white" href="/editor">Open a blank editor</a>
+    </section>
+  {:else}
   <div class="grid h-full min-h-0 min-w-0 overflow-hidden" style:grid-template-rows={shellRowsClass}>
     {#if showTopBar}
       <TopBar
         bind:this={topBarRef}
         tabs={tabSummaries}
+        {showTabDirty}
         {activeTabId}
         canAddTab={tabSummaries.length < maxTabs}
         showTabs={true}
@@ -1188,6 +1299,12 @@
       />
     {/if}
   </div>
+  {#if shareLoading}
+    <div class="fixed inset-0 z-50 grid place-items-center bg-[var(--app-bg)]" data-testid="share-loading" aria-live="polite">
+      <span class="text-sm text-[var(--text-muted)]">Restoring shared content…</span>
+    </div>
+  {/if}
+  {/if}
 </main>
 {#if externalFileConflict}
   <div class="fixed inset-0 z-50 grid place-items-center bg-slate-950/30 p-6" role="presentation">
@@ -1217,5 +1334,5 @@
   </div>
 {/if}
 <SettingsDialog bind:open={settingsOpen} />
-<ShareDialog bind:open={shareOpen} text={getActiveDocumentText()} languageId={$languageIdStore} />
+<ShareDialog bind:open={shareOpen} createResource={createShareResource} />
 <LoginDialog bind:open={loginOpen} />

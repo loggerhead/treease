@@ -1,6 +1,7 @@
 <script lang="ts">
   import { tick } from 'svelte'
   import { toast } from 'svelte-sonner'
+  import { clearCompareState, setCompareOutcome } from '../store/compare-state'
   import {
     compareEditToken,
     documentKey as documentKeyStore,
@@ -62,6 +63,9 @@
   let scratchLanguage: SupportedEditorLanguageId = editorLanguageFallback
   let lastSourceText: string | null = null
   let lastCompareEditToken: number | null = null
+  let lastCompareLeftLanguage: SupportedEditorLanguageId | null = null
+  let lastCompareRightLanguage: SupportedEditorLanguageId | null = null
+  let compareGeneration = 0
   let rightPanelFileInput: HTMLInputElement | null = null
   let sidecarEditor: SidecarEditor | null = null
   let graphViewer: any = null
@@ -133,17 +137,32 @@
     onApplyDiff({ decorations: [], fillRanges: [] })
   }
 
+  function invalidateCompare(): void {
+    compareGeneration += 1
+    clearCompareState()
+    clearCompareHighlights()
+  }
+
   function applyRightDiffPlan(plan: DiffPlan) {
     rightCompareHighlightCount = sidecarEditor?.applyDiffPlan(plan) ?? 0
   }
 
   async function runDiffCompare() {
     if (graphOnly || effectiveViewMode !== 'text') return
+    let runGeneration = 0
     try {
       await waitForSidecarStoreSync()
       const rightText = normalizeCompareText(getSidecarText())
       const leftText = normalizeCompareText($sourceText)
       const rightLanguage = getSidecarLanguage()
+      const compareInput = {
+        leftText,
+        rightText,
+        leftLanguage: languageIdValue,
+        rightLanguage,
+      }
+      runGeneration = compareGeneration + 1
+      compareGeneration = runGeneration
       const readySidecarEditor = await ensureSidecarEditorReady()
       diffError = ''
       const data = await callSharedWasmWorker<DiffResponse>('compare', {
@@ -153,6 +172,8 @@
         left: leftText,
         right: rightText
       })
+      if (!isCurrentCompareInput(compareInput, runGeneration)) return
+      setCompareOutcome(data)
       const monaco = readySidecarEditor?.getMonaco()
       if (monaco) {
         const plans = buildDiffPlans(monaco, data.result.pairs ?? [], leftText, rightText)
@@ -168,10 +189,22 @@
       }
       trackEvent('compare_document', { mode: data.mode, result: 'success' });
     } catch {
+      if (runGeneration === 0 || compareGeneration !== runGeneration) return
       diffError = 'Compare failed'
-      clearCompareHighlights()
+      invalidateCompare()
       trackEvent('compare_document', { result: 'failure' });
     }
+  }
+
+  function isCurrentCompareInput(
+    input: { leftText: string; rightText: string; leftLanguage: SupportedEditorLanguageId; rightLanguage: SupportedEditorLanguageId },
+    generation: number,
+  ): boolean {
+    return compareGeneration === generation
+      && normalizeCompareText($sourceText) === input.leftText
+      && normalizeCompareText(getSidecarText()) === input.rightText
+      && languageIdValue === input.leftLanguage
+      && getSidecarLanguage() === input.rightLanguage
   }
 
   $: languageIdValue = $languageIdStore
@@ -180,13 +213,23 @@
     lastSourceText = $sourceText
   } else if ($sourceText !== lastSourceText) {
     lastSourceText = $sourceText
-    clearCompareHighlights()
+    invalidateCompare()
   }
   $: if ($compareEditToken !== lastCompareEditToken) {
     lastCompareEditToken = $compareEditToken
-    if (hasRightCompareHighlights()) {
-      clearCompareHighlights()
-    }
+    invalidateCompare()
+  }
+  $: if (lastCompareLeftLanguage === null) {
+    lastCompareLeftLanguage = languageIdValue
+  } else if (languageIdValue !== lastCompareLeftLanguage) {
+    lastCompareLeftLanguage = languageIdValue
+    invalidateCompare()
+  }
+  $: if (lastCompareRightLanguage === null) {
+    lastCompareRightLanguage = scratchLanguage
+  } else if (scratchLanguage !== lastCompareRightLanguage) {
+    lastCompareRightLanguage = scratchLanguage
+    invalidateCompare()
   }
   $: if (effectiveViewMode !== 'text' && hasRightCompareHighlights()) {
     clearCompareHighlights()
@@ -243,7 +286,7 @@
   ) {
     if (graphOnly) return
     viewMode = 'text'
-    clearCompareHighlights()
+    invalidateCompare()
     updateScratchText(value)
     updateScratchLanguage(nextLanguage)
     const readySidecarEditor = await ensureSidecarEditorReady()
@@ -278,9 +321,25 @@
     graphViewer?.revealPath?.(path, options)
   }
 
+  export function getSubgraphWorkspacePaths(): PathSeg[][] {
+    return graphViewer?.getSubgraphWorkspacePaths?.() ?? [];
+  }
+
+  export async function restoreSubgraphWorkspacePaths(paths: PathSeg[][]): Promise<boolean> {
+    return await graphViewer?.restoreSubgraphWorkspacePaths?.(paths) ?? false;
+  }
+
   export function setTextScrollPosition(position: { scrollTop: number; scrollLeft: number }) {
     if (graphOnly) return
     sidecarEditor?.setScrollPosition(position)
+  }
+
+  export function getViewportAnchor(): { topLine: number; scrollLeft: number } | null {
+    return sidecarEditor?.getViewportAnchor() ?? null
+  }
+
+  export function restoreViewportAnchor(anchor: { topLine: number; scrollLeft: number }): void {
+    sidecarEditor?.restoreViewportAnchor(anchor)
   }
 
   export function getActiveText(): string {
@@ -430,12 +489,9 @@
     </div>
   {/if}
 
-  {#if !graphOnly}
+  {#if !graphOnly && effectiveViewMode === 'text'}
     <div
       class="absolute inset-0 flex h-full min-h-0 min-w-0 flex-col bg-[var(--panel-bg)]"
-      class:invisible={effectiveViewMode !== 'text'}
-      class:pointer-events-none={effectiveViewMode !== 'text'}
-      aria-hidden={effectiveViewMode !== 'text'}
     >
       {#if diffError}
         <div class="border-b border-[var(--border-muted)] px-3 py-2 text-[12px] text-[#f87171]">
@@ -448,7 +504,7 @@
         onScroll={onTextScroll}
         onContentChange={(text) => {
           updateScratchText(text)
-          clearCompareHighlights()
+          invalidateCompare()
         }}
       />
     </div>

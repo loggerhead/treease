@@ -1,39 +1,63 @@
 <script lang="ts">
-  import { tick } from 'svelte';
+  import { onDestroy, tick } from 'svelte';
   import { Check, Copy, Link2, LoaderCircle } from 'lucide-svelte';
   import { toast } from 'svelte-sonner';
   import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog';
   import { Button } from './ui/button';
-  import { createShareLink } from '../services/treease-server';
-  import type { SupportedEditorLanguageId } from '../monaco/language-support';
+  import { createShareLink, getCurrentSubscription } from '../services/treease-server';
+  import type { ShareResource } from '../share/share-resource';
 
   export let open = false;
-  export let text = '';
-  export let languageId: SupportedEditorLanguageId = 'json';
+  export let createResource: (() => Promise<ShareResource>) | null = null;
 
   let expiresInDays = 7;
   let shareUrl = '';
   let busy = false;
   let copied = false;
+  let isPaidUser = false;
+  let subscriptionRequest = 0;
 
-  $: if (!open) {
+  $: if (open) {
+    void loadSubscription();
+  } else {
+    resetDialog();
+  }
+
+  onDestroy(() => {
+    subscriptionRequest += 1;
+  });
+
+  function resetDialog(): void {
+    subscriptionRequest += 1;
+    expiresInDays = 7;
+    isPaidUser = false;
     shareUrl = '';
     copied = false;
     busy = false;
   }
 
+  async function loadSubscription(): Promise<void> {
+    const request = ++subscriptionRequest;
+    try {
+      const subscription = await getCurrentSubscription();
+      if (request !== subscriptionRequest || !open) return;
+      isPaidUser = subscription.tier === 'pro';
+    } catch {
+      if (request !== subscriptionRequest || !open) return;
+      isPaidUser = false;
+    }
+  }
+
   async function handleCreate() {
     busy = true;
     try {
-      const share = await createShareLink({
-        type: 'editor_text_snapshot',
-        payload: { text, languageId },
-      }, expiresInDays);
+      if (!createResource) throw new Error('Editor is not ready to share.');
+      const share = await createShareLink(await createResource(), expiresInDays);
       shareUrl = share.shareUrl;
       await copyLink();
-      toast.success('分享链接已创建并复制');
+      toast.success('Share link created and copied.');
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : '创建分享链接失败');
+      toast.error(error instanceof Error ? error.message : 'Unable to create share link.');
     } finally {
       busy = false;
     }
@@ -53,15 +77,20 @@
       <DialogTitle>Share this document</DialogTitle>
     </DialogHeader>
     <div class="flex flex-col gap-4 text-[13px] text-[var(--text-muted)]">
-      <p>创建一个只读快照链接，接收者无需登录即可查看。</p>
-      <label class="flex items-center justify-between gap-3">
+      <p>Create a read-only snapshot link that anyone can open without signing in.</p>
+      <div class="flex items-center justify-between gap-3">
         <span>Link expires in</span>
-        <select bind:value={expiresInDays} class="rounded-[8px] border border-[var(--border-muted)] bg-white px-2 py-1.5 text-[var(--text-primary)]">
-          <option value={1}>1 day</option>
-          <option value={7}>7 days</option>
-          <option value={30}>30 days</option>
-        </select>
-      </label>
+        {#if isPaidUser}
+          <select bind:value={expiresInDays} class="rounded-[8px] border border-[var(--border-muted)] bg-white px-2 py-1.5 text-[var(--text-primary)]" aria-label="Link expiration">
+            <option value={1}>1 day</option>
+            <option value={7}>7 days</option>
+            <option value={30}>30 days</option>
+            <option value={365}>365 days</option>
+          </select>
+        {:else}
+          <span class="text-[var(--text-primary)]">7 days</span>
+        {/if}
+      </div>
       {#if shareUrl}
         <div class="flex items-center gap-2 rounded-[10px] border border-[var(--border-muted)] bg-[var(--panel-bg-alt)] p-2">
           <Link2 size={14} class="shrink-0 text-[var(--accent)]" />
@@ -74,7 +103,7 @@
     </div>
     <DialogFooter>
       <Button variant="outline" on:click={() => (open = false)}>Close</Button>
-      <Button disabled={busy || !text.trim()} on:click={handleCreate}>
+      <Button disabled={busy || !createResource} on:click={handleCreate}>
         {#if busy}<LoaderCircle size={13} class="mr-1 animate-spin" />{/if}
         {shareUrl ? 'Create a new link' : 'Create share link'}
       </Button>

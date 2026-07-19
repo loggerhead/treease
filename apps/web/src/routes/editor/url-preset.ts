@@ -19,6 +19,7 @@ export type EditorUrlPresetTelemetry = {
     yqEffective: boolean;
     nest: boolean | null;
     autoFormat: boolean | null;
+    shareID: { present: boolean; value: string | null; valid: boolean };
   };
   ignored: string[];
   finalUi: {
@@ -31,6 +32,7 @@ export type EditorUrlPresetTelemetry = {
 };
 
 export type ResolvedEditorUrlPreset = {
+  shareID: { present: boolean; value: string | null; valid: boolean };
   ui: {
     editor: boolean;
     viewer: boolean;
@@ -60,6 +62,7 @@ const allUiTokens: EditorUrlUiToken[] = ['editor', 'viewer', 'topbar', 'bottomba
 const uiTokenSet = new Set<EditorUrlUiToken>(allUiTokens);
 const commandSet = new Set<EditorUrlActionCommandId>(['format', 'minify', 'sort', 'escape', 'unescape', 'compare']);
 const languageIdMap = new Map(supportedEditorLanguages.map((option) => [option.id.toLowerCase(), option.id as SupportedEditorLanguageId]));
+const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function readLastQueryValue(searchParams: URLSearchParams, key: string): RawQueryValue {
   const values = searchParams.getAll(key);
@@ -132,6 +135,8 @@ export function resolveEditorUrlPreset(search: string): ResolvedEditorUrlPreset 
   const rawNest = readLastQueryValue(searchParams, 'nest');
   const rawAutoFormat = readLastQueryValue(searchParams, 'autoFormat');
   const rawYq = readLastQueryValue(searchParams, 'yq');
+  const rawShareID = readLastQueryValue(searchParams, 'shareID');
+  const shareID = { present: rawShareID.present, value: rawShareID.value, valid: rawShareID.value !== null && uuidPattern.test(rawShareID.value) };
 
   const uiTokens = normalizeUiTokens(rawUi, ignored);
   const language = normalizeLanguageValue(rawLang, ignored);
@@ -198,6 +203,7 @@ export function resolveEditorUrlPreset(search: string): ResolvedEditorUrlPreset 
   const initialViewerMode: 'graph' | 'text' = shouldForceViewer ? 'text' : 'graph';
 
   return {
+    shareID,
     ui: finalUi,
     initialViewerMode,
     language,
@@ -227,6 +233,7 @@ export function resolveEditorUrlPreset(search: string): ResolvedEditorUrlPreset 
         yqEffective,
         nest,
         autoFormat,
+        shareID,
       },
       ignored,
       finalUi,

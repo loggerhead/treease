@@ -114,6 +114,22 @@
     editorCore?.setScrollPosition(position);
   }
 
+  export function getViewportAnchor() {
+    return editorCore?.getViewportAnchor();
+  }
+
+  export function restoreViewportAnchor(anchor: { topLine: number; scrollLeft: number }) {
+    editorCore?.restoreViewportAnchor(anchor);
+  }
+
+  export function getSelection() {
+    return editorCore?.getSelection() ?? null;
+  }
+
+  export function restoreSelection(selection: { startLine: number; startColumn: number; endLine: number; endColumn: number }) {
+    editorCore?.restoreSelection(selection);
+  }
+
   export function applyDiffPlan(plan: DiffPlan) {
     editorCore?.applyDiffPlan(plan);
   }

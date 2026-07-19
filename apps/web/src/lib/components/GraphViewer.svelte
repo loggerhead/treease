@@ -33,6 +33,14 @@
     runtime?.revealPath(path, options);
   }
 
+  export function getSubgraphWorkspacePaths(): PathSeg[][] {
+    return runtime?.getSubgraphWorkspacePaths() ?? [];
+  }
+
+  export async function restoreSubgraphWorkspacePaths(paths: PathSeg[][]): Promise<boolean> {
+    return await runtime?.restoreSubgraphWorkspacePaths(paths) ?? false;
+  }
+
   export async function exportImage(): Promise<void> {
     await runtime?.exportImage();
   }

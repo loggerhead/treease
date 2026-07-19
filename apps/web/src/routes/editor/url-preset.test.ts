@@ -3,6 +3,14 @@ import { describe, expect, it } from 'vitest';
 import { canExecuteUrlCommandForLanguage, resolveEditorUrlPreset, summarizeEditorUrlPresetWarnings } from './url-preset';
 
 describe('editor url preset', () => {
+  it('recognizes and validates shareID as a formal URL input', () => {
+    expect(resolveEditorUrlPreset('?shareID=7f4f2e7b-2d5d-4b76-8d52-91e8b6b3a201&text=%7B%7D').shareID).toEqual({
+      present: true,
+      value: '7f4f2e7b-2d5d-4b76-8d52-91e8b6b3a201',
+      valid: true,
+    });
+    expect(resolveEditorUrlPreset('?shareID=not-a-uuid').shareID.valid).toBe(false);
+  });
   it('parses whitelist ui tokens case-insensitively and deduplicates them', () => {
     const preset = resolveEditorUrlPreset('?ui=Viewer,editor,VIEWER,topbar');
 
