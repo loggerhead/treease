@@ -295,7 +295,10 @@ fn supabase_refresh_endpoint(supabase_url: &str) -> Result<String, String> {
 }
 
 #[tauri::command]
-async fn refresh_access_token(supabase_url: String, anon_key: String) -> Result<String, String> {
+async fn refresh_access_token(
+    supabase_url: String,
+    anon_key: String,
+) -> Result<serde_json::Value, String> {
     let endpoint = supabase_refresh_endpoint(&supabase_url)?;
     if anon_key.trim().is_empty() {
         return Err("The Supabase anonymous key is required.".into());
@@ -324,7 +327,10 @@ async fn refresh_access_token(supabase_url: String, anon_key: String) -> Result<
     refresh_token_entry()?
         .set_password(&tokens.refresh_token)
         .map_err(|error| format!("Cannot update the system credential store: {error}"))?;
-    Ok(tokens.access_token)
+    Ok(serde_json::json!({
+        "accessToken": tokens.access_token,
+        "refreshToken": tokens.refresh_token,
+    }))
 }
 
 #[tauri::command]

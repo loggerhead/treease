@@ -95,7 +95,7 @@ async function getAccessToken(): Promise<string | null> {
   const host = await workspaceHost;
   if (host.surface === 'desktop') {
     const { url, anonKey } = getSupabaseConfiguration();
-    return host.refreshAccessToken(url, anonKey);
+    return (await host.refreshSession(url, anonKey)).accessToken;
   }
   const { data, error } = await getSupabaseClient().auth.getSession();
   if (error) throw error;

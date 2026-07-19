@@ -72,7 +72,7 @@ export const browserWorkspaceHost: WorkspaceHost = {
   async hasRefreshToken() {
     return false;
   },
-  async refreshAccessToken() {
+  async refreshSession() {
     throw new WorkspaceHostUnavailableError('Desktop credential refresh');
   },
   async checkForUpdate() {

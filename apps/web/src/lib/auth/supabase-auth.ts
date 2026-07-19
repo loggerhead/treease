@@ -31,16 +31,57 @@ export function getSupabaseClient(): SupabaseClient {
   return client;
 }
 
+export type EmailAuthFlow = 'sign-in' | 'anonymous-link';
+
+export function isAnonymousUser(user: { is_anonymous?: boolean } | null | undefined): boolean {
+  return user?.is_anonymous === true;
+}
+
+async function restoreDesktopSession(): Promise<Session | null> {
+  const host = await workspaceHost;
+  if (!(await host.hasRefreshToken())) return null;
+
+  const { url, anonKey } = getSupabaseConfiguration();
+  const tokens = await host.refreshSession(url, anonKey);
+  const { data, error } = await getSupabaseClient().auth.setSession({
+    access_token: tokens.accessToken,
+    refresh_token: tokens.refreshToken,
+  });
+  if (error) throw error;
+  return data.session;
+}
+
+export async function ensureAuthSession(): Promise<Session | null> {
+  const supabase = getSupabaseClient();
+  const desktop = import.meta.env.PUBLIC_WORKSPACE_SURFACE === 'desktop';
+  const current = desktop ? await restoreDesktopSession() : (await supabase.auth.getSession()).data.session;
+  if (current) return current;
+
+  const { data, error } = await supabase.auth.signInAnonymously();
+  if (error) throw error;
+  if (desktop && data.session?.refresh_token) {
+    await (await workspaceHost).storeRefreshToken(data.session.refresh_token);
+  }
+  return data.session;
+}
+
 function authRedirectUrl(): string {
   return authCallbackUrl(window.location, import.meta.env.PUBLIC_WORKSPACE_SURFACE === 'desktop');
 }
 
 export async function signInWithProvider(provider: Extract<Provider, 'google' | 'github'>): Promise<void> {
   const desktop = import.meta.env.PUBLIC_WORKSPACE_SURFACE === 'desktop';
-  const { data, error } = await getSupabaseClient().auth.signInWithOAuth({
-    provider,
-    options: { redirectTo: authRedirectUrl(), skipBrowserRedirect: desktop },
-  });
+  const supabase = getSupabaseClient();
+  const session = (await ensureAuthSession()) ?? (await supabase.auth.getSession()).data.session;
+  const { data, error } = isAnonymousUser(session?.user)
+    ? await supabase.auth.linkIdentity({
+        provider,
+        options: { redirectTo: authRedirectUrl(), skipBrowserRedirect: desktop },
+      })
+    : await supabase.auth.signInWithOAuth({
+        provider,
+        options: { redirectTo: authRedirectUrl(), skipBrowserRedirect: desktop },
+      });
   if (error) throw error;
   if (desktop) {
     if (!data.url) throw new Error('The authentication provider did not return a browser URL.');
@@ -48,8 +89,16 @@ export async function signInWithProvider(provider: Extract<Provider, 'google' | 
   }
 }
 
-export async function sendEmailOtp(email: string): Promise<void> {
-  const { error } = await getSupabaseClient().auth.signInWithOtp({
+export async function sendEmailOtp(email: string): Promise<EmailAuthFlow> {
+  const supabase = getSupabaseClient();
+  const session = (await ensureAuthSession()) ?? (await supabase.auth.getSession()).data.session;
+  if (isAnonymousUser(session?.user)) {
+    const { error } = await supabase.auth.updateUser({ email });
+    if (error) throw error;
+    return 'anonymous-link';
+  }
+
+  const { error } = await supabase.auth.signInWithOtp({
     email,
     options: {
       shouldCreateUser: true,
@@ -57,10 +106,15 @@ export async function sendEmailOtp(email: string): Promise<void> {
     },
   });
   if (error) throw error;
+  return 'sign-in';
 }
 
-export async function verifyEmailOtp(email: string, token: string): Promise<Session | null> {
-  const { data, error } = await getSupabaseClient().auth.verifyOtp({ email, token, type: 'email' });
+export async function verifyEmailOtp(email: string, token: string, flow: EmailAuthFlow = 'sign-in'): Promise<Session | null> {
+  const { data, error } = await getSupabaseClient().auth.verifyOtp({
+    email,
+    token,
+    type: flow === 'anonymous-link' ? 'email_change' : 'email',
+  });
   if (error) throw error;
   return data.session;
 }
@@ -77,4 +131,5 @@ export async function signOut(): Promise<void> {
   }
   const { error } = await getSupabaseClient().auth.signOut();
   if (error) throw error;
+  await ensureAuthSession();
 }

@@ -85,8 +85,8 @@ export const desktopWorkspaceHost: WorkspaceHost = {
   async hasRefreshToken() {
     return invoke<boolean>('has_refresh_token');
   },
-  async refreshAccessToken(supabaseUrl, anonKey) {
-    return invoke<string>('refresh_access_token', { supabaseUrl, anonKey });
+  async refreshSession(supabaseUrl, anonKey) {
+    return invoke<{ accessToken: string; refreshToken: string }>('refresh_access_token', { supabaseUrl, anonKey });
   },
   async checkForUpdate() {
     pendingUpdate = await check();

@@ -1,6 +1,6 @@
 import type { User } from '@supabase/supabase-js';
 import { writable } from 'svelte/store';
-import { getSupabaseClient } from './supabase-auth';
+import { ensureAuthSession, getSupabaseClient } from './supabase-auth';
 
 export const authUser = writable<User | null>(null);
 
@@ -17,6 +17,13 @@ export function observeAuthUser(): () => void {
     const { data } = getSupabaseClient().auth.onAuthStateChange((_event, session) => {
       if (generation === observerGeneration) authUser.set(session?.user ?? null);
     });
+    void ensureAuthSession()
+      .then((session) => {
+        if (generation === observerGeneration) authUser.set(session?.user ?? null);
+      })
+      .catch(() => {
+        if (generation === observerGeneration) authUser.set(null);
+      });
     stopAuthObserver = () => data.subscription.unsubscribe();
   }
 

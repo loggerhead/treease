@@ -46,12 +46,13 @@
     usageRequest += 1;
   });
 
-  $: details = $authUser ? {
-    ...authUserDetails($authUser),
-    email: account?.id === $authUser.id ? account.email ?? '' : authUserDetails($authUser).email,
-    avatarUrl: account?.id === $authUser.id ? account.avatarUrl : authUserDetails($authUser).avatarUrl,
+  $: signedInUser = $authUser?.is_anonymous ? null : $authUser;
+  $: details = signedInUser ? {
+    ...authUserDetails(signedInUser),
+    email: account?.id === signedInUser.id ? account.email ?? '' : authUserDetails(signedInUser).email,
+    avatarUrl: account?.id === signedInUser.id ? account.avatarUrl : authUserDetails(signedInUser).avatarUrl,
   } : null;
-  $: if ($authUser?.id !== accountUserId) void loadAccount($authUser?.id ?? null);
+  $: if (signedInUser?.id !== accountUserId) void loadAccount(signedInUser?.id ?? null);
   $: planPresentation = subscription ? presentSubscription(subscription) : null;
   $: if (!accountMenuOpen) subscriptionViewTrackedForOpen = false;
   $: if (accountMenuOpen && subscription && !subscriptionViewTrackedForOpen) {

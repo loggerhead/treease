@@ -70,7 +70,7 @@ export type WorkspaceHost = {
   onCommand(onCommand: (command: WorkspaceCommand) => void): Promise<() => void>;
   storeRefreshToken(refreshToken: string): Promise<void>;
   hasRefreshToken(): Promise<boolean>;
-  refreshAccessToken(supabaseUrl: string, anonKey: string): Promise<string>;
+  refreshSession(supabaseUrl: string, anonKey: string): Promise<{ accessToken: string; refreshToken: string }>;
   checkForUpdate(): Promise<{ version: string } | null>;
   installCheckedUpdate(): Promise<void>;
   clearRefreshToken(): Promise<void>;
