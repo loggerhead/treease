@@ -1,4 +1,4 @@
-// 职责：GraphViewer 文本测量控制器：hidden DOM 测量、scene config 同步、pending frame 管理
+// Responsibility: measure GraphViewer text in hidden DOM, sync scene config, and manage pending frames.
 import type { GraphViewerConfig } from '../../settings/ui-settings';
 
 type MeasurementElements = {

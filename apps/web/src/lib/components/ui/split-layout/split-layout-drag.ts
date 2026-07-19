@@ -1,4 +1,4 @@
-// 职责：共享 split divider 拖拽 action，复用指针拖拽事件，不额外包一层组件
+// Responsibility: shared split-divider drag action reusing pointer-drag events without another component wrapper.
 export type SplitLayoutDragDetail = { clientX: number; clientY: number };
 
 type SplitLayoutDragEvents = {

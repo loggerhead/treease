@@ -1,4 +1,4 @@
-// 职责：GraphViewer Leafer 场景生命周期：create/dispose/remount scene、node/edge layer 管理
+// Responsibility: manage the GraphViewer Leafer scene lifecycle and node/edge layers.
 import type { GraphViewerConfig } from '../../settings/ui-settings';
 import {
   applyGraphDeltaToState,

@@ -1,4 +1,4 @@
-// 职责：共享 split layout 约束与尺寸计算
+// Responsibility: shared split-layout constraints and size calculations.
 export type SplitLayoutMode = 'split' | 'left-only' | 'right-only';
 
 export type SplitLayoutState = {

@@ -1,4 +1,4 @@
-// 职责：preview 模块集成测试：各类型预览值生成
+// Responsibility: integration tests for preview values across supported types.
 import { describe, expect, it } from 'vitest';
 import { valueToTreeNode } from '../../shared/tree-node-value';
 import { generatePreview } from './index';

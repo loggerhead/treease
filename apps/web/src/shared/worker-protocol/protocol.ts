@@ -1,4 +1,4 @@
-// 职责：UI、Worker、test bridge 共享的 Worker 请求/响应与事件类型定义；不含 Worker 入口辅助函数
+// Responsibility: define Worker request, response, and event types shared by UI, Worker, and test bridges; keep entry helpers out.
 import type {
   BuildHoverSubgraphProjectionInput,
   CancelDocumentJobInput,

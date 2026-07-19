@@ -1,4 +1,4 @@
-<!-- 职责：Editor 路由页面：Editor/Viewport/TopBar/BottomBar 组件装配、跨组件事件编排、DOM 交互 -->
+<!-- Responsibility: assemble Editor/Viewport/TopBar/BottomBar, coordinate cross-component events, and handle DOM interaction. -->
 <script lang="ts">
   import { get } from 'svelte/store';
   import { onMount, tick } from 'svelte';
@@ -311,7 +311,7 @@
   }
 
   async function createShareResource(): Promise<ShareResource> {
-    if (!editorRef) throw new Error('编辑器尚未准备好。');
+    if (!editorRef) throw new Error('The editor is not ready yet.');
     const left = { text: editorRef.getActiveText() ?? '', languageId: editorRef.getActiveLanguage() ?? $languageIdStore };
     const rightText = viewerRef?.getActiveText();
     const rightLanguage = viewerRef?.getActiveLanguage();

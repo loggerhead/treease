@@ -357,7 +357,7 @@ it('returns structured diff when isStructurallyEqual returns false for structura
       expect(res.data).toEqual({ status: 'ready', data: [] });
     });
 
-    it('graphSearch 缺少 current snapshot 时返回 snapshotNotReady', async () => {
+    it('graphSearch returns snapshotNotReady when current snapshot is missing', async () => {
       const res = await send({
         id: 71,
         type: 'graphSearch',
@@ -397,7 +397,7 @@ it('returns structured diff when isStructurallyEqual returns false for structura
       );
     });
 
-    it('treePath 缺少 current snapshot 时返回 snapshotNotReady', async () => {
+    it('treePath returns snapshotNotReady when current snapshot is missing', async () => {
       const res = await send({
         id: 8,
         type: 'treePath',
@@ -415,7 +415,7 @@ it('returns structured diff when isStructurallyEqual returns false for structura
       expect(mocked.querySnapshot).not.toHaveBeenCalled();
     });
 
-    it('pathSpan 缺少 current snapshot 时返回 snapshotNotReady', async () => {
+    it('pathSpan returns snapshotNotReady when current snapshot is missing', async () => {
       const res = await send({
         id: 82,
         type: 'pathSpan',
@@ -530,7 +530,7 @@ it('returns structured diff when isStructurallyEqual returns false for structura
       expect(mocked.findJsonBlockAtPosition).toHaveBeenCalledWith('json', text, 1, 2);
     });
 
-    it('graphSearch 在 snapshot 已就绪时只依赖 query 结果，不读取旧 authoritative cache', async () => {
+    it('graphSearch uses query results only when the snapshot is ready, not the old authoritative cache', async () => {
       mocked.querySnapshot
         .mockResolvedValueOnce({
           status: 'ready',
@@ -697,7 +697,7 @@ it('returns structured diff when isStructurallyEqual returns false for structura
 
 
   describe('treePath', () => {
-    it('显式 snapshot 的 treePath 会查询 resolvePath', async () => {
+    it('treePath with an explicit snapshot queries resolvePath', async () => {
       mocked.querySnapshot.mockResolvedValueOnce({
         status: 'ready',
         data: { anchors: [{ path: '$.a', spanStart: 0, spanEnd: 0 }] },
@@ -728,7 +728,7 @@ it('returns structured diff when isStructurallyEqual returns false for structura
       );
     });
 
-    it('TOML treePath 通过 snapshot query 返回路径', async () => {
+    it('TOML treePath returns a path through the snapshot query', async () => {
       mocked.querySnapshot.mockResolvedValueOnce({
         status: 'ready',
         data: { anchors: [{ path: '$.a', spanStart: 0, spanEnd: 0 }] },
@@ -759,7 +759,7 @@ it('returns structured diff when isStructurallyEqual returns false for structura
       );
     });
 
-    it('treePath 不再依赖 worker 侧格式门禁，只消费 query 结果', async () => {
+    it('treePath no longer depends on the Worker-side format gate and consumes query results only', async () => {
       mocked.querySnapshot.mockResolvedValueOnce({
         status: 'ready',
         data: { anchors: [{ path: '$.a', spanStart: 0, spanEnd: 0 }] },
@@ -790,7 +790,7 @@ it('returns structured diff when isStructurallyEqual returns false for structura
       );
     });
 
-    it('已有 diagnostics 时 treePath 仍可通过 snapshot query 返回结构化路径', async () => {
+    it('treePath still returns a structured path through the snapshot query when diagnostics exist', async () => {
       mocked.querySnapshot.mockResolvedValueOnce({
         status: 'ready',
         data: { anchors: [{ path: '$.a', spanStart: 0, spanEnd: 0 }] },

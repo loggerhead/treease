@@ -1,4 +1,4 @@
-// 职责：Worker 侧 tree path handler：统一经 active snapshot 查询 tree path / span / reveal
+// Responsibility: Worker-side tree-path handler; query tree paths, spans, and reveals through the active snapshot.
 import { querySnapshot, type PathSeg, type QueryResult, type SnapshotId, type SnapshotReadResult } from '@core-wasm/index';
 import { pathSegKeyValue } from '../../shared/path';
 import { PathSegTag, type PathSpan } from '@core-wasm/index';

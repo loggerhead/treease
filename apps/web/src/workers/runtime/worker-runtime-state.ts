@@ -1,4 +1,4 @@
-// 职责：Worker 全局运行时状态工厂：createWorkerRuntimeState、clearWorkerRuntimeState，组合 document/graph 状态
+// Responsibility: create and clear global Worker runtime state while composing document and graph state.
 import { createGraphStateService } from './graph-state-service';
 import { clearDocumentRuntimeState, createDocumentRuntimeState, type DocumentAnalysisCacheRuntime } from './document-runtime-state';
 

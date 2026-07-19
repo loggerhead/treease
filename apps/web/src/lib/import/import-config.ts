@@ -3,20 +3,20 @@ declare const __TREEASE_IMPORT_GRAPH_STREAM_FLUSH_BYTE_THRESHOLD__: number;
 declare const __TREEASE_IMPORT_EDITOR_FLUSH_BYTE_THRESHOLD__: number;
 import { resolveCompileTimeNumber } from '../config/constants';
 
-// 浏览器读取导入文件时按块切片，影响单次读取开销和后续 file full-edit 的输入粒度。
+// Slice imported files into chunks for browser reads; affects per-read cost and file full-edit input granularity.
 export const IMPORT_FILE_CHUNK_BYTE_SIZE = resolveCompileTimeNumber(
   typeof __TREEASE_IMPORT_FILE_CHUNK_BYTE_SIZE__ !== 'undefined' ? __TREEASE_IMPORT_FILE_CHUNK_BYTE_SIZE__ : undefined,
   128 * 1024,
 );
 
-// 导入图流在 shared wasm worker 侧累计到该体积后立刻 flush，影响增量出图频率与 worker 往返次数。
+// Flush the imported graph stream from the shared WASM worker at this size; affects incremental graph frequency and worker round trips.
 export const IMPORT_GRAPH_STREAM_FLUSH_BYTE_THRESHOLD = resolveCompileTimeNumber(
   typeof __TREEASE_IMPORT_GRAPH_STREAM_FLUSH_BYTE_THRESHOLD__ !== 'undefined'
     ? __TREEASE_IMPORT_GRAPH_STREAM_FLUSH_BYTE_THRESHOLD__
     : undefined,
   64 * 1024,
 );
-// 导入文本累计到该体积后立即刷入 Monaco，影响用户看到内容的及时性与编辑器重排压力。
+// Flush imported text into Monaco at this size; affects visible latency and editor reflow pressure.
 export const IMPORT_EDITOR_FLUSH_BYTE_THRESHOLD = resolveCompileTimeNumber(
   typeof __TREEASE_IMPORT_EDITOR_FLUSH_BYTE_THRESHOLD__ !== 'undefined'
     ? __TREEASE_IMPORT_EDITOR_FLUSH_BYTE_THRESHOLD__

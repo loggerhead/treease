@@ -1,4 +1,4 @@
-// 职责：GraphViewer 渲染 effect 控制器：调度 document graph 渲染与去重
+// Responsibility: schedule document-graph rendering and deduplicate GraphViewer render effects.
 import {
   createFullEditExternalRenderAuthority,
   type FullEditExternalRenderSessionRef,

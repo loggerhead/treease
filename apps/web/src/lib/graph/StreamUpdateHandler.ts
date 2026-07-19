@@ -1,4 +1,4 @@
-// 职责：Worker stream delta → GraphViewer 可消费图更新的转换处理器
+// Responsibility: convert Worker stream deltas into graph updates consumed by GraphViewer.
 import type { GraphNode, GraphEdge } from './graph-viewer-render';
 import {
   isRawGraphDelta,
@@ -41,9 +41,9 @@ function updateNodeTable(
 }
 
 /**
- * 应用图增量到状态。
- * @param delta 增量数据
- * @param state 当前状态
+ * Apply a graph delta to state.
+ * @param delta Graph delta
+ * @param state Current state
  */
 export function applyGraphDeltaToState(delta: any, state: StreamState): void {
   if (!delta) {
@@ -284,8 +284,8 @@ function applyLayoutPatch(state: StreamState, patch: any): void {
 }
 
 /**
- * 创建空的流状态。
- * @returns 空的流状态
+ * Create an empty stream state.
+ * @returns Empty stream state
  */
 export function createEmptyStreamState(): StreamState {
   return {
@@ -308,9 +308,9 @@ export function replaceStreamState(state: StreamState, next: { nodes: GraphNode[
 }
 
 /**
- * 将流状态转换为数组。
- * @param state 流状态
- * @returns 节点和边数组
+ * Convert stream state to arrays.
+ * @param state Stream state
+ * @returns Node and edge arrays
  */
 export function streamStateToArrays(state: StreamState): { nodes: GraphNode[]; edges: GraphEdge[] } {
   return {

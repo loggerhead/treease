@@ -60,8 +60,8 @@
     commandQuery = $activeTempModel.commandQuery;
 
   /**
-   * 同步命令查询字符串到状态
-   * @param value 输入的命令字符串
+   * Sync the command query string into state.
+   * @param value Input command string
    * @returns void
    */
   function updateCommandQuery(value: string) {
@@ -70,10 +70,10 @@
   }
 
   /**
-   * 获取语言下拉显示名称
-   * @param value 语言 id
-   * @param options 语言选项列表
-   * @returns 对应的显示名称，找不到时返回 id
+   * Get the display name for a language dropdown.
+   * @param value Language ID
+   * @param options Language options
+   * @returns Display name, or the ID when no name is available
    */
   function getLanguageLabel(value: string, options: ReadonlyArray<{ id: string; label: string }>) {
     return options.find((option) => option.id === value)?.label ?? value;

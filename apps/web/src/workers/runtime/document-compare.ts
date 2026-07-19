@@ -1,4 +1,4 @@
-// 职责：Worker 侧文档比较 handler：结构化判等、结构化 diff、文本 diff
+// Responsibility: Worker-side document comparison handler for structural equality, structural diffs, and text diffs.
 import { diffStructured, diffText, isStructurallyEqual, type DiffResult } from '@core-wasm/index';
 import { createEmptyDiffResult } from '../../shared/brand-bridge';
 import type { CompareResponse, WorkerRequest } from './protocol';

@@ -1,4 +1,4 @@
-// 职责：test bridge 类型定义：Editor/Graph/Preview/Settings bridge 接口
+// Responsibility: define Editor, Graph, Preview, and Settings test-bridge interfaces.
 import type { SupportedEditorLanguageId } from '../monaco/language-support';
 import type { Settings, SettingsDocument } from '../settings/ui-settings';
 import type { SettingsStatus } from '../settings/settings-store';

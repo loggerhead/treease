@@ -1,4 +1,4 @@
-// 职责：GraphViewer 高亮与 hover prewarm effect 判定：signature 构建、shouldApply、shouldRunPrewarm
+// Responsibility: determine GraphViewer highlight and hover-prewarm effects, including signature construction and shouldApply/shouldRunPrewarm.
 import type { GraphHighlightState } from '../../store/graph-selection-store';
 import type { PathSeg } from '../../store/tree-path';
 

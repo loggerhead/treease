@@ -1,4 +1,4 @@
-// 职责：test bridge preview 注册：DEV/test 模式下暴露 preview 能力到 window
+// Responsibility: register preview capabilities on window in DEV/test mode.
 import { generatePreview } from '../preview';
 import { supportedEditorLanguageSet, type SupportedEditorLanguageId } from '../monaco/language-support';
 import { registerTreeasePreviewBridge } from './window-treease';

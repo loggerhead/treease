@@ -1,4 +1,4 @@
-// 职责：split-layout-controller 的单元测试
+// Responsibility: unit tests for split-layout-controller.
 import { describe, expect, it } from 'vitest';
 import {
   collapseEditor,

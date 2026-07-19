@@ -1,4 +1,4 @@
-// 职责：graph-edge-filter 和 graph-render-kernel 的单元测试
+// Responsibility: unit tests for graph-edge-filter and graph-render-kernel.
 import { describe, expect, it, vi } from 'vitest';
 import { filterDenseOffscreenEdges } from '../components/graph-viewer/graph-edge-filter';
 import { renderGraphEdges } from '../components/graph-viewer/graph-render-kernel';

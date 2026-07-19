@@ -1,4 +1,4 @@
-// 职责：GraphViewer 测试桥 hook：DEV/test 模式下暴露 runtime probe 状态
+// Responsibility: expose GraphViewer runtime-probe state through test hooks in DEV/test mode.
 
 export function shouldAttachGraphViewerTestHooks(): boolean {
   return import.meta.env.DEV || import.meta.env.MODE === 'test';

@@ -1,4 +1,4 @@
-// 职责：yq 预览控制器：表达式执行、语言推断、友好错误消息、Worker 调用
+// Responsibility: control yq previews, expression execution, language inference, friendly errors, and Worker calls.
 import type { Settings } from '../../lib/settings/ui-settings';
 import type { SupportedEditorLanguageId } from '../../lib/monaco/language-support';
 

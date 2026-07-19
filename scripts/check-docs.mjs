@@ -269,7 +269,7 @@ function validateLineFragment(docPath, token, resolved, collector) {
   if (!fragment) return;
   const match = fragment.match(/^L(\d+)(?:-L(\d+))?$/);
   if (!match) {
-    collector(`${docPath}: 未识别的行号片段 -> ${token}`);
+    collector(`${docPath}: unrecognized line-number fragment -> ${token}`);
     return;
   }
   const start = Number(match[1]);
@@ -277,7 +277,7 @@ function validateLineFragment(docPath, token, resolved, collector) {
   const content = readFileSync(resolved, 'utf8');
   const lineCount = content.split('\n').length;
   if (start < 1 || end < start || end > lineCount) {
-    collector(`${docPath}: 行号片段越界 -> ${token}`);
+    collector(`${docPath}: line-number fragment is out of range -> ${token}`);
   }
 }
 
@@ -286,7 +286,7 @@ function validateDocPaths(docPath, content, collector = fail) {
   for (const token of inlineTokens) {
     const resolved = resolveInlineDocPath(docPath, token);
     if (!existsSync(resolved)) {
-      collector(`${docPath}: 路径不存在 -> ${token}`);
+      collector(`${docPath}: path does not exist -> ${token}`);
       continue;
     }
     validateLineFragment(docPath, token, resolved, collector);
@@ -298,7 +298,7 @@ function validateDocPaths(docPath, content, collector = fail) {
   for (const token of markdownTargets) {
     const resolved = resolveMarkdownLinkTarget(docPath, token);
     if (!existsSync(resolved)) {
-      collector(`${docPath}: 路径不存在 -> ${token}`);
+      collector(`${docPath}: path does not exist -> ${token}`);
       continue;
     }
     validateLineFragment(docPath, token, resolved, collector);
@@ -315,15 +315,15 @@ function validateSensitiveContent(docPath, content) {
   const lines = content.split('\n');
   for (const [index, line] of lines.entries()) {
     if (/\$USER\b/.test(line)) {
-      fail(`${docPath}:${index + 1}: 禁止出现 shell 用户变量名，请改用脱敏占位符`);
+      fail(`${docPath}:${index + 1}: shell user-variable names are forbidden; use a redacted placeholder`);
     }
 
     if (/(^|[^A-Za-z0-9_])\/Users\/[^\s)\]"'`>]+/.test(line)) {
-      fail(`${docPath}:${index + 1}: 禁止出现 macOS home 目录绝对路径，请改用相对路径或脱敏占位符`);
+      fail(`${docPath}:${index + 1}: macOS home-directory absolute paths are forbidden; use a relative path or redacted placeholder`);
     }
 
     if (/(^|[^A-Za-z0-9_])\/home\/[^\s)\]"'`>]+/.test(line)) {
-      fail(`${docPath}:${index + 1}: 禁止出现 home 目录绝对路径，请改用相对路径或脱敏占位符`);
+      fail(`${docPath}:${index + 1}: home-directory absolute paths are forbidden; use a relative path or redacted placeholder`);
     }
   }
 }
@@ -362,7 +362,7 @@ function validateCommandToken(docPath, token) {
       const targetPath = segment.slice('cd '.length).trim().split(/\s+/)[0];
       const resolved = resolveCommandPath(cwd, targetPath);
       if (!existsSync(resolved)) {
-        fail(`${docPath}: cd 目标不存在 -> ${targetPath}`);
+        fail(`${docPath}: cd target does not exist -> ${targetPath}`);
         continue;
       }
       cwd = resolved;
@@ -380,7 +380,7 @@ function validateCommandToken(docPath, token) {
         const normalizedDir = normalizeRelativePath(dir);
         const packageScripts = packageScriptsByDir.get(normalizedDir);
         if (nestedCommand && packageScripts && !packageScripts[nestedCommand]) {
-          fail(`${docPath}: 未在 ${normalizedDir}/package.json 中找到脚本 -> pnpm ${nestedCommand}`);
+          fail(`${docPath}: script not found in ${normalizedDir}/package.json -> pnpm ${nestedCommand}`);
         }
         continue;
       }
@@ -391,8 +391,8 @@ function validateCommandToken(docPath, token) {
         : '';
       const packageScripts = packageScriptsByDir.get(normalizedDir);
       if (packageScripts && !packageScripts[command] && !hasScriptInAnyPackage(command)) {
-        const packageLabel = normalizedDir ? `${normalizedDir}/package.json` : '根 package.json';
-        fail(`${docPath}: 未在 ${packageLabel} 中找到脚本 -> pnpm ${command}`);
+      const packageLabel = normalizedDir ? `${normalizedDir}/package.json` : 'root package.json';
+      fail(`${docPath}: script not found in ${packageLabel} -> pnpm ${command}`);
       }
       continue;
     }
@@ -402,7 +402,7 @@ function validateCommandToken(docPath, token) {
       if (!scriptPath || scriptPath.startsWith('-')) continue;
       const resolved = resolveCommandPath(cwd, scriptPath);
       if (!existsSync(resolved)) {
-        fail(`${docPath}: Node 脚本不存在 -> ${scriptPath}`);
+        fail(`${docPath}: Node script does not exist -> ${scriptPath}`);
       }
       continue;
     }
@@ -411,7 +411,7 @@ function validateCommandToken(docPath, token) {
       const scriptPath = segment.slice('bash '.length).trim().split(/\s+/)[0];
       const resolved = resolveCommandPath(cwd, scriptPath);
       if (!existsSync(resolved)) {
-        fail(`${docPath}: Bash 脚本不存在 -> ${scriptPath}`);
+        fail(`${docPath}: Bash script does not exist -> ${scriptPath}`);
       }
       continue;
     }
@@ -425,7 +425,7 @@ function validateCommandToken(docPath, token) {
           cargoBins
         : cargoBins;
       if (!knownBins.has(match[1])) {
-        fail(`${docPath}: Cargo bin 不存在 -> ${match[1]}`);
+        fail(`${docPath}: Cargo binary does not exist -> ${match[1]}`);
       }
     }
   }
@@ -434,18 +434,18 @@ function validateCommandToken(docPath, token) {
 function validateAgentRoutingContract() {
   const rootAgents = readRepoFile('AGENTS.md');
   if (!rootAgents.includes('docs/contracts/')) {
-    fail('AGENTS.md: 根导航未指向契约文档目录');
+    fail('AGENTS.md: root navigation does not point to the contract-documents directory');
   }
   if (!rootAgents.includes('docs/AGENTS.md')) {
-    fail('AGENTS.md: 根导航未列出 docs/AGENTS.md');
+    fail('AGENTS.md: root navigation does not list docs/AGENTS.md');
   }
 
   if (rootAgents.includes('README.md` → `CONTEXT.md` → `ARCHITECTURE.md` → `docs/README.md`')) {
-    fail('AGENTS.md: 仍存在无条件多跳阅读链');
+    fail('AGENTS.md: unconditional multi-hop reading chain is still present');
   }
 
   if (!rootAgents.includes('pnpm docs:list')) {
-    fail('AGENTS.md: 缺少 pnpm docs:list 前置约束');
+    fail('AGENTS.md: missing pnpm docs:list prerequisite');
   }
 }
 
@@ -454,7 +454,7 @@ function validateDocMetadata(docPath, content) {
 
   const { summary, error } = parseFrontmatter(content);
   if (!summary) {
-    fail(`${docPath}: 文档元信息缺失 -> ${error}`);
+    fail(`${docPath}: missing document metadata -> ${error}`);
   }
 }
 
@@ -470,7 +470,7 @@ function validateHotDocBudgets() {
   for (const [relativePath, maxLines] of Object.entries(budgets)) {
     const lineCount = readRepoFile(relativePath).split('\n').length;
     if (lineCount > maxLines) {
-      fail(`${relativePath}: 行数 ${lineCount} 超过热路径预算 ${maxLines}`);
+      fail(`${relativePath}: ${lineCount} lines exceed the hot-path budget of ${maxLines}`);
     }
   }
 }
@@ -492,14 +492,14 @@ function main() {
   validateHotDocBudgets();
 
   if (errors.length > 0) {
-    console.error('文档一致性校验失败：');
+    console.error('Documentation consistency check failed:');
     for (const error of errors) {
       console.error(`- ${error}`);
     }
     process.exit(1);
   }
 
-  console.log(`文档一致性校验通过，共检查 ${governanceDocs.length} 个治理文档。`);
+  console.log(`Documentation consistency check passed; checked ${governanceDocs.length} governance documents.`);
 }
 
 main();

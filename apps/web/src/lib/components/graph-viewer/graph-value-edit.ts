@@ -1,4 +1,4 @@
-// 职责：GraphViewer 单元格值编辑：inline editor 创建/提交/取消、WASM applyValueEdit 调用
+// Responsibility: edit GraphViewer cell values, including inline editor create/commit/cancel and WASM applyValueEdit calls.
 import type { DocumentTextEdit } from '@core-wasm/index';
 import type { SupportedEditorLanguageId } from '../../monaco/language-support';
 import type { GraphCell, GraphCellKind } from '../../graph/graph-viewer-render';

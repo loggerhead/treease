@@ -1,8 +1,8 @@
 ---
-summary: "套餐权益、限额门控、使用账本与事件上报的唯一产品契约。"
+summary: "The canonical product contract for plan entitlements, quota gates, usage ledgers, and event reporting."
 read_when:
-  - 设计或修改套餐、订阅、使用限额、功能门控或升级引导
-  - 变更 Web 套餐展示、套餐分析事件或 Server 的订阅与用量模型
+  - Designing or changing plans, subscriptions, usage limits, feature gates, or upgrade prompts
+  - Changing Web plan presentation, plan analytics events, or the Server subscription and usage model
 ---
 
 # Billing Entitlements

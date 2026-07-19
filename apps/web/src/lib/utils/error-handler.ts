@@ -1,6 +1,6 @@
 /**
- * 统一错误处理工具
- * 提供结构化的错误日志和上报机制
+ * Shared error-handling utilities.
+ * Provides structured error logging and reporting hooks.
  */
 
 export interface ErrorContext {
@@ -10,9 +10,9 @@ export interface ErrorContext {
 }
 
 /**
- * 处理错误，提供结构化日志和可选的上报机制
- * @param error - 捕获的错误对象
- * @param context - 错误上下文信息，包含组件名、操作名和可选元数据
+ * Handle an error with structured logging and optional reporting.
+ * @param error - Caught error
+ * @param context - Error context with component, operation, and optional metadata
  */
 export function handleError(error: unknown, context: ErrorContext): void {
   const err = error instanceof Error ? error : new Error(String(error));

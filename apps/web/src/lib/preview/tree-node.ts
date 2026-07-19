@@ -1,4 +1,4 @@
-// 职责：TreeNode → preview value 转换：按 SemType/TreeKind 生成可展示的预览值
+// Responsibility: convert TreeNode values into displayable previews based on SemType and TreeKind.
 import { PathSegTag, TreeKind, type PathSeg, type TreeNode } from '@core-wasm/index'
 import { readWasmString } from '../../shared/tree-node-value';
 

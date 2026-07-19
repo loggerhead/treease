@@ -1,4 +1,4 @@
-<!-- 职责：GraphViewer 稳定入口组件：Svelte 输入/输出与 View Runtime DOM 宿主 -->
+<!-- Responsibility: stable GraphViewer entry component hosting Svelte inputs/outputs and the View Runtime DOM. -->
 <script lang="ts">
   import { createEventDispatcher } from 'svelte';
   import type { RuntimeStateEventDetail } from '../runtime-loading';

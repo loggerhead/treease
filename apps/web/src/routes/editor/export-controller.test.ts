@@ -1,4 +1,4 @@
-// 职责：export-controller 的单元测试
+// Responsibility: unit tests for export-controller.
 import { describe, expect, it } from 'vitest';
 import { resolveExportDownloadDetails, resolveExportPreviewDetails, type ExportFormatOption } from './export-controller';
 

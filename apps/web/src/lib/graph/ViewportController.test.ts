@@ -1,4 +1,4 @@
-// 职责：graph-viewport-geometry 视口几何纯函数的单元测试
+// Responsibility: unit tests for graph-viewport-geometry pure functions.
 import { describe, expect, it, vi } from 'vitest';
 import {
   applyZoom,

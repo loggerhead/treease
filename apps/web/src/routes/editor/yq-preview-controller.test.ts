@@ -1,4 +1,4 @@
-// 职责：yq-preview-controller 的单元测试
+// Responsibility: unit tests for yq-preview-controller.
 import { describe, expect, it, vi } from 'vitest';
 import { resolveYqPreviewLanguage, runYqPreview, toFriendlyYqErrorMessage } from './yq-preview-controller';
 

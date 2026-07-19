@@ -11,7 +11,7 @@
   let refreshing = false;
   let capabilityLabel = '';
 
-  $: capabilityLabel = block.capability === 'bidirectional_edit' ? '图编辑' : '大文件处理';
+  $: capabilityLabel = block.capability === 'bidirectional_edit' ? 'graph editing' : 'large-file processing';
 
   async function startUpgrade(): Promise<void> {
     if (checkoutBusy) return;
@@ -21,7 +21,7 @@
       window.location.assign(checkout.url);
     } catch {
       checkoutBusy = false;
-      toast.error('暂时无法打开结账页，请稍后重试。');
+      toast.error('Unable to open checkout right now. Please try again later.');
     }
   }
 
@@ -40,17 +40,17 @@
   <div class="graph-entitlement-overlay__grid" aria-hidden="true"></div>
   <div class="graph-entitlement-overlay__card">
     <div class="graph-entitlement-overlay__mark"><LockKeyhole size={17} strokeWidth={2.25} /></div>
-    <p class="graph-entitlement-overlay__eyebrow">本月 {capabilityLabel} 额度已用完</p>
-    <h2>结果已经算好，升级后即可继续使用</h2>
-    <p>当前图保持在这里，不会丢失。升级到 Pro 后可立即解除限制。</p>
+    <p class="graph-entitlement-overlay__eyebrow">Your monthly {capabilityLabel} quota is used up</p>
+    <h2>Your result is ready. Upgrade to keep using it.</h2>
+    <p>Your current graph is preserved here. Upgrade to Pro to remove the limit immediately.</p>
     <div class="graph-entitlement-overlay__actions">
       <button type="button" class="graph-entitlement-overlay__upgrade" disabled={checkoutBusy} on:click={() => void startUpgrade()}>
-        {checkoutBusy ? '正在打开结账页…' : '升级到 Pro'}
+        {checkoutBusy ? 'Opening checkout…' : 'Upgrade to Pro'}
         <ArrowUpRight size={15} strokeWidth={2.2} />
       </button>
       <button type="button" class="graph-entitlement-overlay__refresh" disabled={refreshing} on:click={() => void refreshEntitlement()}>
         <RefreshCw class={refreshing ? 'animate-spin' : ''} size={14} strokeWidth={2} />
-        我已升级
+        I have upgraded
       </button>
     </div>
   </div>

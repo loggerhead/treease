@@ -1,4 +1,4 @@
-// 职责：export 控制器：导出预览/下载的语言、文件名与提示文案
+// Responsibility: control export-preview/download language, filenames, and user-facing messages.
 import {
   editorLanguageFallback,
   supportedEditorLanguageSet,

@@ -67,9 +67,10 @@ type GraphViewRuntimeLifecycleDeps = {
 };
 
 /**
- * Graph View Runtime 的渲染生命周期：在 full-edit、JSON block 与 incremental
- * 三种可见模式之间维持唯一的 UI 落地顺序。Document Runtime 仍是 snapshot 与
- * freshness 的 authority；这里仅决定过期或已处理结果是否还能更新 View Runtime。
+ * Graph View Runtime rendering lifecycle: keep one UI commit order across full-edit,
+ * JSON-block, and incremental visibility modes. Document Runtime remains the authority
+ * for snapshots and freshness; this layer only decides whether stale or handled results
+ * may still update View Runtime.
  */
 export function createGraphViewRuntimeLifecycle(deps: GraphViewRuntimeLifecycleDeps) {
   let lastFullEditProgressActive = false;

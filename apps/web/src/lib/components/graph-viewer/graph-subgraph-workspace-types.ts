@@ -1,4 +1,4 @@
-// 职责：子图工作区 graph 数据类型定义
+// Responsibility: define subgraph-workspace graph data types.
 import type { GraphEdge, GraphNode } from '../../graph/graph-viewer-render';
 import type { PathSeg } from '../../store/tree-path';
 

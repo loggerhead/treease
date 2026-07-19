@@ -83,10 +83,10 @@
   }
 
   /**
-   * 获取格式选择器展示文本
-   * @param value 格式 id
-   * @param options 格式选项列表
-   * @returns 对应的显示名称，找不到时返回 id
+   * Get the display text for a format selector.
+   * @param value Format ID
+   * @param options Format options
+   * @returns Display name, or the ID when no name is available
    */
   const getFormatLabel = (value: string, options: Array<{ id: string; label: string }>) => {
     return options.find((option) => option.id === value)?.label ?? value

@@ -1,4 +1,4 @@
-// 职责：GraphViewer 视口交互控制器：鼠标/触摸缩放平移、centerOnNode、事件绑定与状态适配
+// Responsibility: control GraphViewer viewport interactions, including mouse/touch pan and zoom, centerOnNode, event binding, and state adaptation.
 import type { GraphNode } from '../../graph/graph-viewer-render';
 import type { LeaferAppLike, LeaferBox } from './model';
 import type { LeaferEventTarget } from './graph-pointer-controller';

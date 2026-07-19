@@ -1,4 +1,4 @@
-// 职责：Worker DocumentJob operation：将请求映射到 Rust runtime，不处理 transport 回包或错误转换。
+// Responsibility: map Worker DocumentJob requests to the Rust runtime; transport responses and error conversion stay elsewhere.
 import type { WorkerRequest } from './protocol';
 import { advanceDocumentJob, buildHoverSubgraphProjection, cancelDocumentJob, querySnapshot, startDocumentJob, type DocumentJobSettings } from '@core-wasm/index';
 

@@ -1,4 +1,4 @@
-// 职责：为 table cell canonical path 建立到 table runtime 行列位置的索引。
+// Responsibility: index table-cell canonical paths by their table-runtime row and column positions.
 import { buildPathKey } from '../../graph/graph-viewer-path';
 import type { GraphCell, GraphCellKind, GraphNode } from '../../graph/graph-viewer-render';
 

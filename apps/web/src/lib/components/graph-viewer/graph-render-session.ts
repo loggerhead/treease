@@ -1,5 +1,5 @@
-// 职责：GraphViewer 渲染管理：直接消费 Document Job streaming events 与 SnapshotReady.mainGraph
-// 自启动 text job 与外部 full-edit document job session 共用同一 projection apply 管线；不使用 buildProjection('mainGraph') fallback。
+// Responsibility: manage GraphViewer rendering from Document Job streaming events and SnapshotReady.mainGraph.
+// Self-started text jobs and external full-edit document-job sessions share one projection-apply pipeline; do not fall back to buildProjection('mainGraph').
 import { type BuilderConfig, type EventBatch, type SnapshotId, type TreeNode } from '@core-wasm/index';
 import { selectGraphStreamChunkSize } from '../../graph-stream/chunk-size-policy';
 import type { GraphViewerConfig } from '../../settings/ui-settings';

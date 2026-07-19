@@ -1,4 +1,4 @@
-// 职责：Editor full-edit 控制器：管理 full-edit session 生命周期、stream attach/commit
+// Responsibility: manage the Editor full-edit session lifecycle, including stream attach and commit.
 import type { BuilderConfig, SnapshotId } from '@core-wasm/index';
 import type * as Monaco from 'monaco-editor';
 import { toast } from 'svelte-sonner';

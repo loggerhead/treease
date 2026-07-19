@@ -84,7 +84,7 @@ export class TreeaseServerError extends Error {
 
 export class BillingAuthenticationRequiredError extends Error {
   constructor() {
-    super('请先登录 Treease，再继续购买。');
+    super('Please sign in to Treease before continuing with the purchase.');
     this.name = 'BillingAuthenticationRequiredError';
   }
 }
@@ -243,6 +243,6 @@ export async function getPublicShare(shareID: string): Promise<PublicShare> {
   if (!response.ok) throw await readError(response);
   const body = await response.json() as { resourceType?: unknown; resourcePayload?: unknown };
   const resource = parseShareResource({ type: body.resourceType, payload: body.resourcePayload });
-  if (!resource) throw new Error('分享内容无效或已损坏。');
+  if (!resource) throw new Error('The shared content is invalid or corrupted.');
   return { resource };
 }

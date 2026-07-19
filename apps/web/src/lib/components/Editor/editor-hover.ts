@@ -1,4 +1,4 @@
-// 职责：Editor hover 预览控制器：hover 位置计算、TreeNode 值读取、preview 触发
+// Responsibility: control Editor hover previews, including position calculation, TreeNode reads, and preview triggering.
 import type * as Monaco from 'monaco-editor';
 import type { PathSeg, SnapshotReadResult } from '@core-wasm/index'
 import type { PreviewContext } from '../../preview/types';

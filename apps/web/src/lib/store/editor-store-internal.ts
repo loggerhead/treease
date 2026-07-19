@@ -628,8 +628,8 @@ function cloneFieldValueForUpdate<K extends keyof EditorState>(key: K, value: Ed
 }
 
 /**
- * 创建编辑器状态管理 store，封装所有状态变更操作
- * @returns 带有 subscribe、actions 和 reset 的 store 对象
+ * Create the editor state-management store and encapsulate all state mutations.
+ * @returns Store object with subscribe, actions, and reset
  */
 function createEditorStore() {
   return {

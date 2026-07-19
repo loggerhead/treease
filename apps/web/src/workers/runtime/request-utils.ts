@@ -1,5 +1,5 @@
 
-// 职责：operation 输入归一化；response 与错误由 worker-transport 统一处理。
+// Responsibility: normalize operation inputs; worker-transport owns response and error handling.
 type MessageWithNestOptions = {
   options?: Record<string, unknown> | undefined;
   nest?: boolean;

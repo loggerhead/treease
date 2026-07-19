@@ -1,4 +1,4 @@
-// 职责：共享的 RawGraphDelta 规范化纯函数：节点/边/表格补丁的 normalize、edgeKey、canonicalPathKey
+// Responsibility: normalize RawGraphDelta nodes, edges, and table patches, including edgeKey and canonicalPathKey.
 import { GraphKind, PathSegTag, SemType, type PathSeg } from '@core-wasm/index'
 import { toWasmPathSeg } from '../brand-bridge';
 import type { RawGraphDelta } from './protocol';

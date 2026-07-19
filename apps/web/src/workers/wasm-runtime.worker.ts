@@ -1,4 +1,4 @@
-// 职责：WASM Worker 薄入口：连接 Worker 生命周期与 transport runtime。
+// Responsibility: thin WASM Worker entry point connecting Worker lifecycle to the transport runtime.
 import type { WorkerContext, WorkerRequest } from './runtime/protocol';
 import { createWorkerTransport } from './runtime/worker-transport';
 

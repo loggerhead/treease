@@ -1,4 +1,4 @@
-// 职责：Worker 入口协议 facade：re-export 共享协议类型，提供 WorkerContext、createOkResponse、createErrorResponse
+// Responsibility: Worker entry protocol facade; re-export shared types and provide WorkerContext, createOkResponse, and createErrorResponse.
 import type { PathSpan } from '@core-wasm/index'
 import type { WorkerRequest, WorkerResponse } from '../../shared/worker-protocol/protocol';
 

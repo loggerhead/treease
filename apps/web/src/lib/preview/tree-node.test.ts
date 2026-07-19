@@ -1,4 +1,4 @@
-// 职责：tree-node preview 转换的单元测试
+// Responsibility: unit tests for tree-node preview conversion.
 import { describe, expect, it } from 'vitest';
 import { PathSegTag, TreeKind } from '@core-wasm/index'
 import { valueToTreeNode } from '../../shared/tree-node-value';

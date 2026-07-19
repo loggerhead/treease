@@ -38,7 +38,7 @@
   const dispatch = createEventDispatcher()
 
   /**
-   * 打开搜索面板并聚焦输入框。
+   * Open the search panel and focus the input.
    * @returns Promise<void>
    */
   export async function openPanel(): Promise<void> {
@@ -49,7 +49,7 @@
   }
 
   /**
-   * 关闭搜索面板。
+   * Close the search panel.
    * @returns void
    */
   export function closePanel(): void {
@@ -57,8 +57,8 @@
   }
 
   /**
-   * 更新查询字符串并触发搜索。
-   * @param next 最新查询值
+   * Update the query string and trigger a search.
+   * @param next Latest query value
    * @returns void
    */
   function setQuery(next: string): void {
@@ -71,8 +71,8 @@
   }
 
   /**
-   * 延迟触发搜索。
-   * @param next 搜索关键字
+   * Trigger a delayed search.
+   * @param next Search keyword
    * @returns void
    */
   function scheduleSearch(next: string): void {
@@ -88,8 +88,8 @@
   }
 
   /**
-   * 执行搜索请求。
-   * @param keyword 搜索关键字
+   * Execute a search request.
+   * @param keyword Search keyword
    * @returns Promise<void>
    */
   async function runSearch(keyword: string): Promise<void> {
@@ -118,8 +118,8 @@
   }
 
   /**
-   * 处理选中搜索结果。
-   * @param item 选中的结果
+   * Handle a selected search result.
+   * @param item Selected result
    * @returns void
    */
   function selectResult(item: GraphSearchResult): void {
@@ -128,8 +128,8 @@
   }
 
   /**
-   * 响应全局快捷键。
-   * @param event 键盘事件
+   * Respond to global keyboard shortcuts.
+   * @param event Keyboard event
    * @returns void
    */
   function handleGlobalKey(event: KeyboardEvent): void {
@@ -146,8 +146,8 @@
   }
 
   /**
-   * 监听点击面板外部以关闭。
-   * @param event 指针事件
+   * Close the panel when the user clicks outside it.
+   * @param event Pointer event
    * @returns void
    */
   function handleDocumentPointerDown(event: PointerEvent): void {

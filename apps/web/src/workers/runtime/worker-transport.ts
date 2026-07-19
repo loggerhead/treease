@@ -1,4 +1,4 @@
-// 职责：Worker transport runtime：生命周期、ready gate、串行分发、request correlation 与统一 ok/error 回包。
+// Responsibility: own Worker transport lifecycle, readiness gating, serialized dispatch, request correlation, and ok/error responses.
 import { TOKEN_TYPES, initWasm } from '@core-wasm/index';
 import { guessLanguage } from '@core-wasm/guess-language';
 
@@ -31,7 +31,7 @@ import type { WorkerContext, WorkerRequest } from './protocol';
 import { handlePathSpan, handleTreePath } from './tree-path';
 import { clearWorkerRuntimeState, createWorkerRuntimeState } from './worker-runtime-state';
 
-const wasmLoadFailureMessage = 'WASM 加载失败，请刷新页面';
+const wasmLoadFailureMessage = 'Failed to load WASM. Please refresh the page.';
 
 type RuntimeRequest = Exclude<WorkerRequest, { type: 'init' | 'dispose' }>;
 

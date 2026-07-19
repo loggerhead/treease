@@ -1,4 +1,4 @@
-// 职责：GraphViewer stream 进度条 store：phase/delta/progress 可订阅状态
+// Responsibility: provide subscribable GraphViewer stream-progress state for phase, delta, and progress.
 import { writable, type Readable } from 'svelte/store';
 import type {
   BuildGraphProgressEvent,

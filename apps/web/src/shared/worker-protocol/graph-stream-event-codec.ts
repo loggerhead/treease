@@ -1,4 +1,4 @@
-// 职责：共享的 graph stream 事件构造与解码工具：createBuildGraphDeltaEvent、normalizeGraphDelta、delta transfer codec
+// Responsibility: build and decode shared graph-stream events, including createBuildGraphDeltaEvent, normalizeGraphDelta, and delta transfer encoding.
 import { decodeGraphDeltaPayload } from '@core-wasm/index';
 import type {
   BuildGraphDeltaEvent,

@@ -1,4 +1,4 @@
-// 职责：editor-hover 的单元测试
+// Responsibility: unit tests for editor-hover.
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { valueToTreeNode } from '../../../shared/tree-node-value';
 import { SemType, TreeKind } from '@core-wasm/index';

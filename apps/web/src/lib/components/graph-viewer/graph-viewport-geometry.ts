@@ -1,4 +1,4 @@
-// 职责：GraphViewer 领域的视口几何纯函数：center、zoom scale、bounds、intersection、applyZoom
+// Responsibility: GraphViewer viewport geometry helpers for center, zoom scale, bounds, intersection, and applyZoom.
 import type { App as LeaferApp, Box } from 'leafer-ui';
 import type { GraphBoxArgs, GraphNode } from '../../graph/graph-viewer-render';
 

@@ -1,4 +1,4 @@
-<!-- 职责：Graph View Runtime：Leafer 生命周期、controller 装配、跨域编排、DOM 模板 -->
+<!-- Responsibility: own the Leafer lifecycle, controller assembly, cross-boundary orchestration, and DOM template. -->
 <script lang="ts">
   import { onDestroy, onMount, tick, createEventDispatcher } from 'svelte';
   import { cubicOut } from 'svelte/easing';
@@ -930,10 +930,10 @@
   }
 
   /**
-   * 注册可高亮的单元格。
-   * @param cell 单元格数据
-   * @param kind 单元格类型
-   * @param box 单元格容器
+   * Register a highlightable cell.
+   * @param cell Cell data
+   * @param kind Cell type
+   * @param box Cell container
    * @returns void
    */
   function getClientProbeCoord(box: LeaferBox): { x: number; y: number } | null {

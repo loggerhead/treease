@@ -1,4 +1,4 @@
-// 职责：GraphViewer 场景渲染内核：节点/边绘制、边过滤调用、render config 应用
+// Responsibility: GraphViewer scene-rendering kernel for node/edge drawing, edge filtering, and render-config application.
 import type { GraphViewerConfig } from '../../settings/ui-settings';
 import { filterDenseOffscreenEdges, type TableVisibleRange } from './graph-edge-filter';
 import {

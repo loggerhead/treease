@@ -1,4 +1,4 @@
-// 职责：Worker 文档运行时状态工厂：createDocumentRuntimeState、clearDocumentRuntimeState
+// Responsibility: create and clear Worker document-runtime state.
 import type { SearchIndexEntry } from './graph-search-types';
 
 export type DocumentAnalysisCacheRuntime = {

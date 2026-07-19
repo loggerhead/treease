@@ -1,4 +1,4 @@
-// 职责：Worker 侧值编辑 handler：applyValueEditCanonical、parseValueForPath
+// Responsibility: Worker-side value-edit handler for applyValueEditCanonical and parseValueForPath.
 import {
   applyValueEditCanonical as applyValueEditCanonicalText,
   parseValueForPath,

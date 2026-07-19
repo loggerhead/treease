@@ -1,4 +1,4 @@
-// 职责：GraphViewer 领域的边过滤逻辑：filterDenseOffscreenEdges，按视口裁剪不可见边
+// Responsibility: GraphViewer edge filtering; filter dense offscreen edges by viewport.
 import type { GraphEdge, GraphNode } from '../../graph/graph-viewer-render';
 import { doesBoxIntersectBounds, getViewportBounds, isPointInBounds } from './graph-viewport-geometry';
 

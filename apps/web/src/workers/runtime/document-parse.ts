@@ -1,4 +1,4 @@
-// 职责：Worker 侧文档解析 handler：parseToTree、analysis job 管理
+// Responsibility: Worker-side document parsing handler, including parseToTree and analysis-job management.
 import {
   advanceDocumentJob,
   findJsonBlockAtPosition,

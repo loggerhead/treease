@@ -1,4 +1,4 @@
-// 职责：定义子图工作区在 full-edit 生命周期中的关闭规则。
+// Responsibility: define subgraph-workspace close rules during the full-edit lifecycle.
 import type { FullEditUiState } from '../../store/full-edit-ui-store';
 
 const subgraphWorkspaceResetReasonSet = new Set<NonNullable<FullEditUiState['reason']>>([

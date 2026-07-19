@@ -1,4 +1,4 @@
-// 职责：WASM Worker 单例管理：初始化、版本校验、共享 Worker 调度
+// Responsibility: manage the WASM Worker singleton, initialization, version checks, and shared Worker scheduling.
 import type { GraphStreamDeltaTransferEvent, WorkerResponse } from '../../shared/worker-protocol/protocol';
 import { decodeGraphStreamDeltaTransferEvent } from '../../shared/worker-protocol/graph-stream-event-codec';
 import debounce from 'lodash-es/debounce';

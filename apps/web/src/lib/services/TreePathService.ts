@@ -22,10 +22,10 @@ export type PathSpanReadResult = SnapshotReadResult<PathSpan | null>;
 
 
 /**
- * 将编辑器的列索引转换为字节列，用于 treePath 计算。
- * @param lineText 当前行文本
- * @param columnIndex 列索引（字符）
- * @returns 字节列索引
+ * Convert an editor column index to a byte column for treePath calculation.
+ * @param lineText Current line text
+ * @param columnIndex Character-based column index
+ * @returns Byte column index
  */
 export function toByteColumn(lineText: string, columnIndex: number): number {
   return textEncoder.encode(lineText.slice(0, columnIndex)).length;

@@ -1,4 +1,4 @@
-// 职责：Editor 文档分析控制器：触发 WASM parse/analysis、管理 analysis 结果与 diagnostics
+// Responsibility: trigger WASM parsing/analysis and manage analysis results and diagnostics.
 import type * as Monaco from 'monaco-editor';
 import { type TreeNode } from '@core-wasm/index';
 import { resolveDocumentAnalysis } from '../../services/DocumentAnalysisResolver';
