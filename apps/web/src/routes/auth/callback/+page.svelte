@@ -2,7 +2,12 @@
   import { onMount } from 'svelte';
   import { goto } from '$app/navigation';
   import { LoaderCircle } from 'lucide-svelte';
-  import { exchangeAuthCode } from '../../../lib/auth/supabase-auth';
+  import {
+    clearAuthSession,
+    exchangeAuthCode,
+    signInWithProviderIndependently,
+    takePendingIdentityProvider,
+  } from '../../../lib/auth/supabase-auth';
   import { resolveAuthReturnPath } from '../../../lib/auth/auth-redirect';
 
   let error = '';
@@ -12,7 +17,13 @@
     const params = new URLSearchParams(window.location.search);
     const code = params.get('code');
     returnPath = resolveAuthReturnPath(params.get('next'));
+    const pendingProvider = takePendingIdentityProvider();
     if (!code) {
+      if (pendingProvider) {
+        await clearAuthSession();
+        await signInWithProviderIndependently(pendingProvider);
+        return;
+      }
       await goto(returnPath);
       return;
     }
@@ -20,6 +31,11 @@
       await exchangeAuthCode(code);
       await goto(returnPath);
     } catch (cause) {
+      if (pendingProvider) {
+        await clearAuthSession();
+        await signInWithProviderIndependently(pendingProvider);
+        return;
+      }
       error = cause instanceof Error ? cause.message : 'Unable to complete login.';
     }
   });

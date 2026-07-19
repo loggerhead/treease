@@ -52,6 +52,8 @@ export function getSupabaseClient(): SupabaseClient {
 }
 
 export type EmailAuthFlow = 'sign-in' | 'anonymous-link';
+type OAuthProvider = Extract<Provider, 'google' | 'github'>;
+const pendingIdentityProviderKey = 'treease.pending-identity-provider';
 
 export function isAnonymousUser(user: { is_anonymous?: boolean } | null | undefined): boolean {
   return user?.is_anonymous === true;
@@ -150,11 +152,22 @@ function authRedirectUrl(): string {
   return authCallbackUrl(window.location, import.meta.env.PUBLIC_WORKSPACE_SURFACE === 'desktop');
 }
 
-export async function signInWithProvider(provider: Extract<Provider, 'google' | 'github'>): Promise<void> {
+function rememberPendingIdentityProvider(provider: OAuthProvider): void {
+  window.localStorage.setItem(pendingIdentityProviderKey, provider);
+}
+
+export function takePendingIdentityProvider(): OAuthProvider | null {
+  const value = window.localStorage.getItem(pendingIdentityProviderKey);
+  window.localStorage.removeItem(pendingIdentityProviderKey);
+  return value === 'google' || value === 'github' ? value : null;
+}
+
+export async function signInWithProvider(provider: OAuthProvider): Promise<void> {
   const desktop = import.meta.env.PUBLIC_WORKSPACE_SURFACE === 'desktop';
   const supabase = getSupabaseClient();
   const session = (await ensureAuthSession()) ?? (await supabase.auth.getSession()).data.session;
   if (isAnonymousUser(session?.user)) {
+    rememberPendingIdentityProvider(provider);
     const { data, error } = await supabase.auth.linkIdentity({
       provider,
       options: { redirectTo: authRedirectUrl(), skipBrowserRedirect: desktop },
@@ -169,9 +182,16 @@ export async function signInWithProvider(provider: Extract<Provider, 'google' | 
 
     // An existing identity cannot be linked. Abandon the anonymous session
     // and authenticate independently without merging or migrating usage.
+    takePendingIdentityProvider();
     await clearAuthSession();
   }
 
+  await signInWithProviderIndependently(provider);
+}
+
+export async function signInWithProviderIndependently(provider: OAuthProvider): Promise<void> {
+  const desktop = import.meta.env.PUBLIC_WORKSPACE_SURFACE === 'desktop';
+  const supabase = getSupabaseClient();
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider,
     options: { redirectTo: authRedirectUrl(), skipBrowserRedirect: desktop },
@@ -183,11 +203,11 @@ export async function signInWithProvider(provider: Extract<Provider, 'google' | 
   }
 }
 
-async function clearAuthSession(): Promise<void> {
+export async function clearAuthSession(): Promise<void> {
   if (import.meta.env.PUBLIC_WORKSPACE_SURFACE === 'desktop') {
     await (await workspaceHost).clearRefreshToken();
   }
-  const { error } = await getSupabaseClient().auth.signOut();
+  const { error } = await getSupabaseClient().auth.signOut({ scope: 'local' });
   if (error) throw error;
 }
 
