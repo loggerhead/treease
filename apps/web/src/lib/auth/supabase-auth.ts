@@ -5,26 +5,6 @@ import { authCallbackUrl } from './auth-redirect';
 
 let client: SupabaseClient | null = null;
 
-type TurnstileApi = {
-  render: (container: HTMLElement, options: {
-    sitekey: string;
-    size: 'invisible';
-    callback: (token: string) => void;
-    'error-callback': () => void;
-    'expired-callback': () => void;
-  }) => string;
-  execute: (widgetId: string) => void;
-  remove: (widgetId: string) => void;
-};
-
-declare global {
-  interface Window {
-    turnstile?: TurnstileApi;
-  }
-}
-
-let turnstileApiPromise: Promise<TurnstileApi> | null = null;
-
 export function getSupabaseConfiguration(): { url: string; anonKey: string } {
   const url = String(import.meta.env.SUPABASE_URL ?? '').trim();
   const anonKey = String(import.meta.env.SUPABASE_ANON_KEY ?? '').trim();
@@ -51,73 +31,7 @@ export function getSupabaseClient(): SupabaseClient {
   return client;
 }
 
-export type EmailAuthFlow = 'sign-in' | 'anonymous-link';
 type OAuthProvider = Extract<Provider, 'google' | 'github'>;
-const pendingIdentityProviderKey = 'treease.pending-identity-provider';
-
-export function isAnonymousUser(user: { is_anonymous?: boolean } | null | undefined): boolean {
-  return user?.is_anonymous === true;
-}
-
-async function loadTurnstile(): Promise<TurnstileApi> {
-  if (typeof window === 'undefined' || typeof document === 'undefined') {
-    throw new Error('Turnstile can only run in a browser session.');
-  }
-  if (window.turnstile) return window.turnstile;
-  if (!turnstileApiPromise) {
-    turnstileApiPromise = new Promise<TurnstileApi>((resolve, reject) => {
-      const existing = document.querySelector<HTMLScriptElement>('script[data-treease-turnstile]');
-      if (existing) {
-        existing.addEventListener('load', () => window.turnstile ? resolve(window.turnstile) : reject(new Error('Turnstile failed to initialize.')), { once: true });
-        existing.addEventListener('error', () => reject(new Error('Turnstile failed to load.')), { once: true });
-        return;
-      }
-
-      const script = document.createElement('script');
-      script.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';
-      script.async = true;
-      script.defer = true;
-      script.dataset.treeaseTurnstile = 'true';
-      script.onload = () => window.turnstile ? resolve(window.turnstile) : reject(new Error('Turnstile failed to initialize.'));
-      script.onerror = () => reject(new Error('Turnstile failed to load.'));
-      document.head.appendChild(script);
-    });
-  }
-  return turnstileApiPromise;
-}
-
-async function getTurnstileToken(): Promise<string> {
-  const siteKey = String(import.meta.env.PUBLIC_TURNSTILE_SITE_KEY ?? '').trim();
-  if (!siteKey) throw new Error('Supabase CAPTCHA is enabled but PUBLIC_TURNSTILE_SITE_KEY is missing.');
-
-  const turnstile = await loadTurnstile();
-  const container = document.createElement('div');
-  container.setAttribute('aria-hidden', 'true');
-  container.style.position = 'fixed';
-  container.style.width = '1px';
-  container.style.height = '1px';
-  container.style.opacity = '0';
-  container.style.pointerEvents = 'none';
-  document.body.appendChild(container);
-
-  let widgetId: string | null = null;
-  try {
-    const token = await new Promise<string>((resolve, reject) => {
-      widgetId = turnstile.render(container, {
-        sitekey: siteKey,
-        size: 'invisible',
-        callback: resolve,
-        'error-callback': () => reject(new Error('Turnstile verification failed.')),
-        'expired-callback': () => reject(new Error('Turnstile verification expired.')),
-      });
-      turnstile.execute(widgetId);
-    });
-    return token;
-  } finally {
-    if (widgetId) turnstile.remove(widgetId);
-    container.remove();
-  }
-}
 
 async function restoreDesktopSession(): Promise<Session | null> {
   const host = await workspaceHost;
@@ -137,59 +51,14 @@ export async function ensureAuthSession(): Promise<Session | null> {
   const supabase = getSupabaseClient();
   const desktop = import.meta.env.PUBLIC_WORKSPACE_SURFACE === 'desktop';
   const current = desktop ? await restoreDesktopSession() : (await supabase.auth.getSession()).data.session;
-  if (current) return current;
-
-  const captchaToken = await getTurnstileToken();
-  const { data, error } = await supabase.auth.signInAnonymously({ options: { captchaToken } });
-  if (error) throw error;
-  if (desktop && data.session?.refresh_token) {
-    await (await workspaceHost).storeRefreshToken(data.session.refresh_token);
-  }
-  return data.session;
+  return current;
 }
 
 function authRedirectUrl(): string {
   return authCallbackUrl(window.location, import.meta.env.PUBLIC_WORKSPACE_SURFACE === 'desktop');
 }
 
-function rememberPendingIdentityProvider(provider: OAuthProvider): void {
-  window.localStorage.setItem(pendingIdentityProviderKey, provider);
-}
-
-export function takePendingIdentityProvider(): OAuthProvider | null {
-  const value = window.localStorage.getItem(pendingIdentityProviderKey);
-  window.localStorage.removeItem(pendingIdentityProviderKey);
-  return value === 'google' || value === 'github' ? value : null;
-}
-
 export async function signInWithProvider(provider: OAuthProvider): Promise<void> {
-  const desktop = import.meta.env.PUBLIC_WORKSPACE_SURFACE === 'desktop';
-  const supabase = getSupabaseClient();
-  const session = (await ensureAuthSession()) ?? (await supabase.auth.getSession()).data.session;
-  if (isAnonymousUser(session?.user)) {
-    rememberPendingIdentityProvider(provider);
-    const { data, error } = await supabase.auth.linkIdentity({
-      provider,
-      options: { redirectTo: authRedirectUrl(), skipBrowserRedirect: desktop },
-    });
-    if (!error) {
-      if (desktop) {
-        if (!data.url) throw new Error('The authentication provider did not return a browser URL.');
-        await (await workspaceHost).openExternal(new URL(data.url));
-      }
-      return;
-    }
-
-    // An existing identity cannot be linked. Abandon the anonymous session
-    // and authenticate independently without merging or migrating usage.
-    takePendingIdentityProvider();
-    await clearAuthSession();
-  }
-
-  await signInWithProviderIndependently(provider);
-}
-
-export async function signInWithProviderIndependently(provider: OAuthProvider): Promise<void> {
   const desktop = import.meta.env.PUBLIC_WORKSPACE_SURFACE === 'desktop';
   const supabase = getSupabaseClient();
   const { data, error } = await supabase.auth.signInWithOAuth({
@@ -211,15 +80,8 @@ export async function clearAuthSession(): Promise<void> {
   if (error) throw error;
 }
 
-export async function sendEmailOtp(email: string): Promise<EmailAuthFlow> {
+export async function sendEmailOtp(email: string): Promise<void> {
   const supabase = getSupabaseClient();
-  const session = (await ensureAuthSession()) ?? (await supabase.auth.getSession()).data.session;
-  if (isAnonymousUser(session?.user)) {
-    const { error } = await supabase.auth.updateUser({ email });
-    if (!error) return 'anonymous-link';
-    await clearAuthSession();
-  }
-
   const { error } = await supabase.auth.signInWithOtp({
     email,
     options: {
@@ -228,14 +90,13 @@ export async function sendEmailOtp(email: string): Promise<EmailAuthFlow> {
     },
   });
   if (error) throw error;
-  return 'sign-in';
 }
 
-export async function verifyEmailOtp(email: string, token: string, flow: EmailAuthFlow = 'sign-in'): Promise<Session | null> {
+export async function verifyEmailOtp(email: string, token: string): Promise<Session | null> {
   const { data, error } = await getSupabaseClient().auth.verifyOtp({
     email,
     token,
-    type: flow === 'anonymous-link' ? 'email_change' : 'email',
+    type: 'email',
   });
   if (error) throw error;
   return data.session;
@@ -249,5 +110,4 @@ export async function exchangeAuthCode(code: string): Promise<Session | null> {
 
 export async function signOut(): Promise<void> {
   await clearAuthSession();
-  await ensureAuthSession();
 }

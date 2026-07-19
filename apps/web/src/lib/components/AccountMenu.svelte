@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onDestroy, onMount } from 'svelte';
-  import { ChevronDown, Gauge, LogIn, LogOut, RefreshCw, Settings, User as UserIcon } from 'lucide-svelte';
+  import { ChevronDown, Gauge, LogOut, RefreshCw, Settings, User as UserIcon } from 'lucide-svelte';
   import { toast } from 'svelte-sonner';
   import { trackEvent } from '../analytics/ga4';
   import { authUser, authUserDetails, observeAuthUser } from '../auth/auth-user-store';
@@ -46,11 +46,9 @@
     usageRequest += 1;
   });
 
-  $: isAnonymous = $authUser?.is_anonymous === true;
   $: signedInUser = $authUser;
   $: details = $authUser ? {
     ...authUserDetails($authUser),
-    name: isAnonymous ? 'Guest' : authUserDetails($authUser).name,
     email: signedInUser && account?.id === signedInUser.id ? account.email ?? '' : authUserDetails($authUser).email,
     avatarUrl: signedInUser && account?.id === signedInUser.id ? account.avatarUrl : authUserDetails($authUser).avatarUrl,
   } : null;
@@ -154,7 +152,7 @@
 {#if variant === 'landing' && !details}
   <button class="landing-login" type="button" data-testid="account-login-button" on:click={onLogin}>Login</button>
 {:else}
-  <div class:landing-account-actions={variant === 'landing' && isAnonymous}>
+  <div>
   <DropdownMenu bind:open={accountMenuOpen}>
     <DropdownMenuTrigger
       class={variant === 'landing'
@@ -191,9 +189,7 @@
           </span>
           <span class="min-w-0">
             <strong class="block truncate text-[14px] font-semibold text-[#111827]">{details.name}</strong>
-            {#if isAnonymous}
-              <span class="mt-0.5 block truncate text-[12px] text-[#64748b]">Anonymous session</span>
-            {:else if details.email}
+            {#if details.email}
               <span class="mt-0.5 block truncate text-[12px] text-[#64748b]">{details.email}</span>
             {/if}
           </span>
@@ -242,7 +238,7 @@
             </div>
           {/if}
         </div>
-        {#if subscription && !isAnonymous}
+        {#if subscription}
           <DropdownMenuItem
             class="rounded-[7px] px-2 py-2 text-[13px]"
             data-testid="account-manage-plan-menu-item"
@@ -253,18 +249,14 @@
           </DropdownMenuItem>
         {/if}
         <DropdownMenuSeparator class="my-1" />
-        {#if isAnonymous}
-          <DropdownMenuItem data-testid="account-login-menu-item" onSelect={onLogin}><LogIn size={14} />Login</DropdownMenuItem>
-        {:else}
-          <DropdownMenuItem
-            variant="destructive"
-            class="rounded-[7px] px-2 py-2 text-[13px]"
-            data-testid="account-logout-menu-item"
-            onSelect={() => void onLogout()}
-          >
-            <LogOut size={14} />Log out
-          </DropdownMenuItem>
-        {/if}
+        <DropdownMenuItem
+          variant="destructive"
+          class="rounded-[7px] px-2 py-2 text-[13px]"
+          data-testid="account-logout-menu-item"
+          onSelect={() => void onLogout()}
+        >
+          <LogOut size={14} />Log out
+        </DropdownMenuItem>
         {#if variant === 'editor'}
           <DropdownMenuSeparator class="my-1" />
           {#if desktop}
@@ -285,9 +277,6 @@
       {/if}
     </DropdownMenuContent>
   </DropdownMenu>
-  {#if variant === 'landing' && isAnonymous}
-    <button class="landing-login" type="button" data-testid="account-login-button" on:click={onLogin}>Login</button>
-  {/if}
   </div>
 {/if}
 
@@ -306,12 +295,6 @@
 
   .landing-login:hover {
     color: var(--accent-strong);
-  }
-
-  .landing-account-actions {
-    display: flex;
-    align-items: center;
-    gap: 12px;
   }
 
   .avatar-image,

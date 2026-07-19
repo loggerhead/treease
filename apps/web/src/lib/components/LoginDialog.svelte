@@ -3,7 +3,7 @@
   import { toast } from 'svelte-sonner';
   import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog';
   import { Button } from './ui/button';
-  import { sendEmailOtp, signInWithProvider, verifyEmailOtp, type EmailAuthFlow } from '../auth/supabase-auth';
+  import { sendEmailOtp, signInWithProvider, verifyEmailOtp } from '../auth/supabase-auth';
   import { workspaceHost } from '../workspace-host';
 
   export let open = false;
@@ -14,7 +14,6 @@
   let otpSent = false;
   let busy = false;
   let error = '';
-  let emailFlow: EmailAuthFlow = 'sign-in';
 
   $: if (!open) {
     email = '';
@@ -22,7 +21,6 @@
     otpSent = false;
     busy = false;
     error = '';
-    emailFlow = 'sign-in';
   }
 
   async function handleProvider(provider: 'google' | 'github') {
@@ -45,7 +43,7 @@
     busy = true;
     error = '';
     try {
-      emailFlow = await sendEmailOtp(normalizedEmail);
+      await sendEmailOtp(normalizedEmail);
       otpSent = true;
       toast.success('A verification code was sent to your email.');
     } catch (cause) {
@@ -65,7 +63,7 @@
     busy = true;
     error = '';
     try {
-      const session = await verifyEmailOtp(normalizedEmail, normalizedOtp, emailFlow);
+      const session = await verifyEmailOtp(normalizedEmail, normalizedOtp);
       if (session?.refresh_token && (await workspaceHost).surface === 'desktop') {
         await (await workspaceHost).storeRefreshToken(session.refresh_token);
       }

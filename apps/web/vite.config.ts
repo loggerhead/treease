@@ -80,7 +80,6 @@ export default defineConfig(({ mode }) => {
       // Keep the public Supabase names aligned with apps/server and Vercel production.
       'import.meta.env.SUPABASE_URL': JSON.stringify(env.SUPABASE_URL ?? ''),
       'import.meta.env.SUPABASE_ANON_KEY': JSON.stringify(env.SUPABASE_ANON_KEY ?? ''),
-      'import.meta.env.PUBLIC_TURNSTILE_SITE_KEY': JSON.stringify(env.PUBLIC_TURNSTILE_SITE_KEY ?? ''),
       'import.meta.env.GA_MEASUREMENT_ID': JSON.stringify(env.GA_MEASUREMENT_ID ?? ''),
       'import.meta.env.GA_CONSENT_REQUIRED': JSON.stringify(env.GA_CONSENT_REQUIRED ?? '0'),
       'import.meta.env.PUBLIC_PRICING_MONTHLY_PRICE': JSON.stringify(env.PUBLIC_PRICING_MONTHLY_PRICE ?? ''),
