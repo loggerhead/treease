@@ -152,7 +152,7 @@
 </script>
 
 {#if variant === 'landing' && !details}
-  <button class="landing-login" type="button" data-testid="account-login-button" on:click={onLogin}><LogIn size={14} />Login</button>
+  <button class="landing-login" type="button" data-testid="account-login-button" on:click={onLogin}>Login</button>
 {:else}
   <div class:landing-account-actions={variant === 'landing' && isAnonymous}>
   <DropdownMenu bind:open={accountMenuOpen}>
@@ -277,16 +277,16 @@
           </DropdownMenuItem>
         {/if}
       {:else}
-        <DropdownMenuItem data-testid="account-login-menu-item" onSelect={onLogin}><LogIn size={14} />Login</DropdownMenuItem>
+        <DropdownMenuItem data-testid="account-login-menu-item" onSelect={onLogin}>Login</DropdownMenuItem>
         {#if desktop}
           <DropdownMenuItem data-testid="account-check-updates-menu-item" onSelect={() => void onCheckForUpdates()}>Check for updates</DropdownMenuItem>
         {/if}
-        <DropdownMenuItem data-testid="account-settings-menu-item" onSelect={onOpenSettings}>Settings</DropdownMenuItem>
+        <DropdownMenuItem data-testid="account-settings-menu-item" onSelect={onOpenSettings}><Settings size={14} />Settings</DropdownMenuItem>
       {/if}
     </DropdownMenuContent>
   </DropdownMenu>
   {#if variant === 'landing' && isAnonymous}
-    <button class="landing-login" type="button" data-testid="account-login-button" on:click={onLogin}><LogIn size={14} />Login</button>
+    <button class="landing-login" type="button" data-testid="account-login-button" on:click={onLogin}>Login</button>
   {/if}
   </div>
 {/if}
@@ -295,7 +295,6 @@
   .landing-login {
     display: inline-flex;
     align-items: center;
-    gap: 5px;
     border: 0;
     background: transparent;
     color: var(--muted);
