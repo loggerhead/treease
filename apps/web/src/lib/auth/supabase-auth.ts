@@ -73,15 +73,29 @@ export async function signInWithProvider(provider: Extract<Provider, 'google' | 
   const desktop = import.meta.env.PUBLIC_WORKSPACE_SURFACE === 'desktop';
   const supabase = getSupabaseClient();
   const session = (await ensureAuthSession()) ?? (await supabase.auth.getSession()).data.session;
-  const { data, error } = isAnonymousUser(session?.user)
-    ? await supabase.auth.linkIdentity({
-        provider,
-        options: { redirectTo: authRedirectUrl(), skipBrowserRedirect: desktop },
-      })
-    : await supabase.auth.signInWithOAuth({
-        provider,
-        options: { redirectTo: authRedirectUrl(), skipBrowserRedirect: desktop },
-      });
+  if (isAnonymousUser(session?.user)) {
+    const { data, error } = await supabase.auth.linkIdentity({
+      provider,
+      options: { redirectTo: authRedirectUrl(), skipBrowserRedirect: desktop },
+    });
+    if (!error) {
+      if (desktop) {
+        if (!data.url) throw new Error('The authentication provider did not return a browser URL.');
+        await (await workspaceHost).openExternal(new URL(data.url));
+      }
+      return;
+    }
+
+    // An identity already owned by another user cannot be linked. Abandon the
+    // anonymous session and sign in independently rather than hiding the user
+    // behind a merge flow or attaching the wrong account's usage.
+    await clearAuthSession();
+  }
+
+  const { data, error } = await supabase.auth.signInWithOAuth({
+    provider,
+    options: { redirectTo: authRedirectUrl(), skipBrowserRedirect: desktop },
+  });
   if (error) throw error;
   if (desktop) {
     if (!data.url) throw new Error('The authentication provider did not return a browser URL.');
@@ -89,13 +103,24 @@ export async function signInWithProvider(provider: Extract<Provider, 'google' | 
   }
 }
 
+async function clearAuthSession(): Promise<void> {
+  if (import.meta.env.PUBLIC_WORKSPACE_SURFACE === 'desktop') {
+    await (await workspaceHost).clearRefreshToken();
+  }
+  const { error } = await getSupabaseClient().auth.signOut();
+  if (error) throw error;
+}
+
 export async function sendEmailOtp(email: string): Promise<EmailAuthFlow> {
   const supabase = getSupabaseClient();
   const session = (await ensureAuthSession()) ?? (await supabase.auth.getSession()).data.session;
   if (isAnonymousUser(session?.user)) {
     const { error } = await supabase.auth.updateUser({ email });
-    if (error) throw error;
-    return 'anonymous-link';
+    if (!error) return 'anonymous-link';
+
+    // If this email already belongs to another account, leave the anonymous
+    // session and authenticate that account independently through OTP.
+    await clearAuthSession();
   }
 
   const { error } = await supabase.auth.signInWithOtp({
@@ -126,10 +151,6 @@ export async function exchangeAuthCode(code: string): Promise<Session | null> {
 }
 
 export async function signOut(): Promise<void> {
-  if (import.meta.env.PUBLIC_WORKSPACE_SURFACE === 'desktop') {
-    await (await workspaceHost).clearRefreshToken();
-  }
-  const { error } = await getSupabaseClient().auth.signOut();
-  if (error) throw error;
+  await clearAuthSession();
   await ensureAuthSession();
 }
