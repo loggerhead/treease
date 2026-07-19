@@ -1,14 +1,16 @@
 <script lang="ts">
   import { onDestroy, onMount } from 'svelte';
-  import { LogOut, RefreshCw, Settings, User as UserIcon } from 'lucide-svelte';
+  import { ChevronDown, Gauge, LogOut, RefreshCw, Settings, User as UserIcon } from 'lucide-svelte';
   import { toast } from 'svelte-sonner';
   import { trackEvent } from '../analytics/ga4';
   import { authUser, authUserDetails, observeAuthUser } from '../auth/auth-user-store';
   import { presentSubscription } from '../billing/subscription-presentation';
   import {
     createBillingPortalLink,
-    getCurrentSubscription,
-    type CurrentSubscription,
+    getAccountSummary,
+    getUsageSummary,
+    type AccountSummary,
+    type UsageSummary,
   } from '../services/treease-server';
   import {
     DropdownMenu,
@@ -25,21 +27,31 @@
   export let onOpenSettings: () => void = () => {};
 
   const desktop = import.meta.env.PUBLIC_WORKSPACE_SURFACE === 'desktop';
-  let subscription: CurrentSubscription | null = null;
-  let subscriptionUserId: string | null = null;
+  let account: AccountSummary['user'] | null = null;
+  let accountUserId: string | null = null;
+  let subscription: AccountSummary['subscription'] | null = null;
   let subscriptionLoading = false;
-  let subscriptionRequest = 0;
+  let usage: UsageSummary | null = null;
+  let usageLoading = false;
+  let accountRequest = 0;
+  let usageRequest = 0;
   let managingPlan = false;
   let accountMenuOpen = false;
   let subscriptionViewTrackedForOpen = false;
+  let usageExpanded = true;
 
   onMount(observeAuthUser);
   onDestroy(() => {
-    subscriptionRequest += 1;
+    accountRequest += 1;
+    usageRequest += 1;
   });
 
-  $: details = $authUser ? authUserDetails($authUser) : null;
-  $: if ($authUser?.id !== subscriptionUserId) void loadSubscription($authUser?.id ?? null);
+  $: details = $authUser ? {
+    ...authUserDetails($authUser),
+    email: account?.id === $authUser.id ? account.email ?? '' : authUserDetails($authUser).email,
+    avatarUrl: account?.id === $authUser.id ? account.avatarUrl : authUserDetails($authUser).avatarUrl,
+  } : null;
+  $: if ($authUser?.id !== accountUserId) void loadAccount($authUser?.id ?? null);
   $: planPresentation = subscription ? presentSubscription(subscription) : null;
   $: if (!accountMenuOpen) subscriptionViewTrackedForOpen = false;
   $: if (accountMenuOpen && subscription && !subscriptionViewTrackedForOpen) {
@@ -47,22 +59,49 @@
     trackSubscriptionViewed();
   }
 
-  async function loadSubscription(userId: string | null): Promise<void> {
-    subscriptionUserId = userId;
+  async function loadAccount(userId: string | null): Promise<void> {
+    accountUserId = userId;
+    account = null;
     subscription = null;
+    usage = null;
     subscriptionLoading = userId !== null;
-    const request = ++subscriptionRequest;
+    usageLoading = userId !== null;
+    const request = ++accountRequest;
+    usageRequest += 1;
     if (!userId) return;
 
     try {
-      const nextSubscription = await getCurrentSubscription();
-      if (request !== subscriptionRequest || subscriptionUserId !== userId) return;
-      subscription = nextSubscription;
+      const nextAccount = await getAccountSummary();
+      if (request !== accountRequest || accountUserId !== userId) return;
+      account = nextAccount.user;
+      subscription = nextAccount.subscription;
+      usage = nextAccount.usage;
     } catch {
-      if (request !== subscriptionRequest || subscriptionUserId !== userId) return;
-      toast.error('套餐信息暂时无法同步，请稍后重试。');
+      if (request !== accountRequest || accountUserId !== userId) return;
+      toast.error('Account information is temporarily unavailable. Please try again later.');
     } finally {
-      if (request === subscriptionRequest && subscriptionUserId === userId) subscriptionLoading = false;
+      if (request === accountRequest && accountUserId === userId) {
+        subscriptionLoading = false;
+        usageLoading = false;
+      }
+    }
+  }
+
+  async function refreshUsage(): Promise<void> {
+    const userId = accountUserId;
+    if (!userId || usageLoading) return;
+
+    usageLoading = true;
+    const request = ++usageRequest;
+    try {
+      const nextUsage = await getUsageSummary();
+      if (request !== usageRequest || accountUserId !== userId) return;
+      usage = nextUsage;
+    } catch {
+      if (request !== usageRequest || accountUserId !== userId) return;
+      toast.error('Usage information is temporarily unavailable. Please try again later.');
+    } finally {
+      if (request === usageRequest && accountUserId === userId) usageLoading = false;
     }
   }
 
@@ -70,7 +109,7 @@
     if (!subscription || managingPlan) return;
     managingPlan = true;
     trackEvent('subscription_management_started', {
-      plan: subscription.plan,
+      plan: subscription.tier,
       status: subscription.status,
       surface: `account_menu_${variant}`,
     });
@@ -79,7 +118,7 @@
       const { url } = await createBillingPortalLink(window.location.href);
       window.location.assign(url);
     } catch {
-      toast.error('无法打开套餐管理页，请稍后重试。');
+      toast.error('Unable to open plan management. Please try again later.');
       managingPlan = false;
     }
   }
@@ -87,10 +126,25 @@
   function trackSubscriptionViewed(): void {
     if (!subscription) return;
     trackEvent('subscription_viewed', {
-      plan: subscription.plan,
+      plan: subscription.tier,
       status: subscription.status,
       surface: `account_menu_${variant}`,
     });
+  }
+
+  function monthlyLimit(limit: { kind: 'limited'; limit: number } | { kind: 'unlimited' }, used: number | undefined): string {
+    return limit.kind === 'unlimited' ? 'Unlimited' : `${used ?? 0} / ${limit.limit}`;
+  }
+
+  function usagePercent(limit: { kind: 'limited'; limit: number } | { kind: 'unlimited' }, used: number | undefined): number | null {
+    if (limit.kind === 'unlimited' || limit.limit === 0) return null;
+    return Math.min(100, Math.round(((used ?? 0) / limit.limit) * 100));
+  }
+
+  function resetDate(periodKey: string): string {
+    const [year, month] = periodKey.split('-').map(Number);
+    const date = new Date(Date.UTC(year, month, 0));
+    return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }).format(date);
   }
 </script>
 
@@ -115,7 +169,7 @@
           {/if}
         </span>
         {#if planPresentation}
-          <span class:pro-plan-badge={subscription?.plan !== 'free'} class="plan-badge" aria-label={`当前套餐：${planPresentation.label}`}>{planPresentation.badge}</span>
+          <span class:pro-plan-badge={subscription?.tier === 'pro'} class="plan-badge" aria-label={`Current plan: ${planPresentation.label}`}>{planPresentation.badge}</span>
         {/if}
       {:else}
         <UserIcon size={12} />
@@ -137,13 +191,47 @@
           </span>
         </div>
         <div class="mx-2 mb-1 flex items-center justify-between rounded-[7px] bg-[#f1f5f9] px-2 py-1.5 text-[12px]" data-testid="account-plan">
-          <span class="text-[#64748b]">套餐</span>
+          <span class="text-[#64748b]">Plan</span>
           {#if planPresentation}
             <strong class="text-[#0f172a]">{planPresentation.label}{planPresentation.cadence ? ` · ${planPresentation.cadence}` : ''}</strong>
           {:else if subscriptionLoading}
-            <span class="text-[#64748b]">同步中…</span>
+            <span class="text-[#64748b]">Syncing…</span>
           {:else}
-            <span class="text-[#64748b]">暂不可用</span>
+            <span class="text-[#64748b]">Unavailable</span>
+          {/if}
+        </div>
+        <div class="mx-2 mb-1" data-testid="account-plan-limits">
+          <div class="usage-header">
+            <button class="usage-summary" type="button" on:click={() => usageExpanded = !usageExpanded} aria-expanded={usageExpanded} aria-busy={usageLoading}>
+              <span class="flex min-w-0 items-center gap-2"><Gauge size={16} /><span>Usage</span></span>
+              <span class:usage-chevron-collapsed={!usageExpanded}><ChevronDown size={16} /></span>
+            </button>
+            <button class:usage-refreshing={usageLoading} class="usage-refresh" type="button" on:click|stopPropagation={() => void refreshUsage()} disabled={usageLoading} aria-label="Refresh usage" data-testid="usage-refresh-button">
+              <RefreshCw size={14} />
+            </button>
+          </div>
+          {#if usageExpanded && usageLoading}
+            <div class="usage-details usage-details--loading" data-testid="usage-loading" aria-label="Loading usage">
+              <div class="usage-loading-line usage-loading-line--wide"></div>
+              <div class="usage-loading-line"></div>
+              <div class="usage-loading-line"></div>
+            </div>
+          {:else if usage && usageExpanded}
+            <div class="usage-details">
+              <div class="usage-cycle"><span>Monthly allowance</span><span>Resets {resetDate(usage.periodKey)}</span></div>
+              <div class="usage-item">
+                <div class="usage-item-label"><span>Graph edits</span><span>{monthlyLimit(usage.limits.bidirectionalEditDocumentsMonthly, usage.usage.bidirectional_edit)}</span></div>
+                {#if usagePercent(usage.limits.bidirectionalEditDocumentsMonthly, usage.usage.bidirectional_edit) !== null}
+                  <div class="usage-progress"><span style={`width: ${usagePercent(usage.limits.bidirectionalEditDocumentsMonthly, usage.usage.bidirectional_edit)}%`}></span></div>
+                {/if}
+              </div>
+              <div class="usage-item">
+                <div class="usage-item-label"><span>Large files</span><span>{monthlyLimit(usage.limits.largeFileProcessingRunsMonthly, usage.usage.large_file_processing)}</span></div>
+                {#if usagePercent(usage.limits.largeFileProcessingRunsMonthly, usage.usage.large_file_processing) !== null}
+                  <div class="usage-progress"><span style={`width: ${usagePercent(usage.limits.largeFileProcessingRunsMonthly, usage.usage.large_file_processing)}%`}></span></div>
+                {/if}
+              </div>
+            </div>
           {/if}
         </div>
         {#if subscription}
@@ -153,7 +241,7 @@
             disabled={managingPlan}
             onSelect={() => void managePlan()}
           >
-            {subscription.plan === 'free' ? '升级套餐' : managingPlan ? '正在打开…' : '管理套餐'}
+            {subscription.tier === 'free' ? 'Upgrade to Pro' : managingPlan ? 'Opening…' : 'Manage plan'}
           </DropdownMenuItem>
         {/if}
         <DropdownMenuSeparator class="my-1" />
@@ -261,4 +349,136 @@
     overflow: hidden;
     border-radius: 999px;
   }
+
+  .usage-summary {
+    display: flex;
+    width: 100%;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    border: 0;
+    border-radius: 7px;
+    background: #f1f5f9;
+    padding: 7px 8px;
+    color: #0f172a;
+    font-size: 12px;
+    font-weight: 600;
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .usage-header {
+    display: flex;
+    align-items: stretch;
+    gap: 4px;
+  }
+
+  .usage-refresh {
+    display: inline-grid;
+    width: 30px;
+    flex: 0 0 auto;
+    place-items: center;
+    border: 0;
+    border-radius: 7px;
+    background: #f1f5f9;
+    color: #64748b;
+    cursor: pointer;
+  }
+
+  .usage-refresh:hover:not(:disabled) {
+    background: #e8eef5;
+    color: #2563eb;
+  }
+
+  .usage-refresh:disabled {
+    cursor: wait;
+    opacity: 0.7;
+  }
+
+  .usage-refreshing svg {
+    animation: usage-spin 700ms linear infinite;
+  }
+
+  .usage-summary:hover {
+    background: #e8eef5;
+  }
+
+  .usage-chevron-collapsed {
+    transform: rotate(-90deg);
+  }
+
+  .usage-details--loading {
+    display: grid;
+    gap: 8px;
+  }
+
+  .usage-loading-line {
+    width: 76%;
+    height: 10px;
+    border-radius: 999px;
+    background: linear-gradient(90deg, #e2e8f0 25%, #f8fafc 50%, #e2e8f0 75%);
+    background-size: 200% 100%;
+    animation: usage-shimmer 1.2s ease-in-out infinite;
+  }
+
+  .usage-loading-line--wide {
+    width: 100%;
+    height: 8px;
+  }
+
+  @keyframes usage-spin {
+    to { transform: rotate(360deg); }
+  }
+
+  @keyframes usage-shimmer {
+    to { background-position: -200% 0; }
+  }
+
+  .usage-details {
+    padding: 8px 8px 5px;
+  }
+
+  .usage-cycle,
+  .usage-item-label {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+  }
+
+  .usage-cycle {
+    margin-bottom: 7px;
+    color: #64748b;
+    font-size: 11px;
+  }
+
+  .usage-item {
+    margin-bottom: 7px;
+  }
+
+  .usage-item-label {
+    color: #475569;
+    font-size: 12px;
+  }
+
+  .usage-item-label span:last-child {
+    flex: 0 0 auto;
+    color: #64748b;
+  }
+
+  .usage-progress {
+    height: 4px;
+    margin-top: 4px;
+    overflow: hidden;
+    border-radius: 999px;
+    background: #e2e8f0;
+  }
+
+  .usage-progress span {
+    display: block;
+    height: 100%;
+    border-radius: inherit;
+    background: #2563eb;
+  }
+
 </style>

@@ -41,6 +41,16 @@ export type CurrentSubscription = {
   updatedAt: string;
 };
 
+export type AccountSummary = {
+  user: {
+    id: string;
+    email: string | null;
+    avatarUrl: string | null;
+  };
+  subscription: CurrentSubscription;
+  usage: UsageSummary;
+};
+
 export type BillingPortalLink = {
   url: string;
 };
@@ -174,6 +184,16 @@ export async function getCurrentSubscription(): Promise<CurrentSubscription> {
   });
   if (!response.ok) throw await readError(response);
   return (await response.json()) as CurrentSubscription;
+}
+
+export async function getAccountSummary(): Promise<AccountSummary> {
+  const token = await getAccessToken();
+  if (!token) throw new BillingAuthenticationRequiredError();
+  const response = await fetch(`${apiOrigin}/v1/account`, {
+    headers: { authorization: `Bearer ${token}` },
+  });
+  if (!response.ok) throw await readError(response);
+  return (await response.json()) as AccountSummary;
 }
 
 export async function createBillingPortalLink(returnUrl: string): Promise<BillingPortalLink> {
