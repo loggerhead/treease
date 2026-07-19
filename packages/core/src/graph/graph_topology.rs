@@ -1934,10 +1934,31 @@ impl GraphTopology {
                 }
             }
         }
-        if intent.marks_existing() {
-            self.reconcile_expandable_sequence_children(store, id, visited, config);
-        }
+        self.reconcile_new_graph_node_children(store, id, visited, config);
         Some(handle)
+    }
+
+    fn reconcile_new_graph_node_children(
+        &mut self,
+        store: &TreeStore,
+        id: NodeId,
+        visited: &mut HashSet<NodeId>,
+        config: &BuilderConfig,
+    ) {
+        let Some(node) = store.get(id) else {
+            return;
+        };
+        match node.kind {
+            TreeNodeKind::Mapping => {
+                for child in node.content.iter().skip(1).step_by(2).copied() {
+                    self.reconcile_one(store, child, visited, config);
+                }
+            }
+            TreeNodeKind::Sequence => {
+                self.reconcile_expandable_sequence_children(store, id, visited, config);
+            }
+            TreeNodeKind::Scalar | TreeNodeKind::Alias | TreeNodeKind::Unknown => {}
+        }
     }
 
     fn reconcile_expandable_sequence_children(
@@ -2001,6 +2022,14 @@ impl GraphTopology {
                     let row = self.parent_row_index_cached(store, parent_id, child_in_parent);
                     return Some((handle, row));
                 }
+                // A graph-node ancestor is the canonical owner of this edge. Do not
+                // fall through to an older visible ancestor while that owner is pending.
+                return None;
+            }
+            if store.get(parent_id).is_some_and(value_node_builds_child) {
+                // A structural container owns all descendant graph edges. Until its
+                // presentation materializes a graph node, its descendants stay deferred.
+                return None;
             }
             if Some(parent_id) == self.root {
                 break;

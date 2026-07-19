@@ -37,6 +37,24 @@ function resolvePosition(sourceText: string, marker: string): { lineNumber: numb
   };
 }
 
+async function readGraphEdgePaths(page: Page): Promise<Array<{ from: string; to: string }>> {
+  return evaluateTreease(page, (treease) => {
+    const graph = treease.graph.getLastGraphData?.() as unknown as {
+      edges?: Array<{
+        from?: { path?: Array<{ key?: string; index?: number }> };
+        to?: { path?: Array<{ key?: string; index?: number }> };
+      }>;
+    } | null;
+    const formatPath = (path: Array<{ key?: string; index?: number }> = []) => path
+      .map((segment) => segment.key || `[${segment.index}]`)
+      .join('.');
+    return (graph?.edges ?? []).map((edge) => ({
+      from: formatPath(edge.from?.path),
+      to: formatPath(edge.to?.path),
+    }));
+  });
+}
+
 async function readJsonBlockRuntime(page: Page) {
   return evaluateTreease(page, (treease) => {
     const state = treease.editor.getState();
@@ -182,7 +200,9 @@ test.describe('invalid json graph diagnostics', () => {
       .toEqual(expect.arrayContaining(['[0].type', '[1].type']));
   });
 
-  test('loads prompt diff events fixture with graph and semantic tokens intact', async ({ page }) => {
+  test('loads prompt diff events fixture with graph and semantic tokens intact', async ({ page }, testInfo) => {
+    testInfo.annotations.push({ type: 'allow-browser-error', description: '[Cloudflare Turnstile]' });
+    testInfo.annotations.push({ type: 'allow-browser-error', description: 'challenges.cloudflare.com/cdn-cgi' });
     await page.goto('/editor');
     await waitForEditorReady(page);
     await setEditorContent(page, {
@@ -208,6 +228,10 @@ test.describe('invalid json graph diagnostics', () => {
     await expect
       .poll(async () => (await readGraphClickProbes(page)).map((probe) => probe.path.join('.')), { timeout: 5_000 })
       .toEqual(expect.arrayContaining(['[0].type', '[1].type']));
+    await expect
+      .poll(() => readGraphEdgePaths(page), { timeout: 5_000 })
+      .toEqual(expect.arrayContaining([{ from: '[1]', to: '[1].value' }]));
+    expect(await readGraphEdgePaths(page)).not.toEqual(expect.arrayContaining([{ from: '', to: '[1].value' }]));
   });
 
   test('shows one syntax error without leaking raw graph status', async ({ page }) => {

@@ -3122,6 +3122,86 @@ mod tests {
     }
 
     #[test]
+    fn prompt_diff_events_streaming_edges_keep_nested_value_under_second_item() {
+        let source = include_str!("../../../../test/fixtures/json/prompt_diff_events.1.json");
+        let mut decoder = crate::stream::streaming_json::StreamDecoder::new(true);
+        let mut builder = Builder::new();
+        builder.enable_patches();
+        let mut projector = StreamingGraphProjector::new("json");
+        let mut nodes = HashMap::new();
+        let mut edges = HashMap::new();
+
+        let chunk_size = crate::stream::chunk_size::select_chunk_size(source.len());
+        for chunk in source.as_bytes().chunks(chunk_size) {
+            decoder.feed(std::str::from_utf8(chunk).unwrap()).unwrap();
+            for event in &decoder.take_events() {
+                builder.push(event).unwrap();
+            }
+            let patches = builder.take_patches();
+            if let Some((store, root)) = builder.tree_ref()
+                && let Some(update) = projector.update(store, root, &patches)
+            {
+                apply_streaming_delta_to_consumer(&mut nodes, &mut edges, &update.delta);
+            }
+        }
+        for event in decoder.finish_events().unwrap() {
+            builder.push(&event).unwrap();
+        }
+        let patches = builder.take_patches();
+        let (store, root) = builder.tree_ref().expect("streaming fixture tree");
+        if let Some(update) = projector.update(store, root, &patches) {
+            apply_streaming_delta_to_consumer(&mut nodes, &mut edges, &update.delta);
+        }
+
+        let handle_for = |path: &[PathSeg]| {
+            let expected = path
+                .iter()
+                .map(|segment| match segment {
+                    PathSeg::Key(key) => key.clone(),
+                    PathSeg::Index(index) => format!("[{index}]"),
+                })
+                .collect::<Vec<_>>()
+                .join(".");
+            nodes
+                .values()
+                .find(|node| path_key(node) == expected)
+                .map(|node| node.render_handle)
+                .unwrap_or_else(|| panic!("missing graph node for path {path:?}"))
+        };
+        let root_handle = handle_for(&[]);
+        let item_handle = handle_for(&[PathSeg::Index(1)]);
+        let value_handle = handle_for(&[PathSeg::Index(1), PathSeg::Key("value".to_owned())]);
+
+        assert!(edges.values().any(|edge| {
+            edge.from_render_handle == root_handle
+                && edge.to_render_handle == item_handle
+                && edge.from_row == 1
+        }));
+        assert!(
+            edges.values().any(|edge| {
+                edge.from_render_handle == item_handle && edge.to_render_handle == value_handle
+            }),
+            "nodes={:?}, edges={:?}",
+            nodes
+                .values()
+                .map(|node| (node.render_handle, path_key(node)))
+                .collect::<Vec<_>>(),
+            edges
+                .values()
+                .map(|edge| (
+                    edge.from_render_handle,
+                    edge.from_row,
+                    edge.to_render_handle,
+                    edge.to_row
+                ))
+                .collect::<Vec<_>>()
+        );
+        assert!(!edges.values().any(|edge| {
+            edge.from_render_handle == root_handle && edge.to_render_handle == value_handle
+        }));
+    }
+
+    #[test]
     fn streaming_non_root_empty_containers_match_baseline_without_extra_nodes() {
         let source = r#"{"empty_array":[],"empty_object":{},"values":[1,2],"object":{"x":1}}"#;
         let baseline_model = {
