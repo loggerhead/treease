@@ -18,6 +18,8 @@ const requiredFiles = [
   '.env.example',
   'README.md',
   'supabase/0001_treease_server.sql',
+  'supabase/0003_billing_entitlements.sql',
+  'supabase/0006_usage_owner_keys.sql',
 ];
 
 for (const relativePath of requiredFiles) {
@@ -83,10 +85,12 @@ for (const key of [
   assert(envSource.includes(key), `src/env.ts must validate ${key}`);
 }
 
-const schemaSource = readFile(path.join(serverDir, 'supabase', '0001_treease_server.sql'));
-for (const tableName of ['subscriptions', 'share_links', 'usage_ledger']) {
+const schemaSource = ['0001_treease_server.sql', '0003_billing_entitlements.sql', '0006_usage_owner_keys.sql']
+  .map((fileName) => readFile(path.join(serverDir, 'supabase', fileName)))
+  .join('\n');
+for (const tableName of ['subscriptions', 'share_links', 'usage_events']) {
   assert(
-    schemaSource.includes(`create table if not exists public.${tableName}`),
+    new RegExp(`create table(?: if not exists)? public\\.${tableName}\\b`).test(schemaSource),
     `Supabase schema must create ${tableName}`,
   );
   assert(
@@ -98,7 +102,10 @@ for (const tableName of ['subscriptions', 'share_links', 'usage_ledger']) {
 for (const resourceType of ['compare', 'text_snapshot']) {
   assert(schemaSource.includes(resourceType), `Supabase schema must support share resource type ${resourceType}`);
 }
-assert(schemaSource.includes("feature in ('suggest_yq')"), 'Supabase schema must constrain usage_ledger to suggest_yq');
+assert(
+  schemaSource.includes("capability in ('bidirectional_edit', 'large_file_processing', 'ai_suggestion')"),
+  'Supabase schema must constrain usage_events capabilities',
+);
 
 const appSource = readFile(path.join(serverDir, 'src', 'app.ts'));
 assert(appSource.includes('preParsing'), 'src/app.ts must preserve raw request bodies for webhook verification');
