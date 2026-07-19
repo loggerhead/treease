@@ -45,6 +45,10 @@
     return editorCore?.minifyActive();
   }
 
+  export function compactActive() {
+    return editorCore?.compactActive();
+  }
+
   export function sortActive() {
     return editorCore?.sortActive();
   }

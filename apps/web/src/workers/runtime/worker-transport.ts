@@ -17,7 +17,7 @@ import {
   handleValueToTreeNode,
 } from './document-value-edit';
 import { handleCompare } from './document-compare';
-import { handleConvert, handleFormat, handleMinify, handleRunYq, handleSort } from './document-transform';
+import { handleCompact, handleConvert, handleFormat, handleMinify, handleRunYq, handleSort } from './document-transform';
 import { describeError, postError, postOk } from './logging';
 import { handleGraphSearch } from './graph-search';
 import {
@@ -75,6 +75,7 @@ export function createWorkerTransport(ctx: WorkerContext): WorkerTransport {
       handleGraphSearch(documentParseRuntime, workerRuntimeState.graphStateService.graphStateByDocumentKey, message),
     format: async (message) => handleFormat(message),
     minify: async (message) => handleMinify(message),
+    compact: async (message) => handleCompact(message),
     sort: async (message) => handleSort(message),
     convert: async (message) => handleConvert(message),
     runYq: async (message) => handleRunYq(message),

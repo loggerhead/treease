@@ -26,6 +26,7 @@ pub mod assign;
 pub mod booleans;
 pub mod collect;
 pub mod collect_object;
+pub mod compact;
 pub mod contains;
 pub mod create_map;
 pub mod delete;

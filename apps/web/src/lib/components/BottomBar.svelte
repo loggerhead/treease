@@ -14,6 +14,7 @@
   import { trackEvent } from '../analytics/ga4';
   export let onFormat: () => void | Promise<void> = () => {};
   export let onMinify: () => void | Promise<void> = () => {};
+  export let onCompact: () => void | Promise<void> = () => {};
   export let onSort: () => void | Promise<void> = () => {};
   export let onShowYqInput: () => void | Promise<void> = () => {};
   export let onEscape: () => void | Promise<void> = () => {};
@@ -34,6 +35,7 @@
     'workspace:close-tab': () => onCloseDocument(),
     format: () => onFormat(),
     minify: () => onMinify(),
+    compact: () => onCompact(),
     sort: () => onSort(),
     'show-yq-input': () => onShowYqInput(),
     escape: () => onEscape(),

@@ -1167,6 +1167,7 @@ fn lookup_builtin(ident: &str, start: usize, end: usize) -> Option<ParseResult> 
         "with_entries" | "withEntries" => (OperationId::WithEntries, false, false),
         "select" => (OperationId::Select, true, false),
         "filter" => (OperationId::Filter, true, false),
+        "compact" => (OperationId::Compact, true, false),
         "has" => (OperationId::Has, true, false),
         "contains" => (OperationId::Contains, false, false),
         "path" => (OperationId::GetPath, true, false),

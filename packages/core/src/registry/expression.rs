@@ -93,6 +93,7 @@ pub enum OperationId {
     GroupBy,
     Flatten,
     Delete,
+    Compact,
 }
 
 impl OperationId {
@@ -185,6 +186,7 @@ impl OperationId {
             OperationId::GroupBy => "group_by",
             OperationId::Flatten => "flatten",
             OperationId::Delete => "delete",
+            OperationId::Compact => "compact",
         }
     }
 }

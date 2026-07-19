@@ -1,3 +1,4 @@
+use crate::operators::COMPACT_OP_TYPE;
 use crate::{
     errors::{
         CoreError as ApiCoreError, EvalError as ApiEvalError, FormatError as ApiFormatError,
@@ -522,6 +523,7 @@ fn core_op_to_compat_op_type(id: CoreOperationId) -> Option<&'static operators::
         GroupBy => &GROUP_BY_OP_TYPE,
         Flatten => &FLATTEN_OP_TYPE,
         Delete => &DELETE_OP_TYPE,
+        Compact => &COMPACT_OP_TYPE,
         // Variants without a compat equivalent.
         Custom | Exp => return None,
     })

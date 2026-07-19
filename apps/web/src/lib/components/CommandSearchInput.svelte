@@ -3,7 +3,7 @@
   import fuzzysort from 'fuzzysort'
   import SearchPanel from './SearchPanel.svelte'
   import { commandItems, type CommandId } from '../command-registry'
-  import { Wand2, Shrink, ArrowDownWideNarrow, ListFilter, WrapText, Code, Check } from 'lucide-svelte'
+  import { Wand2, Shrink, Minimize2, ArrowDownWideNarrow, ListFilter, WrapText, Code, Check, Info } from 'lucide-svelte'
   import { settings, settingsStore } from '../settings/settings-store'
   import { languageId } from '../store/document-session-store'
 
@@ -15,11 +15,12 @@
   let activeIndex = 0
   let searchPanel: SearchPanel | null = null
   let panelRef: HTMLDivElement | null = null
-  let results: Array<{ id: CommandId; label: string; keywords: string[]; keywordText: string; type?: string }> = []
+  let results: Array<{ id: CommandId; label: string; keywords: string[]; keywordText: string; description?: string; type?: string }> = []
   
   const iconMap: Record<string, typeof Wand2> = {
     format: Wand2,
     minify: Shrink,
+    compact: Minimize2,
     sort: ArrowDownWideNarrow,
     'show-yq-input': ListFilter,
     escape: WrapText,
@@ -168,6 +169,16 @@
         <svelte:component this={iconMap[item.id]} size={13} strokeWidth={2} class="shrink-0 text-[#334155]" />
       {/if}
       <span class={item.type === 'toggle' ? 'font-medium text-[#1f2937]' : 'text-[#111827]'}>{item.label}</span>
+      {#if item.description}
+        <span
+          class="ml-0.5 inline-flex shrink-0 cursor-help items-center text-[#94a3b8] transition-colors hover:text-[#475569]"
+          role="img"
+          aria-label={item.description}
+          title={item.description}
+        >
+          <Info size={12} strokeWidth={2.1} />
+        </span>
+      {/if}
     </div>
   </svelte:fragment>
 </SearchPanel>

@@ -690,6 +690,7 @@ fn builtin_operation(name: &str, string_value: &str) -> Option<(Operation, bool)
         "group_by" => Operation::new(OperationId::GroupBy, string_value, 1, 52),
         "delpaths" => Operation::new(OperationId::DelPaths, string_value, 1, 52),
         "del" => Operation::new(OperationId::Delete, string_value, 1, 40),
+        "compact" => Operation::new(OperationId::Compact, string_value, 0, 52),
         "as" => Operation::new(OperationId::AssignVariable, string_value, 2, 40),
         "reduce" => Operation::new(OperationId::Reduce, string_value, 2, 35),
         _ => return None,

@@ -42,6 +42,7 @@ vi.mock('./document-transform', () => ({
   handleConvert: vi.fn(),
   handleFormat: vi.fn(),
   handleMinify: vi.fn(),
+  handleCompact: vi.fn(),
   handleRunYq: vi.fn(),
   handleSort: vi.fn(),
 }));

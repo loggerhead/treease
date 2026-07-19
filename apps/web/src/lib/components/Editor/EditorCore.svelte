@@ -1193,6 +1193,10 @@
     return editorFormatController.minifyActive();
   }
 
+  export function compactActive() {
+    return editorFormatController.compactActive();
+  }
+
   export function sortActive() {
     return editorFormatController.sortActive();
   }

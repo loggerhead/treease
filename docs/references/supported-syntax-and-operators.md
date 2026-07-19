@@ -92,6 +92,7 @@
 - `contains`
 - `pick`
 - `omit`
+- `compact`
 - `flatten`
 - `group_by`
 - `unique` / `unique_by`

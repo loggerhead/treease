@@ -3,11 +3,12 @@ import { toast } from 'svelte-sonner';
 import type { SupportedEditorLanguageId } from '../../monaco/language-support';
 import { trackEvent } from '../../analytics/ga4';
 
-type FormatCommandKind = 'format' | 'minify' | 'sort';
+type FormatCommandKind = 'format' | 'minify' | 'compact' | 'sort';
 
 const formatCommandLabels: Record<FormatCommandKind, string> = {
   format: 'Format',
   minify: 'Minify',
+  compact: 'Compact',
   sort: 'Sort',
 };
 
@@ -90,6 +91,10 @@ export function createEditorFormatController(options: CreateEditorFormatControll
     return enqueue('minify');
   }
 
+  function compactActive(): Promise<void> {
+    return enqueue('compact');
+  }
+
   function sortActive(): Promise<void> {
     return enqueue('sort');
   }
@@ -98,6 +103,7 @@ export function createEditorFormatController(options: CreateEditorFormatControll
     enqueue,
     formatActive,
     minifyActive,
+    compactActive,
     sortActive,
   };
 }

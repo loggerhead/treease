@@ -1288,6 +1288,7 @@
       <BottomBar
         onFormat={() => editorRef?.formatActive()}
         onMinify={() => editorRef?.minifyActive()}
+        onCompact={() => editorRef?.compactActive()}
         onSort={() => editorRef?.sortActive()}
         onShowYqInput={handleShowYqInput}
         onEscape={() => editorRef?.escapeActive()}

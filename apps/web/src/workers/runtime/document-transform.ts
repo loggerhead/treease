@@ -23,6 +23,12 @@ export async function handleMinify(
   return result.text;
 }
 
+export async function handleCompact(
+  message: Extract<WorkerRequest, { type: 'compact' }>,
+): Promise<string> {
+  return runYqText(message.language, message.text, 'compact', withNestOptions(message));
+}
+
 export async function handleSort(message: Extract<WorkerRequest, { type: 'sort' }>): Promise<string> {
   return sortText(message.language, message.text, withNestOptions(message));
 }

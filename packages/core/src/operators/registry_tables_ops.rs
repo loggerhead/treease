@@ -223,6 +223,10 @@ fn collection_entries() -> Vec<OpEntry> {
             handler: collect_object::collect_object_operator,
         },
         OpEntry {
+            id: COMPACT_OP_TYPE.id,
+            handler: compact::compact_operator,
+        },
+        OpEntry {
             id: MAP_OP_TYPE.id,
             handler: map::map_operator,
         },

@@ -6,6 +6,7 @@ describe('command-registry', () => {
     const ids = commandItems.map((c) => c.id);
     expect(ids).toContain('format');
     expect(ids).toContain('minify');
+    expect(ids).toContain('compact');
     expect(ids).toContain('sort');
     expect(ids).toContain('show-yq-input');
     expect(ids).toContain('escape');
@@ -31,7 +32,7 @@ describe('command-registry', () => {
     const universal = commandItems.filter((c) => c.langs.includes('*'));
     const ids = universal.map((c) => c.id);
     expect(ids).toEqual(
-      expect.arrayContaining(['format', 'minify', 'sort', 'show-yq-input', 'toggle-auto-format']),
+      expect.arrayContaining(['format', 'minify', 'compact', 'sort', 'show-yq-input', 'toggle-auto-format']),
     );
   });
 
@@ -42,6 +43,12 @@ describe('command-registry', () => {
     expect(escape.langs).toEqual(['json']);
     const unescape = commandItems.find((c) => c.id === 'unescape')!;
     expect(unescape.langs).toEqual(['json']);
+  });
+
+  it('provides explanations for commands with additional controls', () => {
+    for (const id of ['show-yq-input', 'toggle-nest', 'toggle-auto-format', 'compact'] as const) {
+      expect(commandItems.find((command) => command.id === id)?.description).toBeTruthy();
+    }
   });
 
   it('filters commands by language', () => {

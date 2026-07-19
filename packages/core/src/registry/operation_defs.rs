@@ -103,3 +103,4 @@ pub const UNIQUE_BY_OP_TYPE: OperationType = op(OperationId::UniqueBy, 1, 52, tr
 pub const GROUP_BY_OP_TYPE: OperationType = op(OperationId::GroupBy, 1, 52, true);
 pub const FLATTEN_OP_TYPE: OperationType = op(OperationId::Flatten, 0, 52, true);
 pub const DELETE_OP_TYPE: OperationType = op(OperationId::Delete, 1, 40, false);
+pub const COMPACT_OP_TYPE: OperationType = op(OperationId::Compact, 0, 52, true);

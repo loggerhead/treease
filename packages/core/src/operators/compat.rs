@@ -944,6 +944,7 @@ pub enum OperationId {
     With = 83,
     Select = 84,
     Filter = 85,
+    Compact = 86,
 }
 
 impl OperationId {
@@ -1035,6 +1036,7 @@ impl OperationId {
             OperationId::With => "with",
             OperationId::Select => "select",
             OperationId::Filter => "filter",
+            OperationId::Compact => "compact",
         }
     }
 }
@@ -1143,6 +1145,7 @@ pub static REDUCE_OP_TYPE: OperationType = OperationType::new(OperationId::Reduc
 pub static WITH_OP_TYPE: OperationType = OperationType::new(OperationId::With);
 pub static SELECT_OP_TYPE: OperationType = OperationType::new(OperationId::Select);
 pub static FILTER_OP_TYPE: OperationType = OperationType::new(OperationId::Filter);
+pub static COMPACT_OP_TYPE: OperationType = OperationType::new(OperationId::Compact);
 
 // ── Operation / ExpressionNode ───────────────────────────────────
 

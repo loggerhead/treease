@@ -140,6 +140,7 @@ export type WorkerRequest =
       nest?: boolean;
     }
   | { id: number; type: 'minify'; language: string; text: string; options?: any; nest?: boolean }
+  | { id: number; type: 'compact'; language: string; text: string; options?: any; nest?: boolean }
   | { id: number; type: 'sort'; language: string; text: string; options?: any; nest?: boolean }
   | { id: number; type: 'convert'; sourceLanguage: string; targetFormat: string; text: string; options?: any }
   | { id: number; type: 'runYq'; language: string; text: string; expression: string; options?: any; nest?: boolean }

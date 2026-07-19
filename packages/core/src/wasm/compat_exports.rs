@@ -519,6 +519,14 @@ fn run_yq_text_impl(
     indent: i32,
 ) -> Result<String, String> {
     let output = parse_value_to_tree_impl(language, text, false)?;
+    if expression.trim() == "compact" {
+        let compacted = crate::operators::compact::compact_json_value(&output.value);
+        return if indent == 0 {
+            serde_json::to_string(&compacted).map_err(|e| e.to_string())
+        } else {
+            serde_json::to_string_pretty(&compacted).map_err(|e| e.to_string())
+        };
+    }
     let eval_val = json_to_evaluator_value(&output.value);
     let result = crate::expression_pipeline::evaluate(&eval_val, expression)
         .map_err(|e| format!("{e:?}"))?;
@@ -610,6 +618,32 @@ mod tests {
             run_yq_text_impl("json", r#"{"items":[{"name":"Alice"}]}"#, ".items[0]", 2)
                 .expect("document should render"),
             "{\n  \"name\": \"Alice\"\n}",
+        );
+    }
+
+    #[test]
+    fn run_yq_text_compact_removes_zero_values_and_preserves_integer_numbers() {
+        crate::wasm::init_wasm();
+
+        assert_eq!(
+            run_yq_text_impl(
+                "json",
+                r#"{"zero":0,"kept":42,"empty":"","items":[0,42,null,false,"",[],{}]}"#,
+                "compact",
+                0,
+            )
+            .expect("compact should succeed"),
+            r#"{"items":[42],"kept":42}"#,
+        );
+        assert_eq!(
+            run_yq_text_impl("json", "[0,42,null,false,\"\",[],{}]", "compact", 0)
+                .expect("compact should succeed"),
+            "[42]",
+        );
+        assert_eq!(
+            run_yq_text_impl("json", r#"{"object":{"arr0":[],"kept":42}}"#, "compact", 0,)
+                .expect("compact should recurse into nested containers"),
+            r#"{"object":{"kept":42}}"#,
         );
     }
 

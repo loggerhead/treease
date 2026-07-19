@@ -65,6 +65,7 @@ This file is a generated registry snapshot.
 - create_map_op_type
 - collect_op_type
 - collect_object_op_type
+- compact_op_type
 - map_op_type
 - map_values_op_type
 - pick_op_type
