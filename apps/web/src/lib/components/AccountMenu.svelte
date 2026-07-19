@@ -47,7 +47,7 @@
   });
 
   $: isAnonymous = $authUser?.is_anonymous === true;
-  $: signedInUser = isAnonymous ? null : $authUser;
+  $: signedInUser = $authUser;
   $: details = $authUser ? {
     ...authUserDetails($authUser),
     name: isAnonymous ? 'Guest' : authUserDetails($authUser).name,
@@ -180,7 +180,7 @@
       {/if}
     </DropdownMenuTrigger>
     <DropdownMenuContent align="end" sideOffset={8} class={details ? 'w-[240px] rounded-[10px] p-2 shadow-[0_14px_38px_rgba(15,23,42,0.16)]' : undefined}>
-      {#if details && !isAnonymous}
+      {#if details}
         <div class="flex items-center gap-3 px-2 py-2" data-testid="account-details">
           <span class="account-panel-avatar" aria-hidden="true">
             {#if details.avatarUrl}
@@ -191,7 +191,11 @@
           </span>
           <span class="min-w-0">
             <strong class="block truncate text-[14px] font-semibold text-[#111827]">{details.name}</strong>
-            {#if details.email}<span class="mt-0.5 block truncate text-[12px] text-[#64748b]">{details.email}</span>{/if}
+            {#if isAnonymous}
+              <span class="mt-0.5 block truncate text-[12px] text-[#64748b]">Anonymous session</span>
+            {:else if details.email}
+              <span class="mt-0.5 block truncate text-[12px] text-[#64748b]">{details.email}</span>
+            {/if}
           </span>
         </div>
         <div class="mx-2 mb-1 flex items-center justify-between rounded-[7px] bg-[#f1f5f9] px-2 py-1.5 text-[12px]" data-testid="account-plan">
@@ -238,7 +242,7 @@
             </div>
           {/if}
         </div>
-        {#if subscription}
+        {#if subscription && !isAnonymous}
           <DropdownMenuItem
             class="rounded-[7px] px-2 py-2 text-[13px]"
             data-testid="account-manage-plan-menu-item"
@@ -249,14 +253,18 @@
           </DropdownMenuItem>
         {/if}
         <DropdownMenuSeparator class="my-1" />
-        <DropdownMenuItem
-          variant="destructive"
-          class="rounded-[7px] px-2 py-2 text-[13px]"
-          data-testid="account-logout-menu-item"
-          onSelect={() => void onLogout()}
-        >
-          <LogOut size={14} />Log out
-        </DropdownMenuItem>
+        {#if isAnonymous}
+          <DropdownMenuItem data-testid="account-login-menu-item" onSelect={onLogin}>Login</DropdownMenuItem>
+        {:else}
+          <DropdownMenuItem
+            variant="destructive"
+            class="rounded-[7px] px-2 py-2 text-[13px]"
+            data-testid="account-logout-menu-item"
+            onSelect={() => void onLogout()}
+          >
+            <LogOut size={14} />Log out
+          </DropdownMenuItem>
+        {/if}
         {#if variant === 'editor'}
           <DropdownMenuSeparator class="my-1" />
           {#if desktop}
@@ -268,16 +276,6 @@
             <Settings size={14} />Settings
           </DropdownMenuItem>
         {/if}
-      {:else if details}
-        <div class="flex items-center gap-3 px-2 py-2" data-testid="anonymous-account-details">
-          <span class="account-panel-avatar" aria-hidden="true"><span class="avatar-fallback">{details.initial}</span></span>
-          <span class="min-w-0">
-            <strong class="block truncate text-[14px] font-semibold text-[#111827]">{details.name}</strong>
-            <span class="mt-0.5 block truncate text-[12px] text-[#64748b]">Anonymous session</span>
-          </span>
-        </div>
-        <DropdownMenuSeparator class="my-1" />
-        <DropdownMenuItem data-testid="account-login-menu-item" onSelect={onLogin}>Login</DropdownMenuItem>
       {:else}
         <DropdownMenuItem data-testid="account-login-menu-item" onSelect={onLogin}>Login</DropdownMenuItem>
         {#if desktop}
