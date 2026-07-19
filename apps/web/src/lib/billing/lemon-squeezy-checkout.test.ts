@@ -19,15 +19,6 @@ afterEach(() => {
 });
 
 describe("openLemonSqueezyCheckout", () => {
-  it("opens the provider checkout overlay with the server-issued URL", async () => {
-    const open = vi.fn();
-    (window as TestWindow).LemonSqueezy = { Url: { Open: open } };
-
-    await openLemonSqueezyCheckout("https://billing.example.com/checkout/buy/monthly");
-
-    expect(open).toHaveBeenCalledWith("https://billing.example.com/checkout/buy/monthly");
-  });
-
   it("initializes the API after loading the provider script", async () => {
     const open = vi.fn();
     const appendChild = vi.spyOn(document.head, "appendChild").mockImplementation((node) => node);

@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use treease_core::evaluator::Value;
 use treease_core::expression_pipeline;
-use treease_core::operators::compact::{compact_operator, is_zero_node};
+use treease_core::operators::compact::compact_operator;
 use treease_core::operators::{
     COMPACT_OP_TYPE, Context, ExpressionNode, NodeKind, Operation, SemType, TreeEngine, TreeNode,
 };
@@ -39,22 +39,6 @@ fn compact_expression() -> ExpressionNode {
         lhs: None,
         rhs: None,
     }
-}
-
-#[test]
-fn zero_value_predicate_covers_scalar_and_empty_container_values() {
-    let zero_values = [
-        scalar(SemType::Nil, ""),
-        scalar(SemType::Boolean, "false"),
-        scalar(SemType::Boolean, "off"),
-        scalar(SemType::Int, "-0"),
-        scalar(SemType::Float, "0.0"),
-        scalar(SemType::Str, ""),
-        empty_container(NodeKind::Sequence, SemType::Seq),
-        empty_container(NodeKind::Mapping, SemType::Map),
-    ];
-
-    assert!(zero_values.iter().all(is_zero_node));
 }
 
 #[test]

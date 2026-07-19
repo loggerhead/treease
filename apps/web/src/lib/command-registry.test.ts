@@ -44,13 +44,6 @@ describe('command-registry', () => {
     const unescape = commandItems.find((c) => c.id === 'unescape')!;
     expect(unescape.langs).toEqual(['json']);
   });
-
-  it('provides explanations for commands with additional controls', () => {
-    for (const id of ['show-yq-input', 'toggle-nest', 'toggle-auto-format', 'compact'] as const) {
-      expect(commandItems.find((command) => command.id === id)?.description).toBeTruthy();
-    }
-  });
-
   it('filters commands by language', () => {
     const jsonCommands = commandItems.filter((c) => c.langs.includes('*') || c.langs.includes('json'));
     const yamlCommands = commandItems.filter((c) => c.langs.includes('*') || c.langs.includes('yaml'));

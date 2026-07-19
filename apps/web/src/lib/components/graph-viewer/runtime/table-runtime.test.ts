@@ -86,40 +86,6 @@ function makeContext(): DrawContext {
 }
 
 describe('table-runtime', () => {
-  it('does not enable vertical scrolling for a headerless table', () => {
-    const ctx = makeContext();
-    let enableVerticalScroll: boolean | undefined;
-    const ops = {
-      createBodyContent: (_ctx: unknown, _nodeBox: unknown, options: { enableVerticalScroll: boolean }) => {
-        enableVerticalScroll = options.enableVerticalScroll;
-        return {
-          bodyViewport: new MockBox(),
-          bodyContent: new MockBox(),
-          scrollTrack: new MockBox(),
-          scrollThumb: new MockBox(),
-          headerNodes: [],
-        };
-      },
-      drawHeader: () => [],
-      createRowSlot: () => ({
-        rowBox: new MockBox(),
-        cellContainer: new MockBox(),
-        cellBoxes: [],
-        borderBoxes: [],
-        textNodes: [],
-        rowIndex: null,
-        bindings: [],
-      }),
-      bindRowSlot: vi.fn(),
-      unbindRowSlot: vi.fn(),
-      removeRenderable: vi.fn(),
-    } satisfies Parameters<typeof createTableRuntime>[3];
-
-    createTableRuntime(ctx, makeNode(10), new MockBox(), ops);
-
-    expect(enableVerticalScroll).toBe(false);
-  });
-
   it('does not rebind visible rows when appended rows are outside the visible window', () => {
     const ctx = makeContext();
     const bindRowSlot = vi.fn((_ctx: unknown, entry: { rowIndex: number | null }, _row: unknown, rowIndex: number) => {

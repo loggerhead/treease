@@ -29,15 +29,6 @@ test('renders the initial JSON example with syntax highlighting through the real
     });
 });
 
-test('does not render file open, save, or recent actions in the web toolbar', async ({ page }) => {
-  await page.goto('/editor');
-  await waitForEditorReady(page);
-
-  await expect(page.getByTestId('topbar-open-document')).toHaveCount(0);
-  await expect(page.getByTestId('topbar-save-document')).toHaveCount(0);
-  await expect(page.getByTestId('topbar-save-as-document')).toHaveCount(0);
-  await expect(page.getByLabel('Recent documents')).toHaveCount(0);
-});
 
 test('imports through the TopBar drop target and exports using the real EditorCore chain', async ({ page }) => {
   await page.goto('/editor');

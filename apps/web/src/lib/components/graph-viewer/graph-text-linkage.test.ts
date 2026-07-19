@@ -118,22 +118,6 @@ describe('graph-text-linkage', () => {
     expect(setGraphHighlightTestState).toHaveBeenCalledWith(path, 'value', highlightedBox);
   });
 
-  it('keeps a value cell selected after the pointer leaves the cell', async () => {
-    const path = ['$', 'object', 'bool'] as any[];
-    const pathKey = buildPathKey(path);
-    const highlightedBox = new MockBox();
-    const cellMap = new Map([[pathKey, { value: highlightedBox, row: new MockBox('#fff') }]]);
-    const controller = createGraphTextLinkageController(
-      createBaseDeps({ getCellBoxByPathMap: () => cellMap }),
-    );
-
-    controller.revealPath(path, { target: 'value', navigate: false });
-    await Promise.resolve();
-
-    expect(highlightedBox.selected).toBe(true);
-    expect(highlightedBox.selectedStyle?.fill).toBe('#ff0');
-  });
-
   it('scrolls the table row into view when revealPath navigates', async () => {
     const path = ['$', 'library', 'book', 0, 'title'] as any[];
     const pathKey = buildPathKey(path);

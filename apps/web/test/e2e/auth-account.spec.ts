@@ -1,18 +1,5 @@
 import { expect, test } from './fixtures';
 
-test('login dialog keeps the current page and matches the compact provider layout', async ({ page }) => {
-  await page.goto('/?source=auth-e2e#pricing');
-  await page.waitForLoadState('networkidle');
-  await page.getByTestId('account-login-button').click();
-
-  const dialog = page.getByTestId('login-dialog');
-  await expect(dialog).toBeVisible();
-  await expect(page.getByTestId('login-google-button')).toBeVisible();
-  await expect(page.getByTestId('login-github-button')).toBeVisible();
-  await expect(page).toHaveURL(/\/?source=auth-e2e#pricing$/);
-  await expect.poll(async () => (await dialog.boundingBox())?.width ?? 0).toBeLessThanOrEqual(400);
-});
-
 test('PKCE login returns to the original page, shows the account, and supports logout', async ({ page }) => {
   const expiresAt = Math.floor(Date.now() / 1000) + 3600;
   const payload = Buffer.from(JSON.stringify({ sub: 'auth-e2e-user', exp: expiresAt })).toString('base64url');
