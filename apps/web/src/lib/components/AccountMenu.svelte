@@ -46,11 +46,13 @@
     usageRequest += 1;
   });
 
-  $: signedInUser = $authUser?.is_anonymous ? null : $authUser;
-  $: details = signedInUser ? {
-    ...authUserDetails(signedInUser),
-    email: account?.id === signedInUser.id ? account.email ?? '' : authUserDetails(signedInUser).email,
-    avatarUrl: account?.id === signedInUser.id ? account.avatarUrl : authUserDetails(signedInUser).avatarUrl,
+  $: isAnonymous = $authUser?.is_anonymous === true;
+  $: signedInUser = isAnonymous ? null : $authUser;
+  $: details = $authUser ? {
+    ...authUserDetails($authUser),
+    name: isAnonymous ? 'Guest' : authUserDetails($authUser).name,
+    email: signedInUser && account?.id === signedInUser.id ? account.email ?? '' : authUserDetails($authUser).email,
+    avatarUrl: signedInUser && account?.id === signedInUser.id ? account.avatarUrl : authUserDetails($authUser).avatarUrl,
   } : null;
   $: if (signedInUser?.id !== accountUserId) void loadAccount(signedInUser?.id ?? null);
   $: planPresentation = subscription ? presentSubscription(subscription) : null;
@@ -152,6 +154,7 @@
 {#if variant === 'landing' && !details}
   <button class="landing-login" type="button" data-testid="account-login-button" on:click={onLogin}>Login</button>
 {:else}
+  <div class:landing-account-actions={variant === 'landing' && isAnonymous}>
   <DropdownMenu bind:open={accountMenuOpen}>
     <DropdownMenuTrigger
       class={variant === 'landing'
@@ -177,7 +180,7 @@
       {/if}
     </DropdownMenuTrigger>
     <DropdownMenuContent align="end" sideOffset={8} class={details ? 'w-[240px] rounded-[10px] p-2 shadow-[0_14px_38px_rgba(15,23,42,0.16)]' : undefined}>
-      {#if details}
+      {#if details && !isAnonymous}
         <div class="flex items-center gap-3 px-2 py-2" data-testid="account-details">
           <span class="account-panel-avatar" aria-hidden="true">
             {#if details.avatarUrl}
@@ -265,6 +268,16 @@
             <Settings size={14} />Settings
           </DropdownMenuItem>
         {/if}
+      {:else if details}
+        <div class="flex items-center gap-3 px-2 py-2" data-testid="anonymous-account-details">
+          <span class="account-panel-avatar" aria-hidden="true"><span class="avatar-fallback">{details.initial}</span></span>
+          <span class="min-w-0">
+            <strong class="block truncate text-[14px] font-semibold text-[#111827]">{details.name}</strong>
+            <span class="mt-0.5 block truncate text-[12px] text-[#64748b]">Anonymous session</span>
+          </span>
+        </div>
+        <DropdownMenuSeparator class="my-1" />
+        <DropdownMenuItem data-testid="account-login-menu-item" onSelect={onLogin}>Login</DropdownMenuItem>
       {:else}
         <DropdownMenuItem data-testid="account-login-menu-item" onSelect={onLogin}>Login</DropdownMenuItem>
         {#if desktop}
@@ -274,6 +287,10 @@
       {/if}
     </DropdownMenuContent>
   </DropdownMenu>
+  {#if variant === 'landing' && isAnonymous}
+    <button class="landing-login" type="button" data-testid="account-login-button" on:click={onLogin}>Login</button>
+  {/if}
+  </div>
 {/if}
 
 <style>
@@ -289,6 +306,12 @@
 
   .landing-login:hover {
     color: var(--accent-strong);
+  }
+
+  .landing-account-actions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
   }
 
   .avatar-image,
