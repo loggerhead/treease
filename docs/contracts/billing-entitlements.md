@@ -16,7 +16,7 @@ read_when:
 
 The server resolves subscriptions from verified Lemon Squeezy webhooks and owns the entitlement snapshot and usage ledger. AI access is server-enforced; local graph and file operations use the server-issued snapshot only to decide whether a computed result remains consumable.
 
-Web and desktop create a Supabase anonymous user automatically when no session exists. Chargeable non-AI usage is recorded against that anonymous user's ID. When a user chooses a formal login method, Web abandons the anonymous session and starts an independent email or OAuth login; it does not link, merge, or migrate the anonymous ledger. Anonymous usage therefore remains attached to the abandoned anonymous user. Supabase must enable anonymous sign-ins and the relevant email/OAuth providers.
+Web and desktop create a Supabase anonymous user automatically when no session exists. Chargeable non-AI usage is recorded against that anonymous user's ID. When a user chooses a formal login method, Web first links the email or OAuth identity to the anonymous user, preserving that user ID and ledger. If linking fails because the identity already belongs to another user, Web abandons the anonymous session and starts an independent login without merging or migrating the anonymous ledger. Supabase must enable anonymous sign-ins, manual identity linking, and the relevant email/OAuth providers.
 
 ## Pro product limits
 

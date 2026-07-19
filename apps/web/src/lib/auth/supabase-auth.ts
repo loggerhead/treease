@@ -51,6 +51,8 @@ export function getSupabaseClient(): SupabaseClient {
   return client;
 }
 
+export type EmailAuthFlow = 'sign-in' | 'anonymous-link';
+
 export function isAnonymousUser(user: { is_anonymous?: boolean } | null | undefined): boolean {
   return user?.is_anonymous === true;
 }
@@ -153,9 +155,20 @@ export async function signInWithProvider(provider: Extract<Provider, 'google' | 
   const supabase = getSupabaseClient();
   const session = (await ensureAuthSession()) ?? (await supabase.auth.getSession()).data.session;
   if (isAnonymousUser(session?.user)) {
-    // Formal login is intentionally independent from the anonymous identity.
-    // This keeps existing provider accounts authoritative and leaves anonymous
-    // usage untouched instead of silently merging two ledgers.
+    const { data, error } = await supabase.auth.linkIdentity({
+      provider,
+      options: { redirectTo: authRedirectUrl(), skipBrowserRedirect: desktop },
+    });
+    if (!error) {
+      if (desktop) {
+        if (!data.url) throw new Error('The authentication provider did not return a browser URL.');
+        await (await workspaceHost).openExternal(new URL(data.url));
+      }
+      return;
+    }
+
+    // An existing identity cannot be linked. Abandon the anonymous session
+    // and authenticate independently without merging or migrating usage.
     await clearAuthSession();
   }
 
@@ -178,10 +191,12 @@ async function clearAuthSession(): Promise<void> {
   if (error) throw error;
 }
 
-export async function sendEmailOtp(email: string): Promise<void> {
+export async function sendEmailOtp(email: string): Promise<EmailAuthFlow> {
   const supabase = getSupabaseClient();
   const session = (await ensureAuthSession()) ?? (await supabase.auth.getSession()).data.session;
   if (isAnonymousUser(session?.user)) {
+    const { error } = await supabase.auth.updateUser({ email });
+    if (!error) return 'anonymous-link';
     await clearAuthSession();
   }
 
@@ -193,10 +208,15 @@ export async function sendEmailOtp(email: string): Promise<void> {
     },
   });
   if (error) throw error;
+  return 'sign-in';
 }
 
-export async function verifyEmailOtp(email: string, token: string): Promise<Session | null> {
-  const { data, error } = await getSupabaseClient().auth.verifyOtp({ email, token, type: 'email' });
+export async function verifyEmailOtp(email: string, token: string, flow: EmailAuthFlow = 'sign-in'): Promise<Session | null> {
+  const { data, error } = await getSupabaseClient().auth.verifyOtp({
+    email,
+    token,
+    type: flow === 'anonymous-link' ? 'email_change' : 'email',
+  });
   if (error) throw error;
   return data.session;
 }
