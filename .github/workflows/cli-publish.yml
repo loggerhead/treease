@@ -1,6 +1,9 @@
-name: CLI Publish (Manual)
+name: CLI Publish
 
 on:
+  push:
+    tags:
+      - "cli-v*"
   workflow_dispatch:
 
 permissions:
@@ -28,6 +31,11 @@ jobs:
       - name: Read package metadata
         id: meta
         run: node scripts/release-metadata.mjs --github-output >> "$GITHUB_OUTPUT"
+
+      - name: Check tag matches CLI version
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        run: test "${GITHUB_REF_NAME}" = "${{ steps.meta.outputs.cliReleaseTag }}"
 
       - name: Verify package
         working-directory: apps/cli

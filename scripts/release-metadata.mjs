@@ -35,6 +35,13 @@ export function loadReleaseMetadata(rootDir = defaultRootDir) {
   const cliManifestPath = path.resolve(rootDir, 'apps', 'cli', 'Cargo.toml');
   const cliManifest = readFileSync(cliManifestPath, 'utf8');
   const { coreName, coreVersion, coreWasmReleaseDate } = loadCoreReleaseMetadata(rootDir);
+  const webVersion = readPackageVersion(rootDir);
+
+  if (webVersion !== coreVersion) {
+    throw new Error(
+      `apps/web/package.json version ${webVersion} does not match packages/core/Cargo.toml version ${coreVersion}`
+    );
+  }
 
   const cliName = readTomlString(cliManifest, 'package', 'name', cliManifestPath);
   const cliVersion = readTomlString(cliManifest, 'package', 'version', cliManifestPath);
@@ -65,8 +72,20 @@ export function loadReleaseMetadata(rootDir = defaultRootDir) {
     coreName,
     coreVersion,
     coreWasmReleaseDate,
-    releaseTag: `v${cliVersion}`,
+    webVersion,
+    coreReleaseTag: `v${coreVersion}`,
+    cliReleaseTag: `cli-v${cliVersion}`,
   };
+}
+
+function readPackageVersion(rootDir) {
+  const manifestPath = path.resolve(rootDir, 'apps', 'web', 'package.json');
+  const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+  const version = manifest.version;
+  if (typeof version !== 'string' || !/^\d+\.\d+\.\d+$/.test(version)) {
+    throw new Error(`apps/web/package.json version must be a semver string, got ${version}`);
+  }
+  return version;
 }
 
 export function synchronizeGeneratedWasmPackageJson(packageJsonSource, { coreName, coreVersion }) {

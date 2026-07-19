@@ -21,13 +21,10 @@ jobs:
   metadata:
     runs-on: ubuntu-latest
     outputs:
-      cli_name: ${{ steps.meta.outputs.cliName }}
-      cli_version: ${{ steps.meta.outputs.cliVersion }}
-      cli_wasm_release_date: ${{ steps.meta.outputs.cliWasmReleaseDate }}
       core_name: ${{ steps.meta.outputs.coreName }}
       core_version: ${{ steps.meta.outputs.coreVersion }}
       core_wasm_release_date: ${{ steps.meta.outputs.coreWasmReleaseDate }}
-      release_tag: ${{ steps.meta.outputs.releaseTag }}
+      core_release_tag: ${{ steps.meta.outputs.coreReleaseTag }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -38,11 +35,11 @@ jobs:
       - name: Read release metadata
         id: meta
         run: node scripts/release-metadata.mjs --github-output >> "$GITHUB_OUTPUT"
-      - name: Check tag matches CLI version
+      - name: Check tag matches core version
         if: startsWith(github.ref, 'refs/tags/')
         shell: bash
         run: |
-          test "${GITHUB_REF_NAME}" = "${{ steps.meta.outputs.releaseTag }}"
+          test "${GITHUB_REF_NAME}" = "${{ steps.meta.outputs.coreReleaseTag }}"
 
   core-tests:
     needs: metadata
@@ -52,13 +49,9 @@ jobs:
     needs: metadata
     uses: ./.github/workflows/web.yml
 
-  cli-tests:
-    needs: metadata
-    uses: ./.github/workflows/cli-tests.yml
-
   publish-core:
     runs-on: ubuntu-latest
-    needs: [metadata, core-tests, web-tests, cli-tests]
+    needs: [metadata, core-tests, web-tests]
     environment: crates-io
     permissions:
       contents: read
@@ -128,41 +121,3 @@ jobs:
       - name: Deploy release web bundle and CLI assets
         working-directory: apps/web
         run: pnpm build && pnpm assets:r2:check && npx wrangler pages deploy build --project-name treease --branch main && pnpm cli-assets:check
-
-  publish-cli:
-    runs-on: ubuntu-latest
-    needs: [metadata, publish-core, deploy-web]
-    environment: crates-io
-    permissions:
-      contents: read
-      id-token: write
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          submodules: recursive
-      - uses: ./.github/actions/setup-rust
-      - name: Check crates.io for existing CLI release
-        id: exists
-        shell: bash
-        run: |
-          url="https://crates.io/api/v1/crates/${{ needs.metadata.outputs.cli_name }}/${{ needs.metadata.outputs.cli_version }}"
-          status="$(curl -fsS -A "$CRATES_IO_API_USER_AGENT" -o /dev/null -w '%{http_code}' "$url" || true)"
-          if [ "$status" = "200" ]; then
-            echo "exists=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "exists=false" >> "$GITHUB_OUTPUT"
-          fi
-      - name: Verify CLI package
-        if: steps.exists.outputs.exists != 'true'
-        working-directory: apps/cli
-        run: cargo publish --dry-run --locked
-      - name: Authenticate to crates.io
-        if: steps.exists.outputs.exists != 'true'
-        id: auth
-        uses: rust-lang/crates-io-auth-action@v1
-      - name: Publish CLI crate
-        if: steps.exists.outputs.exists != 'true'
-        working-directory: apps/cli
-        env:
-          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
-        run: cargo publish --locked

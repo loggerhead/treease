@@ -33,14 +33,20 @@ treease-core = { version = "${cliCoreDependencyVersion}", path = "../../packages
 `,
     'utf8'
   );
+  await writeFile(path.join(rootDir, 'apps', 'web', 'package.json'), `{"version":"${coreVersion}"}\n`, 'utf8');
 }
 
 async function makeFixture(overrides = {}) {
   const rootDir = await mkdtemp(path.join(tmpdir(), 'treease-release-metadata-'));
   const coreDir = path.join(rootDir, 'packages', 'core');
   const cliDir = path.join(rootDir, 'apps', 'cli');
+  const webDir = path.join(rootDir, 'apps', 'web');
   await import('node:fs/promises').then(({ mkdir }) =>
-    Promise.all([mkdir(coreDir, { recursive: true }), mkdir(cliDir, { recursive: true })])
+    Promise.all([
+      mkdir(coreDir, { recursive: true }),
+      mkdir(cliDir, { recursive: true }),
+      mkdir(webDir, { recursive: true }),
+    ])
   );
   await writeManifests(rootDir, {
     coreVersion: '1.2.3',
@@ -65,8 +71,10 @@ test('loadReleaseMetadata returns normalized release information', async () => {
     cliCoreDependencyVersion: '1.2.3',
     coreName: 'treease-core',
     coreVersion: '1.2.3',
+    webVersion: '1.2.3',
     coreWasmReleaseDate: '26063009',
-    releaseTag: 'v2.3.4',
+    coreReleaseTag: 'v1.2.3',
+    cliReleaseTag: 'cli-v2.3.4',
   });
 });
 
