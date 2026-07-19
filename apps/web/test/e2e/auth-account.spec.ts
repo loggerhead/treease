@@ -42,6 +42,43 @@ test('PKCE login returns to the original page, shows the account, and supports l
   await page.route('**/auth/v1/logout**', async (route) => {
     await route.fulfill({ status: 204, body: '' });
   });
+  await page.route('**/v1/billing/pricing-prewarm', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ plans: [], checkouts: [] }),
+    });
+  });
+  await page.route('**/v1/account', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        user: { id: 'auth-e2e-user', email: 'ada@example.com', avatarUrl: null },
+        subscription: {
+          id: 'auth-e2e-subscription',
+          userId: 'auth-e2e-user',
+          tier: 'free',
+          billingCadence: null,
+          status: 'active',
+          currentPeriodEnd: null,
+          createdAt: '2026-01-01T00:00:00Z',
+          updatedAt: '2026-01-01T00:00:00Z',
+        },
+        usage: {
+          tier: 'free',
+          periodKey: '2026-01',
+          limits: {
+            bidirectionalEditDocumentsMonthly: { kind: 'limited', limit: 10 },
+            largeFileProcessingRunsMonthly: { kind: 'limited', limit: 3 },
+            aiSuggestionsMonthly: { kind: 'limited', limit: 0 },
+            shareMaxAgeDays: 7,
+          },
+          usage: {},
+        },
+      }),
+    });
+  });
 
   await page.goto('/?source=pkce-e2e#pricing');
   await page.waitForLoadState('networkidle');

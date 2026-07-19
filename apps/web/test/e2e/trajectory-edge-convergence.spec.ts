@@ -50,7 +50,12 @@ async function readEdgeAlignmentMismatches(page: import('@playwright/test').Page
       if (node?.kind === 'table' && node?.table) {
         const headerOffset = (node.table.headerHeight ?? 0) > 0 ? 1 : 0;
         if (headerOffset === 1 && rowIndex === 0) {
-          return Number(node.boxArgs?.y ?? 0) + Number(node.table.headerHeight ?? 0) / 2;
+          const borderOffset = Number(node.table.columns?.[0]?.boxArgs?.y ?? 0);
+          return (
+            Number(node.boxArgs?.y ?? 0) +
+            borderOffset +
+            Number(node.table.headerHeight ?? 0) / 2
+          );
         }
         const bodyIndex = rowIndex - headerOffset;
         const row = bodyIndex >= 0 ? node.table.rows?.[bodyIndex] : undefined;

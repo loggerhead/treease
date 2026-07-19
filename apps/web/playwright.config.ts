@@ -24,9 +24,9 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: 'pnpm dev:vite -- --host 127.0.0.1 --port 4173',
+    command: 'pnpm serve:e2e',
     url: 'http://127.0.0.1:4173',
-    reuseExistingServer: true,
-    timeout: CI ? 120_000 : 10_000,
+    reuseExistingServer: !CI,
+    timeout: 120_000,
   },
 });
