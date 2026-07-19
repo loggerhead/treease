@@ -74,7 +74,6 @@
   import { IconButton } from '../../lib/components/ui/button';
   import { trackEvent } from '../../lib/analytics/ga4';
   import { runPostpaidCapability } from '../../lib/billing/entitlement-gate';
-  import { createUsageIdempotencyKey } from '../../lib/billing/usage-idempotency';
   import { workspaceHost } from '../../lib/workspace-host';
   import { exchangeAuthCode, signOut } from '../../lib/auth/supabase-auth';
   import { editorWorkspace, getWorkspaceState, updateWorkspaceTab } from '../../lib/store/workspace-store';
@@ -459,7 +458,6 @@
       if (payload.file.size >= LARGE_FILE_PROCESSING_THRESHOLD_BYTES) {
         await runPostpaidCapability({
           capability: 'large_file_processing',
-          createIdempotencyKey: async () => await createUsageIdempotencyKey('large_file_processing', sample),
           metadata: { byteLength: payload.file.size },
           surface: 'file_import',
           execute: importFile,

@@ -94,6 +94,7 @@
 		"@leafer-in/view": "^2.0.1",
 		"@leafer-in/viewport": "^2.0.0",
 		"@supabase/supabase-js": "^2.57.4",
+		"@fingerprintjs/fingerprintjs": "^5.2.0",
 		"@tanstack/svelte-virtual": "^3.0.0",
 		"@tauri-apps/api": "^2.11.1",
 		"@tauri-apps/plugin-deep-link": "^2.4.9",

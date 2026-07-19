@@ -111,7 +111,6 @@
     runPostpaidCapability,
     type UsageBlock,
   } from '../billing/entitlement-gate';
-  import { createUsageIdempotencyKey } from '../billing/usage-idempotency';
   import {
     clearGraphBridge,
     installGraphBridge,
@@ -500,7 +499,6 @@
     dispatchGraphEditEvent: (type, detail) => dispatchGraphEditEvent(container, type, detail),
     runBidirectionalEdit: async (documentKey, execute) => runPostpaidCapability({
       capability: 'bidirectional_edit',
-      createIdempotencyKey: async () => await createUsageIdempotencyKey('bidirectional_edit', documentKey),
       metadata: { surface: 'graph_cell' },
       surface: 'graph_edit',
       execute,

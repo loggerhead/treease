@@ -1,10 +1,11 @@
 import { trackEvent } from '../analytics/ga4';
 import {
   getUsageSummary,
-  recordUsageEvent,
   type RecordedUsageCapability,
   type UsageSummary,
 } from '../services/treease-server';
+import { getUsageClientId } from './client-id';
+import { enqueueUsageEvent } from './usage-queue';
 
 type GateSurface = 'graph_edit' | 'file_import';
 
@@ -37,14 +38,6 @@ function featureFor(capability: RecordedUsageCapability): string {
   return capability === 'bidirectional_edit' ? 'bidirectional_edit' : 'large_file_processing';
 }
 
-function reportThreshold(summary: UsageSummary, capability: RecordedUsageCapability, surface: GateSurface): void {
-  const limit = limitFor(summary, capability);
-  if (limit.kind !== 'limited' || limit.limit === 0) return;
-  const used = summary.usage[capability] ?? 0;
-  const threshold = used >= limit.limit ? 100 : used / limit.limit >= 0.8 ? 80 : 0;
-  if (threshold) trackEvent('quota_threshold_reached', { plan: summary.tier, feature: featureFor(capability), threshold, surface });
-}
-
 function reportBlocked(block: UsageBlock, surface: GateSurface): void {
   trackEvent('entitlement_blocked', {
     plan: block.tier,
@@ -57,7 +50,7 @@ function reportBlocked(block: UsageBlock, surface: GateSurface): void {
 export async function refreshUsageGate(capability?: RecordedUsageCapability): Promise<UsageBlock | null> {
   const request = ++usageRequest;
   try {
-    const summary = await getUsageSummary();
+    const summary = await getUsageSummary(await getUsageClientId());
     if (request === usageRequest) latestUsage = summary;
   } catch {
     if (request === usageRequest) latestUsage = null;
@@ -67,7 +60,6 @@ export async function refreshUsageGate(capability?: RecordedUsageCapability): Pr
 
 export async function runPostpaidCapability<T>(input: {
   capability: RecordedUsageCapability;
-  createIdempotencyKey: () => Promise<string>;
   metadata: Record<string, unknown>;
   surface: GateSurface;
   execute: () => Promise<T>;
@@ -81,18 +73,13 @@ export async function runPostpaidCapability<T>(input: {
     return result;
   }
 
-  const request = ++usageRequest;
   void (async () => {
     try {
-      const summary = await recordUsageEvent({
+      await enqueueUsageEvent({
         capability: input.capability,
-        idempotencyKey: await input.createIdempotencyKey(),
         metadata: input.metadata,
       });
-      if (!summary) return;
-      if (request !== usageRequest) return;
-      latestUsage = summary;
-      reportThreshold(summary, input.capability, input.surface);
+      void refreshUsageGate();
     } catch {
       // Usage telemetry must never delay or roll back a local graph result.
     }

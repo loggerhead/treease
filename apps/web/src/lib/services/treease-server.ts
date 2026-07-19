@@ -94,6 +94,7 @@ const apiOrigin = import.meta.env.PROD ? 'https://api.treease.com' : 'http://loc
 async function getAccessToken(): Promise<string | null> {
   const host = await workspaceHost;
   if (host.surface === 'desktop') {
+    if (!(await host.hasRefreshToken())) return null;
     const { url, anonKey } = getSupabaseConfiguration();
     return (await host.refreshSession(url, anonKey)).accessToken;
   }
@@ -207,31 +208,44 @@ export async function createBillingPortalLink(returnUrl: string): Promise<Billin
   return (await response.json()) as BillingPortalLink;
 }
 
-export async function getUsageSummary(): Promise<UsageSummary> {
+export async function getUsageSummary(clientId?: string): Promise<UsageSummary> {
   const token = await getAccessToken();
-  if (!token) throw new BillingAuthenticationRequiredError();
-  const response = await fetch(`${apiOrigin}/v1/usage`, { headers: { authorization: `Bearer ${token}` } });
+  const query = clientId ? `?clientId=${encodeURIComponent(clientId)}` : '';
+  if (!token && !clientId) throw new BillingAuthenticationRequiredError();
+  const response = await fetch(`${apiOrigin}/v1/usage${query}`, { headers: token ? { authorization: `Bearer ${token}` } : {} });
   if (!response.ok) throw await readError(response);
   return (await response.json()) as UsageSummary;
 }
 
 export async function recordUsageEvent(input: {
+  clientId: string;
   capability: RecordedUsageCapability;
   idempotencyKey: string;
   metadata?: Record<string, unknown>;
 }): Promise<UsageSummary | null> {
   const token = await getAccessToken();
-  if (!token) return null;
   const response = await fetch(`${apiOrigin}/v1/usage/events`, {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
-      authorization: `Bearer ${token}`,
+      ...(token ? { authorization: `Bearer ${token}` } : {}),
     },
     body: JSON.stringify(input),
   });
   if (!response.ok) throw await readError(response);
   return (await response.json()) as UsageSummary;
+}
+
+export async function claimUsageEvents(clientId: string): Promise<number> {
+  const token = await getAccessToken();
+  if (!token) return 0;
+  const response = await fetch(`${apiOrigin}/v1/usage/claim`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+    body: JSON.stringify({ clientId }),
+  });
+  if (!response.ok) throw await readError(response);
+  return Number((await response.json() as { claimed?: unknown }).claimed ?? 0);
 }
 
 export type PublicShare = {

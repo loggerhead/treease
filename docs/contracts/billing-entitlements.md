@@ -11,12 +11,12 @@ read_when:
 
 - **Plan tier** is the customer-facing entitlement: `free` or `pro`.
 - **Billing cadence** is how a Pro subscription is billed: `monthly` or `yearly`; it is not a separate entitlement tier.
-- **Entitlement snapshot** is the resolved, server-issued result for one authenticated user. The Web app may display it but must not calculate access from local state.
+- **Entitlement snapshot** is the resolved, server-issued result for one usage owner. The Web app may display it but must not calculate access from local state.
 - **Usage event** is an immutable server-side record of one chargeable action. The ledger, not browser analytics, is the source for quota enforcement.
 
 The server resolves subscriptions from verified Lemon Squeezy webhooks and owns the entitlement snapshot and usage ledger. AI access is server-enforced; local graph and file operations use the server-issued snapshot only to decide whether a computed result remains consumable.
 
-Web and desktop create a Supabase anonymous user automatically when no session exists. Chargeable non-AI usage is recorded against that anonymous user's ID. When a user chooses a formal login method, Web first links the email or OAuth identity to the anonymous user, preserving that user ID and ledger. If linking fails because the identity already belongs to another user, Web abandons the anonymous session and starts an independent login without merging or migrating the anonymous ledger. Supabase must enable anonymous sign-ins, manual identity linking, and the relevant email/OAuth providers.
+Web and desktop derive a namespaced client ID (`browser:<fingerprint>` or `desktop:<fingerprint>`) when no session exists. Chargeable usage is recorded against `owner_key = client:<clientId>`. After login, the client queue is claimed transactionally into `owner_key = user:<userId>`, and all future events use that user owner. Client IDs are anonymous metering keys, not authentication credentials; the server resolves free entitlements for client owners and subscription entitlements for user owners.
 
 ## Pro product limits
 
@@ -66,11 +66,12 @@ entitlement_snapshots
   source (webhook|admin), created_at
 
 usage_events
-  id, user_id, capability, period_key, quantity, state (reserved|consumed|released)
-  idempotency_key (unique), metadata jsonb, created_at, finalized_at
+  id, owner_key (client:<id> or user:<id>), user_id (nullable), source_client_id (nullable)
+  capability, period_key, quantity, state (reserved|consumed|released)
+  idempotency_key, metadata jsonb, created_at, finalized_at
 ```
 
-`limits` contains named numeric limits such as `ai_suggestions_monthly`; `features` contains explicit booleans such as `large_file_processing`. The entitlement resolver produces a closed result (`allowed`, `quota_exhausted`, `feature_unavailable`) so routes cannot combine nullable limits and booleans incorrectly. `usage_events` must have a unique `(user_id, period_key, idempotency_key)` index. Non-AI event recording is idempotent but deliberately permits a ledger total above the display limit; AI quota reservation must run in one database transaction or RPC to prevent concurrent provider calls from overspending a limit. Finalization must also bind the authenticated `user_id`, so one user can never consume or release another user's reservation.
+`limits` contains named numeric limits such as `ai_suggestions_monthly`; `features` contains explicit booleans such as `large_file_processing`. The entitlement resolver produces a closed result (`allowed`, `quota_exhausted`, `feature_unavailable`) so routes cannot combine nullable limits and booleans incorrectly. `usage_events` must have a unique `(owner_key, period_key, idempotency_key)` index. Non-AI event recording is idempotent but deliberately permits a ledger total above the display limit; AI quota reservation must run in one database transaction or RPC to prevent concurrent provider calls from overspending a limit. Finalization must bind the `owner_key`, and the claim RPC must lock both client and user owners while transferring anonymous events.
 
 ## Web analytics contract
 
