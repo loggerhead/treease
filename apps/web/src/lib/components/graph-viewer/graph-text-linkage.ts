@@ -395,11 +395,11 @@ export function createGraphTextLinkageController(deps: GraphTextLinkageControlle
     return !!(candidate?.row || candidate?.key || candidate?.value);
   }
 
-  function revealPathInternal(path: PathSeg[], options?: RevealOptions): void {
+  function revealPathInternal(path: PathSeg[], options?: RevealOptions): boolean {
     const cellBoxByPathMap = deps.getCellBoxByPathMap();
     const nodeBoxMap = deps.getNodeBoxMap();
     const renderConfig = deps.getRenderConfig();
-    if (!path || path.length === 0) return;
+    if (!path || path.length === 0) return false;
     const { renderHandle, node } = resolveNodeForPath(path);
     let entry = getCellEntry(cellBoxByPathMap, path);
     if (options?.navigate && !entry) {
@@ -417,7 +417,7 @@ export function createGraphTextLinkageController(deps: GraphTextLinkageControlle
     if (missingRenderableContext) {
       clearRenderedSearchHighlights();
       activeHighlightState = { path: [...path], target: options?.target };
-      return;
+      return false;
     }
     clearSearchHighlight();
     activeHighlightState = { path: [...path], target: options?.target };
@@ -446,22 +446,22 @@ export function createGraphTextLinkageController(deps: GraphTextLinkageControlle
       const nodeBox = nodeBoxMap.get(renderHandle);
       if (nodeBox) applySearchHighlight(nodeBox, { fill: rowHighlight });
     }
+    deps.updateLeafer();
+    return true;
   }
 
-  function runRevealSequence(path: PathSeg[], options?: RevealOptions, afterStable?: () => void): void {
+  async function runRevealSequence(path: PathSeg[], options?: RevealOptions, afterStable?: () => void): Promise<boolean> {
     const token = (revealPathToken += 1);
-    const run = async () => {
-      await ensurePathIndex(path);
-      if (token !== revealPathToken) return;
-      revealPathInternal(path, options);
-      if (!options?.navigate) return;
-      await Promise.resolve();
-      await ensurePathIndex(path);
-      if (token !== revealPathToken) return;
-      revealPathInternal(path, { ...options, navigate: false });
-      afterStable?.();
-    };
-    void run();
+    await ensurePathIndex(path);
+    if (token !== revealPathToken) return false;
+    const firstReveal = revealPathInternal(path, options);
+    if (!options?.navigate) return firstReveal;
+    await Promise.resolve();
+    await ensurePathIndex(path);
+    if (token !== revealPathToken) return false;
+    const stableReveal = revealPathInternal(path, { ...options, navigate: false });
+    if (stableReveal) afterStable?.();
+    return stableReveal;
   }
 
   function revealSearchResult(result: GraphTextLinkageSearchResult): void {
@@ -471,9 +471,9 @@ export function createGraphTextLinkageController(deps: GraphTextLinkageControlle
     });
   }
 
-  function revealPath(path: PathSeg[], options?: RevealOptions): void {
-    if (!path || path.length === 0) return;
-    runRevealSequence(path, options);
+  function revealPath(path: PathSeg[], options?: RevealOptions): Promise<boolean> {
+    if (!path || path.length === 0) return Promise.resolve(false);
+    return runRevealSequence(path, options);
   }
 
   function refreshActiveHighlight(): void {

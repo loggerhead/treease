@@ -295,10 +295,9 @@
         },
         restoreGraphFocus: (path, target) => {
           const localPath = fromSharePath(path);
-          viewerRef?.revealPath(localPath, { target });
-          return true;
+          return viewerRef?.revealPath(localPath, { target }) ?? Promise.resolve(false);
         },
-        waitForGraphReady: waitForCurrentGraphRuntime,
+        waitForGraphReady: () => viewerRef?.waitForGraphReady() ?? Promise.resolve(false),
         rebuildSubgraphWorkspace: async (panePaths) => await viewerRef.restoreSubgraphWorkspacePaths(panePaths.map(fromSharePath)),
         reportNavigationWarning: () => toast.warning('The shared document opened, but part of its saved navigation could not be restored.'),
       });
@@ -308,15 +307,6 @@
     } finally {
       shareLoading = false;
     }
-  }
-
-  async function waitForCurrentGraphRuntime(): Promise<boolean> {
-    const deadline = Date.now() + 10_000;
-    while (viewerRuntimeLoading && Date.now() < deadline) {
-      await tick();
-      await new Promise<void>((resolve) => setTimeout(resolve, 16));
-    }
-    return !viewerRuntimeLoading;
   }
 
   async function createShareResource(): Promise<ShareResource> {

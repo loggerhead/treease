@@ -156,6 +156,10 @@
   let graphRuntimeReady = false;
   let showRuntimeLoading = true;
   let renderRuntimeReady = false;
+  const graphReadinessWaiters = new Set<{
+    resolve: (ready: boolean) => void;
+    timeout: ReturnType<typeof setTimeout>;
+  }>();
   let documentKeyValue = '';
   let languageIdValue: SupportedEditorLanguageId = editorLanguageFallback;
   let editorRevisionValue = 0;
@@ -577,6 +581,33 @@
     };
   }
 
+  function resolveGraphReadinessWaiters(): void {
+    const interaction = getGraphInteractionState();
+    const ready = graphRuntimeReady && interaction.interactiveReady === true;
+    const failed = Boolean(errorMessage);
+    if (!ready && !failed) return;
+    graphReadinessWaiters.forEach((waiter) => {
+      clearTimeout(waiter.timeout);
+      waiter.resolve(ready);
+    });
+    graphReadinessWaiters.clear();
+  }
+
+  export function waitForGraphReady(): Promise<boolean> {
+    if (errorMessage) return Promise.resolve(false);
+    if (graphRuntimeReady && getGraphInteractionState().interactiveReady === true) return Promise.resolve(true);
+    return new Promise((resolve) => {
+      const waiter = {
+        resolve,
+        timeout: setTimeout(() => {
+          graphReadinessWaiters.delete(waiter);
+          resolve(false);
+        }, 10_000),
+      };
+      graphReadinessWaiters.add(waiter);
+    });
+  }
+
   function syncGraphReadinessFromInteraction() {
     const interaction = getGraphInteractionState();
     if (!interaction?.documentKey || typeof interaction.revision !== 'number') return interaction;
@@ -943,9 +974,9 @@
   export function revealPath(
     path: PathSeg[],
     options: { target: 'key' | 'value' | 'node' | undefined; navigate: boolean | undefined },
-  ): void {
-    if (isFullEditInteractionBlocked()) return;
-    graphTextLinkageController.revealPath(path, options);
+  ): Promise<boolean> {
+    if (isFullEditInteractionBlocked()) return Promise.resolve(false);
+    return graphTextLinkageController.revealPath(path, options);
   }
 
   export function getSubgraphWorkspacePaths(): PathSeg[][] {
@@ -1030,6 +1061,11 @@
   }
 
   onDestroy(() => {
+    graphReadinessWaiters.forEach((waiter) => {
+      clearTimeout(waiter.timeout);
+      waiter.resolve(false);
+    });
+    graphReadinessWaiters.clear();
     disposeGraphViewRuntime({
       cleanupHandles: { settled: fullEditSettledCleanupHandle, idle: fullEditIdleCleanupHandle },
       cancelFrame: cancelAnimationFrame,
@@ -1059,6 +1095,15 @@
     graphAppliedRevision: $graphAppliedRevision,
     lastAutoOffset,
   });
+
+  $: {
+    graphRuntimeReady;
+    errorMessage;
+    renderRuntimeReady;
+    editorRevisionValue;
+    $graphAppliedRevision;
+    resolveGraphReadinessWaiters();
+  }
 
   $: {
     const shouldResetWorkspace = shouldResetSubgraphWorkspaceForFullEdit(

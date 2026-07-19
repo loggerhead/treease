@@ -27,7 +27,7 @@ export async function restoreShareResource(resource: ShareResource, ports: {
   setViewMode(mode: 'graph' | 'text'): void;
   clearCompareState(): void;
   restoreTreePath(path: ShareResource['payload']['interaction']['treePath']): boolean;
-  restoreGraphFocus(path: ShareResource['payload']['interaction']['treePath'], target: 'key' | 'value' | 'node'): boolean;
+  restoreGraphFocus(path: ShareResource['payload']['interaction']['treePath'], target: 'key' | 'value' | 'node'): Promise<boolean>;
   waitForGraphReady(): Promise<boolean>;
   rebuildSubgraphWorkspace(paths: ShareResource['payload']['interaction']['subgraphWorkspace']['panePaths']): Promise<boolean>;
   reportNavigationWarning(): void;
@@ -56,7 +56,7 @@ export async function restoreShareResource(resource: ShareResource, ports: {
 async function restoreInteraction(resource: ShareResource, ports: {
   editor: EditorPort;
   restoreTreePath(path: ShareResource['payload']['interaction']['treePath']): boolean;
-  restoreGraphFocus(path: ShareResource['payload']['interaction']['treePath'], target: 'key' | 'value' | 'node'): boolean;
+  restoreGraphFocus(path: ShareResource['payload']['interaction']['treePath'], target: 'key' | 'value' | 'node'): Promise<boolean>;
   waitForGraphReady(): Promise<boolean>;
   rebuildSubgraphWorkspace(paths: ShareResource['payload']['interaction']['subgraphWorkspace']['panePaths']): Promise<boolean>;
   reportNavigationWarning(): void;
@@ -68,7 +68,7 @@ async function restoreInteraction(resource: ShareResource, ports: {
   if (interaction.focus?.type === 'editor') ports.editor.restoreSelection(interaction.focus.selection);
   else if (interaction.focus?.type === 'graph') {
     ports.editor.restoreSelection(interaction.focus.editorSelection);
-    focusRestored = await ports.waitForGraphReady() && ports.restoreGraphFocus(interaction.focus.path, interaction.focus.target);
+    focusRestored = await ports.waitForGraphReady() && await ports.restoreGraphFocus(interaction.focus.path, interaction.focus.target);
   }
   if (!workspaceRestored || !treeRestored || !focusRestored) ports.reportNavigationWarning();
 }

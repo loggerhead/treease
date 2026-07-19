@@ -135,7 +135,7 @@ export type TreeaseGraphRuntime = {
   revealPath?: (
     path: TreeaseBridgePathSeg[],
     options?: { target?: 'key' | 'value' | 'node'; navigate?: boolean },
-  ) => void;
+  ) => Promise<boolean>;
   activateProbe?: (probeId: string) => Promise<void>;
   commitProbe?: (probeId: string, text: string) => Promise<boolean>;
   scrollTableToRow?: (rowIndex: number) => void;

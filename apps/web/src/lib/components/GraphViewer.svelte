@@ -29,8 +29,12 @@
   export function revealPath(
     path: PathSeg[],
     options: { target: 'key' | 'value' | 'node' | undefined; navigate: boolean | undefined },
-  ): void {
-    runtime?.revealPath(path, options);
+  ): Promise<boolean> {
+    return runtime?.revealPath(path, options) ?? Promise.resolve(false);
+  }
+
+  export async function waitForGraphReady(): Promise<boolean> {
+    return await runtime?.waitForGraphReady() ?? false;
   }
 
   export function getSubgraphWorkspacePaths(): PathSeg[][] {

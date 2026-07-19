@@ -316,9 +316,13 @@
     if (path.length) onGraphReveal(event.detail)
   }
 
-  export function revealPath(path: PathSeg[], options: { target?: 'key' | 'value' | 'node' } | undefined) {
-    if (!path.length) return
-    graphViewer?.revealPath?.(path, options)
+  export function revealPath(path: PathSeg[], options: { target?: 'key' | 'value' | 'node' } | undefined): Promise<boolean> {
+    if (!path.length) return Promise.resolve(false)
+    return graphViewer?.revealPath?.(path, { ...options, navigate: true }) ?? Promise.resolve(false)
+  }
+
+  export async function waitForGraphReady(): Promise<boolean> {
+    return await graphViewer?.waitForGraphReady?.() ?? false;
   }
 
   export function getSubgraphWorkspacePaths(): PathSeg[][] {
