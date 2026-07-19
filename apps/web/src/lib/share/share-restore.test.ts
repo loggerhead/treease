@@ -39,4 +39,13 @@ describe('share restore', () => {
     }, { ...ports(calls), setViewMode: (mode) => calls.push(`mode.${mode}`), clearCompareState: () => calls.push('compare.clear'), restoreTreePath: () => true, restoreGraphFocus: () => true, rebuildSubgraphWorkspace: async () => true, reportNavigationWarning: () => calls.push('warning') });
     expect(calls).toEqual(['editor.ready', 'editor.write', 'editor.idle', 'compare.clear', 'mode.graph']);
   });
+
+  it('restores the source selection before graph focus', async () => {
+    const calls: string[] = [];
+    await restoreShareResource({
+      type: 'text_snapshot',
+      payload: { schemaVersion: 1, left: { text: '{"left":1}', languageId: 'json' }, right: null, layout: { viewMode: 'graph', activePane: 'left' }, interaction: { treePath: [], focus: { type: 'graph', path: [{ type: 'key', key: 'left' }], target: 'value', editorSelection: { startLine: 1, startColumn: 2, endLine: 1, endColumn: 6 } }, subgraphWorkspace: { panePaths: [] } } },
+    }, { ...ports(calls), setViewMode: (mode) => calls.push(`mode.${mode}`), clearCompareState: () => calls.push('compare.clear'), restoreTreePath: () => true, restoreGraphFocus: () => { calls.push('graph.focus'); return true; }, rebuildSubgraphWorkspace: async () => true, reportNavigationWarning: () => calls.push('warning') });
+    expect(calls).toEqual(['editor.ready', 'editor.write', 'editor.idle', 'compare.clear', 'mode.graph', 'selection', 'graph.focus']);
+  });
 });

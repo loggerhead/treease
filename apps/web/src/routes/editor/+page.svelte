@@ -319,8 +319,8 @@
     const selection = editorRef.getSelection();
     const interaction: ShareInteraction = {
       treePath,
-      focus: graphHighlight
-        ? { type: 'graph', path: toSharePath(graphHighlight.path), target: graphHighlight.target }
+      focus: graphHighlight && selection
+        ? { type: 'graph', path: toSharePath(graphHighlight.path), target: graphHighlight.target, editorSelection: selection }
         : selection ? { type: 'editor', selection } : null,
       subgraphWorkspace: { panePaths: viewerRef?.getSubgraphWorkspacePaths().map(toSharePath) ?? [] },
     };

@@ -25,7 +25,9 @@ const interactionSchema = z.object({
   treePath: pathSchema,
   focus: z.discriminatedUnion('type', [
     z.object({ type: z.literal('editor'), selection: editorSelectionSchema }).strict(),
-    z.object({ type: z.literal('graph'), path: pathSchema, target: z.enum(['key', 'value', 'node']) }).strict(),
+    // A graph focus is produced by a semantic graph reveal, which also selects
+    // the corresponding source range in Monaco. Persist both semantic layers.
+    z.object({ type: z.literal('graph'), path: pathSchema, target: z.enum(['key', 'value', 'node']), editorSelection: editorSelectionSchema }).strict(),
   ]).nullable(),
   subgraphWorkspace: z.object({ panePaths: z.array(pathSchema).max(MAX_SHARE_WORKSPACE_PANES) }).strict(),
 }).strict();

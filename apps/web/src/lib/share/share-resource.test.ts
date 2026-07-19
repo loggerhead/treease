@@ -28,5 +28,6 @@ describe('share resource', () => {
     expect(parseShareResource({ type: 'text_snapshot', payload: { schemaVersion: 1, left, right: null, layout: input.layout, cache: {} } })).toBeNull();
     expect(parseShareResource({ type: 'text_snapshot', payload: { schemaVersion: 1, left, right: null, layout: input.layout, interaction: { ...interaction, unknown: true } } })).toBeNull();
     expect(parseShareResource({ type: 'text_snapshot', payload: { schemaVersion: 1, left, right: null, layout: input.layout, interaction: { treePath: [{ type: 'key', key: 'a', extra: true }], focus: null, subgraphWorkspace: { panePaths: [] } } } })).toBeNull();
+    expect(parseShareResource({ type: 'text_snapshot', payload: { schemaVersion: 1, left, right: null, layout: input.layout, interaction: { treePath: [], focus: { type: 'graph', path: [], target: 'node' }, subgraphWorkspace: { panePaths: [] } } } })).toBeNull();
   });
 });

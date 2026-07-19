@@ -64,6 +64,9 @@ async function restoreInteraction(resource: ShareResource, ports: {
   const treeRestored = ports.restoreTreePath(interaction.treePath);
   let focusRestored = true;
   if (interaction.focus?.type === 'editor') ports.editor.restoreSelection(interaction.focus.selection);
-  else if (interaction.focus?.type === 'graph') focusRestored = ports.restoreGraphFocus(interaction.focus.path, interaction.focus.target);
+  else if (interaction.focus?.type === 'graph') {
+    ports.editor.restoreSelection(interaction.focus.editorSelection);
+    focusRestored = ports.restoreGraphFocus(interaction.focus.path, interaction.focus.target);
+  }
   if (!workspaceRestored || !treeRestored || !focusRestored) ports.reportNavigationWarning();
 }
