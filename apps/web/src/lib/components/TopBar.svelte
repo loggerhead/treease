@@ -10,6 +10,7 @@
   import * as ButtonGroup from './ui/button-group'
   import { Button, IconButton } from './ui/button'
   import type { SupportedEditorLanguageId } from '../monaco/language-support'
+  import { assetUrl } from '$lib/assets'
 
   export let tabs: Array<{ id: string; name: string; languageId: SupportedEditorLanguageId; dirty?: boolean }> = []
   export let activeTabId = ''
@@ -114,7 +115,16 @@
   })
 </script>
 
-<header class="relative grid h-[var(--topbar-height)] grid-cols-[auto_1fr_auto] items-center gap-3 border-b border-[var(--border-strong)] bg-[var(--topbar-bg)] px-3 text-[var(--text-primary)]">
+<header class="relative grid h-[var(--topbar-height)] grid-cols-[auto_auto_1fr_auto] items-center gap-3 border-b border-[var(--border-strong)] bg-[var(--topbar-bg)] px-3 text-[var(--text-primary)]">
+  <a
+    class="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-[6px] outline-none transition-[background-color,box-shadow] duration-150 hover:bg-[var(--panel-bg-alt)] focus-visible:ring-2 focus-visible:ring-[var(--accent)]/25"
+    aria-label="Treease home"
+    title="Treease home"
+    data-testid="topbar-home-link"
+    href="/"
+  >
+    <img class="h-6 w-6 object-contain" src={assetUrl('/treease-logo.png')} alt="Treease logo" />
+  </a>
   <ButtonGroup.Root variant="segmented-outline" class="min-w-0">
     <IconButton aria-label="Import" title="Import" data-testid="topbar-import-button" on:click={toggleImportPanel}>
       <FileInput size={12} />
