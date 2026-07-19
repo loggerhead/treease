@@ -9,6 +9,7 @@ readme = "README.md"
 repository = "https://github.com/loggerhead/treease"
 homepage = "https://github.com/loggerhead/treease"
 documentation = "https://github.com/loggerhead/treease/tree/main/apps/cli"
+exclude = ["AGENTS.md", "tests/acceptance/**"]
 keywords = ["treease", "cli", "yaml", "json", "jq"]
 categories = ["command-line-utilities", "text-processing"]
 

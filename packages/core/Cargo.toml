@@ -8,6 +8,7 @@ readme = "README.md"
 repository = "https://github.com/loggerhead/treease"
 homepage = "https://github.com/loggerhead/treease"
 documentation = "https://github.com/loggerhead/treease/tree/main/packages/core"
+exclude = ["**/AGENTS.md", ".config/nextest.toml"]
 keywords = ["treease", "tree-sitter", "structured-data", "yaml", "json"]
 categories = ["parser-implementations", "parsing"]
 

@@ -4,6 +4,9 @@ version = "0.1.0"
 description = "Treease Desktop Workspace host"
 authors = ["Treease"]
 edition = "2021"
+license-file = "../../LICENSE"
+repository = "https://github.com/loggerhead/treease"
+homepage = "https://github.com/loggerhead/treease"
 
 [[bin]]
 name = "Treease"

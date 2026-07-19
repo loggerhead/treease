@@ -43,7 +43,8 @@ try {
 
 function isTracked(filePath) {
   try {
-    execFileSync('git', ['ls-files', '--error-unmatch', '--', filePath], {
+    const relativePath = path.relative(webDir, filePath);
+    execFileSync('git', ['ls-files', '--error-unmatch', '--', relativePath], {
       cwd: webDir,
       stdio: 'ignore'
     });
