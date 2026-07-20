@@ -6,7 +6,6 @@
   import { afterNavigate } from '$app/navigation';
   import { onMount } from 'svelte';
   import { initializeAnalytics, trackPageView } from '$lib/analytics/ga4';
-  import { installAssetLoadRecovery } from '$lib/runtime/asset-load-recovery';
   import 'virtual:wdio-plugin';
 
   if (typeof window !== 'undefined' && (import.meta.env.DEV || import.meta.env.MODE === 'test')) {
@@ -14,12 +13,9 @@
   }
 
   onMount(() => {
-    const uninstallAssetLoadRecovery = installAssetLoadRecovery(window);
     void initializeAnalytics().then(() => {
       trackPageView(window.location.pathname);
     });
-
-    return uninstallAssetLoadRecovery;
   });
 
   afterNavigate(({ to }) => {

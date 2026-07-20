@@ -23,6 +23,7 @@ apps/desktop/src-tauri/gen/
 apps/desktop/src-tauri/icons/
 apps/web/benchmarks/graph-stream-baseline.json
 apps/web/.env
+apps/web/.wrangler/
 apps/web/.tinify-manifest.json
 apps/web/static/**/*.png
 !apps/web/static/treease-logo.png
