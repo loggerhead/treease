@@ -2,6 +2,7 @@ import { getSupabaseClient, getSupabaseConfiguration } from '../auth/supabase-au
 import type { BillingPriceId } from '../config/pricing';
 import { workspaceHost } from '../workspace-host';
 import { parseShareResource, type ShareResource } from '../share/share-resource';
+import { isUsageCoolingDown, markUsageRequestSucceeded, noteUsageRateLimit } from '../billing/usage-rate-limit';
 
 export type { ShareResource } from '../share/share-resource';
 
@@ -76,10 +77,20 @@ export class TreeaseServerError extends Error {
     readonly status: number,
     readonly code: string | null,
     readonly details: Record<string, unknown> | null,
+    readonly retryAfterMs?: number,
   ) {
     super(message);
     this.name = 'TreeaseServerError';
   }
+}
+
+function retryAfterMs(response: Response): number | undefined {
+  const value = response.headers.get('retry-after');
+  if (!value) return undefined;
+  const seconds = Number(value);
+  if (Number.isFinite(seconds)) return Math.max(0, seconds * 1000);
+  const timestamp = Date.parse(value);
+  return Number.isNaN(timestamp) ? undefined : Math.max(0, timestamp - Date.now());
 }
 
 export class BillingAuthenticationRequiredError extends Error {
@@ -117,7 +128,21 @@ async function readError(response: Response): Promise<TreeaseServerError> {
   } catch {
     // Keep the HTTP status when the server does not return JSON.
   }
-  return new TreeaseServerError(message, response.status, code, details);
+  return new TreeaseServerError(message, response.status, code, details, retryAfterMs(response));
+}
+
+function throwIfUsageCoolingDown(): void {
+  if (isUsageCoolingDown()) throw new TreeaseServerError('Usage requests are temporarily paused.', 429, null, null);
+}
+
+async function readUsageResponse<T>(response: Response): Promise<T> {
+  if (!response.ok) {
+    const error = await readError(response);
+    if (error.status === 429) noteUsageRateLimit(error.retryAfterMs);
+    throw error;
+  }
+  markUsageRequestSucceeded();
+  return await response.json() as T;
 }
 
 export async function createShareLink(resource: ShareResource, expiresInDays = 7): Promise<ShareLink> {
@@ -209,12 +234,12 @@ export async function createBillingPortalLink(returnUrl: string): Promise<Billin
 }
 
 export async function getUsageSummary(clientId?: string): Promise<UsageSummary> {
+  throwIfUsageCoolingDown();
   const token = await getAccessToken();
   const query = clientId ? `?clientId=${encodeURIComponent(clientId)}` : '';
   if (!token && !clientId) throw new BillingAuthenticationRequiredError();
   const response = await fetch(`${apiOrigin}/v1/usage${query}`, { headers: token ? { authorization: `Bearer ${token}` } : {} });
-  if (!response.ok) throw await readError(response);
-  return (await response.json()) as UsageSummary;
+  return readUsageResponse<UsageSummary>(response);
 }
 
 export async function recordUsageEvent(input: {
@@ -223,6 +248,7 @@ export async function recordUsageEvent(input: {
   idempotencyKey: string;
   metadata?: Record<string, unknown>;
 }): Promise<UsageSummary | null> {
+  throwIfUsageCoolingDown();
   const token = await getAccessToken();
   const response = await fetch(`${apiOrigin}/v1/usage/events`, {
     method: 'POST',
@@ -232,11 +258,11 @@ export async function recordUsageEvent(input: {
     },
     body: JSON.stringify(input),
   });
-  if (!response.ok) throw await readError(response);
-  return (await response.json()) as UsageSummary;
+  return readUsageResponse<UsageSummary>(response);
 }
 
 export async function claimUsageEvents(clientId: string): Promise<number> {
+  throwIfUsageCoolingDown();
   const token = await getAccessToken();
   if (!token) return 0;
   const response = await fetch(`${apiOrigin}/v1/usage/claim`, {
@@ -244,8 +270,8 @@ export async function claimUsageEvents(clientId: string): Promise<number> {
     headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
     body: JSON.stringify({ clientId }),
   });
-  if (!response.ok) throw await readError(response);
-  return Number((await response.json() as { claimed?: unknown }).claimed ?? 0);
+  const body = await readUsageResponse<{ claimed?: unknown }>(response);
+  return Number(body.claimed ?? 0);
 }
 
 export type PublicShare = {

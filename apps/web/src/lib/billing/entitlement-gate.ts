@@ -6,6 +6,7 @@ import {
 } from '../services/treease-server';
 import { getUsageClientId } from './client-id';
 import { enqueueUsageEvent } from './usage-queue';
+import { isUsageCoolingDown } from './usage-rate-limit';
 
 type GateSurface = 'graph_edit' | 'file_import';
 
@@ -48,12 +49,13 @@ function reportBlocked(block: UsageBlock, surface: GateSurface): void {
 }
 
 export async function refreshUsageGate(capability?: RecordedUsageCapability): Promise<UsageBlock | null> {
+  if (isUsageCoolingDown()) return capability ? usageBlockFor(latestUsage, capability) : null;
   const request = ++usageRequest;
   try {
     const summary = await getUsageSummary(await getUsageClientId());
     if (request === usageRequest) latestUsage = summary;
   } catch {
-    if (request === usageRequest) latestUsage = null;
+    if (request === usageRequest && !isUsageCoolingDown()) latestUsage = null;
   }
   return capability ? usageBlockFor(latestUsage, capability) : null;
 }

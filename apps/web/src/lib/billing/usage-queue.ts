@@ -2,9 +2,11 @@ import { openDB, type DBSchema, type IDBPDatabase } from 'idb';
 import {
   claimUsageEvents,
   recordUsageEvent,
+  TreeaseServerError,
   type RecordedUsageCapability,
 } from '../services/treease-server';
 import { getUsageClientId } from './client-id';
+import { isUsageCoolingDown } from './usage-rate-limit';
 
 type UsageQueueEvent = {
   eventId: string;
@@ -25,7 +27,7 @@ interface UsageDatabase extends DBSchema {
 
 const DB_NAME = 'treease-usage';
 const DB_VERSION = 1;
-const inFlight = new Set<string>();
+let flushPromise: Promise<void> | null = null;
 
 async function getDb(): Promise<IDBPDatabase<UsageDatabase>> {
   return openDB<UsageDatabase>(DB_NAME, DB_VERSION, {
@@ -54,19 +56,30 @@ export async function enqueueUsageEvent(input: {
 }
 
 export async function flushUsageEvents(): Promise<void> {
+  // Timer and enqueue triggers share one promise so a pending batch is never flushed twice.
+  if (flushPromise) return flushPromise;
+  flushPromise = flushUsageEventsInternal().finally(() => {
+    flushPromise = null;
+  });
+  return flushPromise;
+}
+
+async function flushUsageEventsInternal(): Promise<void> {
+  if (isUsageCoolingDown()) return;
   const db = await getDb();
   const events = await db.getAllFromIndex('events', 'by-status', 'pending');
   const clientIds = [...new Set(events.map((event) => event.clientId))];
   for (const clientId of clientIds) {
+    if (isUsageCoolingDown()) return;
     try {
       await claimUsageEvents(clientId);
-    } catch {
+    } catch (error) {
+      if (error instanceof TreeaseServerError && error.status === 429) return;
       // A failed claim must not prevent the event queue from retrying later.
     }
   }
-  await Promise.all(events.map(async (event) => {
-    if (inFlight.has(event.eventId)) return;
-    inFlight.add(event.eventId);
+  for (const event of events) {
+    if (isUsageCoolingDown()) return;
     try {
       await recordUsageEvent({
         clientId: event.clientId,
@@ -75,12 +88,11 @@ export async function flushUsageEvents(): Promise<void> {
         metadata: { ...event.metadata, createdAt: event.createdAt },
       });
       await db.put('events', { ...event, status: 'uploaded' });
-    } catch {
+    } catch (error) {
+      if (error instanceof TreeaseServerError && error.status === 429) return;
       // Keep the event pending; the next flush retries the same idempotency key.
-    } finally {
-      inFlight.delete(event.eventId);
     }
-  }));
+  }
 }
 
 if (typeof window !== 'undefined') {
