@@ -13,6 +13,11 @@ const config = {
   preprocess: vitePreprocess(),
   kit: {
     adapter: adapter({ pages: buildDirectory, assets: buildDirectory, fallback: '200.html' }),
+    paths: {
+      // Workers serves the SPA from the domain root, so relative module URLs can recurse
+      // after an asset miss. Keep every generated chunk URL rooted at `/_app`.
+      relative: false,
+    },
     alias: {
       '@core-wasm': coreWasmDir,
       '@core-wasm/index': path.resolve(coreWasmDir, 'index.ts'),
