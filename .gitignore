@@ -26,8 +26,11 @@ apps/web/.env
 apps/web/.wrangler/
 apps/web/.tinify-manifest.json
 apps/web/static/**/*.png
-!apps/web/static/treease-logo.png
 apps/web/static/**/*.mp4
+!apps/web/static/landing/
+!apps/web/static/landing/*.png
+!apps/web/static/landing/*.mp4
+!apps/web/static/treease-logo.png
 scripts/rewrite_*.py
 guess-failure.md
 # wasm-pack test build output

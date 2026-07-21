@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { assetUrl } from '$lib/assets';
+  import { assetUrl, r2Assets } from '$lib/assets';
   import { onMount } from 'svelte';
 
   type DemoItem = {
@@ -18,8 +18,8 @@
       label: 'Graph',
       title: 'Graph View',
       description: 'Trace paths, hierarchy, and node relationships in the graph.',
-      poster: assetUrl('/landing/hero-demo-graph.png'),
-      video: assetUrl('/landing/hero-demo-graph.mp4'),
+      poster: assetUrl(r2Assets.heroDemoGraphPoster),
+      video: assetUrl(r2Assets.heroDemoGraphVideo),
       accent: '#2563eb'
     },
     {
@@ -27,8 +27,8 @@
       label: 'Compare',
       title: 'Compare',
       description: 'Review structured diffs and text fallback in the same workspace.',
-      poster: assetUrl('/landing/hero-demo-compare.png'),
-      video: assetUrl('/landing/hero-demo-compare.mp4'),
+      poster: assetUrl(r2Assets.heroDemoComparePoster),
+      video: assetUrl(r2Assets.heroDemoCompareVideo),
       accent: '#f97316'
     },
     {
@@ -36,8 +36,8 @@
       label: 'Editor Preview',
       title: 'Editor Preview',
       description: 'Preview hover values and export results right beside the editor.',
-      poster: assetUrl('/landing/hero-demo-preview.png'),
-      video: assetUrl('/landing/hero-demo-preview.mp4'),
+      poster: assetUrl(r2Assets.heroDemoPreviewPoster),
+      video: assetUrl(r2Assets.heroDemoPreviewVideo),
       accent: '#14b8a6'
     }
   ];

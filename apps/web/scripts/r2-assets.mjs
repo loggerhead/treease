@@ -1,11 +1,11 @@
-import { readdir } from 'node:fs/promises';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const webDir = path.resolve(here, '..');
-const assetSourceDir = path.resolve(webDir, 'assets', 'r2');
+const assetSourceDir = path.resolve(webDir, 'static');
+const manifestPath = path.resolve(webDir, 'assets', 'r2-manifest.json');
 
 export const assetBaseUrl =
   (process.env.PUBLIC_ASSET_BASE_URL ?? 'https://assets.treease.com').replace(/\/+$/, '');
@@ -15,6 +15,17 @@ const contentTypes = new Map([
   ['.png', 'image/png'],
   ['.mp4', 'video/mp4'],
 ]);
+
+const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+const manifestFiles = Object.values(manifest);
+if (
+  manifestFiles.length === 0 ||
+  manifestFiles.some((file) => typeof file !== 'string') ||
+  new Set(manifestFiles).size !== manifestFiles.length
+) {
+  throw new Error(`invalid R2 asset manifest: ${manifestPath}`);
+}
+for (const relativePath of manifestFiles) getContentType(relativePath);
 
 export function toAssetUrl(relativePath) {
   return `${assetBaseUrl}/${relativePath}`;
@@ -34,29 +45,13 @@ export async function listAssetFiles() {
     return null;
   }
 
-  const files = [];
-  await walk(assetSourceDir, files);
-  files.sort((left, right) => left.localeCompare(right));
-  return files;
-}
-
-async function walk(currentDir, files, relativePrefix = '') {
-  const entries = await readdir(currentDir, { withFileTypes: true });
-  for (const entry of entries) {
-    if (entry.name.startsWith('.')) continue;
-
-    const nextRelative = relativePrefix ? `${relativePrefix}/${entry.name}` : entry.name;
-    const nextPath = path.resolve(currentDir, entry.name);
-
-    if (entry.isDirectory()) {
-      await walk(nextPath, files, nextRelative);
-      continue;
-    }
-    if (!entry.isFile()) continue;
-
-    getContentType(nextRelative);
-    files.push(nextRelative.replaceAll(path.sep, '/'));
+  const missing = manifestFiles.filter(
+    (file) => !existsSync(path.resolve(assetSourceDir, file)),
+  );
+  if (missing.length > 0) {
+    throw new Error(`missing R2 assets in ${assetSourceDir}: ${missing.join(', ')}`);
   }
+  return [...manifestFiles].sort();
 }
 
 export { assetSourceDir, webDir };

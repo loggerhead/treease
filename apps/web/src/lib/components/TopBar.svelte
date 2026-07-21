@@ -10,7 +10,7 @@
   import * as ButtonGroup from './ui/button-group'
   import { Button, IconButton } from './ui/button'
   import type { SupportedEditorLanguageId } from '../monaco/language-support'
-  import { assetUrl } from '$lib/assets'
+  import { assetUrl, r2Assets } from '$lib/assets'
 
   export let tabs: Array<{ id: string; name: string; languageId: SupportedEditorLanguageId; dirty?: boolean }> = []
   export let activeTabId = ''
@@ -123,7 +123,7 @@
     data-testid="topbar-home-link"
     href="/"
   >
-    <img class="h-6 w-6 object-contain" src={assetUrl('/treease-logo.png')} alt="Treease logo" />
+    <img class="h-6 w-6 object-contain" src={assetUrl(r2Assets.treeaseLogo)} alt="Treease logo" />
   </a>
   <ButtonGroup.Root variant="segmented-outline" class="min-w-0">
     <IconButton aria-label="Import" title="Import" data-testid="topbar-import-button" on:click={toggleImportPanel}>

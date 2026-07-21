@@ -1,0 +1,18 @@
+{
+  "treeaseLogo": "treease-logo.png",
+  "landingFeatureContainer": "landing/feature-container.png",
+  "landingFeatureFormat": "landing/feature-format.png",
+  "landingFeatureImport": "landing/feature-import.png",
+  "landingFeaturePreview": "landing/feature-preview.png",
+  "landingFeatureReveal": "landing/feature-reveal.png",
+  "landingFeatureSync": "landing/feature-sync.png",
+  "heroDemoCompareVideo": "landing/hero-demo-compare.mp4",
+  "heroDemoComparePoster": "landing/hero-demo-compare.png",
+  "heroDemoGraphVideo": "landing/hero-demo-graph.mp4",
+  "heroDemoGraphPoster": "landing/hero-demo-graph.png",
+  "heroDemoPreviewVideo": "landing/hero-demo-preview.mp4",
+  "heroDemoPreviewPoster": "landing/hero-demo-preview.png",
+  "workflowExport": "landing/workflow-export.png",
+  "workflowProgressVideo": "landing/workflow-progress.mp4",
+  "workflowProgressPoster": "landing/workflow-progress.png"
+}

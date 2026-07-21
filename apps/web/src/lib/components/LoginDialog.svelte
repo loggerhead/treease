@@ -124,30 +124,32 @@
         <span class="h-px flex-1 bg-[#e2e8f0]"></span><span>OR</span><span class="h-px flex-1 bg-[#e2e8f0]"></span>
       </div>
 
-      {#if !otpSent}
-        <label class="flex flex-col gap-2 text-[13px] font-medium text-[#61738f]" for="login-email">
+      <div class="hidden">
+        {#if !otpSent}
+          <label class="flex flex-col gap-2 text-[13px] font-medium text-[#61738f]" for="login-email">
           Email address
           <div class="flex h-10 items-center gap-3 rounded-[6px] border border-[#e2e8f0] px-3 focus-within:border-[var(--accent)] focus-within:ring-2 focus-within:ring-[var(--accent)]/15">
             <Mail size={18} class="text-[#61738f]" />
             <input id="login-email" bind:value={email} type="email" autocomplete="email" placeholder="you@example.com" class="min-w-0 flex-1 bg-transparent text-[15px] text-[#071126] outline-none placeholder:text-[#9aa9bd]" on:keydown={(event) => event.key === 'Enter' && handleEmailSubmit()} />
           </div>
-        </label>
-        <Button class="h-10 w-full rounded-[6px] text-[14px] font-medium" style="background-color: #2563eb; color: #ffffff" disabled={busy} data-testid="login-email-button" on:click={handleEmailSubmit}>
-          {#if busy}<LoaderCircle size={16} class="mr-2 animate-spin" />{/if}
-          Continue with email
-        </Button>
-      {:else}
-        <label class="flex flex-col gap-2 text-[13px] font-medium text-[#61738f]" for="login-otp">
-          Verification code sent to {email}
-          <input id="login-otp" bind:value={otp} type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="8" placeholder="Enter 6-digit code" class="h-12 rounded-[11px] border border-[#dce5f0] px-4 text-[17px] font-medium tabular-nums tracking-[0.12em] text-[#071126] outline-none placeholder:text-[15px] placeholder:font-normal placeholder:tracking-normal placeholder:text-[#9aa9bd] focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent)]/15" on:keydown={(event) => event.key === 'Enter' && handleOtpSubmit()} />
-        </label>
-        <div class="flex gap-3">
-          <Button variant="outline" class="h-11 flex-1 rounded-[11px]" on:click={() => (otpSent = false)}>Change email</Button>
-          <Button class="h-11 flex-1 rounded-[11px]" style="background-color: #2563eb; color: #ffffff" disabled={busy} data-testid="login-verify-button" on:click={handleOtpSubmit}>
-            {#if busy}<LoaderCircle size={16} class="mr-2 animate-spin" />{/if}Verify code
+          </label>
+          <Button class="h-10 w-full rounded-[6px] text-[14px] font-medium" style="background-color: #2563eb; color: #ffffff" disabled={busy} data-testid="login-email-button" on:click={handleEmailSubmit}>
+            {#if busy}<LoaderCircle size={16} class="mr-2 animate-spin" />{/if}
+            Continue with email
           </Button>
-        </div>
-      {/if}
+        {:else}
+          <label class="flex flex-col gap-2 text-[13px] font-medium text-[#61738f]" for="login-otp">
+            Verification code sent to {email}
+            <input id="login-otp" bind:value={otp} type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="8" placeholder="Enter 6-digit code" class="h-12 rounded-[11px] border border-[#dce5f0] px-4 text-[17px] font-medium tabular-nums tracking-[0.12em] text-[#071126] outline-none placeholder:text-[15px] placeholder:font-normal placeholder:tracking-normal placeholder:text-[#9aa9bd] focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent)]/15" on:keydown={(event) => event.key === 'Enter' && handleOtpSubmit()} />
+          </label>
+          <div class="flex gap-3">
+            <Button variant="outline" class="h-11 flex-1 rounded-[11px]" on:click={() => (otpSent = false)}>Change email</Button>
+            <Button class="h-11 flex-1 rounded-[11px]" style="background-color: #2563eb; color: #ffffff" disabled={busy} data-testid="login-verify-button" on:click={handleOtpSubmit}>
+              {#if busy}<LoaderCircle size={16} class="mr-2 animate-spin" />{/if}Verify code
+            </Button>
+          </div>
+        {/if}
+      </div>
 
       {#if error}
         <p class="rounded-[9px] border border-red-200 bg-red-50 px-3 py-2 text-[13px] text-red-700" role="alert">{error}</p>

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { assetUrl } from '$lib/assets';
+  import { assetUrl, r2Assets } from '$lib/assets';
   import AccountMenu from './AccountMenu.svelte';
 
   export let navItems: Array<{ href: string; label: string }> = [];
@@ -11,7 +11,7 @@
 
 <header class="site-header">
   <a class="brand" href="/" aria-label="Treease home">
-    <img class="brand-logo" src={assetUrl('/treease-logo.png')} alt="Treease logo" />
+    <img class="brand-logo" src={assetUrl(r2Assets.treeaseLogo)} alt="Treease logo" />
     <span class="brand-copy">
       <span class="brand-mark">Treease</span>
       <span class="brand-note">Structured text workspace</span>

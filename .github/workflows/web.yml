@@ -25,7 +25,7 @@ jobs:
         working-directory: ${{ github.workspace }}/apps/web
       - name: Upload coverage report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: coverage-report
           path: apps/web/coverage/
@@ -42,10 +42,37 @@ jobs:
         with:
           zig-version: ${{ env.ZIG_VERSION }}
       - name: Download E2E build
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: web-e2e-build
           path: apps/web
+      - name: Verify E2E build artifact
+        run: |
+          find build -maxdepth 1 -type f -print | sort
+          test -s build/index.html
+          test -s build/200.html
+          test -s build/editor.html
+        working-directory: ${{ github.workspace }}/apps/web
+      - name: Verify E2E preview routes
+        run: |
+          pnpm serve:e2e > "$RUNNER_TEMP/treease-e2e-preview.log" 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
+          for attempt in {1..30}; do
+            if node -e "fetch('http://127.0.0.1:4173/editor').then((response) => { if (!response.ok) process.exit(1) }).catch(() => process.exit(1))"; then
+              break
+            fi
+            sleep 1
+          done
+          node - <<'NODE'
+          for (const route of ['/', '/editor', '/editor.html']) {
+            const response = await fetch(`http://127.0.0.1:4173${route}`);
+            console.log(`${route}: ${response.status}`);
+            if (!response.ok) process.exitCode = 1;
+          }
+          NODE
+          cat "$RUNNER_TEMP/treease-e2e-preview.log"
+        working-directory: ${{ github.workspace }}/apps/web
       - name: Detect Playwright version
         id: playwright-version
         working-directory: ${{ github.workspace }}/apps/web
@@ -54,7 +81,7 @@ jobs:
           echo "version=$PLAYWRIGHT_VERSION" >> "$GITHUB_OUTPUT"
       - name: Cache Playwright browsers
         id: playwright-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ steps.playwright-version.outputs.version }}-${{ hashFiles('apps/web/pnpm-lock.yaml') }}
@@ -90,7 +117,7 @@ jobs:
         working-directory: ${{ github.workspace }}/apps/web
       - name: Upload Playwright traces
         if: always() && (steps.e2e-core.outcome == 'failure' || steps.e2e-core-rerun.outcome == 'failure')
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: playwright-traces
           path: apps/web/test-results/
@@ -111,7 +138,7 @@ jobs:
           zig-version: ${{ env.ZIG_VERSION }}
       - name: Cache E2E build
         id: e2e-build-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             apps/web/build
@@ -123,7 +150,7 @@ jobs:
         run: pnpm build:e2e
         working-directory: ${{ github.workspace }}/apps/web
       - name: Upload E2E build
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: web-e2e-build
           path: |

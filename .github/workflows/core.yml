@@ -15,13 +15,8 @@ jobs:
       - uses: taiki-e/install-action@v2
         with:
           tool: nextest
-      - name: Verify Core WASM release version
-        run: |
-          base="${GITHUB_BASE_SHA:-${GITHUB_EVENT_BEFORE:-}}"
-          if [ -z "$base" ] || printf '%s' "$base" | grep -Eq '^0+$'; then
-            base="$(git rev-parse "$GITHUB_SHA^")"
-          fi
-          node scripts/check-core-wasm-release.mjs --base "$base" --head "$GITHUB_SHA"
+      - name: Verify Core and CLI release metadata
+        run: node scripts/release-metadata.mjs >/dev/null
       - name: Run core tests
         run: ./test.sh all
         working-directory: ${{ github.workspace }}/packages/core

@@ -1,5 +1,6 @@
 <script lang="ts">
   import TutorialCodeLink from '$lib/components/tutorials/TutorialCodeLink.svelte';
+  import { assetUrl, r2Assets } from '$lib/assets';
   import { getRelatedTutorialArticles } from '$lib/content/tutorials';
   import type { TutorialArticle } from '$lib/content/tutorials/types';
 
@@ -27,7 +28,7 @@
       name: 'Treease',
       logo: {
         '@type': 'ImageObject',
-        url: `${siteOrigin}/treease-logo.png`,
+        url: assetUrl(r2Assets.treeaseLogo),
       },
     },
     mainEntityOfPage: articleUrl,

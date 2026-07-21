@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { assetUrl } from '$lib/assets';
+  import { assetUrl, r2Assets } from '$lib/assets';
   import HomeHeroDemoDeck from '$lib/components/HomeHeroDemoDeck.svelte';
   import LandingHeader from '$lib/components/LandingHeader.svelte';
   import LoginDialog from '$lib/components/LoginDialog.svelte';
@@ -255,7 +255,7 @@
             </div>
             <div class="story-media story-media--contain">
               <img
-                src={assetUrl('/landing/feature-import.png')}
+                src={assetUrl(r2Assets.landingFeatureImport)}
                 alt="Importing a YAML file into the Treease editor."
                 loading="lazy"
               />
@@ -272,7 +272,7 @@
             </div>
             <div class="story-media">
               <img
-                src={assetUrl('/landing/feature-format.png')}
+                src={assetUrl(r2Assets.landingFeatureFormat)}
                 alt="Sorting JSON keys from the command search inside Treease."
                 loading="lazy"
               />
@@ -290,7 +290,7 @@
             </div>
             <div class="story-media story-media--dark story-media--contain story-media--wide-short">
               <img
-                src={assetUrl('/landing/feature-container.png')}
+                src={assetUrl(r2Assets.landingFeatureContainer)}
                 alt="Isolating an embedded JSON payload from mixed log text in Treease."
                 loading="lazy"
               />
@@ -307,7 +307,7 @@
             </div>
             <div class="story-media story-media--contain story-media--wide-short">
               <img
-                src={assetUrl('/landing/feature-reveal.png')}
+                src={assetUrl(r2Assets.landingFeatureReveal)}
                 alt="Tracing a selected field through tree path breadcrumbs in Treease."
                 loading="lazy"
               />
@@ -373,8 +373,8 @@
             </div>
             <div class="ship-media ship-media--dark">
               <video
-                src={assetUrl('/landing/workflow-progress.mp4')}
-                poster={assetUrl('/landing/workflow-progress.png')}
+                src={assetUrl(r2Assets.workflowProgressVideo)}
+                poster={assetUrl(r2Assets.workflowProgressPoster)}
                 autoplay
                 muted
                 loop
@@ -395,7 +395,7 @@
             </div>
             <div class="ship-media ship-media--contain">
               <img
-                src={assetUrl('/landing/workflow-export.png')}
+                src={assetUrl(r2Assets.workflowExport)}
                 alt="Previewing converted YAML output before export in Treease."
                 loading="lazy"
               />

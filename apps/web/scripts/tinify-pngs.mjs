@@ -9,7 +9,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const webDir = path.resolve(here, '..');
 const envPath = path.resolve(webDir, '.env');
 const manifestPath = path.resolve(webDir, '.tinify-manifest.json');
-const roots = ['static', path.join('assets', 'r2')].map((dir) => path.resolve(webDir, dir));
+const roots = [path.resolve(webDir, 'static')];
 
 function loadEnvFile(filePath) {
   if (!existsSync(filePath)) return;

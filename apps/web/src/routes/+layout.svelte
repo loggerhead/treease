@@ -1,6 +1,6 @@
 <script lang="ts">
   import '../app.css';
-  import { assetUrl } from '$lib/assets';
+  import { assetUrl, r2Assets } from '$lib/assets';
   import { Toaster } from '$lib/components/ui/sonner/index.js';
   import { installTestBridge } from '$lib/test-bridge/bootstrap';
   import { afterNavigate } from '$app/navigation';
@@ -24,7 +24,7 @@
 </script>
 
 <svelte:head>
-  <link rel="icon" type="image/png" href={assetUrl('/treease-logo.png')} />
+  <link rel="icon" type="image/png" href={assetUrl(r2Assets.treeaseLogo)} />
 </svelte:head>
 
 <slot />

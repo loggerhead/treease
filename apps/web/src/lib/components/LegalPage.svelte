@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { assetUrl } from '$lib/assets';
+  import { assetUrl, r2Assets } from '$lib/assets';
 
   export let title: string
   export let html: string
@@ -14,7 +14,7 @@
   <div class="legal-shell">
     <header class="legal-header">
       <a class="legal-brand" href="/" aria-label="Treease home">
-        <img class="legal-brand__logo" src={assetUrl('/treease-logo.png')} alt="Treease logo" />
+        <img class="legal-brand__logo" src={assetUrl(r2Assets.treeaseLogo)} alt="Treease logo" />
         <span class="legal-brand__copy">
           <span class="legal-brand__mark">Treease</span>
           <span class="legal-brand__note">Structured text workspace</span>

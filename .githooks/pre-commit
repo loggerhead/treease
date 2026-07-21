@@ -8,8 +8,8 @@ elif [ -x /opt/homebrew/bin/node ]; then
 elif [ -x /usr/local/bin/node ]; then
   node_bin=/usr/local/bin/node
 else
-  echo "pre-commit: Node.js is required to validate Core WASM release version" >&2
+  echo "pre-commit: Node.js is required to validate release metadata" >&2
   exit 1
 fi
 
-exec "$node_bin" scripts/check-core-wasm-release.mjs --staged
+exec "$node_bin" scripts/release-metadata.mjs >/dev/null

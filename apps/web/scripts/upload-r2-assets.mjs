@@ -7,9 +7,6 @@ async function main() {
   if (files === null) {
     throw new Error(`missing asset source directory: ${assetSourceDir}`);
   }
-  if (files.length === 0) {
-    throw new Error(`no asset files found in ${assetSourceDir}`);
-  }
 
   for (const relativePath of files) {
     const sourcePath = path.resolve(assetSourceDir, relativePath);
