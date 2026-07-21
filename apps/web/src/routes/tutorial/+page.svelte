@@ -1,5 +1,6 @@
 <script lang="ts">
-  import LandingHeader from '$lib/components/LandingHeader.svelte';
+  import SiteFooter from '$lib/components/SiteFooter.svelte';
+  import SiteHeader from '$lib/components/SiteHeader.svelte';
   import TutorialHubSection from '$lib/components/tutorials/TutorialHubSection.svelte';
   import { tutorialArticles } from '$lib/content/tutorials';
   import { homeHeaderNavItems } from '$lib/navigation/home-header-nav';
@@ -23,7 +24,7 @@
 
 <div class="tutorial-shell">
   <div class="tutorial-shell__inner">
-    <LandingHeader navItems={[...homeHeaderNavItems]} />
+    <SiteHeader navItems={[...homeHeaderNavItems]} />
 
     <main class="tutorial-shell__main">
       <TutorialHubSection
@@ -33,6 +34,8 @@
         articles={tutorialArticles}
       />
     </main>
+
+    <SiteFooter />
   </div>
 </div>
 

@@ -14,6 +14,7 @@
     "assets:r2:upload": "node ./scripts/upload-r2-assets.mjs",
     "assets:r2:check": "node ./scripts/check-r2-assets.mjs",
     "assets:tinify:png": "node ./scripts/tinify-pngs.mjs",
+    "content:changelog": "node ./scripts/generate-changelog.mjs",
     "dev": "node ./scripts/wasm-dev.mjs",
     "dev:vite": "WASM_VERSION=$(node ./scripts/wasm-version.mjs) vp dev",
     "dev:desktop:vite": "TREEASE_WORKSPACE_SURFACE=desktop WASM_VERSION=$(node ./scripts/wasm-version.mjs) vp dev --host 127.0.0.1 --port 1420",

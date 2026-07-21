@@ -1,5 +1,7 @@
 <script lang="ts">
-  import { assetUrl, r2Assets } from '$lib/assets';
+  import SiteFooter from './SiteFooter.svelte';
+  import SiteHeader from './SiteHeader.svelte';
+  import { homeHeaderNavItems } from '$lib/navigation/home-header-nav';
 
   export let title: string
   export let html: string
@@ -14,20 +16,7 @@
 
 <div class="legal-page">
   <div class="legal-shell">
-    <header class="legal-header">
-      <a class="legal-brand" href="/" aria-label="Treease home">
-        <img class="legal-brand__logo" src={assetUrl(r2Assets.treeaseLogo)} alt="Treease logo" />
-        <span class="legal-brand__copy">
-          <span class="legal-brand__mark">Treease</span>
-          <span class="legal-brand__note">Structured text workspace</span>
-        </span>
-      </a>
-
-      <div class="legal-header__actions">
-        <a class="legal-link" href="/">Home</a>
-        <a class="legal-cta" href="/editor">Open Editor</a>
-      </div>
-    </header>
+    <SiteHeader navItems={[...homeHeaderNavItems, { href: '/changelog', label: 'Changelog' }]} ctaLabel="Open Editor" />
 
     <main class="legal-main">
       <article class="legal-card">
@@ -37,13 +26,7 @@
       </article>
     </main>
 
-    <footer class="legal-footer">
-      <span>© 2026 Treease</span>
-      <div class="legal-footer__links">
-        <a href="/terms">Terms</a>
-        <a href="/privacy">Privacy</a>
-      </div>
-    </footer>
+    <SiteFooter />
   </div>
 </div>
 
@@ -56,6 +39,8 @@
     --surface: rgba(255, 255, 255, 0.9);
     --ink: #0f172a;
     --muted: #4b5563;
+    --muted-soft: #718196;
+    --font-display: "Avenir Next", "SF Pro Display", sans-serif;
     --line: rgba(15, 23, 42, 0.1);
     --shadow: 0 30px 80px rgba(15, 23, 42, 0.12);
 
@@ -72,103 +57,6 @@
     width: min(1120px, 100%);
     margin: 0 auto;
     padding: 24px 24px 56px;
-  }
-
-  .legal-header {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    align-items: center;
-    gap: 24px;
-    min-height: 72px;
-    margin-bottom: 28px;
-    padding: 12px 18px;
-    border: 1px solid var(--line);
-    border-radius: 999px;
-    background: rgba(255, 255, 255, 0.7);
-    backdrop-filter: blur(18px);
-    box-shadow: 0 12px 40px rgba(15, 23, 42, 0.08);
-  }
-
-  .legal-brand {
-    display: inline-flex;
-    align-items: center;
-    gap: 12px;
-    min-width: 0;
-    color: inherit;
-    text-decoration: none;
-  }
-
-  .legal-brand__logo {
-    width: 44px;
-    height: 44px;
-    flex: 0 0 auto;
-    object-fit: contain;
-  }
-
-  .legal-brand__copy {
-    display: inline-flex;
-    flex-direction: column;
-    min-width: 0;
-  }
-
-  .legal-brand__mark {
-    font-size: 18px;
-    font-weight: 700;
-    letter-spacing: -0.04em;
-  }
-
-  .legal-brand__note {
-    color: var(--muted);
-    font-size: 14px;
-    white-space: nowrap;
-  }
-
-  .legal-header__actions,
-  .legal-footer,
-  .legal-footer__links {
-    display: inline-flex;
-    align-items: center;
-    gap: 18px;
-  }
-
-  .legal-link,
-  .legal-footer a {
-    color: var(--muted);
-    font-size: 14px;
-    font-weight: 600;
-    text-decoration: none;
-    transition: color 160ms ease;
-  }
-
-  .legal-link:hover,
-  .legal-footer a:hover {
-    color: var(--ink);
-  }
-
-  .legal-cta {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-height: 48px;
-    padding: 0 22px;
-    border-radius: 999px;
-    background: var(--accent);
-    color: #fff;
-    font-size: 15px;
-    font-weight: 700;
-    text-decoration: none;
-    box-shadow: 0 16px 30px rgba(37, 99, 235, 0.24);
-    transition:
-      transform 140ms ease,
-      background-color 160ms ease;
-  }
-
-  .legal-cta:hover {
-    background: var(--accent-strong);
-  }
-
-  .legal-cta:active {
-    transform: translateY(1px) scale(0.99);
   }
 
   .legal-card {
@@ -232,33 +120,9 @@
     text-decoration: underline;
   }
 
-  .legal-footer {
-    justify-content: space-between;
-    margin-top: 20px;
-    color: var(--muted);
-    font-size: 13px;
-  }
-
   @media (max-width: 720px) {
     .legal-shell {
       padding: 16px 16px 32px;
-    }
-
-    .legal-header {
-      grid-template-columns: 1fr;
-      justify-items: start;
-      border-radius: 28px;
-      padding: 18px;
-    }
-
-    .legal-brand {
-      flex-wrap: wrap;
-    }
-
-    .legal-header__actions,
-    .legal-footer {
-      width: 100%;
-      justify-content: space-between;
     }
 
     .legal-card {
@@ -266,10 +130,5 @@
       padding: 22px;
     }
 
-    .legal-footer {
-      flex-direction: column;
-      align-items: flex-start;
-      gap: 10px;
-    }
   }
 </style>

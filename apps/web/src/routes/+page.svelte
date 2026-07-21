@@ -1,7 +1,8 @@
 <script lang="ts">
   import { assetUrl, r2Assets } from '$lib/assets';
   import HomeHeroDemoDeck from '$lib/components/HomeHeroDemoDeck.svelte';
-  import LandingHeader from '$lib/components/LandingHeader.svelte';
+  import SiteFooter from '$lib/components/SiteFooter.svelte';
+  import SiteHeader from '$lib/components/SiteHeader.svelte';
   import LoginDialog from '$lib/components/LoginDialog.svelte';
   import {
     openPreparedBillingCheckout,
@@ -176,14 +177,6 @@
     }
   ];
 
-  const footerLinks = [
-    { href: '/about', label: 'About' },
-    { href: '/changelog', label: 'Changelog' },
-    { href: 'https://github.com/loggerhead/treease', label: 'GitHub' },
-    { href: 'https://docs.rs/treease-cli', label: 'CLI docs' },
-    { href: '/terms', label: 'Terms' },
-    { href: '/privacy', label: 'Privacy' }
-  ];
 </script>
 
 <svelte:head>
@@ -204,7 +197,7 @@
 
 <div class="landing">
   <div class="landing-shell">
-    <LandingHeader navItems={[...homeHeaderNavItems]} onLogin={() => (loginOpen = true)} onLogout={handleLogout} />
+    <SiteHeader navItems={[...homeHeaderNavItems]} onLogin={() => (loginOpen = true)} onLogout={handleLogout} />
 
     <main class="landing-main" id="top" aria-labelledby="hero-title">
       <section class="hero">
@@ -536,14 +529,7 @@
       </section>
     </main>
 
-    <footer class="site-footer" aria-label="Site footer">
-      <span class="site-footer__brand">© 2026 Treease</span>
-      <nav class="site-footer__links" aria-label="Site resources">
-        {#each footerLinks as item}
-          <a href={item.href} rel={item.href.startsWith('http') ? 'me' : undefined}>{item.label}</a>
-        {/each}
-      </nav>
-    </footer>
+    <SiteFooter />
   </div>
   <LoginDialog bind:open={loginOpen} />
 </div>
@@ -601,33 +587,6 @@
     width: min(1220px, 100%);
     margin: 0 auto;
     padding: 28px 24px 72px;
-  }
-
-  .site-footer,
-  .site-footer__links {
-    display: inline-flex;
-    align-items: center;
-    gap: 18px;
-  }
-
-  .site-footer {
-    justify-content: space-between;
-    margin-top: 34px;
-    padding: 12px 0 0;
-    color: var(--muted-soft);
-    font-size: 13px;
-    border-top: 1px solid var(--line);
-  }
-
-  .site-footer__links a {
-    color: inherit;
-    font-weight: 600;
-    text-decoration: none;
-    transition: color 160ms ease;
-  }
-
-  .site-footer__links a:hover {
-    color: var(--accent-strong);
   }
 
   .primary-cta,
@@ -1354,8 +1313,7 @@
   .primary-cta:focus-visible,
   .secondary-cta:focus-visible,
   .pricing-card__cta:focus-visible,
-  .faq-item summary:focus-visible,
-  .site-footer__links a:focus-visible {
+  .faq-item summary:focus-visible {
     outline: 2px solid var(--accent-strong);
     outline-offset: 3px;
   }
@@ -1438,14 +1396,6 @@
   }
 
   @media (max-width: 640px) {
-    .site-footer {
-      flex-direction: column;
-      align-items: flex-start;
-      gap: 10px;
-      padding-left: 0;
-      padding-right: 0;
-    }
-
     .primary-cta,
     .secondary-cta {
       width: 100%;

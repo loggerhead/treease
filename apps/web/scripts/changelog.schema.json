@@ -1,0 +1,70 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["chunks", "ignoredCommitIndexes"],
+  "properties": {
+    "chunks": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["chunkIndex", "commitIndexes", "entry"],
+        "properties": {
+          "chunkIndex": { "type": "integer", "minimum": 0 },
+          "commitIndexes": {
+            "type": "array",
+            "items": { "type": "integer", "minimum": 0 },
+            "minItems": 1
+          },
+          "entry": { "$ref": "#/$defs/entry" }
+        }
+      }
+    },
+    "ignoredCommitIndexes": {
+      "type": "array",
+      "items": { "type": "integer", "minimum": 0 }
+    }
+  },
+  "$defs": {
+    "entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["slug", "title", "summary", "date", "isoDate", "tags", "author", "featured", "sections", "tutorialLinks"],
+      "properties": {
+        "slug": { "type": "string" },
+        "title": { "type": "string" },
+        "summary": { "type": "string" },
+        "date": { "type": "string" },
+        "isoDate": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" },
+        "tags": { "type": "array", "items": { "type": "string" } },
+        "author": { "type": "string" },
+        "featured": { "type": "boolean" },
+        "sections": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["heading", "paragraphs"],
+            "properties": {
+              "heading": { "type": "string" },
+              "paragraphs": { "type": "array", "items": { "type": "string" } }
+            }
+          }
+        },
+        "tutorialLinks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["href", "label"],
+            "properties": {
+              "href": { "type": "string", "pattern": "^/tutorial/[a-z0-9-]+$" },
+              "label": { "type": "string" }
+            }
+          }
+        }
+      }
+    }
+  }
+}
