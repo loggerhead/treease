@@ -1,17 +1,21 @@
-import type { GraphViewerConfig } from '../../settings/ui-settings';
-import type { SupportedEditorLanguageId } from '../../monaco/language-support';
-import type { SnapshotId } from '@core-wasm/index';
-import { buildPathKey } from '../../graph/graph-viewer-path';
-import type { GraphCell, GraphNode } from '../../graph/graph-viewer-render';
-import { isPathSegIndex, type PathSeg } from '../../store/tree-path';
-import type { GraphHighlightTarget } from '../../store/graph-selection-store';
-import { resolveTreePathFromTextResult } from '../../services/TreePathService';
-import type { CellBoxEntry, GraphViewerClickTarget, LeaferBox } from './model';
-import { getCellEntry, getHighlightTarget, getScrollContext } from './graph-anchor-index';
-import type { TableCellAnchor } from './graph-table-anchor-index';
+import type { GraphViewerConfig } from "../../settings/ui-settings";
+import type { SupportedEditorLanguageId } from "../../monaco/language-support";
+import type { SnapshotId } from "@core-wasm/index";
+import { buildPathKey } from "../../graph/graph-viewer-path";
+import type { GraphCell, GraphNode } from "../../graph/graph-viewer-render";
+import { isPathSegIndex, type PathSeg } from "../../store/tree-path";
+import type { GraphHighlightTarget } from "../../store/graph-selection-store";
+import { resolveTreePathFromTextResult } from "../../services/TreePathService";
+import type { CellBoxEntry, GraphViewerClickTarget, LeaferBox } from "./model";
+import {
+  getCellEntry,
+  getHighlightTarget,
+  getScrollContext,
+} from "./graph-anchor-index";
+import type { TableCellAnchor } from "./graph-table-anchor-index";
 
 export type GraphTextLinkageSearchResult = {
-  target: 'key' | 'value' | 'node';
+  target: "key" | "value" | "node";
   path: PathSeg[];
 };
 
@@ -27,13 +31,31 @@ type GraphTextLinkageControllerDeps = {
   getCellBoxByPathMap: () => Map<string, CellBoxEntry>;
   getTableCellAnchorMap?: () => Map<string, TableCellAnchor>;
   getPathKeyToRenderHandleMap: () => Map<string, number>;
+  materializeTarget?: (renderHandle: number) => Promise<boolean>;
   getClickTargetProbes: () => GraphViewerClickTarget[];
-  setGraphHighlightTestState: (path: PathSeg[] | null, target?: GraphHighlightTarget, box?: LeaferBox | null) => void;
-  setGraphRevealTestState: (path: PathSeg[] | null, target?: GraphHighlightTarget) => void;
-  setGraphRowScrollTestState: (path: PathSeg[] | null, scrollY?: number) => void;
+  setGraphHighlightTestState: (
+    path: PathSeg[] | null,
+    target?: GraphHighlightTarget,
+    box?: LeaferBox | null,
+  ) => void;
+  setGraphRevealTestState: (
+    path: PathSeg[] | null,
+    target?: GraphHighlightTarget,
+  ) => void;
+  setGraphRowScrollTestState: (
+    path: PathSeg[] | null,
+    scrollY?: number,
+  ) => void;
   scrollTableCellAnchorIntoView?: (anchor: TableCellAnchor) => boolean;
-  buildPathSegFromCell: (cell: GraphCell | undefined, rowIndex: number) => PathSeg | null;
-  upsertCellEntry: (map: Map<string, CellBoxEntry>, cell: GraphCell, updater: (entry: CellBoxEntry) => void) => void;
+  buildPathSegFromCell: (
+    cell: GraphCell | undefined,
+    rowIndex: number,
+  ) => PathSeg | null;
+  upsertCellEntry: (
+    map: Map<string, CellBoxEntry>,
+    cell: GraphCell,
+    updater: (entry: CellBoxEntry) => void,
+  ) => void;
   centerOnBox: (box: LeaferBox) => boolean;
   centerOnNode: (node: GraphNode) => void;
   updateLeafer: () => void;
@@ -41,14 +63,22 @@ type GraphTextLinkageControllerDeps = {
   getEditorRevision: () => number;
   getGraphAppliedRevision: () => number;
   getEnableRevealSync?: () => boolean;
-  dispatchReveal: (path: PathSeg[], target?: GraphHighlightTarget, trigger?: string) => void;
+  dispatchReveal: (
+    path: PathSeg[],
+    target?: GraphHighlightTarget,
+    trigger?: string,
+  ) => void;
   handleError: (
     error: unknown,
-    context: { component: string; operation: string; metadata?: Record<string, unknown> },
+    context: {
+      component: string;
+      operation: string;
+      metadata?: Record<string, unknown>;
+    },
   ) => void;
 };
 
-type RevealTarget = 'key' | 'value' | 'node';
+type RevealTarget = "key" | "value" | "node";
 type RevealOptions = {
   target?: RevealTarget;
   navigate?: boolean;
@@ -59,14 +89,19 @@ type TableRowMetrics = {
   rowHeight?: number;
 };
 
-export function createGraphTextLinkageController(deps: GraphTextLinkageControllerDeps) {
+export function createGraphTextLinkageController(
+  deps: GraphTextLinkageControllerDeps,
+) {
   let revealPathToken = 0;
   let activeSearchHighlights: Array<{
     target: LeaferBox;
     selected: boolean;
-    selectedStyle?: LeaferBox['selectedStyle'];
+    selectedStyle?: LeaferBox["selectedStyle"];
   }> = [];
-  let activeHighlightState: { path: PathSeg[]; target?: GraphHighlightTarget } | null = null;
+  let activeHighlightState: {
+    path: PathSeg[];
+    target?: GraphHighlightTarget;
+  } | null = null;
 
   function clearRenderedSearchHighlights(): void {
     if (activeSearchHighlights.length === 0) return;
@@ -86,7 +121,10 @@ export function createGraphTextLinkageController(deps: GraphTextLinkageControlle
     activeHighlightState = null;
   }
 
-  function applySearchHighlight(target: LeaferBox | null, style: { fill?: string; stroke?: string }): void {
+  function applySearchHighlight(
+    target: LeaferBox | null,
+    style: { fill?: string; stroke?: string },
+  ): void {
     if (!target) return;
     activeSearchHighlights.push({
       target,
@@ -100,7 +138,10 @@ export function createGraphTextLinkageController(deps: GraphTextLinkageControlle
     target.selected = true;
   }
 
-  async function resolveTreePathByPosition(row: number, column: number): Promise<PathSeg[]> {
+  async function resolveTreePathByPosition(
+    row: number,
+    column: number,
+  ): Promise<PathSeg[]> {
     const documentKey = deps.getDocumentKey();
     if (!documentKey) return [];
     const text = deps.getSourceText();
@@ -115,20 +156,19 @@ export function createGraphTextLinkageController(deps: GraphTextLinkageControlle
         documentKey,
         deps.getLanguageId(),
         deps.getEnableNest(),
-        'auto',
+        "auto",
         snapshotId,
       );
-      return result.status === 'ready' ? result.data : [];
+      return result.status === "ready" ? result.data : [];
     } catch (error) {
       deps.handleError(error, {
-        component: 'GraphViewer',
-        operation: 'resolveTreePath',
+        component: "GraphViewer",
+        operation: "resolveTreePath",
         metadata: { documentKey, row, column },
       });
       return [];
     }
   }
-
 
   async function ensurePathIndex(path: PathSeg[]): Promise<void> {
     const pathKeyToRenderHandleMap = deps.getPathKeyToRenderHandleMap();
@@ -136,7 +176,10 @@ export function createGraphTextLinkageController(deps: GraphTextLinkageControlle
     const nodeDataMap = deps.getNodeDataMap();
     const targetKey = buildPathKey(path);
     if (!targetKey) return;
-    if (pathKeyToRenderHandleMap.has(targetKey) || cellBoxByPathMap.has(targetKey)) {
+    if (
+      pathKeyToRenderHandleMap.has(targetKey) ||
+      cellBoxByPathMap.has(targetKey)
+    ) {
       return;
     }
     for (const node of nodeDataMap.values()) {
@@ -161,20 +204,40 @@ export function createGraphTextLinkageController(deps: GraphTextLinkageControlle
     }
   }
 
-  async function hydrateResolvedGraphPaths(nodes: GraphNode[], _text: string): Promise<void> {
+  async function hydrateResolvedGraphPaths(
+    nodes: GraphNode[],
+    _text: string,
+  ): Promise<void> {
     for (const node of nodes) {
-      if ((!Array.isArray(node.meta?.path) || node.meta.path.length === 0) && Array.isArray(node.path) && node.path.length > 0) {
+      if (
+        (!Array.isArray(node.meta?.path) || node.meta.path.length === 0) &&
+        Array.isArray(node.path) &&
+        node.path.length > 0
+      ) {
         node.meta.path = [...node.path];
       }
-      const shouldInferRowPath = node.kind === 'table' && (node.meta?.valueType === 'object' || node.meta?.valueType === 'array');
-      const rows = node.kind === 'table' ? (node.table?.rows ?? []) : (node.rows ?? []);
+      const shouldInferRowPath =
+        node.kind === "table" &&
+        (node.meta?.valueType === "object" || node.meta?.valueType === "array");
+      const rows =
+        node.kind === "table" ? (node.table?.rows ?? []) : (node.rows ?? []);
       for (const [rowIndex, row] of rows.entries()) {
         const rowKeyCell = row.cells?.[0];
-        if (node.kind === 'object' && row.cells?.length >= 2 && Array.isArray(rowKeyCell?.path) && rowKeyCell.path.length > 0) {
+        if (
+          node.kind === "object" &&
+          row.cells?.length >= 2 &&
+          Array.isArray(rowKeyCell?.path) &&
+          rowKeyCell.path.length > 0
+        ) {
           row.cells[1].path = [...rowKeyCell.path];
         }
-        const inferredSeg = shouldInferRowPath && rowKeyCell ? deps.buildPathSegFromCell(rowKeyCell, rowIndex) : null;
-        const inferredRowPath = inferredSeg ? [...(Array.isArray(node.path) ? node.path : []), inferredSeg] : [];
+        const inferredSeg =
+          shouldInferRowPath && rowKeyCell
+            ? deps.buildPathSegFromCell(rowKeyCell, rowIndex)
+            : null;
+        const inferredRowPath = inferredSeg
+          ? [...(Array.isArray(node.path) ? node.path : []), inferredSeg]
+          : [];
         for (const cell of row.cells ?? []) {
           if (Array.isArray(cell.path) && cell.path.length > 0) continue;
           if (inferredRowPath.length) {
@@ -185,33 +248,49 @@ export function createGraphTextLinkageController(deps: GraphTextLinkageControlle
     }
   }
 
-  function syncTreeSelection(path: PathSeg[], target?: GraphHighlightTarget, trigger?: string): void {
+  function syncTreeSelection(
+    path: PathSeg[],
+    target?: GraphHighlightTarget,
+    trigger?: string,
+  ): void {
     if (!path?.length || deps.getEnableRevealSync?.() === false) return;
-    const source = trigger === 'search' ? 'search' : 'graph';
+    const source = trigger === "search" ? "search" : "graph";
     deps.updateActiveTempModel((current) => ({
       ...current,
       treePath: path,
       graphHighlight: {
         path,
         target,
-        revision: Math.max(deps.getEditorRevision(), deps.getGraphAppliedRevision()),
+        revision: Math.max(
+          deps.getEditorRevision(),
+          deps.getGraphAppliedRevision(),
+        ),
         source,
       },
     }));
   }
 
-  function emitReveal(path: PathSeg[], target?: GraphHighlightTarget, trigger?: string): void {
+  function emitReveal(
+    path: PathSeg[],
+    target?: GraphHighlightTarget,
+    trigger?: string,
+  ): void {
     if (!path?.length) return;
     syncTreeSelection(path, target, trigger);
     deps.setGraphRevealTestState(path, target);
     deps.dispatchReveal(path, target, trigger);
   }
 
-  function resolveNodeForPath(path: PathSeg[]): { renderHandle?: number; node: GraphNode | null } {
+  function resolveNodeForPath(path: PathSeg[]): {
+    renderHandle?: number;
+    node: GraphNode | null;
+  } {
     const pathKeyToRenderHandleMap = deps.getPathKeyToRenderHandleMap();
     const nodeDataMap = deps.getNodeDataMap();
     const pathKey = buildPathKey(path);
-    let renderHandle = pathKey ? pathKeyToRenderHandleMap.get(pathKey) : undefined;
+    let renderHandle = pathKey
+      ? pathKeyToRenderHandleMap.get(pathKey)
+      : undefined;
     if (renderHandle == null) {
       for (let i = path.length - 1; i > 0; i -= 1) {
         const parentKey = buildPathKey(path.slice(0, i));
@@ -223,14 +302,21 @@ export function createGraphTextLinkageController(deps: GraphTextLinkageControlle
         }
       }
     }
-    return { renderHandle, node: renderHandle != null ? nodeDataMap.get(renderHandle) ?? null : null };
+    return {
+      renderHandle,
+      node:
+        renderHandle != null ? (nodeDataMap.get(renderHandle) ?? null) : null,
+    };
   }
 
   function clampScrollY(
     scrollContext: NonNullable<ReturnType<typeof getScrollContext>>,
     targetY: number,
   ): number {
-    const maxScroll = Math.max(0, scrollContext.contentHeight - scrollContext.bodyHeight);
+    const maxScroll = Math.max(
+      0,
+      scrollContext.contentHeight - scrollContext.bodyHeight,
+    );
     return Math.max(0, Math.min(targetY, maxScroll));
   }
 
@@ -240,35 +326,55 @@ export function createGraphTextLinkageController(deps: GraphTextLinkageControlle
     scrollY: number,
     operations: { primary: string; fallback: string },
   ): void {
-    if (typeof scrollContext.scrollOwner.scrollTo === 'function') {
+    if (typeof scrollContext.scrollOwner.scrollTo === "function") {
       try {
         scrollContext.scrollOwner.scrollTo({ x: 0, y: scrollY });
       } catch (error) {
-        deps.handleError(error, { component: 'GraphViewer', operation: operations.primary, metadata: { scrollY } });
+        deps.handleError(error, {
+          component: "GraphViewer",
+          operation: operations.primary,
+          metadata: { scrollY },
+        });
         try {
           scrollContext.scrollOwner.scrollTo(0, scrollY);
         } catch (fallbackError) {
-          deps.handleError(fallbackError, { component: 'GraphViewer', operation: operations.fallback });
+          deps.handleError(fallbackError, {
+            component: "GraphViewer",
+            operation: operations.fallback,
+          });
         }
       }
-    } else if ('scrollY' in scrollContext.scrollOwner) {
+    } else if ("scrollY" in scrollContext.scrollOwner) {
       scrollContext.scrollOwner.scrollY = scrollY;
     }
     deps.setGraphRowScrollTestState(path, scrollY);
     deps.updateLeafer();
   }
 
-  function scrollRowIntoView(path: PathSeg[], entry: ReturnType<typeof getCellEntry>): void {
+  function scrollRowIntoView(
+    path: PathSeg[],
+    entry: ReturnType<typeof getCellEntry>,
+  ): void {
     const scrollContext = getScrollContext(entry);
     if (!scrollContext) return;
-    const targetY = (scrollContext.row.y ?? 0) + (scrollContext.row.height ?? 0) / 2 - scrollContext.bodyHeight / 2;
+    const targetY =
+      (scrollContext.row.y ?? 0) +
+      (scrollContext.row.height ?? 0) / 2 -
+      scrollContext.bodyHeight / 2;
     applyScrollY(path, scrollContext, clampScrollY(scrollContext, targetY), {
-      primary: 'scrollTo',
-      fallback: 'scrollToFallback',
+      primary: "scrollTo",
+      fallback: "scrollToFallback",
     });
   }
 
-  function getIndexedTableTarget(path: PathSeg[]): { tablePath: PathSeg[]; tablePathKey: string; rowIndex: number; rowSegIndex: number } | null {
+  function getIndexedTableTarget(
+    path: PathSeg[],
+  ): {
+    tablePath: PathSeg[];
+    tablePathKey: string;
+    rowIndex: number;
+    rowSegIndex: number;
+  } | null {
     for (let index = path.length - 1; index >= 0; index -= 1) {
       const segment = path[index];
       if (!segment || !isPathSegIndex(segment)) continue;
@@ -291,7 +397,9 @@ export function createGraphTextLinkageController(deps: GraphTextLinkageControlle
     fallbackRowHeight?: number,
   ): TableRowMetrics {
     const rowOffsetY =
-      targetRow && firstRow ? Math.max(0, (targetRow.boxArgs?.y ?? 0) - (firstRow.boxArgs?.y ?? 0)) : undefined;
+      targetRow && firstRow
+        ? Math.max(0, (targetRow.boxArgs?.y ?? 0) - (firstRow.boxArgs?.y ?? 0))
+        : undefined;
     const rowHeight =
       targetRow?.boxArgs?.height && targetRow.boxArgs.height > 0
         ? Number(targetRow.boxArgs.height)
@@ -313,21 +421,42 @@ export function createGraphTextLinkageController(deps: GraphTextLinkageControlle
       const { node } = resolveNodeForPath(indexedTarget.tablePath);
       const targetRow = node?.table?.rows?.[indexedTarget.rowIndex];
       const firstRow = node?.table?.rows?.[0];
-      const { rowOffsetY, rowHeight } = getTableRowMetrics(targetRow, firstRow, node?.table?.rowHeight);
+      const { rowOffsetY, rowHeight } = getTableRowMetrics(
+        targetRow,
+        firstRow,
+        node?.table?.rowHeight,
+      );
       for (const candidate of uniqueEntries) {
         const candidatePath = candidate.cell?.path;
-        if (!Array.isArray(candidatePath) || candidatePath.length <= indexedTarget.rowSegIndex) continue;
-        const candidatePrefixKey = buildPathKey(candidatePath.slice(0, indexedTarget.rowSegIndex));
+        if (
+          !Array.isArray(candidatePath) ||
+          candidatePath.length <= indexedTarget.rowSegIndex
+        )
+          continue;
+        const candidatePrefixKey = buildPathKey(
+          candidatePath.slice(0, indexedTarget.rowSegIndex),
+        );
         if (candidatePrefixKey !== indexedTarget.tablePathKey) continue;
-        if (typeof candidatePath[indexedTarget.rowSegIndex]?.index !== 'number') continue;
+        if (typeof candidatePath[indexedTarget.rowSegIndex]?.index !== "number")
+          continue;
         const scrollContext = getScrollContext(candidate);
         if (!scrollContext) continue;
-        return { scrollContext, rowIndex: indexedTarget.rowIndex, rowOffsetY, rowHeight };
+        return {
+          scrollContext,
+          rowIndex: indexedTarget.rowIndex,
+          rowOffsetY,
+          rowHeight,
+        };
       }
     }
 
     const { node } = resolveNodeForPath(path);
-    if (!node?.table?.rows?.length || !Array.isArray(node.path) || node.path.length === 0) return null;
+    if (
+      !node?.table?.rows?.length ||
+      !Array.isArray(node.path) ||
+      node.path.length === 0
+    )
+      return null;
     const tablePathKey = buildPathKey(node.path);
     if (!tablePathKey) return null;
 
@@ -338,7 +467,9 @@ export function createGraphTextLinkageController(deps: GraphTextLinkageControlle
     for (const [index, row] of node.table.rows.entries()) {
       const keyCell = row.cells?.[0];
       if (!keyCell) continue;
-      const inferredSeg = keyCell.isIndex ? deps.buildPathSegFromCell(keyCell, index) : null;
+      const inferredSeg = keyCell.isIndex
+        ? deps.buildPathSegFromCell(keyCell, index)
+        : null;
       const rowPath =
         Array.isArray(keyCell.path) && keyCell.path.length > 0
           ? keyCell.path
@@ -347,7 +478,10 @@ export function createGraphTextLinkageController(deps: GraphTextLinkageControlle
             : [];
       const rowPathKey = buildPathKey(rowPath);
       if (!rowPathKey) continue;
-      if (rowPathKey === targetPathKey || targetPathKey.startsWith(`${rowPathKey}.`)) {
+      if (
+        rowPathKey === targetPathKey ||
+        targetPathKey.startsWith(`${rowPathKey}.`)
+      ) {
         rowIndex = index;
         break;
       }
@@ -356,13 +490,21 @@ export function createGraphTextLinkageController(deps: GraphTextLinkageControlle
 
     const targetRow = node.table.rows[rowIndex];
     const firstRow = node.table.rows[0];
-    const { rowOffsetY, rowHeight } = getTableRowMetrics(targetRow, firstRow, node.table.rowHeight);
+    const { rowOffsetY, rowHeight } = getTableRowMetrics(
+      targetRow,
+      firstRow,
+      node.table.rowHeight,
+    );
 
     for (const candidate of uniqueEntries) {
       const candidatePath = candidate.cell?.path;
       if (!Array.isArray(candidatePath) || candidatePath.length === 0) continue;
       const candidatePathKey = buildPathKey(candidatePath);
-      if (!candidatePathKey || (candidatePathKey !== tablePathKey && !candidatePathKey.startsWith(`${tablePathKey}.`))) {
+      if (
+        !candidatePathKey ||
+        (candidatePathKey !== tablePathKey &&
+          !candidatePathKey.startsWith(`${tablePathKey}.`))
+      ) {
         continue;
       }
       const scrollContext = getScrollContext(candidate);
@@ -377,25 +519,36 @@ export function createGraphTextLinkageController(deps: GraphTextLinkageControlle
     if (!fallback) return;
     const { scrollContext, rowIndex } = fallback;
     const rowHeight =
-      typeof fallback.rowHeight === 'number' && fallback.rowHeight > 0
+      typeof fallback.rowHeight === "number" && fallback.rowHeight > 0
         ? fallback.rowHeight
-        : typeof scrollContext.row.height === 'number' && scrollContext.row.height > 0
+        : typeof scrollContext.row.height === "number" &&
+            scrollContext.row.height > 0
           ? Number(scrollContext.row.height)
-          : Math.max(1, scrollContext.contentHeight / Math.max(1, rowIndex + 1));
+          : Math.max(
+              1,
+              scrollContext.contentHeight / Math.max(1, rowIndex + 1),
+            );
     const rowOffsetY =
-      typeof fallback.rowOffsetY === 'number' && fallback.rowOffsetY >= 0 ? fallback.rowOffsetY : rowIndex * rowHeight;
+      typeof fallback.rowOffsetY === "number" && fallback.rowOffsetY >= 0
+        ? fallback.rowOffsetY
+        : rowIndex * rowHeight;
     const targetY = rowOffsetY + rowHeight / 2 - scrollContext.bodyHeight / 2;
     applyScrollY(path, scrollContext, clampScrollY(scrollContext, targetY), {
-      primary: 'scrollToFallbackRow',
-      fallback: 'scrollToFallbackRowLegacy',
+      primary: "scrollToFallbackRow",
+      fallback: "scrollToFallbackRowLegacy",
     });
   }
 
-  function hasRenderableEntry(candidate: ReturnType<typeof getCellEntry>): boolean {
+  function hasRenderableEntry(
+    candidate: ReturnType<typeof getCellEntry>,
+  ): boolean {
     return !!(candidate?.row || candidate?.key || candidate?.value);
   }
 
-  function revealPathInternal(path: PathSeg[], options?: RevealOptions): boolean {
+  function revealPathInternal(
+    path: PathSeg[],
+    options?: RevealOptions,
+  ): boolean {
     const cellBoxByPathMap = deps.getCellBoxByPathMap();
     const nodeBoxMap = deps.getNodeBoxMap();
     const renderConfig = deps.getRenderConfig();
@@ -408,11 +561,13 @@ export function createGraphTextLinkageController(deps: GraphTextLinkageControlle
         entry = getCellEntry(cellBoxByPathMap, path);
       }
     }
-    let missingRenderableContext = !hasRenderableEntry(entry) && renderHandle == null && !node;
+    let missingRenderableContext =
+      !hasRenderableEntry(entry) && renderHandle == null && !node;
     if (missingRenderableContext && options?.navigate) {
       scrollRowIntoViewFromFallback(path);
       entry = getCellEntry(cellBoxByPathMap, path);
-      missingRenderableContext = !hasRenderableEntry(entry) && renderHandle == null && !node;
+      missingRenderableContext =
+        !hasRenderableEntry(entry) && renderHandle == null && !node;
     }
     if (missingRenderableContext) {
       clearRenderedSearchHighlights();
@@ -431,17 +586,31 @@ export function createGraphTextLinkageController(deps: GraphTextLinkageControlle
     const cellHighlight = renderConfig.colors.table.hoverCellBackground;
     const rowHighlight = renderConfig.colors.table.hoverRowBackground;
     if (entry?.row) applySearchHighlight(entry.row, { fill: rowHighlight });
-    const { target: resolvedTarget, box: highlightBox } = getHighlightTarget(entry, options?.target);
-    if ((resolvedTarget === 'key' || resolvedTarget === 'value') && highlightBox) {
+    const { target: resolvedTarget, box: highlightBox } = getHighlightTarget(
+      entry,
+      options?.target,
+    );
+    if (
+      (resolvedTarget === "key" || resolvedTarget === "value") &&
+      highlightBox
+    ) {
       applySearchHighlight(highlightBox, { fill: cellHighlight });
     }
     const focusBox = highlightBox ?? entry?.row ?? null;
-    deps.setGraphHighlightTestState(path, resolvedTarget, focusBox ?? entry?.row ?? null);
+    deps.setGraphHighlightTestState(
+      path,
+      resolvedTarget,
+      focusBox ?? entry?.row ?? null,
+    );
     if (options?.navigate) {
       deps.setGraphRevealTestState(path, resolvedTarget);
       const centeredOnBox = focusBox ? deps.centerOnBox(focusBox) : false;
       if (!centeredOnBox && node) deps.centerOnNode(node);
-      deps.setGraphHighlightTestState(path, resolvedTarget, focusBox ?? entry?.row ?? null);
+      deps.setGraphHighlightTestState(
+        path,
+        resolvedTarget,
+        focusBox ?? entry?.row ?? null,
+      );
     } else if (renderHandle != null) {
       const nodeBox = nodeBoxMap.get(renderHandle);
       if (nodeBox) applySearchHighlight(nodeBox, { fill: rowHighlight });
@@ -450,35 +619,61 @@ export function createGraphTextLinkageController(deps: GraphTextLinkageControlle
     return true;
   }
 
-  async function runRevealSequence(path: PathSeg[], options?: RevealOptions, afterStable?: () => void): Promise<boolean> {
+  async function runRevealSequence(
+    path: PathSeg[],
+    options?: RevealOptions,
+    afterStable?: () => void,
+  ): Promise<boolean> {
     const token = (revealPathToken += 1);
     await ensurePathIndex(path);
     if (token !== revealPathToken) return false;
+    const target = resolveNodeForPath(path);
+    if (
+      options?.navigate &&
+      target.renderHandle != null &&
+      deps.materializeTarget
+    ) {
+      const materialized = await deps.materializeTarget(target.renderHandle);
+      if (materialized === false || token !== revealPathToken) return false;
+    }
     const firstReveal = revealPathInternal(path, options);
     if (!options?.navigate) return firstReveal;
     await Promise.resolve();
     await ensurePathIndex(path);
     if (token !== revealPathToken) return false;
-    const stableReveal = revealPathInternal(path, { ...options, navigate: false });
+    const stableReveal = revealPathInternal(path, {
+      ...options,
+      navigate: false,
+    });
     if (stableReveal) afterStable?.();
     return stableReveal;
   }
 
   function revealSearchResult(result: GraphTextLinkageSearchResult): void {
     if (!result?.path?.length) return;
-    runRevealSequence(result.path, { target: result.target, navigate: true }, () => {
-      emitReveal(result.path, result.target, 'search');
-    });
+    runRevealSequence(
+      result.path,
+      { target: result.target, navigate: true },
+      () => {
+        emitReveal(result.path, result.target, "search");
+      },
+    );
   }
 
-  function revealPath(path: PathSeg[], options?: RevealOptions): Promise<boolean> {
+  function revealPath(
+    path: PathSeg[],
+    options?: RevealOptions,
+  ): Promise<boolean> {
     if (!path || path.length === 0) return Promise.resolve(false);
     return runRevealSequence(path, options);
   }
 
   function refreshActiveHighlight(): void {
     if (!activeHighlightState?.path?.length) return;
-    revealPathInternal(activeHighlightState.path, { target: activeHighlightState.target, navigate: false });
+    revealPathInternal(activeHighlightState.path, {
+      target: activeHighlightState.target,
+      navigate: false,
+    });
   }
 
   return {

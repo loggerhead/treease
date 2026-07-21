@@ -142,8 +142,8 @@ describe('LeaferMinimapPlugin', () => {
     plugin.destroy();
   });
 
-  it('updates the main zoom layer when dragging the viewport rectangle', async () => {
-    const onViewportChange = vi.fn();
+  it('requests a world viewport when dragging the viewport rectangle', async () => {
+    const requestViewport = vi.fn();
     const app = {
       sky: new MockBox(),
       zoomLayer: { x: 0, y: 0, scaleX: 1, scaleY: 1 },
@@ -160,7 +160,7 @@ describe('LeaferMinimapPlugin', () => {
         nodes: [{ id: 1, x: 0, y: 0, width: 800, height: 600 }],
         edges: [],
       }),
-      onViewportChange,
+      requestViewport,
     });
 
     vi.runOnlyPendingTimers();
@@ -173,16 +173,15 @@ describe('LeaferMinimapPlugin', () => {
     moveEvent.clientY = 150;
     window.dispatchEvent(moveEvent);
 
-    expect(app.zoomLayer.x).toBeLessThan(0);
-    expect(app.zoomLayer.y).toBeLessThan(0);
-    expect(app.update).toHaveBeenCalledTimes(1);
-    expect(onViewportChange).toHaveBeenCalledTimes(1);
+    expect(app.zoomLayer).toEqual({ x: 0, y: 0, scaleX: 1, scaleY: 1 });
+    expect(app.update).not.toHaveBeenCalled();
+    expect(requestViewport).toHaveBeenCalledWith(expect.objectContaining({ x: expect.any(Number), y: expect.any(Number) }));
 
     plugin.destroy();
   });
 
-  it('moves the viewport center when clicking the minimap background', () => {
-    const onViewportChange = vi.fn();
+  it('requests a world viewport when clicking the minimap background', () => {
+    const requestViewport = vi.fn();
     const app = {
       sky: new MockBox(),
       zoomLayer: { x: 0, y: 0, scaleX: 1, scaleY: 1 },
@@ -199,7 +198,7 @@ describe('LeaferMinimapPlugin', () => {
         nodes: [{ id: 1, x: 0, y: 0, width: 1000, height: 800 }],
         edges: [],
       }),
-      onViewportChange,
+      requestViewport,
     });
 
     vi.runOnlyPendingTimers();
@@ -208,10 +207,9 @@ describe('LeaferMinimapPlugin', () => {
     const background = root.children[0] as MockBox;
     background.emit('down', { clientX: 320, clientY: 220, stop: vi.fn(), stopNow: vi.fn() });
 
-    expect(app.zoomLayer.x).toBeLessThan(0);
-    expect(app.zoomLayer.y).toBeLessThan(0);
-    expect(app.update).toHaveBeenCalledTimes(1);
-    expect(onViewportChange).toHaveBeenCalledTimes(1);
+    expect(app.zoomLayer).toEqual({ x: 0, y: 0, scaleX: 1, scaleY: 1 });
+    expect(app.update).not.toHaveBeenCalled();
+    expect(requestViewport).toHaveBeenCalledWith(expect.objectContaining({ x: expect.any(Number), y: expect.any(Number) }));
 
     plugin.destroy();
   });
@@ -397,6 +395,38 @@ describe('LeaferMinimapPlugin', () => {
     const root = mountApp.children[0] as MockBox;
     expect(root.visible).toBe(true);
     expect(mountContainer.style.display).toBe('');
+
+    plugin.destroy();
+  });
+
+  it('projects an extremely tall graph across the full minimap width', () => {
+    const mountApp = new MockBox();
+    const plugin = new LeaferMinimapPlugin({
+      app: {
+        zoomLayer: { x: 0, y: 0, scaleX: 1, scaleY: 1 },
+        update: vi.fn(),
+        on: vi.fn(),
+        off: vi.fn(),
+      },
+      mountApp,
+      mountContainer: createContainer(220, 150),
+      container: createContainer(800, 600),
+      constructors: { BoxCtor: MockBox, PenCtor: MockPen },
+      getViewData: () => ({
+        nodes: [
+          { id: 1, x: 0, y: 0, width: 100, height: 100 },
+          { id: 2, x: 7044, y: 1154745, width: 100, height: 100 },
+        ],
+        edges: [],
+      }),
+    });
+
+    vi.runOnlyPendingTimers();
+
+    const root = mountApp.children[0] as MockBox;
+    const nodeLayer = root.children[2] as MockBox;
+    const [first, last] = nodeLayer.children as MockBox[];
+    expect((last.x ?? 0) - (first.x ?? 0)).toBeGreaterThan(200);
 
     plugin.destroy();
   });

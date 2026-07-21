@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
-  clampViewportToContent,
   computeContentBounds,
-  computeMinimapScale,
+  createMinimapTransform,
+  findClosestNodeToPoint,
   getViewportWorldBounds,
+  minimapToWorldPoint,
   minimapDeltaToWorldDelta,
   worldToMinimapRect,
 } from './geometry';
@@ -40,9 +41,9 @@ describe('leafer minimap geometry', () => {
 
   it('projects world viewport bounds into minimap coordinates', () => {
     const content = { x: 0, y: 0, width: 1000, height: 500 };
-    const scale = computeMinimapScale(content, 200, 100);
+    const transform = createMinimapTransform(content, 200, 100);
 
-    expect(worldToMinimapRect({ x: 100, y: 50, width: 400, height: 200 }, content, scale)).toEqual({
+    expect(worldToMinimapRect({ x: 100, y: 50, width: 400, height: 200 }, transform)).toEqual({
       x: 20,
       y: 10,
       width: 80,
@@ -51,15 +52,29 @@ describe('leafer minimap geometry', () => {
   });
 
   it('converts minimap drag delta back to world delta', () => {
-    expect(minimapDeltaToWorldDelta({ x: 20, y: -10 }, 0.5)).toEqual({ x: 40, y: -20 });
+    const transform = createMinimapTransform({ x: 0, y: 0, width: 400, height: 400 }, 200, 100);
+
+    expect(minimapDeltaToWorldDelta({ x: 20, y: -10 }, transform)).toEqual({ x: 40, y: -40 });
   });
 
-  it('clamps viewport without producing invalid values when content is smaller than view', () => {
-    expect(clampViewportToContent({ x: 20, y: 20, width: 200, height: 100 }, { x: 0, y: 0, width: 100, height: 50 })).toEqual({
-      x: -50,
-      y: -25,
-      width: 200,
-      height: 100,
+  it('preserves both dimensions and reverses pointer coordinates for an extremely tall graph', () => {
+    const content = { x: -24, y: -53844.143, width: 7144, height: 1154845.4 };
+    const transform = createMinimapTransform(content, 220, 150);
+    const projected = worldToMinimapRect(content, transform);
+
+    expect(projected).toEqual({ x: 0, y: 0, width: 220, height: 150 });
+    expect(minimapToWorldPoint({ x: 111.5234, y: 113.5391 }, transform)).toEqual({
+      x: 3597.4689527272726,
+      y: 820289.9060342666,
     });
+  });
+
+  it('resolves a minimap click to the closest graph node', () => {
+    const nodes = [
+      { id: 1, x: 0, y: 0, width: 100, height: 100 },
+      { id: 2, x: 700, y: 800, width: 100, height: 100 },
+    ];
+
+    expect(findClosestNodeToPoint(nodes, { x: 650, y: 700 })).toEqual(nodes[1]);
   });
 });

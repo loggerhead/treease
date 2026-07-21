@@ -127,7 +127,7 @@ export type LeaferMinimapPluginOptions = {
   padding?: number;
   contentPadding?: number;
   colors?: MinimapColors;
-  onViewportChange?: () => void;
+  requestViewport?: (view: MinimapBounds) => void;
 };
 
 export type LeaferMinimapPluginHandle = {

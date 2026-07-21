@@ -1,5 +1,5 @@
-import { readFileSync } from 'node:fs';
-import { expect, test } from './fixtures';
+import { readFileSync } from "node:fs";
+import { expect, test } from "./fixtures";
 import {
   dropFile,
   getMonacoValue,
@@ -9,18 +9,18 @@ import {
   waitForEditorReady,
   waitForGraphRendered,
   waitForImportSettled,
-} from './utils';
+} from "./utils";
 
 test.setTimeout(20_000);
 
 const TRAJECTORY_FIXTURE_TEXT = readFileSync(
-  new URL('../../../../test/fixtures/json/trajectory.1.json', import.meta.url),
-  'utf8',
+  new URL("../../../../test/fixtures/json/trajectory.1.json", import.meta.url),
+  "utf8",
 );
 
 type EdgeAlignmentMismatch = {
   edgeKey: string;
-  kind: 'fromX' | 'fromY' | 'toX' | 'toY';
+  kind: "fromX" | "fromY" | "toX" | "toY";
   actual: number;
   expected: number;
   diff: number;
@@ -28,17 +28,24 @@ type EdgeAlignmentMismatch = {
 
 type EdgeLayerSnapshot = {
   graphEdgeCount: number;
+  projectionEdgeCount: number;
   layerChildCount: number;
 };
 
-async function readEdgeAlignmentMismatches(page: import('@playwright/test').Page): Promise<EdgeAlignmentMismatch[]> {
+async function readEdgeAlignmentMismatches(
+  page: import("@playwright/test").Page,
+): Promise<EdgeAlignmentMismatch[]> {
   return page.evaluate(() => {
     const runtime = window._treease?.graph as any;
-    const graph = runtime?.getLastGraphData?.() as { nodes?: any[]; edges?: any[] } | undefined;
-    if (!graph) throw new Error('graph data unavailable');
+    const graph = runtime?.getLastGraphData?.() as
+      | { nodes?: any[]; edges?: any[] }
+      | undefined;
+    if (!graph) throw new Error("graph data unavailable");
     const nodes = Array.isArray(graph.nodes) ? graph.nodes : [];
     const edges = Array.isArray(graph.edges) ? graph.edges : [];
-    const nodeByHandle = new Map(nodes.map((node: any) => [Number(node.renderHandle), node]));
+    const nodeByHandle = new Map(
+      nodes.map((node: any) => [Number(node.renderHandle), node]),
+    );
     const mismatches: EdgeAlignmentMismatch[] = [];
     const centerY = (box: any, owner?: any) => {
       // Row boxArgs use node-local coordinates; edge bezier anchors are absolute.
@@ -48,7 +55,7 @@ async function readEdgeAlignmentMismatches(page: import('@playwright/test').Page
       return ownerY + localY + Number(box?.height ?? 0) / 2;
     };
     const resolveEdgeAnchorY = (node: any, rowIndex: number) => {
-      if (node?.kind === 'table' && node?.table) {
+      if (node?.kind === "table" && node?.table) {
         const headerOffset = (node.table.headerHeight ?? 0) > 0 ? 1 : 0;
         if (headerOffset === 1 && rowIndex === 0) {
           const borderOffset = Number(node.table.columns?.[0]?.boxArgs?.y ?? 0);
@@ -70,7 +77,8 @@ async function readEdgeAlignmentMismatches(page: import('@playwright/test').Page
       const parent = nodeByHandle.get(Number(edge.fromRenderHandle));
       const child = nodeByHandle.get(Number(edge.toRenderHandle));
       if (!parent || !child) continue;
-      const expectedFromX = Number(parent.boxArgs?.x ?? 0) + Number(parent.boxArgs?.width ?? 0);
+      const expectedFromX =
+        Number(parent.boxArgs?.x ?? 0) + Number(parent.boxArgs?.width ?? 0);
       const expectedToX = Number(child.boxArgs?.x ?? 0);
       const expectedFromY = resolveEdgeAnchorY(parent, Number(edge.fromRow));
       const expectedToY = resolveEdgeAnchorY(child, Number(edge.toRow));
@@ -85,65 +93,103 @@ async function readEdgeAlignmentMismatches(page: import('@playwright/test').Page
       const toXDiff = Math.abs(actualToX - expectedToX);
       const toDiff = Math.abs(actualToY - expectedToY);
       if (fromXDiff > 0.5) {
-        mismatches.push({ edgeKey, kind: 'fromX', actual: actualFromX, expected: expectedFromX, diff: fromXDiff });
+        mismatches.push({
+          edgeKey,
+          kind: "fromX",
+          actual: actualFromX,
+          expected: expectedFromX,
+          diff: fromXDiff,
+        });
       }
       if (fromDiff > 0.5) {
-        mismatches.push({ edgeKey, kind: 'fromY', actual: actualFromY, expected: expectedFromY, diff: fromDiff });
+        mismatches.push({
+          edgeKey,
+          kind: "fromY",
+          actual: actualFromY,
+          expected: expectedFromY,
+          diff: fromDiff,
+        });
       }
       if (toXDiff > 0.5) {
-        mismatches.push({ edgeKey, kind: 'toX', actual: actualToX, expected: expectedToX, diff: toXDiff });
+        mismatches.push({
+          edgeKey,
+          kind: "toX",
+          actual: actualToX,
+          expected: expectedToX,
+          diff: toXDiff,
+        });
       }
       if (toDiff > 0.5) {
-        mismatches.push({ edgeKey, kind: 'toY', actual: actualToY, expected: expectedToY, diff: toDiff });
+        mismatches.push({
+          edgeKey,
+          kind: "toY",
+          actual: actualToY,
+          expected: expectedToY,
+          diff: toDiff,
+        });
       }
     }
     return mismatches.slice(0, 50);
   });
 }
 
-async function readEdgeLayerSnapshot(page: import('@playwright/test').Page): Promise<EdgeLayerSnapshot> {
+async function readEdgeLayerSnapshot(
+  page: import("@playwright/test").Page,
+): Promise<EdgeLayerSnapshot> {
   return page.evaluate(() => {
     const runtime = window._treease?.graph as any;
-    const graph = runtime?.getLastGraphData?.() as { edges?: any[] } | undefined;
+    const graph = runtime?.getLastGraphData?.() as
+      | { edges?: any[] }
+      | undefined;
     const edgeLayer = runtime?.refs?.layers?.edgeLayer;
-    const children = Array.isArray(edgeLayer?.children) ? edgeLayer.children : [];
+    const host = document.querySelector('[data-testid="graph-viewer-canvas"]');
+    const children = Array.isArray(edgeLayer?.children)
+      ? edgeLayer.children
+      : [];
     return {
       graphEdgeCount: Array.isArray(graph?.edges) ? graph.edges.length : 0,
+      projectionEdgeCount: Number(
+        host?.getAttribute("data-graph-renderable-edge-count") ?? 0,
+      ),
       layerChildCount: children.length,
     };
   });
 }
 
-test('trajectory fixture final graph edges converge to the current node layout', async ({ page }) => {
-  await page.goto('/editor');
+test("trajectory fixture final graph edges converge to the current node layout", async ({
+  page,
+}) => {
+  await page.goto("/editor");
   await waitForEditorReady(page);
   await setEditorContent(page, {
     sourceText: TRAJECTORY_FIXTURE_TEXT,
-    language: 'json',
+    language: "json",
   });
   await waitForGraphRendered(page, 15_000);
-  await setMonacoPositionByText(page, 'source-editor', '"llm_duration"');
+  await setMonacoPositionByText(page, "source-editor", '"llm_duration"');
   await waitForGraphRendered(page, 15_000);
 
   const mismatches = await readEdgeAlignmentMismatches(page);
   const edgeLayer = await readEdgeLayerSnapshot(page);
   expect(mismatches).toEqual([]);
-  expect(edgeLayer.layerChildCount).toBe(edgeLayer.graphEdgeCount);
+  expect(edgeLayer.layerChildCount).toBe(edgeLayer.projectionEdgeCount);
 });
 
-test('trajectory fixture imported through source drop also converges rendered edges', async ({ page }) => {
-  await page.goto('/editor');
+test("trajectory fixture imported through source drop also converges rendered edges", async ({
+  page,
+}) => {
+  await page.goto("/editor");
   await waitForEditorReady(page);
 
   await dropFile(page, {
-    targetTestId: 'source-editor-region',
-    fileName: 'trajectory.json',
+    targetTestId: "source-editor-region",
+    fileName: "trajectory.json",
     content: TRAJECTORY_FIXTURE_TEXT,
-    mimeType: 'application/json',
+    mimeType: "application/json",
   });
   await waitForImportSettled(page, 15_000);
   const [modelText, state] = await Promise.all([
-    getMonacoValue(page, 'source-editor'),
+    getMonacoValue(page, "source-editor"),
     readEditorState(page),
   ]);
   expect(state.sourceText).toBe(modelText);
@@ -152,5 +198,5 @@ test('trajectory fixture imported through source drop also converges rendered ed
   const mismatches = await readEdgeAlignmentMismatches(page);
   const edgeLayer = await readEdgeLayerSnapshot(page);
   expect(mismatches).toEqual([]);
-  expect(edgeLayer.layerChildCount).toBe(edgeLayer.graphEdgeCount);
+  expect(edgeLayer.layerChildCount).toBe(edgeLayer.projectionEdgeCount);
 });

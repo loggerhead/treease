@@ -1,13 +1,12 @@
 // Responsibility: manage the GraphViewer Leafer scene lifecycle and node/edge layers.
-import type { GraphViewerConfig } from '../../settings/ui-settings';
+import type { GraphViewerConfig } from "../../settings/ui-settings";
 import {
   applyGraphDeltaToState,
   clearStreamState,
   createEmptyStreamState,
   replaceStreamState,
   streamStateToArrays,
-} from '../../graph/StreamUpdateHandler';
-import { buildPathKey } from '../../graph/graph-viewer-path';
+} from "../../graph/StreamUpdateHandler";
 import {
   createCellText,
   describeTableRuntime,
@@ -19,12 +18,26 @@ import {
   type GraphEdge,
   type GraphNode,
   type TableRuntime,
-} from '../../graph/graph-viewer-render';
-import type { InternalTableRuntime } from './runtime/table-runtime';
-import { createGraphDirtyRegion, type GraphDirtyRegionRect } from './graph-dirty-region';
-import { renderGraphEdges, renderGraphNode } from './graph-render-kernel';
-import type { NormalizedGraphDelta, RawGraphDelta } from '../../../shared/worker-protocol/protocol';
-import type { GraphSceneLayers, GraphViewerClickTargetStore } from './model';
+} from "../../graph/graph-viewer-render";
+import type { InternalTableRuntime } from "./runtime/table-runtime";
+import {
+  createGraphDirtyRegion,
+  type GraphDirtyRegionRect,
+} from "./graph-dirty-region";
+import { renderGraphEdges, renderGraphNode } from "./graph-render-kernel";
+import {
+  computeProjection,
+  createGraphModel,
+  type GraphModel,
+  type GraphProjection,
+  type MaterializationIntent,
+} from "./graph-renderable-projection";
+import { getViewportBounds } from "./graph-viewport-geometry";
+import type {
+  NormalizedGraphDelta,
+  RawGraphDelta,
+} from "../../../shared/worker-protocol/protocol";
+import type { GraphSceneLayers, GraphViewerClickTargetStore } from "./model";
 
 export type GraphSceneViewData = {
   nodes: GraphNode[];
@@ -32,23 +45,29 @@ export type GraphSceneViewData = {
 };
 
 export type GraphSceneInteractionState = {
-  hasGraphData: boolean;
+  kind: "empty" | "graph-ready" | "projection-pending" | "scene-committed";
+  graphRevision: number | null;
+  desiredProjectionRevision: string | null;
+  committedProjectionRevision: string | null;
+  graphReady: boolean;
+  projectionPending: boolean;
+  sceneCommitted: boolean;
   nodeCount: number;
-  rootProbeCount: number;
-  pendingRenderWork: boolean;
 };
 
 type GraphSceneDelta = NormalizedGraphDelta | RawGraphDelta;
 const GRAPH_DELTA_FRAME_WORK_BUDGET = 128;
 
-function tablePatchCollectionKey(kind: unknown): 'rows' | 'cells' | 'columns' | null {
+function tablePatchCollectionKey(
+  kind: unknown,
+): "rows" | "cells" | "columns" | null {
   switch (kind) {
-    case 'rowsAppended':
-      return 'rows';
-    case 'cellsUpdated':
-      return 'cells';
-    case 'columnsAdded':
-      return 'columns';
+    case "rowsAppended":
+      return "rows";
+    case "cellsUpdated":
+      return "cells";
+    case "columnsAdded":
+      return "columns";
     default:
       return null;
   }
@@ -66,27 +85,38 @@ function expandTablePatchWork(patches: unknown[]): unknown[] {
     return values.map((value, index) => ({
       ...record,
       [collectionKey]: [value],
-      ...(collectionKey === 'rows' ? { startIndex: startIndex + index } : {}),
+      ...(collectionKey === "rows" ? { startIndex: startIndex + index } : {}),
     }));
   });
 }
 
-function splitGraphDeltaByFrameBudget(delta: GraphSceneDelta): GraphSceneDelta[] {
+function splitGraphDeltaByFrameBudget(
+  delta: GraphSceneDelta,
+): GraphSceneDelta[] {
   const sources = {
     nodesAdded: Array.from(delta.nodesAdded ?? []),
     nodesUpdated: Array.from(delta.nodesUpdated ?? []),
     nodesRemoved: Array.from(delta.nodesRemoved ?? []),
     edgesAdded: Array.from(delta.edgesAdded ?? []),
     edgesRemoved: Array.from(delta.edgesRemoved ?? []),
-    tableCellPatches: arrayValue((delta as unknown as Record<string, unknown>).tableCellPatches),
+    tableCellPatches: arrayValue(
+      (delta as unknown as Record<string, unknown>).tableCellPatches,
+    ),
     tablePatches: expandTablePatchWork(
       arrayValue((delta as unknown as Record<string, unknown>).tablePatches),
     ),
-    layoutPatches: arrayValue((delta as unknown as Record<string, unknown>).layoutPatches),
+    layoutPatches: arrayValue(
+      (delta as unknown as Record<string, unknown>).layoutPatches,
+    ),
   };
   const sourceKeys = Object.keys(sources) as Array<keyof typeof sources>;
-  const offsets = Object.fromEntries(sourceKeys.map((key) => [key, 0])) as Record<keyof typeof sources, number>;
-  const totalWork = Object.values(sources).reduce((total, values) => total + values.length, 0);
+  const offsets = Object.fromEntries(
+    sourceKeys.map((key) => [key, 0]),
+  ) as Record<keyof typeof sources, number>;
+  const totalWork = Object.values(sources).reduce(
+    (total, values) => total + values.length,
+    0,
+  );
   if (totalWork <= GRAPH_DELTA_FRAME_WORK_BUDGET) return [delta];
 
   const chunks: GraphSceneDelta[] = [];
@@ -123,7 +153,7 @@ type TrackedRowBinding = {
   rowBox: any;
 };
 
-type TablePatchMode = 'append' | 'content' | 'structure';
+type TablePatchMode = "append" | "content" | "structure";
 
 type PendingStreamPatch = {
   clear: boolean;
@@ -134,24 +164,26 @@ type PendingStreamPatch = {
 };
 
 function asRecord(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === 'object' ? (value as Record<string, unknown>) : null;
+  return value && typeof value === "object"
+    ? (value as Record<string, unknown>)
+    : null;
 }
 
 function rawNodeRenderHandle(node: unknown): number | null {
   const handle = asRecord(node)?.renderHandle;
-  return typeof handle === 'number' ? handle : null;
+  return typeof handle === "number" ? handle : null;
 }
 
 function layoutPatchRenderHandle(patch: unknown): number | null {
   const record = asRecord(patch);
   if (!record) return null;
-  if (record.kind === 'nodeBoundsUpdated') {
+  if (record.kind === "nodeBoundsUpdated") {
     const handle = record.render_handle ?? record.renderHandle;
-    return typeof handle === 'number' ? handle : null;
+    return typeof handle === "number" ? handle : null;
   }
-  if (record.kind === 'groupLayoutUpdated') {
+  if (record.kind === "groupLayoutUpdated") {
     const handle = record.group_handle ?? record.groupHandle;
-    return typeof handle === 'number' ? handle : null;
+    return typeof handle === "number" ? handle : null;
   }
   return null;
 }
@@ -160,29 +192,40 @@ function arrayValue(value: unknown): unknown[] {
   return Array.isArray(value) ? value : [];
 }
 
-function mergeTablePatchMode(current: TablePatchMode | undefined, next: TablePatchMode): TablePatchMode {
-  if (current === 'structure' || next === 'structure') return 'structure';
-  if (current === 'content' || next === 'content') return 'content';
-  return 'append';
+function mergeTablePatchMode(
+  current: TablePatchMode | undefined,
+  next: TablePatchMode,
+): TablePatchMode {
+  if (current === "structure" || next === "structure") return "structure";
+  if (current === "content" || next === "content") return "content";
+  return "append";
 }
 
 function tablePatchHandle(tablePatch: unknown): number | null {
   const record = asRecord(tablePatch);
-  const handle = record?.tableRenderHandle ?? record?.table_handle ?? record?.tableHandle;
-  return typeof handle === 'number' ? handle : null;
+  const handle =
+    record?.tableRenderHandle ?? record?.table_handle ?? record?.tableHandle;
+  return typeof handle === "number" ? handle : null;
 }
 
 function tablePatchMode(tablePatch: unknown): TablePatchMode {
   const kind = asRecord(tablePatch)?.kind;
-  if (kind === 'rowsAppended') return 'append';
-  if (kind === 'cellsUpdated') return 'content';
-  return 'structure';
+  if (kind === "rowsAppended") return "append";
+  if (kind === "cellsUpdated") return "content";
+  return "structure";
 }
 
-function markTablePatch(patch: PendingStreamPatch, handle: number, mode: TablePatchMode): void {
+function markTablePatch(
+  patch: PendingStreamPatch,
+  handle: number,
+  mode: TablePatchMode,
+): void {
   patch.nodeIds.add(handle);
   patch.tablePatchNodeIds.add(handle);
-  patch.tablePatchModes.set(handle, mergeTablePatchMode(patch.tablePatchModes.get(handle), mode));
+  patch.tablePatchModes.set(
+    handle,
+    mergeTablePatchMode(patch.tablePatchModes.get(handle), mode),
+  );
 }
 
 function createPendingStreamPatch(delta: GraphSceneDelta): PendingStreamPatch {
@@ -191,11 +234,13 @@ function createPendingStreamPatch(delta: GraphSceneDelta): PendingStreamPatch {
     nodeIds: new Set<number>(),
     tablePatchNodeIds: new Set<number>(),
     tablePatchModes: new Map<number, TablePatchMode>(),
-    edgeChange: (delta.edgesAdded?.length ?? 0) > 0 || (delta.edgesRemoved?.length ?? 0) > 0,
+    edgeChange:
+      (delta.edgesAdded?.length ?? 0) > 0 ||
+      (delta.edgesRemoved?.length ?? 0) > 0,
   };
   if (!patch.clear) {
     delta.nodesRemoved.forEach((nodeId) => {
-      if (typeof nodeId === 'number') patch.nodeIds.add(nodeId);
+      if (typeof nodeId === "number") patch.nodeIds.add(nodeId);
     });
     delta.nodesAdded.forEach((node) => {
       const handle = rawNodeRenderHandle(node);
@@ -208,11 +253,12 @@ function createPendingStreamPatch(delta: GraphSceneDelta): PendingStreamPatch {
     const deltaRecord = asRecord(delta);
     arrayValue(deltaRecord?.tableCellPatches).forEach((tablePatch) => {
       const handle = tablePatchHandle(tablePatch);
-      if (handle != null) markTablePatch(patch, handle, 'content');
+      if (handle != null) markTablePatch(patch, handle, "content");
     });
     arrayValue(deltaRecord?.tablePatches).forEach((tablePatch) => {
       const handle = tablePatchHandle(tablePatch);
-      if (handle != null) markTablePatch(patch, handle, tablePatchMode(tablePatch));
+      if (handle != null)
+        markTablePatch(patch, handle, tablePatchMode(tablePatch));
     });
     arrayValue(deltaRecord?.layoutPatches).forEach((layoutPatch) => {
       const handle = layoutPatchRenderHandle(layoutPatch);
@@ -225,7 +271,10 @@ function createPendingStreamPatch(delta: GraphSceneDelta): PendingStreamPatch {
   return patch;
 }
 
-function mergePendingStreamPatch(target: PendingStreamPatch, next: PendingStreamPatch): void {
+function mergePendingStreamPatch(
+  target: PendingStreamPatch,
+  next: PendingStreamPatch,
+): void {
   if (target.clear || next.clear) {
     target.clear = true;
     target.nodeIds.clear();
@@ -235,9 +284,14 @@ function mergePendingStreamPatch(target: PendingStreamPatch, next: PendingStream
     return;
   }
   next.nodeIds.forEach((nodeId) => target.nodeIds.add(nodeId));
-  next.tablePatchNodeIds.forEach((nodeId) => target.tablePatchNodeIds.add(nodeId));
+  next.tablePatchNodeIds.forEach((nodeId) =>
+    target.tablePatchNodeIds.add(nodeId),
+  );
   next.tablePatchModes.forEach((mode, nodeId) => {
-    target.tablePatchModes.set(nodeId, mergeTablePatchMode(target.tablePatchModes.get(nodeId), mode));
+    target.tablePatchModes.set(
+      nodeId,
+      mergeTablePatchMode(target.tablePatchModes.get(nodeId), mode),
+    );
   });
   target.edgeChange ||= next.edgeChange;
 }
@@ -261,18 +315,27 @@ type GraphSceneRuntimeDeps = {
   buildPathSegFromCell: (cell: any, rowIndex: number) => any;
   clearSearchHighlight: () => void;
   beginMainGraphRedraw: (nodes: GraphNode[]) => Map<number, any>;
+  setFullGraph: (nodes: GraphNode[]) => void;
   getNodeDataMap: () => Map<number, GraphNode>;
   getNodeBoxMap: () => Map<number, any>;
-  getPathKeyToRenderHandleMap: () => Map<string, number>;
-  indexTableCellAnchorsForNode?: (node: GraphNode) => void;
-  removeTableCellAnchorsForNode?: (nodeId: number) => void;
   getClickTargetProbes: () => any[];
   getClickTargetProbeStore: () => GraphViewerClickTargetStore;
   registerCellBox: (cell: any, kind: any, box: any) => void;
   unregisterCellBox: (cell: any, kind: any, box: any) => void;
-  registerRowBox: (cell: any, rowBox: any, scrollOwner?: any, bodyHeight?: number, contentHeight?: number) => void;
+  registerRowBox: (
+    cell: any,
+    rowBox: any,
+    scrollOwner?: any,
+    bodyHeight?: number,
+    contentHeight?: number,
+  ) => void;
   unregisterRowBox: (cell: any, rowBox: any) => void;
-  registerClickTarget: (target: any, cell: any, kind: any, nodeKind?: GraphNode['kind']) => string;
+  registerClickTarget: (
+    target: any,
+    cell: any,
+    kind: any,
+    nodeKind?: GraphNode["kind"],
+  ) => string;
   bindVerticalScrollGesture?: (
     target: any,
     handler: (gesture: {
@@ -283,31 +346,45 @@ type GraphSceneRuntimeDeps = {
       stopNow: () => void;
     }) => void,
   ) => (() => void) | void;
-  bindPointerDown?: (target: any, handler: (event: unknown) => void | Promise<void>) => (() => void) | void;
+  bindPointerDown?: (
+    target: any,
+    handler: (event: unknown) => void | Promise<void>,
+  ) => (() => void) | void;
   getPointFromEvent?: (
     hostApp: any,
     target: any,
     event: unknown,
-    space: 'client' | 'box' | 'local' | 'world',
+    space: "client" | "box" | "local" | "world",
   ) => { x: number; y: number } | null;
   refreshActiveHighlight?: () => void;
   updateLeafer: () => void;
 };
 
 export function createGraphSceneRuntime(deps: GraphSceneRuntimeDeps) {
-  let lastGraphData: GraphSceneViewData | null = null;
+  let graphModel: GraphModel | null = null;
+  let graphRevision = 0;
+  let viewportRevision = 0;
+  let materializationIntent: MaterializationIntent | null = null;
+  let desiredProjection: GraphProjection | null = null;
+  let committedProjection: GraphProjection | null = null;
   const streamState = createEmptyStreamState();
   const dirtyRegion = createGraphDirtyRegion();
   const nodeMetaTextById = new Map<number, any>();
   const tableRuntimeByNodeId = new Map<number, TableRuntime>();
-  const nodeCellBindingsById = new Map<number, Map<object, TrackedCellBinding>>();
+  const nodeCellBindingsById = new Map<
+    number,
+    Map<object, TrackedCellBinding>
+  >();
   const nodeRowBindingsById = new Map<number, Map<object, TrackedRowBinding>>();
   const nodeClickTargetsById = new Map<number, Set<string>>();
+  const edgeRenderByKey = new Map<string, any>();
   let pendingStreamPatch: PendingStreamPatch | null = null;
   let pendingStreamFrame: number | null = null;
+  let pendingProjectionFrame: number | null = null;
   let pendingStreamRedrawDone: Promise<void> | null = null;
   let resolvePendingStreamRedraw: (() => void) | null = null;
   let renderWorkGeneration = 0;
+  const projectionWaiters = new Map<string, Array<() => void>>();
 
   function flushLeaferSceneLayout(): void {
     deps.updateLeafer();
@@ -316,19 +393,25 @@ export function createGraphSceneRuntime(deps: GraphSceneRuntimeDeps) {
   function inferGraphPaths(nodes: GraphNode[], edges: GraphEdge[]): void {
     if (!nodes.length) return;
     const tableHeaderOffset = (node: GraphNode): number =>
-      node.kind === 'table' && node.table && (node.table.headerHeight ?? 0) > 0 ? 1 : 0;
-    const rowsForNode = (node: GraphNode) => (node.kind === 'table' ? (node.table?.rows ?? []) : node.rows);
+      node.kind === "table" && node.table && (node.table.headerHeight ?? 0) > 0
+        ? 1
+        : 0;
+    const rowsForNode = (node: GraphNode) =>
+      node.kind === "table" ? (node.table?.rows ?? []) : node.rows;
     const nodeById = new Map(nodes.map((node) => [node.renderHandle, node]));
     const incomingEdgeByNodeId = new Map<number, GraphEdge>();
     const outgoingEdgesByNodeId = new Map<number, GraphEdge[]>();
     edges.forEach((edge) => {
-      if (!incomingEdgeByNodeId.has(edge.toRenderHandle)) incomingEdgeByNodeId.set(edge.toRenderHandle, edge);
+      if (!incomingEdgeByNodeId.has(edge.toRenderHandle))
+        incomingEdgeByNodeId.set(edge.toRenderHandle, edge);
       const list = outgoingEdgesByNodeId.get(edge.fromRenderHandle) ?? [];
       list.push(edge);
       outgoingEdgesByNodeId.set(edge.fromRenderHandle, list);
     });
     const rowPathByNodeId = new Map<number, Map<number, any[]>>();
-    const queue = nodes.filter((node) => !incomingEdgeByNodeId.has(node.renderHandle));
+    const queue = nodes.filter(
+      (node) => !incomingEdgeByNodeId.has(node.renderHandle),
+    );
     const visited = new Set<number>();
     while (queue.length) {
       const node = queue.shift();
@@ -349,7 +432,9 @@ export function createGraphSceneRuntime(deps: GraphSceneRuntimeDeps) {
       const nodePath = Array.isArray(node.path) ? node.path : [];
       const rowPaths = new Map<number, any[]>();
       rowsForNode(node).forEach((row, rowIndex) => {
-        const seg = row.cells[0] ? deps.buildPathSegFromCell(row.cells[0], rowIndex) : null;
+        const seg = row.cells[0]
+          ? deps.buildPathSegFromCell(row.cells[0], rowIndex)
+          : null;
         const nextPath = seg ? [...nodePath, seg] : nodePath;
         rowPaths.set(rowIndex + tableHeaderOffset(node), nextPath);
         row.cells.forEach((cell) => {
@@ -364,7 +449,10 @@ export function createGraphSceneRuntime(deps: GraphSceneRuntimeDeps) {
         const child = nodeById.get(edge.toRenderHandle);
         if (!child) return;
         const inferredPath = rowPaths.get(edge.fromRow);
-        if (inferredPath && (!Array.isArray(child.path) || child.path.length === 0)) {
+        if (
+          inferredPath &&
+          (!Array.isArray(child.path) || child.path.length === 0)
+        ) {
           child.path = inferredPath;
         }
         queue.push(child);
@@ -380,11 +468,23 @@ export function createGraphSceneRuntime(deps: GraphSceneRuntimeDeps) {
     const layers = deps.getLayers();
     const nextLayers: Partial<GraphSceneLayers> = {};
     if (!layers.edgeLayer) {
-      nextLayers.edgeLayer = new BoxCtor({ x: 0, y: 0, width: 0, height: 0, fill: 'transparent' });
+      nextLayers.edgeLayer = new BoxCtor({
+        x: 0,
+        y: 0,
+        width: 0,
+        height: 0,
+        fill: "transparent",
+      });
       root.add(nextLayers.edgeLayer);
     }
     if (!layers.nodeLayer) {
-      nextLayers.nodeLayer = new BoxCtor({ x: 0, y: 0, width: 0, height: 0, fill: 'transparent' });
+      nextLayers.nodeLayer = new BoxCtor({
+        x: 0,
+        y: 0,
+        width: 0,
+        height: 0,
+        fill: "transparent",
+      });
       root.add(nextLayers.nodeLayer);
     }
     if (!layers.overlayLayer) {
@@ -393,7 +493,7 @@ export function createGraphSceneRuntime(deps: GraphSceneRuntimeDeps) {
         y: 0,
         width: 0,
         height: 0,
-        fill: 'transparent',
+        fill: "transparent",
         hittable: false,
         hitChildren: false,
       });
@@ -404,7 +504,11 @@ export function createGraphSceneRuntime(deps: GraphSceneRuntimeDeps) {
     }
   }
 
-  function drawEdges(nodes: GraphNode[], edges: GraphEdge[], options?: { layer?: any }) {
+  function drawEdges(
+    nodes: GraphNode[],
+    edges: GraphEdge[],
+    options?: { layer?: any },
+  ) {
     ensureLayers();
     return renderGraphEdges({
       nodes,
@@ -412,6 +516,7 @@ export function createGraphSceneRuntime(deps: GraphSceneRuntimeDeps) {
       layer: options?.layer ?? deps.getLayers().edgeLayer,
       PenCtor: deps.getPenCtor(),
       renderConfig: deps.getRenderConfig(),
+      edgeRenderByKey,
     });
   }
 
@@ -425,7 +530,9 @@ export function createGraphSceneRuntime(deps: GraphSceneRuntimeDeps) {
     const currentY = layer.y ?? 0;
     const lastAutoOffset = deps.getLastAutoOffset();
     const canAutoPosition =
-      !lastAutoOffset || (Math.abs(currentX - lastAutoOffset.x) < 0.5 && Math.abs(currentY - lastAutoOffset.y) < 0.5);
+      !lastAutoOffset ||
+      (Math.abs(currentX - lastAutoOffset.x) < 0.5 &&
+        Math.abs(currentY - lastAutoOffset.y) < 0.5);
     let minX = 0;
     let minY = 0;
     if (nodes.length > 0) {
@@ -450,25 +557,6 @@ export function createGraphSceneRuntime(deps: GraphSceneRuntimeDeps) {
     if (!target) return;
     target.removeAll?.(true);
     target.remove?.();
-  }
-
-  function deleteNodePathMapping(renderHandle: number): void {
-    const pathKeyToRenderHandleMap = deps.getPathKeyToRenderHandleMap();
-    for (const [pathKey, value] of pathKeyToRenderHandleMap.entries()) {
-      if (value === renderHandle) pathKeyToRenderHandleMap.delete(pathKey);
-    }
-  }
-
-  function setNodePathMapping(node: GraphNode): void {
-    const nodeHandle = node.renderHandle;
-    deleteNodePathMapping(nodeHandle);
-    const pathKey = buildPathKey(node.path ?? []);
-    if (!pathKey) return;
-    const pathKeyToRenderHandleMap = deps.getPathKeyToRenderHandleMap();
-    const existing = pathKeyToRenderHandleMap.get(pathKey);
-    if (existing == null || existing === nodeHandle) {
-      pathKeyToRenderHandleMap.set(pathKey, nodeHandle);
-    }
   }
 
   function removeNodeProbeTargets(nodeId: number): void {
@@ -508,15 +596,17 @@ export function createGraphSceneRuntime(deps: GraphSceneRuntimeDeps) {
     nodeMetaTextById.delete(nodeId);
     const drawContext = createTrackedDrawContext(nodeId);
     if (drawContext) {
-      destroyTableRuntime(drawContext, tableRuntimeByNodeId.get(nodeId), tableRuntimeOps);
+      destroyTableRuntime(
+        drawContext,
+        tableRuntimeByNodeId.get(nodeId),
+        tableRuntimeOps,
+      );
     }
     tableRuntimeByNodeId.delete(nodeId);
     const nodeBoxMap = deps.getNodeBoxMap();
     const nodeBox = nodeBoxMap.get(nodeId);
     removeRenderable(nodeBox);
     nodeBoxMap.delete(nodeId);
-    deleteNodePathMapping(nodeId);
-    deps.removeTableCellAnchorsForNode?.(nodeId);
     deps.getNodeDataMap().delete(nodeId);
   }
 
@@ -526,7 +616,6 @@ export function createGraphSceneRuntime(deps: GraphSceneRuntimeDeps) {
     }
     deps.getNodeDataMap().clear();
     deps.getNodeBoxMap().clear();
-    deps.getPathKeyToRenderHandleMap().clear();
     const clickTargetProbeStore = deps.getClickTargetProbeStore();
     Object.keys(clickTargetProbeStore).forEach((targetId) => {
       delete clickTargetProbeStore[targetId];
@@ -537,10 +626,13 @@ export function createGraphSceneRuntime(deps: GraphSceneRuntimeDeps) {
     nodeRowBindingsById.clear();
     nodeClickTargetsById.clear();
     deps.getLayers().edgeLayer?.removeAll(true);
+    edgeRenderByKey.clear();
     deps.getLayers().overlayLayer?.removeAll(true);
   }
 
-  function toRenderHandleDirtyRect(node: GraphNode | null | undefined): GraphDirtyRegionRect | null {
+  function toRenderHandleDirtyRect(
+    node: GraphNode | null | undefined,
+  ): GraphDirtyRegionRect | null {
     if (!node) return null;
     return {
       left: Number(node.boxArgs.x ?? 0),
@@ -554,7 +646,9 @@ export function createGraphSceneRuntime(deps: GraphSceneRuntimeDeps) {
     dirtyRegion.mark(toRenderHandleDirtyRect(node));
   }
 
-  function markViewDirty(graphData: GraphSceneViewData | null | undefined): void {
+  function markViewDirty(
+    graphData: GraphSceneViewData | null | undefined,
+  ): void {
     if (!graphData?.nodes?.length) return;
     graphData.nodes.forEach((node) => {
       markNodeDirty(node);
@@ -591,31 +685,48 @@ export function createGraphSceneRuntime(deps: GraphSceneRuntimeDeps) {
       PenCtor,
       editable: deps.isReadonly?.() ? false : undefined,
       registerCellBox: (cell, kind, box) => {
-        if (box && typeof box === 'object') {
+        if (box && typeof box === "object") {
           cellBindings.set(box, { cell, kind, box });
         }
         deps.registerCellBox(cell, kind, box);
       },
       unregisterCellBox: (cell, kind, box) => {
-        if (box && typeof box === 'object') {
+        if (box && typeof box === "object") {
           cellBindings.delete(box);
         }
         deps.unregisterCellBox(cell, kind, box);
       },
-      registerRowBox: (cell, rowBox, scrollOwner, bodyHeight, contentHeight) => {
-        if (rowBox && typeof rowBox === 'object') {
+      registerRowBox: (
+        cell,
+        rowBox,
+        scrollOwner,
+        bodyHeight,
+        contentHeight,
+      ) => {
+        if (rowBox && typeof rowBox === "object") {
           rowBindings.set(rowBox, { cell, rowBox });
         }
-        deps.registerRowBox(cell, rowBox, scrollOwner, bodyHeight, contentHeight);
+        deps.registerRowBox(
+          cell,
+          rowBox,
+          scrollOwner,
+          bodyHeight,
+          contentHeight,
+        );
       },
       unregisterRowBox: (cell, rowBox) => {
-        if (rowBox && typeof rowBox === 'object') {
+        if (rowBox && typeof rowBox === "object") {
           rowBindings.delete(rowBox);
         }
         deps.unregisterRowBox(cell, rowBox);
       },
       registerClickTarget: (target, cell, kind, nodeKind) => {
-        const clickTargetId = deps.registerClickTarget(target, cell, kind, nodeKind);
+        const clickTargetId = deps.registerClickTarget(
+          target,
+          cell,
+          kind,
+          nodeKind,
+        );
         if (clickTargetId) clickTargets.add(clickTargetId);
         return clickTargetId;
       },
@@ -632,10 +743,8 @@ export function createGraphSceneRuntime(deps: GraphSceneRuntimeDeps) {
     const drawContext = createTrackedDrawContext(nodeHandle);
     if (!drawContext) return;
     deps.getNodeDataMap().set(nodeHandle, node);
-    setNodePathMapping(node);
-    deps.removeTableCellAnchorsForNode?.(nodeHandle);
-    deps.indexTableCellAnchorsForNode?.(node);
-    const clickTargets = nodeClickTargetsById.get(nodeHandle) ?? new Set<string>();
+    const clickTargets =
+      nodeClickTargetsById.get(nodeHandle) ?? new Set<string>();
     nodeClickTargetsById.set(nodeHandle, clickTargets);
     const result = renderGraphNode({
       node,
@@ -658,89 +767,178 @@ export function createGraphSceneRuntime(deps: GraphSceneRuntimeDeps) {
     deps.getNodeBoxMap().delete(nodeHandle);
   }
 
-  function patchTableNodeRender(node: GraphNode, mode: TablePatchMode = 'content'): boolean {
+  function patchTableNodeRender(
+    node: GraphNode,
+    mode: TablePatchMode,
+  ): boolean {
     const nodeHandle = node.renderHandle;
     const existingRuntime = tableRuntimeByNodeId.get(nodeHandle);
     const existingNodeBox = deps.getNodeBoxMap().get(nodeHandle);
-    if (!existingRuntime || !existingNodeBox || node.kind !== 'table' || !node.table) {
+    if (
+      !existingRuntime ||
+      !existingNodeBox ||
+      node.kind !== "table" ||
+      !node.table
+    )
       return false;
-    }
-
     const drawContext = createTrackedDrawContext(nodeHandle);
     if (!drawContext) return false;
-
     deps.getNodeDataMap().set(nodeHandle, node);
-    setNodePathMapping(node);
-    deps.removeTableCellAnchorsForNode?.(nodeHandle);
-    deps.indexTableCellAnchorsForNode?.(node);
     existingNodeBox.x = node.boxArgs.x;
     existingNodeBox.y = node.boxArgs.y;
     existingNodeBox.width = node.boxArgs.width;
     existingNodeBox.height = node.boxArgs.height;
     existingNodeBox.cornerRadius = node.boxArgs.cornerRadius;
-
     const nextDescription = describeTableRuntime(drawContext, node);
-    const sameLayout = existingRuntime.layoutSignature === nextDescription.layoutSignature;
-    if (sameLayout && mode === 'append') {
-      const nextRuntime = patchTableContent(drawContext, existingRuntime, node, tableRuntimeOps, false);
-      tableRuntimeByNodeId.set(nodeHandle, nextRuntime);
-      deps.getNodeBoxMap().set(nodeHandle, existingNodeBox);
+    const sameLayout =
+      existingRuntime.layoutSignature === nextDescription.layoutSignature;
+    if (sameLayout && mode === "append") {
+      tableRuntimeByNodeId.set(
+        nodeHandle,
+        patchTableContent(
+          drawContext,
+          existingRuntime,
+          node,
+          tableRuntimeOps,
+          false,
+        ),
+      );
       return true;
     }
-
     clearNodeInteractiveBindings(nodeHandle);
     removeRenderable(nodeMetaTextById.get(nodeHandle));
-    nodeMetaTextById.delete(nodeHandle);
-
-    const clickTargets = nodeClickTargetsById.get(nodeHandle) ?? new Set<string>();
+    const clickTargets =
+      nodeClickTargetsById.get(nodeHandle) ?? new Set<string>();
     nodeClickTargetsById.set(nodeHandle, clickTargets);
-    const metaText = createCellText(drawContext, drawContext.nodeLayer, node.meta, 'meta', node.kind);
+    const metaText = createCellText(
+      drawContext,
+      drawContext.nodeLayer,
+      node.meta,
+      "meta",
+      node.kind,
+    );
     nodeMetaTextById.set(nodeHandle, metaText);
-    const metaTargetId = deps.registerClickTarget(metaText, node.meta, 'meta');
+    const metaTargetId = deps.registerClickTarget(metaText, node.meta, "meta");
     if (metaTargetId) clickTargets.add(metaTargetId);
-
-    const nextRuntime =
-      sameLayout && mode !== 'structure'
-        ? patchTableContent(drawContext, existingRuntime, node, tableRuntimeOps, true)
-        : patchTableStructure(drawContext, existingRuntime, node, tableRuntimeOps);
-    tableRuntimeByNodeId.set(nodeHandle, nextRuntime);
-    deps.getNodeBoxMap().set(nodeHandle, existingNodeBox);
+    tableRuntimeByNodeId.set(
+      nodeHandle,
+      sameLayout && mode !== "structure"
+        ? patchTableContent(
+            drawContext,
+            existingRuntime,
+            node,
+            tableRuntimeOps,
+            true,
+          )
+        : patchTableStructure(
+            drawContext,
+            existingRuntime,
+            node,
+            tableRuntimeOps,
+          ),
+    );
     return true;
   }
 
-  function upsertNodeRender(node: GraphNode, tablePatchMode?: TablePatchMode): void {
-    if (patchTableNodeRender(node, tablePatchMode)) return;
-    removeNodeRender(node.renderHandle);
-    renderNodeIntoScene(node);
+  function publishGraphModel(graphData: GraphSceneViewData): GraphModel {
+    graphRevision += 1;
+    graphModel = createGraphModel(
+      graphRevision,
+      graphData.nodes,
+      graphData.edges,
+    );
+    deps.setFullGraph(graphData.nodes);
+    return graphModel;
   }
 
-  function finalizeSceneFrame(
-    graphData: GraphSceneViewData,
-    skipEdgeRedraw?: boolean,
-    skipLeaferRender?: boolean,
-  ): GraphSceneViewData {
-    if (skipEdgeRedraw && lastGraphData) {
-      const edges = lastGraphData.edges;
-      dirtyRegion.flush(deps.getLeafer(), false);
-      const renderedView = { nodes: graphData.nodes, edges };
-      if (!skipLeaferRender) deps.updateLeafer();
-      lastGraphData = renderedView;
-      const container = deps.getContainer();
-      if (container) {
-        container.setAttribute('data-graph-node-count', String(graphData.nodes.length));
-      }
-      return renderedView;
+  function calculateProjection(): GraphProjection | null {
+    if (!graphModel) return null;
+    return computeProjection(graphModel, {
+      viewport: getViewportBounds(deps.getContainer(), deps.getLeafer()),
+      viewportRevision,
+      materializationIntent,
+    });
+  }
+
+  function resolveProjectionWaiters(revision: string): void {
+    const waiters = projectionWaiters.get(revision);
+    if (!waiters) return;
+    projectionWaiters.delete(revision);
+    waiters.forEach((resolve) => resolve());
+  }
+
+  function commitProjection(
+    projection: GraphProjection,
+    skipLeaferRender = false,
+  ): void {
+    if (!graphModel || desiredProjection?.revision !== projection.revision)
+      return;
+    performance.mark("graph:projection:start");
+    performance.mark("graph:projection:end");
+    performance.measure(
+      "graph:projection",
+      "graph:projection:start",
+      "graph:projection:end",
+    );
+
+    performance.mark("graph:commit:start");
+    const nextNodeIds = projection.nodeIds;
+    for (const nodeId of deps.getNodeDataMap().keys()) {
+      if (!nextNodeIds.has(nodeId)) removeNodeRender(nodeId);
     }
-    const edges = drawEdges(graphData.nodes, graphData.edges);
+    for (const nodeId of projection.nodeIds) {
+      const node = graphModel.nodeById.get(nodeId);
+      if (!node) continue;
+      const existing = deps.getNodeDataMap().get(node.renderHandle);
+      if (existing === node) continue;
+      if (existing) removeNodeRender(node.renderHandle);
+      renderNodeIntoScene(node);
+    }
+    const edges = [...projection.edgeKeys]
+      .map((key) => graphModel?.edgeByKey.get(key))
+      .filter((edge): edge is GraphEdge => edge != null);
+    drawEdges([], edges);
     dirtyRegion.flush(deps.getLeafer(), false);
-    const renderedView = { nodes: graphData.nodes, edges };
     if (!skipLeaferRender) flushLeaferSceneLayout();
-    lastGraphData = renderedView;
+    committedProjection = projection;
+    resolveProjectionWaiters(projection.revision);
     const container = deps.getContainer();
     if (container) {
-      container.setAttribute('data-graph-node-count', String(graphData.nodes.length));
+      container.setAttribute(
+        "data-graph-node-count",
+        String(graphModel.nodes.length),
+      );
+      container.setAttribute(
+        "data-graph-renderable-node-count",
+        String(projection.nodeIds.size),
+      );
+      container.setAttribute(
+        "data-graph-renderable-edge-count",
+        String(projection.edgeKeys.size),
+      );
+      container.setAttribute(
+        "data-graph-materialized-count",
+        String(deps.getNodeDataMap().size),
+      );
+      container.setAttribute(
+        "data-graph-unmaterialized-count",
+        String(graphModel.nodes.length - projection.nodeIds.size),
+      );
     }
-    return renderedView;
+    performance.mark("graph:commit:end");
+    performance.measure(
+      "graph:commit",
+      "graph:commit:start",
+      "graph:commit:end",
+    );
+  }
+
+  function submitProjection(skipLeaferRender = false): GraphProjection | null {
+    const projection = calculateProjection();
+    if (!projection) return null;
+    desiredProjection = projection;
+    commitProjection(projection, skipLeaferRender);
+    return projection;
   }
 
   async function flushPendingRenderWork(): Promise<void> {
@@ -749,65 +947,87 @@ export function createGraphSceneRuntime(deps: GraphSceneRuntimeDeps) {
 
   function hasPendingRenderWork(): boolean {
     return Boolean(
-      pendingStreamPatch ||
-        pendingStreamFrame ||
-        pendingStreamRedrawDone,
+      pendingStreamPatch || pendingStreamFrame || pendingStreamRedrawDone,
     );
   }
 
   function getInteractionState(): GraphSceneInteractionState {
+    if (!graphModel)
+      return {
+        kind: "empty",
+        graphRevision: null,
+        desiredProjectionRevision: null,
+        committedProjectionRevision: null,
+        graphReady: false,
+        projectionPending: false,
+        sceneCommitted: false,
+        nodeCount: 0,
+      };
+    if (
+      hasPendingRenderWork() ||
+      desiredProjection?.revision !== committedProjection?.revision
+    )
+      return {
+        kind: "projection-pending",
+        graphRevision: graphModel.revision,
+        desiredProjectionRevision: desiredProjection?.revision ?? null,
+        committedProjectionRevision: committedProjection?.revision ?? null,
+        graphReady: true,
+        projectionPending: true,
+        sceneCommitted: false,
+        nodeCount: graphModel.nodes.length,
+      };
     return {
-      hasGraphData: !!lastGraphData,
-      nodeCount: lastGraphData?.nodes.length ?? 0,
-      rootProbeCount: deps.getClickTargetProbes().length,
-      pendingRenderWork: hasPendingRenderWork(),
+      kind: "scene-committed",
+      graphRevision: graphModel.revision,
+      desiredProjectionRevision: desiredProjection?.revision ?? null,
+      committedProjectionRevision: committedProjection?.revision ?? null,
+      graphReady: true,
+      projectionPending: false,
+      sceneCommitted: true,
+      nodeCount: graphModel.nodes.length,
     };
   }
 
   function flushStreamPatch(patch: PendingStreamPatch): void {
-    performance.mark('pipeline:flush-stream-patch:start');
-    const previousViewData = lastGraphData;
+    performance.mark("pipeline:flush-stream-patch:start");
     const graphData = streamStateToArrays(streamState);
     dirtyRegion.reset();
     if (patch.clear) {
       inferGraphPaths(graphData.nodes, graphData.edges);
-      markViewDirty(previousViewData);
       beginFullSceneReplace(graphData);
-      graphData.nodes.forEach((node) => {
-        renderNodeIntoScene(node);
-      });
+      publishGraphModel(graphData);
       markViewDirty(graphData);
-      finalizeSceneFrame(graphData);
-      performance.mark('pipeline:flush-stream-patch:end');
-      performance.measure('pipeline:flush-stream-patch', 'pipeline:flush-stream-patch:start', 'pipeline:flush-stream-patch:end');
+      submitProjection();
+      performance.mark("pipeline:flush-stream-patch:end");
+      performance.measure(
+        "pipeline:flush-stream-patch",
+        "pipeline:flush-stream-patch:start",
+        "pipeline:flush-stream-patch:end",
+      );
       return;
     }
     // Incremental: nodes already have paths from Core delta, skip O(G+E) inferGraphPaths.
-    const previousNodeById = new Map(
-      (previousViewData?.nodes ?? []).map((node) => [node.renderHandle, node]),
+    publishGraphModel(graphData);
+    const nodeById = new Map(
+      graphData.nodes.map((node) => [node.renderHandle, node]),
     );
-    const nodeById = new Map(graphData.nodes.map((node) => [node.renderHandle, node]));
-    patch.nodeIds.forEach((nodeId) => {
-      markNodeDirty(previousNodeById.get(nodeId));
+    patch.tablePatchNodeIds.forEach((nodeId) => {
       const node = nodeById.get(nodeId);
-      if (node) {
-        if (patch.tablePatchNodeIds.has(nodeId)) {
-          upsertNodeRender(node, patch.tablePatchModes.get(nodeId));
-          return;
-        }
-        removeNodeRender(node.renderHandle);
-        renderNodeIntoScene(node);
-        return;
-      }
-      removeNodeRender(nodeId);
+      if (node)
+        patchTableNodeRender(
+          node,
+          patch.tablePatchModes.get(nodeId) ?? "content",
+        );
     });
-    if (patch.edgeChange) {
-      markViewDirty(previousViewData);
-      markViewDirty(graphData);
-    }
-    finalizeSceneFrame(graphData, !patch.edgeChange, true);
-    performance.mark('pipeline:flush-stream-patch:end');
-    performance.measure('pipeline:flush-stream-patch', 'pipeline:flush-stream-patch:start', 'pipeline:flush-stream-patch:end');
+    markViewDirty(graphData);
+    submitProjection(true);
+    performance.mark("pipeline:flush-stream-patch:end");
+    performance.measure(
+      "pipeline:flush-stream-patch",
+      "pipeline:flush-stream-patch:start",
+      "pipeline:flush-stream-patch:end",
+    );
   }
 
   function scheduleStreamFrame(): Promise<void> {
@@ -836,21 +1056,22 @@ export function createGraphSceneRuntime(deps: GraphSceneRuntimeDeps) {
     dirtyRegion.reset();
     ensureLayers();
     inferGraphPaths(graphData.nodes, graphData.edges);
-    markViewDirty(lastGraphData);
     beginFullSceneReplace(graphData);
-    graphData.nodes.forEach((node) => {
-      renderNodeIntoScene(node);
-    });
+    publishGraphModel(graphData);
     markViewDirty(graphData);
-    lastGraphData = finalizeSceneFrame(graphData);
-    return lastGraphData;
+    submitProjection();
+    return graphData;
   }
 
   async function applyGraphDelta(
     delta: GraphSceneDelta,
     version?: { baseGraphVersion: number; graphVersion: number },
   ): Promise<void> {
-    if (version && version.baseGraphVersion !== 0 && version.baseGraphVersion < streamState.version) {
+    if (
+      version &&
+      version.baseGraphVersion !== 0 &&
+      version.baseGraphVersion < streamState.version
+    ) {
       return;
     }
     const generation = renderWorkGeneration;
@@ -876,8 +1097,12 @@ export function createGraphSceneRuntime(deps: GraphSceneRuntimeDeps) {
     clearStreamState(streamState);
     dirtyRegion.reset();
     pendingStreamPatch = null;
-    lastGraphData = null;
+    graphModel = null;
+    desiredProjection = null;
+    committedProjection = null;
+    materializationIntent = null;
     clearRenderedMainGraph();
+    deps.setFullGraph([]);
     deps.updateLeafer();
   }
 
@@ -888,26 +1113,80 @@ export function createGraphSceneRuntime(deps: GraphSceneRuntimeDeps) {
     resolvePendingStreamRedraw?.();
     resolvePendingStreamRedraw = null;
     pendingStreamRedrawDone = null;
+    if (pendingProjectionFrame) cancelAnimationFrame(pendingProjectionFrame);
+    pendingProjectionFrame = null;
   }
 
   function getLastGraphData(): GraphSceneViewData | null {
-    return lastGraphData;
+    return graphModel
+      ? { nodes: [...graphModel.nodes], edges: [...graphModel.edges] }
+      : null;
   }
 
   function setLastViewData(value: GraphSceneViewData | null): void {
-    lastGraphData = value;
     if (value) {
       replaceStreamState(streamState, value);
+      publishGraphModel(value);
       return;
     }
+    graphModel = null;
+    desiredProjection = null;
+    committedProjection = null;
     clearStreamState(streamState);
+    deps.setFullGraph([]);
+  }
+
+  function updateRenderableProjection(): void {
+    if (!graphModel || pendingProjectionFrame) return;
+    viewportRevision += 1;
+    pendingProjectionFrame = requestAnimationFrame(() => {
+      pendingProjectionFrame = null;
+      if (!graphModel) return;
+      dirtyRegion.reset();
+      submitProjection();
+    });
+  }
+
+  function submitMaterializationIntent(
+    intent: Omit<MaterializationIntent, "revision">,
+  ): GraphProjection | null {
+    materializationIntent = {
+      ...intent,
+      revision: (materializationIntent?.revision ?? 0) + 1,
+    };
+    dirtyRegion.reset();
+    return submitProjection();
+  }
+
+  function waitForProjection(revision: string): Promise<void> {
+    if (committedProjection?.revision === revision) return Promise.resolve();
+    return new Promise((resolve) => {
+      const waiters = projectionWaiters.get(revision) ?? [];
+      waiters.push(resolve);
+      projectionWaiters.set(revision, waiters);
+    });
+  }
+
+  async function materializeTarget(renderHandle: number): Promise<boolean> {
+    if (!graphModel?.nodeById.has(renderHandle)) return false;
+    const projection = submitMaterializationIntent({
+      targetNodeIds: [renderHandle],
+      contextNodeIds: [],
+      anchor: getViewportBounds(deps.getContainer(), deps.getLeafer()),
+    });
+    if (!projection) return false;
+    await waitForProjection(projection.revision);
+    return deps.getNodeBoxMap().has(renderHandle);
   }
 
   function dispose(): void {
     cancelActiveRenderWork();
   }
 
-  function scrollTableToRow(nodeIdOrRowIndex: number, rowIndex?: number): boolean {
+  function scrollTableToRow(
+    nodeIdOrRowIndex: number,
+    rowIndex?: number,
+  ): boolean {
     if (rowIndex == null) {
       let scrolled = false;
       for (const [, runtime] of tableRuntimeByNodeId) {
@@ -920,7 +1199,9 @@ export function createGraphSceneRuntime(deps: GraphSceneRuntimeDeps) {
       if (scrolled) deps.updateLeafer();
       return scrolled;
     }
-    const runtime = tableRuntimeByNodeId.get(nodeIdOrRowIndex) as InternalTableRuntime | undefined;
+    const runtime = tableRuntimeByNodeId.get(nodeIdOrRowIndex) as
+      | InternalTableRuntime
+      | undefined;
     const virtualList = runtime?.virtualList;
     if (!virtualList) return false;
     virtualList.scrollToIndex(rowIndex);
@@ -928,8 +1209,6 @@ export function createGraphSceneRuntime(deps: GraphSceneRuntimeDeps) {
     deps.updateLeafer();
     return true;
   }
-
-
 
   return {
     clear,
@@ -943,6 +1222,12 @@ export function createGraphSceneRuntime(deps: GraphSceneRuntimeDeps) {
     cancelActiveRenderWork,
     getLastGraphData,
     setLastViewData,
+    updateRenderableProjection,
+    submitMaterializationIntent,
+    materializeTarget,
+    waitForProjection,
+    getCommittedProjection: () => committedProjection,
+    isTargetMaterialized: (nodeId: number) => deps.getNodeBoxMap().has(nodeId),
     dispose,
     scrollTableToRow,
   };

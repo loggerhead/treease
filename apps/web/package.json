@@ -53,7 +53,7 @@
     "test:e2e:core": "pnpm build:e2e && pnpm test:e2e:core:run",
     "test:e2e:core:run": "playwright test --config playwright.config.core.ts",
     "test:e2e:core:headed": "pnpm build:e2e && pnpm test:e2e:core:run --headed",
-    "serve:e2e": "vite preview --host 127.0.0.1 --port 4173",
+    "serve:e2e": "vp preview --host 127.0.0.1 --port 4173",
     "wasm:setup:rust": "rustup target add wasm32-unknown-unknown"
   },
   "devDependencies": {

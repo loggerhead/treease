@@ -107,15 +107,18 @@ Do not edit it by hand; run `pnpm docs:map:gen`.
   - H3: Header Table
   - H3: Header Table Fallback value Column
   - H3: Virtual Table
-  - H2: III. Geometry Rules
+  - H2: III. Graph Scene Projection (Web)
+  - H3: Projection Rules
+  - H3: Projection Invariants
+  - H2: IV. Geometry Rules
   - H3: X-Axis Rules
   - H3: Y-Axis Rules
   - H3: Edge Rules
-  - H2: IV. Consistency Constraints
+  - H2: V. Consistency Constraints
   - H3: Full-Build / Streaming Consistency
   - H3: Changed-Region Consistency
   - H3: Geometry Consistency
-  - H2: V. Explicit Errors
+  - H2: VI. Explicit Errors
   - H2: Checklist
 
 ## contracts/stream-pipeline.md

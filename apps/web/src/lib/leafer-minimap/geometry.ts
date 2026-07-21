@@ -10,6 +10,13 @@ export type MinimapPoint = {
   y: number;
 };
 
+export type MinimapTransform = {
+  contentBounds: MinimapBounds;
+  scaleX: number;
+  scaleY: number;
+  offset: MinimapPoint;
+};
+
 const MIN_BOUNDS_SIZE = 1;
 
 function finiteOr(value: unknown, fallback: number): number {
@@ -59,11 +66,20 @@ export function computeContentBounds(nodes: MinimapNode[], padding = 0): Minimap
   });
 }
 
-export function computeMinimapScale(contentBounds: MinimapBounds, width: number, height: number): number {
+export function createMinimapTransform(
+  contentBounds: MinimapBounds,
+  width: number,
+  height: number,
+): MinimapTransform {
   const bounds = normalizeBounds(contentBounds);
   const safeWidth = Math.max(MIN_BOUNDS_SIZE, finiteOr(width, MIN_BOUNDS_SIZE));
   const safeHeight = Math.max(MIN_BOUNDS_SIZE, finiteOr(height, MIN_BOUNDS_SIZE));
-  return Math.min(safeWidth / bounds.width, safeHeight / bounds.height);
+  return {
+    contentBounds: bounds,
+    scaleX: safeWidth / bounds.width,
+    scaleY: safeHeight / bounds.height,
+    offset: { x: 0, y: 0 },
+  };
 }
 
 export function getZoomScale(zoomLayer: MinimapZoomLayerLike | null | undefined): MinimapScale {
@@ -100,46 +116,57 @@ export function getViewportWorldBounds(
   };
 }
 
-export function worldToMinimapRect(
-  bounds: MinimapBounds,
-  contentBounds: MinimapBounds,
-  scale: number,
-  offset: MinimapPoint = { x: 0, y: 0 },
-): MinimapBounds {
-  const safeScale = Math.max(0, finiteOr(scale, 0));
-  const content = normalizeBounds(contentBounds);
+export function worldToMinimapPoint(point: MinimapPoint, transform: MinimapTransform): MinimapPoint {
+  const content = normalizeBounds(transform.contentBounds);
   return {
-    x: offset.x + (bounds.x - content.x) * safeScale,
-    y: offset.y + (bounds.y - content.y) * safeScale,
-    width: bounds.width * safeScale,
-    height: bounds.height * safeScale,
+    x: transform.offset.x + (finiteOr(point.x, 0) - content.x) * transform.scaleX,
+    y: transform.offset.y + (finiteOr(point.y, 0) - content.y) * transform.scaleY,
   };
 }
 
-export function minimapDeltaToWorldDelta(delta: MinimapPoint, scale: number): MinimapPoint {
-  const safeScale = Math.max(Number.EPSILON, finiteOr(scale, 1));
+export function minimapToWorldPoint(point: MinimapPoint, transform: MinimapTransform): MinimapPoint {
+  const content = normalizeBounds(transform.contentBounds);
   return {
-    x: finiteOr(delta.x, 0) / safeScale,
-    y: finiteOr(delta.y, 0) / safeScale,
+    x: content.x + (finiteOr(point.x, 0) - transform.offset.x) / transform.scaleX,
+    y: content.y + (finiteOr(point.y, 0) - transform.offset.y) / transform.scaleY,
   };
 }
 
-export function clampViewportToContent(view: MinimapBounds, contentBounds: MinimapBounds): MinimapBounds {
-  const normalizedView = normalizeBounds(view);
-  const content = normalizeBounds(contentBounds);
-  const maxX = content.x + content.width - normalizedView.width;
-  const maxY = content.y + content.height - normalizedView.height;
-
+export function worldToMinimapRect(bounds: MinimapBounds, transform: MinimapTransform): MinimapBounds {
+  const origin = worldToMinimapPoint(bounds, transform);
   return {
-    x:
-      normalizedView.width >= content.width
-        ? content.x + (content.width - normalizedView.width) / 2
-        : Math.min(Math.max(normalizedView.x, content.x), maxX),
-    y:
-      normalizedView.height >= content.height
-        ? content.y + (content.height - normalizedView.height) / 2
-        : Math.min(Math.max(normalizedView.y, content.y), maxY),
-    width: normalizedView.width,
-    height: normalizedView.height,
+    x: origin.x,
+    y: origin.y,
+    width: Math.max(0, finiteOr(bounds.width, 0)) * transform.scaleX,
+    height: Math.max(0, finiteOr(bounds.height, 0)) * transform.scaleY,
   };
+}
+
+export function minimapDeltaToWorldDelta(delta: MinimapPoint, transform: MinimapTransform): MinimapPoint {
+  return {
+    x: finiteOr(delta.x, 0) / transform.scaleX,
+    y: finiteOr(delta.y, 0) / transform.scaleY,
+  };
+}
+
+export function findClosestNodeToPoint(
+  nodes: readonly MinimapNode[],
+  point: MinimapPoint,
+): MinimapNode | null {
+  let closest: MinimapNode | null = null;
+  let closestDistance = Number.POSITIVE_INFINITY;
+  for (const node of nodes) {
+    const left = finiteOr(node.x, 0);
+    const top = finiteOr(node.y, 0);
+    const right = left + Math.max(0, finiteOr(node.width, 0));
+    const bottom = top + Math.max(0, finiteOr(node.height, 0));
+    const dx = Math.max(left - point.x, 0, point.x - right);
+    const dy = Math.max(top - point.y, 0, point.y - bottom);
+    const distance = dx * dx + dy * dy;
+    if (distance < closestDistance) {
+      closest = node;
+      closestDistance = distance;
+    }
+  }
+  return closest;
 }

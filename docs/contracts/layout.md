@@ -182,7 +182,27 @@ Presentation requirements:
 - Row index, path, and anchor semantics do not change; virtualization changes only which rows currently render in the viewport.
 - External hit tests, reveal, highlights, and edge anchors must still use real row semantics; semantic location must not disappear because a row is not rendered.
 
-## III. Geometry Rules
+## III. Graph Scene Projection (Web)
+
+The Core layout result contains the complete graph. Web derives a separate render projection from that result and the current world-space viewport. This projection controls which Leafer nodes and edges are materialized; it does not change graph topology, layout geometry, paths, or semantic anchors.
+
+### Projection Rules
+
+- Graph scene virtualization is enabled only when the complete graph has more than 100 nodes and the viewport bounds are valid. Smaller graphs, or a graph without a valid viewport, materialize all nodes and edges.
+- For a virtualized graph, the viewport is expanded by 200 world units on every side before filtering. This overscan keeps nearby content available during pan and zoom.
+- A node is materialized when its finite layout box intersects the expanded viewport. An edge is materialized when the axis-aligned bounds of its Bézier curve intersect the expanded viewport; edge visibility does not require both endpoint nodes to be materialized.
+- A reveal, search, or navigation request may submit a materialization intent. Target nodes and their requested context remain materialized even when outside the viewport until that projection is committed.
+- Pan, zoom, and minimap viewport changes recompute the projection and reconcile the scene on the next render frame. The scene adds newly eligible items and removes items that leave the projection; it does not rebuild the complete graph model.
+
+### Projection Invariants
+
+- Virtualization changes only the render set. Node identity, edge identity, Core-provided geometry, row index, path, reveal behavior, hit-test semantics, and editor synchronization remain those of the complete graph.
+- A node outside the current render projection is not a missing graph node; it is an unmaterialized scene item. Interaction code must materialize the target before relying on its rendered box or click bindings.
+- The full graph data used by text linkage, path lookup, and reveal must remain available independently of the materialized node map.
+- A projection is interactive only after its desired revision has been committed. Stale or pending projection work must not overwrite the current scene or be reported as ready.
+- The minimap and viewport controller may move the viewport, but they must not invent alternate graph geometry or a second graph data source.
+
+## IV. Geometry Rules
 
 ### X-Axis Rules
 
@@ -209,7 +229,7 @@ Presentation requirements:
 - Core owns edge anchor and Bézier geometry. Web may filter and draw edges, but it must not recompute layout geometry from rendered node boxes.
 - Core encodes table presentation in the protocol: `header_height > 0` is a `Header Table`, while `header_height == 0` is a `Headerless Table`. Core alone determines `view_height` and virtual-table eligibility; Web consumes those fields and must not reclassify or virtualize a headerless table.
 
-## IV. Consistency Constraints
+## V. Consistency Constraints
 
 ### Full-Build / Streaming Consistency
 
@@ -231,7 +251,7 @@ Presentation requirements:
 - A virtual table's visible window may change, but its node identity, row-index semantics, and reveal / anchor semantics must not change.
 - Empty `Mapping` and `Sequence` must keep single-scalar geometry on every build path, never object/table geometry on some paths.
 
-## V. Explicit Errors
+## VI. Explicit Errors
 
 Any of these results means the layout is wrong:
 

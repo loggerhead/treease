@@ -1,9 +1,9 @@
-import { LeaferMinimapPlugin, type MinimapViewData } from '../../leafer-minimap';
+import { LeaferMinimapPlugin, type MinimapBounds, type MinimapViewData } from '../../leafer-minimap';
 import type { App as LeaferApp, Box, Leafer, Pen, Text } from 'leafer-ui';
 
 export function createGraphMinimapRuntimeController(options: {
   getViewData: () => MinimapViewData | null;
-  onViewportChange: () => void;
+  requestViewport: (view: MinimapBounds) => void;
 }) {
   let plugin: LeaferMinimapPlugin | null = null;
   let mountApp: Leafer | null = null;
@@ -43,7 +43,7 @@ export function createGraphMinimapRuntimeController(options: {
         height: input.height,
         events: input.events,
         getViewData: options.getViewData,
-        onViewportChange: options.onViewportChange,
+        requestViewport: options.requestViewport,
       });
     },
     update() {

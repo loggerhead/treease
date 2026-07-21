@@ -313,6 +313,7 @@
     getMoveEventName: () => (MoveEventCtor?.BEFORE_MOVE ?? MoveEventCtor?.MOVE) as string | undefined,
     getZoomEventName: () => (ZoomEventCtor?.BEFORE_ZOOM ?? ZoomEventCtor?.ZOOM) as string | undefined,
     bindPointerClick: (target, handler) => graphPointerController.bindPointerClick(target, handler),
+    updateRenderableProjection: () => graphSceneController?.updateRenderableProjection(),
     updateViewportOverlays: () => {
       graphMinimapRuntimeController.updateViewport();
     },
@@ -472,6 +473,7 @@
     ...createGraphTextLinkageRenderDeps(graphRenderState, (anchor) =>
       graphSceneController.scrollTableToRow(anchor.nodeId, anchor.rowIndex),
     ),
+    materializeTarget: (renderHandle) => graphSceneController.materializeTarget(renderHandle),
   });
   const clearSearchHighlight = graphTextLinkageController.clearSearchHighlight;
   const resolveTreePathByPosition = graphTextLinkageController.resolveTreePathByPosition;
@@ -571,11 +573,7 @@
   function getGraphInteractionState() {
     const sceneState = graphSceneController.getInteractionState();
     const current = isGraphRenderGuardCurrent(graphRenderGuard);
-    const interactiveReady =
-      current &&
-      sceneState.hasGraphData &&
-      !sceneState.pendingRenderWork &&
-      sceneState.rootProbeCount > 0;
+    const interactiveReady = current && sceneState.kind === 'scene-committed';
     return {
       ...graphRenderGuard,
       current,
@@ -618,9 +616,9 @@
       documentKey: interaction.documentKey,
       revision: interaction.revision,
       mode: interaction.mode ?? 'committed',
-      hasGraphData: interaction.hasGraphData === true,
+      hasGraphData: interaction.graphReady,
       nodeCount: interaction.nodeCount ?? 0,
-      pendingRenderWork: interaction.pendingRenderWork ?? true,
+      pendingRenderWork: interaction.projectionPending,
       interactiveReady: interaction.interactiveReady === true,
     });
     return interaction;
@@ -670,7 +668,7 @@
       graph: {
         ...next.graph,
         mode: interaction?.mode ?? next.graph.mode,
-        pendingRenderWork: interaction?.pendingRenderWork ?? next.graph.pendingRenderWork,
+        pendingRenderWork: interaction?.projectionPending ?? next.graph.pendingRenderWork,
       },
     };
   }
@@ -854,7 +852,7 @@
 
   const graphMinimapRuntimeController = createGraphMinimapRuntimeController({
     getViewData: () => toMinimapViewData(graphSceneController.getLastGraphData()),
-    onViewportChange: () => undefined,
+    requestViewport: (view) => graphViewportController.moveToWorldViewport(view),
   });
   const graphViewRuntimeLifecycle = createGraphViewRuntimeLifecycle({
     fullBuildReasons: fullBuildReasonSet,

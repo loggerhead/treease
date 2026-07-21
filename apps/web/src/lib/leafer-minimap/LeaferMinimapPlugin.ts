@@ -1,12 +1,15 @@
 import {
-  clampViewportToContent,
   computeContentBounds,
-  computeMinimapScale,
+  createMinimapTransform,
+  findClosestNodeToPoint,
   getViewportWorldBounds,
   getZoomScale,
   minimapDeltaToWorldDelta,
+  minimapToWorldPoint,
+  worldToMinimapPoint,
   worldToMinimapRect,
 } from './geometry';
+import type { MinimapTransform } from './geometry';
 import type {
   LeaferMinimapPluginHandle,
   LeaferMinimapPluginOptions,
@@ -78,8 +81,7 @@ export class LeaferMinimapPlugin implements LeaferMinimapPluginHandle {
   private readonly cleanups: Array<() => void> = [];
   private isFixedLayerMount = false;
   private contentBounds: MinimapBounds = { x: 0, y: 0, width: 1, height: 1 };
-  private minimapScale = 1;
-  private previewOffset = { x: 0, y: 0 };
+  private transform: MinimapTransform = createMinimapTransform(this.contentBounds, 1, 1);
   private screenPosition = { x: 0, y: 0 };
   private updateFrame: number | null = null;
   private viewportFrame: number | null = null;
@@ -289,11 +291,7 @@ export class LeaferMinimapPlugin implements LeaferMinimapPluginHandle {
     }
     this.setVisible(true);
     this.contentBounds = computeContentBounds(viewData.nodes, this.contentPadding);
-    this.minimapScale = computeMinimapScale(this.contentBounds, this.width, this.height);
-    this.previewOffset = {
-      x: Math.max(0, (this.width - this.contentBounds.width * this.minimapScale) / 2),
-      y: Math.max(0, (this.height - this.contentBounds.height * this.minimapScale) / 2),
-    };
+    this.transform = createMinimapTransform(this.contentBounds, this.width, this.height);
 
     this.renderEdges(viewData.edges);
     this.renderNodes(viewData.nodes);
@@ -316,7 +314,7 @@ export class LeaferMinimapPlugin implements LeaferMinimapPluginHandle {
       return;
     }
     this.setVisible(true);
-    const minimapRect = this.clampRectToPanel(worldToMinimapRect(viewBounds, this.contentBounds, this.minimapScale, this.previewOffset));
+    const minimapRect = this.clampRectToPanel(worldToMinimapRect(viewBounds, this.transform));
     this.viewportBox.visible = true;
     this.viewportBox.x = minimapRect.x;
     this.viewportBox.y = minimapRect.y;
@@ -327,7 +325,7 @@ export class LeaferMinimapPlugin implements LeaferMinimapPluginHandle {
   private renderNodes(nodes: MinimapNode[]): void {
     const { BoxCtor } = this.options.constructors;
     for (const node of nodes) {
-      const rect = worldToMinimapRect(node, this.contentBounds, this.minimapScale, this.previewOffset);
+      const rect = worldToMinimapRect(node, this.transform);
       const box = new BoxCtor({
         x: rect.x,
         y: rect.y,
@@ -388,10 +386,7 @@ export class LeaferMinimapPlugin implements LeaferMinimapPluginHandle {
   }
 
   private worldPointToMinimap(x: number, y: number): { x: number; y: number } {
-    return {
-      x: this.previewOffset.x + (x - this.contentBounds.x) * this.minimapScale,
-      y: this.previewOffset.y + (y - this.contentBounds.y) * this.minimapScale,
-    };
+    return worldToMinimapPoint({ x, y }, this.transform);
   }
 
   private handleBackgroundPointerDown(event: unknown): void {
@@ -401,15 +396,25 @@ export class LeaferMinimapPlugin implements LeaferMinimapPluginHandle {
     if (!point || !viewBounds) return;
     pointer?.stop?.();
     pointer?.stopNow?.();
-    const worldCenter = {
-      x: this.contentBounds.x + (point.x - this.previewOffset.x) / this.minimapScale,
-      y: this.contentBounds.y + (point.y - this.previewOffset.y) / this.minimapScale,
-    };
-    this.applyWorldViewport({
+    const clickedWorldPoint = minimapToWorldPoint(point, this.transform);
+    const closestNode = findClosestNodeToPoint(
+      this.options.getViewData()?.nodes ?? [],
+      clickedWorldPoint,
+    );
+    // A minimap click selects graph content, including sparse whitespace between branches.
+    // Centering the nearest node keeps the viewport's materialized scene non-empty.
+    const worldCenter = closestNode
+      ? {
+          x: closestNode.x + closestNode.width / 2,
+          y: closestNode.y + closestNode.height / 2,
+        }
+      : clickedWorldPoint;
+    const requestedView = {
       ...viewBounds,
       x: worldCenter.x - viewBounds.width / 2,
       y: worldCenter.y - viewBounds.height / 2,
-    });
+    };
+    this.applyWorldViewport(requestedView);
   }
 
   private handleViewportPointerDown(event: unknown): void {
@@ -442,13 +447,11 @@ export class LeaferMinimapPlugin implements LeaferMinimapPluginHandle {
     if (!this.dragClientStart || !this.dragViewStart) return;
     const point = getEventClientPoint(event);
     if (!point) return;
-    this.applyViewportDelta(
-      {
-        x: point.x - this.dragClientStart.x,
-        y: point.y - this.dragClientStart.y,
-      },
-      this.dragViewStart,
-    );
+    const delta = {
+      x: point.x - this.dragClientStart.x,
+      y: point.y - this.dragClientStart.y,
+    };
+    this.applyViewportDelta(delta, this.dragViewStart);
   };
 
   private handleWindowPointerUp = (): void => {
@@ -470,7 +473,7 @@ export class LeaferMinimapPlugin implements LeaferMinimapPluginHandle {
     if (!zoomLayer) return;
     const currentView = baseView ?? getViewportWorldBounds(this.container, zoomLayer);
     if (!currentView) return;
-    const worldDelta = minimapDeltaToWorldDelta(delta, this.minimapScale);
+    const worldDelta = minimapDeltaToWorldDelta(delta, this.transform);
     this.applyWorldViewport({
       ...currentView,
       x: currentView.x + worldDelta.x,
@@ -480,19 +483,8 @@ export class LeaferMinimapPlugin implements LeaferMinimapPluginHandle {
 
   private applyWorldViewport(view: MinimapBounds): void {
     const zoomLayer = this.app.zoomLayer;
-    if (!zoomLayer) return;
-    const nextView = clampViewportToContent(view, this.contentBounds);
-    const { scaleX, scaleY } = getZoomScale(zoomLayer);
-    const nextX = -nextView.x * scaleX;
-    const nextY = -nextView.y * scaleY;
-    if (Math.abs((zoomLayer.x ?? 0) - nextX) < 0.5 && Math.abs((zoomLayer.y ?? 0) - nextY) < 0.5) {
-      this.applyViewportUpdate();
-      return;
-    }
-    zoomLayer.x = nextX;
-    zoomLayer.y = nextY;
-    this.app.update?.();
-    this.options.onViewportChange?.();
+    if (!zoomLayer || !this.options.requestViewport) return;
+    this.options.requestViewport(view);
     this.applyViewportUpdate();
   }
 
