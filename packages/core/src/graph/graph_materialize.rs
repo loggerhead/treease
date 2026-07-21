@@ -2,12 +2,15 @@ use std::collections::HashSet;
 
 use super::graph_builder::{
     BuilderConfig, GraphCell, GraphEdge, GraphKind, GraphModel, GraphRow, PathSeg,
+    SequencePresentation,
 };
 use super::graph_shape::{
-    NodeShapeBuilder, build_aligned_row_from_mapping, build_headerless_inline_row,
-    build_object_rows_from_mapping, header_table_row_has_new_column,
+    NodeShapeBuilder, NodeShapePresentation, build_aligned_row_from_mapping,
+    build_headerless_inline_row, build_object_rows_from_mapping, header_table_row_has_new_column,
 };
-use super::graph_topology::{DirtyEdge, DirtySet, GraphTopology, TableRowRef};
+use super::graph_topology::{
+    DirtyEdge, DirtySet, GraphTopology, SequencePresentationState, TableRowRef,
+};
 use crate::tree::{TreeNodeKind, TreeStore};
 
 #[derive(Debug, Default)]
@@ -43,12 +46,16 @@ pub(crate) fn materialize_into_current_model(
         let Some(slot) = topology.slot(handle).cloned() else {
             continue;
         };
+        let Some(presentation) = node_shape_presentation(topology, store, slot.node_id) else {
+            continue;
+        };
         let Some(node) = shape_builder.build_node_from_store(
             store,
             slot.node_id,
             &slot.path,
             slot.depth,
             handle,
+            presentation,
         ) else {
             continue;
         };
@@ -127,14 +134,23 @@ pub(crate) fn materialize_into_current_model(
         let rebuilt = if current.kind == GraphKind::Object {
             let rows = build_object_rows_from_mapping(store, slot.node_id, &current.path);
             if rows.is_empty() {
-                shape_builder.rebuild_node_from_store(store, slot.node_id, &current)
+                node_shape_presentation(topology, store, slot.node_id).and_then(|presentation| {
+                    shape_builder.rebuild_node_from_store(
+                        store,
+                        slot.node_id,
+                        &current,
+                        presentation,
+                    )
+                })
             } else {
                 let mut node = current.clone();
                 shape_builder.install_object_rows(&mut node, rows);
                 Some(node)
             }
         } else {
-            shape_builder.rebuild_node_from_store(store, slot.node_id, &current)
+            node_shape_presentation(topology, store, slot.node_id).and_then(|presentation| {
+                shape_builder.rebuild_node_from_store(store, slot.node_id, &current, presentation)
+            })
         };
         let Some(rebuilt) = rebuilt else {
             continue;
@@ -196,7 +212,7 @@ fn apply_table_row_updates(
     let Some(&first_row) = rows.first() else {
         return TableRowUpdateResult::default();
     };
-    let Some(context) = table_row_update_context(model, store, first_row) else {
+    let Some(context) = table_row_update_context(topology, model, store, first_row) else {
         return TableRowUpdateResult::default();
     };
 
@@ -243,6 +259,7 @@ fn apply_table_row_updates(
 }
 
 fn table_row_update_context(
+    topology: &GraphTopology,
     model: &GraphModel,
     store: &TreeStore,
     row: TableRowRef,
@@ -255,7 +272,10 @@ fn table_row_update_context(
         parent_path: graph_node.path.clone(),
         parent_columns: table.columns.clone(),
         column_widths: table.column_widths.clone(),
-        is_header_table: super::graph_topology::is_header_table_sequence(store, row.table_node_id),
+        is_header_table: matches!(
+            topology.sequence_presentation(row.table_node_id),
+            Some(SequencePresentationState::HeaderTable)
+        ),
         table_is_open: !table_node.sequence_closed(),
         table_node_kind: table_node.kind,
     })
@@ -353,7 +373,11 @@ fn rebuild_table_node(
     let Some(current) = model.nodes.get(row.table_handle as usize) else {
         return false;
     };
-    let Some(rebuilt) = shape_builder.rebuild_node_from_store(store, row.table_node_id, current)
+    let Some(presentation) = node_shape_presentation(topology, store, row.table_node_id) else {
+        return false;
+    };
+    let Some(rebuilt) =
+        shape_builder.rebuild_node_from_store(store, row.table_node_id, current, presentation)
     else {
         return false;
     };
@@ -364,6 +388,30 @@ fn rebuild_table_node(
         slot.shape = Some(rebuilt);
     }
     true
+}
+
+fn node_shape_presentation(
+    topology: &GraphTopology,
+    store: &TreeStore,
+    node_id: crate::tree::NodeId,
+) -> Option<NodeShapePresentation> {
+    if store.get(node_id)?.kind != TreeNodeKind::Sequence {
+        return Some(NodeShapePresentation::NonTable);
+    }
+    match topology.sequence_presentation(node_id) {
+        Some(SequencePresentationState::HeaderTable) => Some(NodeShapePresentation::Table(
+            SequencePresentation::HeaderTable,
+        )),
+        Some(SequencePresentationState::HeaderlessTable) => Some(NodeShapePresentation::Table(
+            SequencePresentation::HeaderlessTable,
+        )),
+        Some(
+            SequencePresentationState::EmptyOpen
+            | SequencePresentationState::EmptyClosed
+            | SequencePresentationState::PendingHeaderSchema,
+        )
+        | None => None,
+    }
 }
 
 fn table_row_requires_rebuild(
@@ -534,7 +582,7 @@ mod tests {
     }
 
     #[test]
-    fn sync_table_size_keeps_headerless_table_fully_visible() {
+    fn sync_table_size_expands_headerless_tables_with_child_nodes() {
         let mut node = graph_node(0);
         node.kind = GraphKind::Table;
         node.table = Some(GraphTable {

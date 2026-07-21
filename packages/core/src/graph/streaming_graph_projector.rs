@@ -1076,7 +1076,7 @@ mod tests {
     }
 
     #[test]
-    fn streaming_sequence_waits_for_first_child_before_initial_projection() {
+    fn streaming_sequence_waits_for_first_mapping_schema_before_initial_projection() {
         let mut d = crate::stream::streaming_json::StreamDecoder::new(false);
         let mut b = Builder::new();
         b.enable_patches();
@@ -1104,9 +1104,23 @@ mod tests {
         }
         let patches = b.take_patches();
         let (s, r) = b.tree_ref().unwrap();
+        let pending_header_schema = p
+            .update(s, r, &patches)
+            .expect("partial first mapping should keep the table schema pending");
+        assert!(
+            pending_header_schema.delta.table_patches.is_empty(),
+            "a partial first mapping must not commit a header table before its direct values are known"
+        );
+
+        d.feed(r#""b":2}"#).unwrap();
+        for e in &d.take_events() {
+            b.push(e).unwrap();
+        }
+        let patches = b.take_patches();
+        let (s, r) = b.tree_ref().unwrap();
         let update = p
             .update(s, r, &patches)
-            .expect("first key should make the header table publishable");
+            .expect("closed scalar-only first mapping should publish a header table");
         let columns = update
             .delta
             .table_patches
@@ -1115,10 +1129,57 @@ mod tests {
                 TablePatch::TableCreated { columns, .. } => Some(columns),
                 _ => None,
             })
-            .expect("publishable header table should create columns");
+            .expect("closed scalar-only first mapping should create columns");
         assert!(
             columns.iter().any(|column| column.text == "a"),
             "first key must be published as a table column"
+        );
+    }
+
+    #[test]
+    fn streaming_first_mapping_with_nested_value_publishes_only_a_headerless_table() {
+        let mut d = crate::stream::streaming_json::StreamDecoder::new(false);
+        let mut b = Builder::new();
+        b.enable_patches();
+        let mut p = StreamingGraphProjector::new("json");
+
+        d.feed(r#"{"rows":[{"a":1,"#).unwrap();
+        for e in &d.take_events() {
+            b.push(e).unwrap();
+        }
+        let patches = b.take_patches();
+        let (s, r) = b.tree_ref().unwrap();
+        let pending = p.update(s, r, &patches).unwrap();
+        assert!(pending.delta.table_patches.is_empty());
+
+        d.feed(r#""nested":{}"#).unwrap();
+        for e in &d.take_events() {
+            b.push(e).unwrap();
+        }
+        let patches = b.take_patches();
+        let (s, r) = b.tree_ref().unwrap();
+        let headerless = p.update(s, r, &patches).unwrap();
+        assert!(headerless.delta.table_patches.iter().any(|patch| matches!(
+            patch,
+            TablePatch::RowsAppended {
+                header_height: 0,
+                ..
+            }
+        )));
+
+        d.feed("}]}").unwrap();
+        for e in &d.take_events() {
+            b.push(e).unwrap();
+        }
+        let patches = b.take_patches();
+        let (s, r) = b.tree_ref().unwrap();
+        let completed = p.update(s, r, &patches).unwrap();
+        assert!(
+            !completed.delta.table_patches.iter().any(|patch| matches!(
+                patch,
+                TablePatch::TableReplaced { table, .. } if table.header_height > 0
+            )),
+            "a first mapping that contains a nested value must never flip to a header table"
         );
     }
 
@@ -1323,8 +1384,8 @@ mod tests {
     fn streaming_trajectory_edges_converge_to_current_node_columns() {
         let source = include_str!("../../../../test/fixtures/json/trajectory.1.json");
         let bytes = source.as_bytes();
-        let chunk_size = crate::stream::chunk_size::select_chunk_size(bytes.len());
-        let mut decoder = crate::stream::streaming_json::StreamDecoder::new(true);
+        let chunk_size = 64 * 1024;
+        let mut decoder = crate::stream::streaming_json::StreamDecoder::new(false);
         let mut builder = Builder::new();
         builder.enable_patches();
         let mut projector = StreamingGraphProjector::new("json");
@@ -1418,6 +1479,100 @@ mod tests {
                 path_key(to),
             );
         }
+    }
+
+    #[test]
+    fn streaming_trajectory_waits_for_agent_steps_presentation() {
+        let source = include_str!("../../../../test/fixtures/json/trajectory.1.json");
+        let bytes = source.as_bytes();
+        let chunk_size = 64 * 1024;
+        let mut decoder = crate::stream::streaming_json::StreamDecoder::new(false);
+        let mut builder = Builder::new();
+        builder.enable_patches();
+        let mut projector = StreamingGraphProjector::new("json");
+        let mut agent_steps_handle = None;
+
+        let mut assert_update = |update: &ProjectionUpdate| {
+            for node in update
+                .delta
+                .nodes_added
+                .iter()
+                .chain(&update.delta.nodes_updated)
+            {
+                if path_key(node) == "agent_steps" {
+                    agent_steps_handle = Some(node.render_handle);
+                    assert_eq!(
+                        node.table.as_ref().map_or(0, |table| table.header_height),
+                        0,
+                        "agent_steps must not materialize from a provisional header table"
+                    );
+                }
+            }
+            let Some(handle) = agent_steps_handle else {
+                return;
+            };
+            for patch in &update.delta.table_patches {
+                match patch {
+                    TablePatch::RowsAppended {
+                        table_handle,
+                        header_height,
+                        ..
+                    } if *table_handle == handle => {
+                        assert_eq!(
+                            *header_height, 0,
+                            "agent_steps rows must not use a provisional header table"
+                        );
+                    }
+                    TablePatch::TableReplaced {
+                        table_handle,
+                        table,
+                    } if *table_handle == handle => {
+                        assert_eq!(
+                            table.header_height, 0,
+                            "agent_steps must not be replaced with a provisional header table"
+                        );
+                    }
+                    _ => {}
+                }
+            }
+        };
+
+        let mut offset = 0;
+        while offset < bytes.len() {
+            let end = (offset + chunk_size).min(bytes.len());
+            let mut chunk_end = end;
+            while chunk_end < bytes.len() && chunk_end > offset && bytes[chunk_end] & 0xC0 == 0x80 {
+                chunk_end -= 1;
+            }
+            decoder
+                .feed(std::str::from_utf8(&bytes[offset..chunk_end]).expect("utf-8 fixture"))
+                .expect("trajectory chunk should decode");
+            for event in &decoder.take_events() {
+                builder.push(event).expect("trajectory event should build");
+            }
+            let patches = builder.take_patches();
+            let (store, root) = builder.tree_ref().expect("streaming trajectory tree");
+            let update = projector
+                .update(store, root, &patches)
+                .expect("projection update");
+            assert_update(&update);
+            offset = chunk_end;
+        }
+
+        for event in decoder
+            .finish_events()
+            .expect("trajectory stream should finish")
+        {
+            builder
+                .push(&event)
+                .expect("final trajectory event should build");
+        }
+        let patches = builder.take_patches();
+        let (store, root) = builder.tree_ref().expect("finished trajectory tree");
+        let update = projector
+            .update(store, root, &patches)
+            .expect("close projection update");
+        assert_update(&update);
     }
 
     #[test]
@@ -2634,7 +2789,7 @@ mod tests {
     }
 
     #[test]
-    fn streaming_large_headerless_seq_rows_remain_inline_after_close() {
+    fn streaming_large_headerless_seq_rows_keep_structured_children_after_close() {
         let mut source = String::from(r#"{"items":["#);
         for i in 0..60 {
             if i > 0 {
@@ -2697,23 +2852,24 @@ mod tests {
             total_height, view_height,
             "headerless tables expose their full body height"
         );
-
-        let leaked_child_paths: Vec<String> = consumer_nodes
+        let child_paths: Vec<String> = consumer_nodes
             .values()
             .map(path_key)
             .filter(|path| path.starts_with("items."))
             .collect();
-        assert!(
-            leaked_child_paths.is_empty(),
-            "large headerless table rows must stay inline; leaked child graph nodes: {leaked_child_paths:?}"
+        assert_eq!(
+            child_paths.len(),
+            60,
+            "every structured row must remain a graph child"
         );
-        let leaked_edges: Vec<_> = consumer_edges
+        let child_edges: Vec<_> = consumer_edges
             .values()
             .filter(|edge| edge.from_render_handle == items_handle)
             .collect();
-        assert!(
-            leaked_edges.is_empty(),
-            "large headerless table rows must not create outgoing child edges: {leaked_edges:?}"
+        assert_eq!(
+            child_edges.len(),
+            60,
+            "every structured row must retain an outgoing graph edge"
         );
     }
 

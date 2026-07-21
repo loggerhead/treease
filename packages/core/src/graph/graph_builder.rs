@@ -487,11 +487,22 @@ impl GraphBuilder {
         path: &[PathSeg],
         render_handle: u32,
     ) -> GraphNode {
+        self.build_node_only_with_sequence_presentation(node, depth, path, render_handle, None)
+    }
+
+    pub fn build_node_only_with_sequence_presentation(
+        &self,
+        node: &TreeNode,
+        depth: u32,
+        path: &[PathSeg],
+        render_handle: u32,
+        sequence_presentation: Option<SequencePresentation>,
+    ) -> GraphNode {
         let kind = graph_kind_for_node(node);
         let rows = self.build_rows(node, path);
         let row_widths = self.row_column_widths(&rows);
         let table = if kind == GraphKind::Table {
-            Some(self.build_table(node, path))
+            Some(self.build_table(node, path, sequence_presentation))
         } else {
             None
         };
@@ -680,8 +691,13 @@ impl GraphBuilder {
         scalar_object_graph::build_rows(self, node, path)
     }
 
-    fn build_table(&self, node: &TreeNode, path: &[PathSeg]) -> GraphTable {
-        table_graph::build_table(self, node, path)
+    fn build_table(
+        &self,
+        node: &TreeNode,
+        path: &[PathSeg],
+        sequence_presentation: Option<SequencePresentation>,
+    ) -> GraphTable {
+        table_graph::build_table(self, node, path, sequence_presentation)
     }
 
     pub(super) fn row_column_widths(&self, rows: &[GraphRow]) -> RowColumnWidths {

@@ -655,8 +655,12 @@ impl<'a> PlannerResolver<'a> {
         let Some(node) = self.store.get(id) else {
             return GraphRole::Pending;
         };
+        let node_kind = node.kind;
+        let node_parent = node.parent;
+        let node_is_map_key = node.is_map_key;
+        let node_builds_child = value_node_builds_child(node);
         if Some(id) == self.root {
-            return if node.kind == TreeNodeKind::Sequence
+            return if node_kind == TreeNodeKind::Sequence
                 && matches!(
                     self.sequence_state(id, epoch)
                         .map(|state| state.presentation),
@@ -669,6 +673,21 @@ impl<'a> PlannerResolver<'a> {
             } else {
                 GraphRole::GraphNode
             };
+        }
+
+        // GraphBuilder has no pending presentation; letting it see this sequence
+        // would classify an incomplete mapping with its legacy heuristic.
+        if node_kind == TreeNodeKind::Sequence
+            && matches!(
+                self.sequence_state(id, epoch)
+                    .map(|state| state.presentation),
+                Some(
+                    SequencePresentationState::EmptyOpen
+                        | SequencePresentationState::PendingHeaderSchema
+                )
+            )
+        {
+            return GraphRole::Pending;
         }
 
         if !self.config.expand_header_table_rows
@@ -686,15 +705,15 @@ impl<'a> PlannerResolver<'a> {
             };
         }
 
-        match node.parent {
+        match node_parent {
             None => GraphRole::GraphNode,
             Some(parent_id) => match self.store.get(parent_id) {
                 None => GraphRole::Pending,
                 Some(parent) => match parent.kind {
                     TreeNodeKind::Mapping => {
-                        if node.is_map_key {
+                        if node_is_map_key {
                             GraphRole::InlineValue
-                        } else if value_node_builds_child(node) {
+                        } else if node_builds_child {
                             GraphRole::GraphNode
                         } else {
                             GraphRole::InlineValue
@@ -713,9 +732,7 @@ impl<'a> PlannerResolver<'a> {
                                 ..
                             },
                         ) => {
-                            if table_children_can_expand(parent, &state, self.config)
-                                && value_node_builds_child(node)
-                            {
+                            if table_children_can_expand(parent, &state) && node_builds_child {
                                 GraphRole::GraphNode
                             } else {
                                 GraphRole::InlineValue
@@ -727,9 +744,9 @@ impl<'a> PlannerResolver<'a> {
                                 ..
                             },
                         ) => {
-                            if node.kind == TreeNodeKind::Mapping {
+                            if node_kind == TreeNodeKind::Mapping {
                                 if self.config.expand_header_table_rows {
-                                    if value_node_builds_child(node) {
+                                    if node_builds_child {
                                         GraphRole::GraphNode
                                     } else {
                                         GraphRole::InlineValue
@@ -743,8 +760,7 @@ impl<'a> PlannerResolver<'a> {
                                         row_index,
                                     }
                                 }
-                            } else if table_children_can_expand(parent, &state, self.config)
-                                && value_node_builds_child(node)
+                            } else if table_children_can_expand(parent, &state) && node_builds_child
                             {
                                 GraphRole::GraphNode
                             } else {
@@ -902,7 +918,7 @@ impl<'a> PlannerResolver<'a> {
                         self.folded_row_attachment_plan(id, row_index_hint)
                     }
                     SequencePresentationState::HeaderlessTable => {
-                        let current_role = if table_children_can_expand(parent, &state, self.config)
+                        let current_role = if table_children_can_expand(parent, &state)
                             && value_node_builds_child(node)
                         {
                             GraphRole::GraphNode
@@ -934,7 +950,7 @@ impl<'a> PlannerResolver<'a> {
                         needs_previous_role: false,
                     }),
                     SequencePresentationState::HeaderTable
-                        if table_children_can_expand(parent, &state, self.config)
+                        if table_children_can_expand(parent, &state)
                             && value_node_builds_child(node) =>
                     {
                         Some(AttachmentFastPlan {
@@ -1153,6 +1169,8 @@ pub(crate) struct GraphTopology {
     handle_to_node: Vec<NodeId>,
     slots: Vec<GraphSlot>,
     sequence_states: HashMap<NodeId, SequenceState>,
+    sealed_nodes: HashSet<NodeId>,
+    streaming: bool,
     folded_rows: HashMap<NodeId, TableRowRef>,
     dirty: DirtySet,
     pass_cache: TopologyPassCache,
@@ -1175,6 +1193,17 @@ impl GraphTopology {
 
     pub(crate) fn slot(&self, handle: GraphHandle) -> Option<&GraphSlot> {
         self.slots.get(handle as usize)
+    }
+
+    /// Table presentation is graph topology state. Shape construction must
+    /// consume this decision instead of reclassifying a partial sequence.
+    pub(crate) fn sequence_presentation(
+        &self,
+        node_id: NodeId,
+    ) -> Option<SequencePresentationState> {
+        self.sequence_states
+            .get(&node_id)
+            .map(|state| state.presentation)
     }
 
     pub(crate) fn slot_mut(&mut self, handle: GraphHandle) -> Option<&mut GraphSlot> {
@@ -1203,6 +1232,12 @@ impl GraphTopology {
         patches: &[crate::stream::tree_patch::TreePatch],
         config: &BuilderConfig,
     ) -> DirtySet {
+        self.streaming = true;
+        self.sealed_nodes
+            .extend(patches.iter().filter_map(|patch| match patch {
+                crate::stream::tree_patch::TreePatch::NodeSealed { node_id } => Some(*node_id),
+                _ => None,
+            }));
         self.pass_cache.begin_pass(store.len());
         #[cfg(test)]
         {
@@ -1399,11 +1434,11 @@ impl GraphTopology {
             let previous_expandable = previous
                 .as_ref()
                 .zip(store.get(sequence_id))
-                .is_some_and(|(state, node)| table_children_can_expand(node, state, config));
+                .is_some_and(|(state, node)| table_children_can_expand(node, state));
             let current_expandable = current
                 .as_ref()
                 .zip(store.get(sequence_id))
-                .is_some_and(|(state, node)| table_children_can_expand(node, state, config));
+                .is_some_and(|(state, node)| table_children_can_expand(node, state));
             if sequence_state_transition_requires_structural_reconcile(
                 previous.as_ref(),
                 current.as_ref(),
@@ -1701,7 +1736,21 @@ impl GraphTopology {
     }
 
     fn refresh_sequence_state(&mut self, store: &TreeStore, id: NodeId) -> Option<SequenceState> {
-        let state = sequence_state_from_store(store, id)?;
+        let first_mapping_closed = !self.streaming
+            || store
+                .get(id)
+                .and_then(|sequence| sequence.content.first().copied())
+                .is_some_and(|first_child| self.sealed_nodes.contains(&first_child));
+        let mut state =
+            sequence_state_from_store_with_first_mapping_closed(store, id, first_mapping_closed)?;
+        if let Some(previous) = self.sequence_states.get(&id)
+            && matches!(
+                previous.presentation,
+                SequencePresentationState::HeaderTable | SequencePresentationState::HeaderlessTable
+            )
+        {
+            state.presentation = previous.presentation;
+        }
         self.sequence_states.insert(id, state);
         Some(state)
     }
@@ -1971,9 +2020,7 @@ impl GraphTopology {
         let Some(node) = store.get(id) else {
             return;
         };
-        if node.kind != TreeNodeKind::Sequence
-            || !self.table_children_can_expand_timed(store, id, config)
-        {
+        if node.kind != TreeNodeKind::Sequence || !self.table_children_can_expand_timed(store, id) {
             return;
         }
         if !self.pass_cache.expanded_sequences.insert(id) {
@@ -1985,7 +2032,7 @@ impl GraphTopology {
         }
         let children = node.content.clone();
         for child in children {
-            if store.get(child).is_some_and(value_node_builds_child) {
+            if self.role_for(store, child, config) == GraphRole::GraphNode {
                 self.reconcile_one(store, child, visited, config);
             }
         }
@@ -2147,12 +2194,7 @@ impl GraphTopology {
             .unwrap_or(parent.content.len())
     }
 
-    fn table_children_can_expand_timed(
-        &mut self,
-        store: &TreeStore,
-        sequence_id: NodeId,
-        config: &BuilderConfig,
-    ) -> bool {
+    fn table_children_can_expand_timed(&mut self, store: &TreeStore, sequence_id: NodeId) -> bool {
         if let Some(result) = self
             .pass_cache
             .table_expandability
@@ -2164,7 +2206,7 @@ impl GraphTopology {
         let result = store
             .get(sequence_id)
             .zip(self.sequence_state(store, sequence_id))
-            .is_some_and(|(node, state)| table_children_can_expand(node, &state, config));
+            .is_some_and(|(node, state)| table_children_can_expand(node, &state));
         self.pass_cache
             .table_expandability
             .insert(sequence_id, result);
@@ -2198,8 +2240,12 @@ fn planner_role_for(
     let Some(node) = store.get(id) else {
         return GraphRole::Pending;
     };
+    let node_kind = node.kind;
+    let node_parent = node.parent;
+    let node_is_map_key = node.is_map_key;
+    let node_builds_child = value_node_builds_child(node);
     if Some(id) == root {
-        return if node.kind == TreeNodeKind::Sequence
+        return if node_kind == TreeNodeKind::Sequence
             && matches!(
                 sequence_state_lookup(id).map(|state| state.presentation),
                 Some(
@@ -2211,6 +2257,20 @@ fn planner_role_for(
         } else {
             GraphRole::GraphNode
         };
+    }
+
+    // GraphBuilder has no pending presentation; letting it see this sequence
+    // would classify an incomplete mapping with its legacy heuristic.
+    if node_kind == TreeNodeKind::Sequence
+        && matches!(
+            sequence_state_lookup(id).map(|state| state.presentation),
+            Some(
+                SequencePresentationState::EmptyOpen
+                    | SequencePresentationState::PendingHeaderSchema
+            )
+        )
+    {
+        return GraphRole::Pending;
     }
 
     if !config.expand_header_table_rows
@@ -2231,15 +2291,15 @@ fn planner_role_for(
         };
     }
 
-    match node.parent {
+    match node_parent {
         None => GraphRole::GraphNode,
         Some(parent_id) => match store.get(parent_id) {
             None => GraphRole::Pending,
             Some(parent) => match parent.kind {
                 TreeNodeKind::Mapping => {
-                    if node.is_map_key {
+                    if node_is_map_key {
                         GraphRole::InlineValue
-                    } else if value_node_builds_child(node) {
+                    } else if node_builds_child {
                         GraphRole::GraphNode
                     } else {
                         GraphRole::InlineValue
@@ -2258,9 +2318,7 @@ fn planner_role_for(
                             ..
                         },
                     ) => {
-                        if table_children_can_expand(parent, &state, config)
-                            && value_node_builds_child(node)
-                        {
+                        if table_children_can_expand(parent, &state) && node_builds_child {
                             GraphRole::GraphNode
                         } else {
                             GraphRole::InlineValue
@@ -2272,9 +2330,9 @@ fn planner_role_for(
                             ..
                         },
                     ) => {
-                        if node.kind == TreeNodeKind::Mapping {
+                        if node_kind == TreeNodeKind::Mapping {
                             if config.expand_header_table_rows {
-                                if value_node_builds_child(node) {
+                                if node_builds_child {
                                     GraphRole::GraphNode
                                 } else {
                                     GraphRole::InlineValue
@@ -2288,9 +2346,7 @@ fn planner_role_for(
                                     row_index,
                                 }
                             }
-                        } else if table_children_can_expand(parent, &state, config)
-                            && value_node_builds_child(node)
-                        {
+                        } else if table_children_can_expand(parent, &state) && node_builds_child {
                             GraphRole::GraphNode
                         } else {
                             GraphRole::InlineValue
@@ -2391,6 +2447,19 @@ pub(crate) fn sequence_presentation_state(
 }
 
 fn sequence_state_from_store(store: &TreeStore, id: NodeId) -> Option<SequenceState> {
+    let first_mapping_closed = store
+        .get(id)
+        .and_then(|sequence| sequence.content.first().copied())
+        .and_then(|first_child| store.get(first_child))
+        .is_some_and(|mapping| mapping.container_closed());
+    sequence_state_from_store_with_first_mapping_closed(store, id, first_mapping_closed)
+}
+
+fn sequence_state_from_store_with_first_mapping_closed(
+    store: &TreeStore,
+    id: NodeId,
+    first_mapping_closed: bool,
+) -> Option<SequenceState> {
     let node = store.get(id)?;
     if node.kind != TreeNodeKind::Sequence {
         return None;
@@ -2417,11 +2486,12 @@ fn sequence_state_from_store(store: &TreeStore, id: NodeId) -> Option<SequenceSt
         (None, true, _, _) => SequencePresentationState::EmptyClosed,
         (None, false, _, _) => SequencePresentationState::EmptyOpen,
         (Some(TreeNodeKind::Mapping), _, _, true) => SequencePresentationState::HeaderlessTable,
-        (Some(TreeNodeKind::Mapping), true, _, false) => SequencePresentationState::HeaderTable,
-        (Some(TreeNodeKind::Mapping), false, 0, false) => {
+        (Some(TreeNodeKind::Mapping), _, _, false) if first_mapping_closed => {
+            SequencePresentationState::HeaderTable
+        }
+        (Some(TreeNodeKind::Mapping), _, _, false) => {
             SequencePresentationState::PendingHeaderSchema
         }
-        (Some(TreeNodeKind::Mapping), false, _, false) => SequencePresentationState::HeaderTable,
         (Some(_), _, _, _) => SequencePresentationState::HeaderlessTable,
     };
 
@@ -2444,23 +2514,13 @@ pub(crate) fn is_header_table_sequence(store: &TreeStore, id: NodeId) -> bool {
 fn table_children_can_expand(
     node: &crate::tree::tree_node::TreeNode,
     state: &SequenceState,
-    config: &BuilderConfig,
 ) -> bool {
-    if node.kind != TreeNodeKind::Sequence || !state.closed {
-        return false;
-    }
-    let row_count = node.content.len() as i32;
-    let base_rows = row_count.max(1);
-    let total_height = match state.presentation {
-        SequencePresentationState::HeaderTable => {
-            config.table_header_height + config.table_row_height * base_rows
-        }
-        SequencePresentationState::HeaderlessTable => config.row_height * base_rows,
-        SequencePresentationState::EmptyClosed
-        | SequencePresentationState::EmptyOpen
-        | SequencePresentationState::PendingHeaderSchema => return false,
-    };
-    total_height <= config.table_max_height
+    node.kind == TreeNodeKind::Sequence
+        && state.closed
+        && matches!(
+            state.presentation,
+            SequencePresentationState::HeaderTable | SequencePresentationState::HeaderlessTable
+        )
 }
 
 fn header_key_count(store: &TreeStore, sequence_id: NodeId) -> usize {
@@ -2669,8 +2729,7 @@ mod tests {
 
     #[test]
     fn small_headerless_table_expands_structured_rows() {
-        let source =
-            r#"{"rows":[{"name":"a","meta":{"x":1}},{"name":"b","meta":{"x":2}}]}"#;
+        let source = r#"{"rows":[{"name":"a","meta":{"x":1}},{"name":"b","meta":{"x":2}}]}"#;
         let (store, root) = store_from_json(source);
         let mut topology = GraphTopology::new();
         let cfg = crate::graph::graph_builder::default_config();
@@ -2763,7 +2822,7 @@ mod tests {
     }
 
     #[test]
-    fn complex_fixture_keeps_large_headerless_table_rows_folded() {
+    fn complex_fixture_expands_nested_rows_from_headerless_table() {
         let source = include_str!("../../../../test/fixtures/json/complex.1.json");
         let (store, root) = store_from_json(source);
         let mut topology = GraphTopology::new();
@@ -2779,7 +2838,10 @@ mod tests {
             as GraphHandle;
         let children = &topology.slots()[table_handle as usize].children;
 
-        assert!(children.is_empty());
+        assert!(
+            !children.is_empty(),
+            "nested values in a headerless table must remain graph children even when the table is tall"
+        );
     }
 
     #[test]

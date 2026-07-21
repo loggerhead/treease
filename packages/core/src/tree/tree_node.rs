@@ -72,7 +72,7 @@ impl From<Box<String>> for NodeValueRef {
 
 pub type NodeList = Vec<NodeId>;
 
-const NODE_FLAG_SEQUENCE_CLOSED: u8 = 1 << 0;
+const NODE_FLAG_CONTAINER_CLOSED: u8 = 1 << 0;
 const NODE_FLAG_EVALUATE_TOGETHER: u8 = 1 << 1;
 const NODE_FLAG_ENCODE_SEPARATE: u8 = 1 << 2;
 const NODE_INDEX_NONE: u32 = u32::MAX;
@@ -247,7 +247,7 @@ impl Default for TreeNode {
             line: 0,
             column: 0,
             is_map_key: false,
-            flags: NODE_FLAG_SEQUENCE_CLOSED,
+            flags: NODE_FLAG_CONTAINER_CLOSED,
             extra: NodeExtraId::NONE,
         }
     }
@@ -315,14 +315,25 @@ impl TreeNode {
     }
 
     pub fn sequence_closed(&self) -> bool {
-        self.flags & NODE_FLAG_SEQUENCE_CLOSED != 0
+        self.container_closed()
     }
 
     pub fn set_sequence_closed(&mut self, enabled: bool) {
+        self.set_container_closed(enabled);
+    }
+
+    /// Streaming decoders keep a container open until its closing event arrives.
+    /// Sequence callers retain `sequence_closed`; mapping schema classification
+    /// uses this generic form to avoid treating a partial mapping as complete.
+    pub fn container_closed(&self) -> bool {
+        self.flags & NODE_FLAG_CONTAINER_CLOSED != 0
+    }
+
+    pub fn set_container_closed(&mut self, enabled: bool) {
         if enabled {
-            self.flags |= NODE_FLAG_SEQUENCE_CLOSED;
+            self.flags |= NODE_FLAG_CONTAINER_CLOSED;
         } else {
-            self.flags &= !NODE_FLAG_SEQUENCE_CLOSED;
+            self.flags &= !NODE_FLAG_CONTAINER_CLOSED;
         }
     }
 

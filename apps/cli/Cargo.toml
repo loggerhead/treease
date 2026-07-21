@@ -14,7 +14,7 @@ keywords = ["treease", "cli", "yaml", "json", "jq"]
 categories = ["command-line-utilities", "text-processing"]
 
 [package.metadata.treease]
-wasm_release_date = "26070510"
+wasm_release_date = "26072109"
 
 [lib]
 path = "src/lib.rs"

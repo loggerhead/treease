@@ -8,9 +8,14 @@ use super::shared::{
 use super::{GraphBuilder, GraphCell, GraphRow, GraphTable, PathSeg, SequencePresentation};
 use crate::graph::graph_identity::canonical_path_key;
 
-pub(super) fn build_table(builder: &GraphBuilder, node: &TreeNode, path: &[PathSeg]) -> GraphTable {
+pub(super) fn build_table(
+    builder: &GraphBuilder,
+    node: &TreeNode,
+    path: &[PathSeg],
+    sequence_presentation_override: Option<SequencePresentation>,
+) -> GraphTable {
     debug_assert_eq!(node.kind, NodeKind::Sequence);
-    match sequence_presentation(node) {
+    match sequence_presentation_override.unwrap_or_else(|| sequence_presentation(node)) {
         SequencePresentation::HeaderTable => build_header_table(builder, node, path),
         SequencePresentation::HeaderlessTable => build_headerless_table(builder, node, path),
     }
@@ -483,4 +488,5 @@ mod tests {
         assert_eq!(table.view_height, table.total_height);
         assert!(table.view_height > builder.config.table_max_height);
     }
+
 }

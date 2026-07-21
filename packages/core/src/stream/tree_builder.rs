@@ -407,7 +407,7 @@ impl Builder {
             column: meta.column,
             ..TreeNode::default()
         };
-        node.set_sequence_closed(kind != TreeNodeKind::Sequence);
+        node.set_container_closed(false);
         node
     }
 
@@ -469,9 +469,7 @@ impl Builder {
             .get_mut(node)
             .ok_or_else(|| CoreError::Parse(ParseError::InvalidSyntax))?;
         node_ref.end_byte = end_byte;
-        if node_ref.kind == TreeNodeKind::Sequence {
-            node_ref.set_sequence_closed(true);
-        }
+        node_ref.set_container_closed(true);
         Ok(())
     }
 
@@ -545,9 +543,9 @@ mod tests {
     use crate::language::SemType;
     use crate::stream::decode;
     use crate::stream::tree_patch::TreePatch;
-    use crate::tree::{TreeNodeKind, get_map_entry};
+    use crate::tree::{get_map_entry, TreeNodeKind};
 
-    use super::{Builder, decode_events};
+    use super::{decode_events, Builder};
 
     #[test]
     fn tree_builder_converts_streaming_json_events_into_tree_store() {

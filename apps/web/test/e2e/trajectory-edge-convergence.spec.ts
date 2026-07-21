@@ -41,10 +41,11 @@ async function readEdgeAlignmentMismatches(page: import('@playwright/test').Page
     const nodeByHandle = new Map(nodes.map((node: any) => [Number(node.renderHandle), node]));
     const mismatches: EdgeAlignmentMismatch[] = [];
     const centerY = (box: any, owner?: any) => {
+      // Row boxArgs use node-local coordinates; edge bezier anchors are absolute.
+      // Never infer coordinate space from the numeric value of y.
       const localY = Number(box?.y ?? 0);
       const ownerY = Number(owner?.boxArgs?.y ?? 0);
-      const resolvedY = localY < ownerY ? localY + ownerY : localY;
-      return resolvedY + Number(box?.height ?? 0) / 2;
+      return ownerY + localY + Number(box?.height ?? 0) / 2;
     };
     const resolveEdgeAnchorY = (node: any, rowIndex: number) => {
       if (node?.kind === 'table' && node?.table) {

@@ -115,6 +115,7 @@ jobs:
         with:
           path: |
             apps/web/build
+            apps/web/.svelte-kit/output/client
             apps/web/.svelte-kit/output/server
           key: web-e2e-build-${{ runner.os }}-${{ hashFiles('apps/web/package.json', 'apps/web/pnpm-lock.yaml', 'apps/web/src/**', 'apps/web/static/**', 'apps/web/scripts/**', 'apps/web/svelte.config.js', 'apps/web/vite.config.ts', 'apps/web/tsconfig.json', 'scripts/release-metadata.mjs', 'packages/core/Cargo.toml', 'packages/core/Cargo.lock', 'packages/core/src/**', 'packages/core/wasm/**', 'packages/core/build.rs') }}
       - name: Build E2E artifact
@@ -127,6 +128,7 @@ jobs:
           name: web-e2e-build
           path: |
             apps/web/build
+            apps/web/.svelte-kit/output/client
             apps/web/.svelte-kit/output/server
           if-no-files-found: error
           include-hidden-files: true

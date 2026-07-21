@@ -3,12 +3,19 @@ use crate::operators::{NodeKind as CompatNodeKind, TreeNode as CompatTreeNode};
 
 use super::graph_builder::{
     BuilderConfig, GraphBuilder, GraphCell, GraphLanguage, GraphNode, GraphRow, PathSeg,
+    SequencePresentation,
 };
 use crate::tree::{NodeId, TreeNodeKind, TreeStore};
 
 pub(crate) struct NodeShapeBuilder<'a> {
     config: &'a BuilderConfig,
     language: GraphLanguage,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum NodeShapePresentation {
+    NonTable,
+    Table(SequencePresentation),
 }
 
 impl<'a> NodeShapeBuilder<'a> {
@@ -23,10 +30,21 @@ impl<'a> NodeShapeBuilder<'a> {
         path: &[PathSeg],
         depth: u32,
         render_handle: u32,
+        presentation: NodeShapePresentation,
     ) -> Option<GraphNode> {
         let compat = compat_tree_from_store(store, node_id)?;
+        let sequence_presentation = match presentation {
+            NodeShapePresentation::NonTable => None,
+            NodeShapePresentation::Table(presentation) => Some(presentation),
+        };
         let layout_builder = GraphBuilder::new(self.config.clone(), self.language);
-        let mut node = layout_builder.build_node_only(&compat, depth, path, render_handle);
+        let mut node = layout_builder.build_node_only_with_sequence_presentation(
+            &compat,
+            depth,
+            path,
+            render_handle,
+            sequence_presentation,
+        );
         node.preorder_first = render_handle;
         node.preorder_last = render_handle;
         layout_builder.apply_node_bounds_to(&mut node);
@@ -38,6 +56,7 @@ impl<'a> NodeShapeBuilder<'a> {
         store: &TreeStore,
         node_id: NodeId,
         current: &GraphNode,
+        presentation: NodeShapePresentation,
     ) -> Option<GraphNode> {
         let mut rebuilt = self.build_node_from_store(
             store,
@@ -45,6 +64,7 @@ impl<'a> NodeShapeBuilder<'a> {
             &current.path,
             current.depth,
             current.render_handle,
+            presentation,
         )?;
         rebuilt.x = current.x;
         rebuilt.y = current.y;

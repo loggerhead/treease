@@ -107,6 +107,13 @@ Therefore:
 - A first-item `Mapping` with a direct object or array value remains a `Headerless Table`; nested structure is not projected into header columns.
 - Once the first item is not a `Mapping`, the whole sequence remains a `Headerless Table` even if a later item is a `Mapping`; it is not promoted to a header table.
 
+For streaming input, an open first-item `Mapping` is `PendingHeaderSchema`: Core must not
+publish a `Header Table` merely because no direct object or array has arrived yet. A direct
+object or array fixes the sequence as `Headerless Table` immediately; otherwise the first
+mapping's `NodeSealed` event fixes it as `Header Table`. The topology owns this one-time
+decision; materialization and layout consume it and must not infer a second type from the
+partial tree. After that decision, later increments must not change the table presentation.
+
 ### Consistency Requirements for Classification
 
 - Full builds, streaming, and changed regions must make the same decision about whether a structure is an independent node.
