@@ -5,6 +5,7 @@
   import { installTestBridge } from '$lib/test-bridge/bootstrap';
   import { afterNavigate } from '$app/navigation';
   import { onMount } from 'svelte';
+  import { installFeedbackConsoleLogBuffer } from '$lib/feedback/console-log-buffer';
   import { initializeAnalytics, trackPageView } from '$lib/analytics/ga4';
   import 'virtual:wdio-plugin';
 
@@ -13,6 +14,8 @@
   }
 
   onMount(() => {
+    installFeedbackConsoleLogBuffer();
+
     void initializeAnalytics().then(() => {
       trackPageView(window.location.pathname);
     });

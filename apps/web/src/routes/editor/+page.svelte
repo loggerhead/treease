@@ -10,6 +10,7 @@
   import ViewportPanel from '../../lib/components/ViewportPanel.svelte';
   import SettingsDialog from '../../lib/components/SettingsDialog.svelte';
   import ShareDialog from '../../lib/components/ShareDialog.svelte';
+  import FeedbackDialog from '../../lib/components/FeedbackDialog.svelte';
   import LoginDialog from '../../lib/components/LoginDialog.svelte';
   import YqExpressionInput from '../../lib/components/YqExpressionInput.svelte';
   import { settings, settingsStore } from '../../lib/settings/settings-store';
@@ -111,6 +112,7 @@
   let splitterDragRect: DOMRect | null = null;
   let settingsOpen = false;
   let shareOpen = false;
+  let feedbackOpen = false;
   let loginOpen = false;
   let viewerViewMode: 'graph' | 'text' = 'graph';
   let editorRuntimeLoading = true;
@@ -1114,6 +1116,7 @@
         onExportPreview={handleExportPreview}
         onExportDownload={handleExportDownload}
         onShare={() => (shareOpen = true)}
+        onFeedback={() => (feedbackOpen = true)}
         onLogin={() => (loginOpen = true)}
         onLogout={handleLogout}
         onCheckForUpdates={handleCheckForUpdates}
@@ -1302,6 +1305,7 @@
       />
     {/if}
   </div>
+  <FeedbackDialog bind:open={feedbackOpen} />
   {#if shareLoading}
     <div class="fixed inset-0 z-50 grid place-items-center bg-[var(--app-bg)]" data-testid="share-loading" aria-live="polite">
       <span class="text-sm text-[var(--text-muted)]">Restoring shared content…</span>

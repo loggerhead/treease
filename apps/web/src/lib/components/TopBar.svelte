@@ -27,6 +27,7 @@
   export let onExportPreview: (format: string) => void = () => {}
   export let onExportDownload: (format: string) => void = () => {}
   export let onShare: () => void = () => {}
+  export let onFeedback: () => void = () => {}
   export let onOpenSettings: () => void = () => {}
   export let onLogin: () => void = () => {}
   export let onLogout: () => Promise<void> = async () => {}
@@ -200,7 +201,7 @@
         >
           <BookOpen size={12} />
         </a>
-        <a
+        <button
           class="inline-flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center whitespace-nowrap rounded-none border-0 bg-transparent text-[var(--text-primary)] outline-none transition-[color,background-color,border-color,box-shadow] hover:bg-[var(--panel-bg-alt)] hover:text-[var(--accent)] focus-visible:ring-2 focus-visible:ring-[var(--accent)]/25"
           data-slot="button"
           data-variant="ghost"
@@ -208,13 +209,12 @@
           data-icon-only="true"
           aria-label="Feedback"
           title="Feedback"
-          data-testid="topbar-feedback-link"
-          href="https://github.com/loggerhead/treease/issues/new"
-          target="_blank"
-          rel="noopener noreferrer"
+          data-testid="topbar-feedback-button"
+          type="button"
+          on:click={onFeedback}
         >
           <MessageCircle size={12} />
-        </a>
+        </button>
         <IconButton
           aria-label="Share"
           title="Share"

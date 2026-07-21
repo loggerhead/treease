@@ -87,7 +87,7 @@
     "wrangler": "4.112.0"
   },
   "dependencies": {
-    "@treease/share-protocol": "workspace:*",
+    "@fingerprintjs/fingerprintjs": "^5.2.0",
     "@leafer-in/editor": "^2.0.1",
     "@leafer-in/export": "^2.0.1",
     "@leafer-in/state": "^2.0.1",
@@ -95,12 +95,13 @@
     "@leafer-in/view": "^2.0.1",
     "@leafer-in/viewport": "^2.0.0",
     "@supabase/supabase-js": "^2.57.4",
-    "@fingerprintjs/fingerprintjs": "^5.2.0",
     "@tanstack/svelte-virtual": "^3.0.0",
     "@tauri-apps/api": "^2.11.1",
     "@tauri-apps/plugin-deep-link": "^2.4.9",
     "@tauri-apps/plugin-updater": "^2.10.1",
+    "@treease/share-protocol": "workspace:*",
     "fuzzysort": "^3.1.0",
+    "html-to-image": "^1.11.13",
     "idb": "^8.0.3",
     "leafer-ui": "^2.0.0",
     "lodash-es": "^4.17.21",
