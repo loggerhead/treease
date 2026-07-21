@@ -4,6 +4,7 @@
 .superpowers/
 supabase/.temp/
 *.txt
+!apps/web/static/robots.txt
 .agents/
 .codex/*
 !.codex/hooks.json

@@ -3,4 +3,4 @@
   import source from '$lib/legal/privacy.html?raw'
 </script>
 
-<LegalPage title="Privacy Policy" html={source} />
+<LegalPage title="Privacy Policy" html={source} canonicalUrl="https://treease.com/privacy" />

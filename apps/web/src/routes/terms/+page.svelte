@@ -3,4 +3,4 @@
   import source from '$lib/legal/terms.html?raw'
 </script>
 
-<LegalPage title="Terms of Service" html={source} />
+<LegalPage title="Terms of Service" html={source} canonicalUrl="https://treease.com/terms" />

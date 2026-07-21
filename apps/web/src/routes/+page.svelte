@@ -30,6 +30,25 @@
   let pricingPrewarm: Promise<BillingPricingPrewarm> | null = null;
   let checkoutPreparations: Partial<Record<BillingPriceId, Promise<PreparedBillingCheckout>>> = {};
   const yearlySavings = fixedYearlySavingsPercent;
+  const siteOrigin = 'https://treease.com';
+  const pageTitle = 'Treease: JSON, YAML & Structured Text Viewer with Graphs';
+  const pageDescription =
+    'View, format, compare, and edit JSON, YAML, TOML, CSV, and embedded payloads in a private browser workspace with graph and source views.';
+  const homeJsonLd = JSON.stringify({
+    '@context': 'https://schema.org',
+    '@type': 'WebApplication',
+    name: 'Treease',
+    url: siteOrigin,
+    description: pageDescription,
+    applicationCategory: 'DeveloperApplication',
+    operatingSystem: 'Web browser',
+    publisher: {
+      '@type': 'Organization',
+      name: 'Treease',
+      url: siteOrigin,
+      sameAs: ['https://github.com/loggerhead/treease', 'https://crates.io/crates/treease-cli'],
+    },
+  });
 
   function checkoutReturnUrl() {
     return { successUrl: new URL('/editor', window.location.origin).toString() };
@@ -158,10 +177,30 @@
   ];
 
   const footerLinks = [
+    { href: '/about', label: 'About' },
+    { href: '/changelog', label: 'Changelog' },
+    { href: 'https://github.com/loggerhead/treease', label: 'GitHub' },
+    { href: 'https://docs.rs/treease-cli', label: 'CLI docs' },
     { href: '/terms', label: 'Terms' },
     { href: '/privacy', label: 'Privacy' }
   ];
 </script>
+
+<svelte:head>
+  <title>{pageTitle}</title>
+  <meta name="description" content={pageDescription} />
+  <link rel="canonical" href={siteOrigin} />
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content={pageTitle} />
+  <meta property="og:description" content={pageDescription} />
+  <meta property="og:url" content={siteOrigin} />
+  <meta property="og:image" content={assetUrl(r2Assets.heroDemoGraphPoster)} />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content={pageTitle} />
+  <meta name="twitter:description" content={pageDescription} />
+  <meta name="twitter:image" content={assetUrl(r2Assets.heroDemoGraphPoster)} />
+  <script type="application/ld+json">{homeJsonLd}</script>
+</svelte:head>
 
 <div class="landing">
   <div class="landing-shell">
@@ -171,7 +210,7 @@
       <section class="hero">
         <div class="hero-copy">
           <p class="hero-kicker">Visualize structured text</p>
-          <h1 id="hero-title">See the structure inside the source.</h1>
+          <h1 id="hero-title">JSON, YAML, and structured text viewer with graphs.</h1>
           <p class="hero-lede">
             Treease turns JSON, YAML, TOML, CSV, and embedded payloads into a
             graph you can inspect, trace, edit, compare, and export with
@@ -499,9 +538,9 @@
 
     <footer class="site-footer" aria-label="Site footer">
       <span class="site-footer__brand">© 2026 Treease</span>
-      <nav class="site-footer__links" aria-label="Legal">
+      <nav class="site-footer__links" aria-label="Site resources">
         {#each footerLinks as item}
-          <a href={item.href}>{item.label}</a>
+          <a href={item.href} rel={item.href.startsWith('http') ? 'me' : undefined}>{item.label}</a>
         {/each}
       </nav>
     </footer>

@@ -11,9 +11,14 @@
 </script>
 
 <svelte:head>
-  <title>{pageTitle}</title>
+  <title>{pageTitle} | Structured Text Workspace</title>
   <meta name="description" content={pageDescription} />
   <link rel="canonical" href={canonicalUrl} />
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content={pageTitle} />
+  <meta property="og:description" content={pageDescription} />
+  <meta property="og:url" content={canonicalUrl} />
+  <meta name="twitter:card" content="summary" />
 </svelte:head>
 
 <div class="tutorial-shell">
@@ -23,8 +28,8 @@
     <main class="tutorial-shell__main">
       <TutorialHubSection
         eyebrow="Tutorial Library"
-        title="Treease tutorials for search, support, and structured-data workflows."
-        lede="Each tutorial uses the same article structure so readers can move from tool discovery to concrete URL-backed workflows without changing context."
+        title="JSON viewer, formatter, and compare tutorials"
+        lede="Use Treease to view nested JSON, format compact documents, compare two structures, and prepare URL-backed editor workflows. Each guide includes a direct answer, practical steps, and an example you can open."
         articles={tutorialArticles}
       />
     </main>

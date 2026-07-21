@@ -3,11 +3,13 @@
 
   export let title: string
   export let html: string
+  export let canonicalUrl: string
 </script>
 
 <svelte:head>
   <title>{title} | Treease</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="canonical" href={canonicalUrl} />
 </svelte:head>
 
 <div class="legal-page">

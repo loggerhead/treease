@@ -27,6 +27,11 @@
   });
 </script>
 
+<svelte:head>
+  <title>Completing Treease login</title>
+  <meta name="robots" content="noindex,nofollow" />
+</svelte:head>
+
 <main class="grid min-h-screen place-items-center bg-[var(--app-bg)] p-6 text-[var(--text-primary)]">
   {#if error}
     <section class="rounded-[16px] border border-red-200 bg-white p-8 text-center shadow-sm">

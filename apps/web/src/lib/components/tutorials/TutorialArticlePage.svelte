@@ -32,16 +32,40 @@
       },
     },
     mainEntityOfPage: articleUrl,
-    keywords: article.keywords.join(', '),
+    image: assetUrl(r2Assets.heroDemoGraphPoster),
+    articleSection: article.eyebrow,
+    isPartOf: {
+      '@type': 'CollectionPage',
+      name: 'Treease Tutorials',
+      url: `${siteOrigin}/tutorial`,
+    },
+  });
+  $: breadcrumbJsonLd = JSON.stringify({
+    '@context': 'https://schema.org',
+    '@type': 'BreadcrumbList',
+    itemListElement: [
+      { '@type': 'ListItem', position: 1, name: 'Treease', item: siteOrigin },
+      { '@type': 'ListItem', position: 2, name: 'Tutorials', item: `${siteOrigin}/tutorial` },
+      { '@type': 'ListItem', position: 3, name: article.title, item: articleUrl },
+    ],
   });
 </script>
 
 <svelte:head>
-  <title>{article.title} | Treease Tutorial</title>
+  <title>{article.title} | Treease Tutorial | Structured Text Workspace</title>
   <meta name="description" content={article.description} />
-  <meta name="keywords" content={article.keywords.join(', ')} />
   <link rel="canonical" href={articleUrl} />
+  <meta property="og:type" content="article" />
+  <meta property="og:title" content={article.title} />
+  <meta property="og:description" content={article.description} />
+  <meta property="og:url" content={articleUrl} />
+  <meta property="og:image" content={assetUrl(r2Assets.heroDemoGraphPoster)} />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content={article.title} />
+  <meta name="twitter:description" content={article.description} />
+  <meta name="twitter:image" content={assetUrl(r2Assets.heroDemoGraphPoster)} />
   <script type="application/ld+json">{articleJsonLd}</script>
+  <script type="application/ld+json">{breadcrumbJsonLd}</script>
 </svelte:head>
 
 <article class="tutorial-article">

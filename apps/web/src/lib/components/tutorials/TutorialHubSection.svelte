@@ -12,7 +12,7 @@
 <section class:compact class="tutorial-hub" aria-labelledby="tutorial-hub-title">
   <div class="tutorial-hub__intro">
     <p class="tutorial-hub__eyebrow">{eyebrow}</p>
-    <h2 id="tutorial-hub-title">{title}</h2>
+    <h1 id="tutorial-hub-title">{title}</h1>
     <p>{lede}</p>
   </div>
 
@@ -57,7 +57,7 @@
     text-transform: uppercase;
   }
 
-  .tutorial-hub__intro h2 {
+  .tutorial-hub__intro h1 {
     margin: 0;
     font-family: var(--font-display, inherit);
     font-size: clamp(1.9rem, 3vw, 2.8rem);

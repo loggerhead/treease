@@ -1,0 +1,14 @@
+User-agent: *
+Allow: /
+
+# Search citation is allowed; model training remains disallowed by default.
+User-agent: OAI-SearchBot
+Allow: /
+
+User-agent: GPTBot
+Disallow: /
+
+User-agent: Google-Extended
+Disallow: /
+
+Sitemap: https://treease.com/sitemap.xml

@@ -1082,6 +1082,8 @@
   });
 </script>
 <svelte:head>
+  <title>Treease Editor | Structured Text Workspace</title>
+  <meta name="robots" content="noindex,follow" />
   <link rel="preload" as="fetch" href={wasmUrl} crossorigin="anonymous" />
 </svelte:head>
 

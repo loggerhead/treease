@@ -165,7 +165,7 @@ const tutorials: TutorialArticle[] = [
           'The `lang` parameter sets the editor language for the prepared session so the imported text is treated as JSON, YAML, TOML, or another supported format.',
       },
     ],
-    relatedSlugs: ['format-json-online', 'compare-json-structurally', 'url-to-json-editor'],
+    relatedSlugs: ['json-viewer', 'json-formatter', 'json-compare'],
   },
   {
     slug: 'format-json-online',
@@ -219,7 +219,7 @@ const tutorials: TutorialArticle[] = [
           'Yes. Use `textUrl` to load hosted JSON into the source editor, then apply formatting in the same editor session.',
       },
     ],
-    relatedSlugs: ['url-parameters', 'compare-json-structurally', 'url-to-json-editor'],
+    relatedSlugs: ['json-formatter', 'json-viewer', 'json-compare'],
   },
   {
     slug: 'compare-json-structurally',
@@ -289,7 +289,7 @@ const tutorials: TutorialArticle[] = [
           'Use `text` or `textUrl` for the left document and `rightText` or `rightTextUrl` for the right-side preview, then open the page with `command=compare`.',
       },
     ],
-    relatedSlugs: ['url-parameters', 'format-json-online', 'url-to-json-editor'],
+    relatedSlugs: ['json-compare', 'json-viewer', 'json-formatter'],
   },
   {
     slug: 'url-to-json-editor',
@@ -343,7 +343,183 @@ const tutorials: TutorialArticle[] = [
           'Use `textUrl` to load fetched content into the source editor. Use `rightTextUrl` to load fetched content into the right-side preview pane.',
       },
     ],
-    relatedSlugs: ['url-parameters', 'compare-json-structurally', 'format-json-online'],
+    relatedSlugs: ['json-viewer', 'json-formatter', 'json-compare'],
+  },
+  {
+    slug: 'json-viewer',
+    title: 'JSON Viewer Online: Explore JSON as a Tree and Graph',
+    description:
+      'Use Treease as a private JSON viewer to explore nested objects, search paths, inspect values, and see structure as an interactive graph.',
+    eyebrow: 'Tool guide',
+    lede:
+      'A JSON viewer should make nested data easier to understand, not just show the same text in another panel. Treease keeps the source, tree path, search result, and graph view connected while you inspect a document.',
+    keywords: ['json viewer online', 'json tree viewer', 'json graph viewer', 'private json viewer'],
+    readingMinutes: 5,
+    updatedOn: '2026-07-22',
+    sections: [
+      {
+        title: 'What is a JSON viewer?',
+        paragraphs: [
+          'A JSON viewer displays objects and arrays as an expandable structure so you can navigate nested data without scrolling through a single wall of text.',
+          'Treease adds a graph view, path reveal, search, local value preview, and synchronized source editing. That makes it useful for API responses, configuration files, embedded payloads, and large nested documents.',
+        ],
+      },
+      {
+        title: 'How to view JSON in Treease',
+        bullets: [
+          'Open the editor and paste JSON, drop a local file, or load a hosted sample.',
+          'Use the graph or tree view to expand nested objects and arrays.',
+          'Search for a key or value to reveal its exact tree path and source location.',
+          'Edit the source or a value, then inspect the updated structure before exporting it.',
+        ],
+      },
+      {
+        title: 'Why use a graph view for JSON?',
+        paragraphs: [
+          'A tree is best for hierarchy; a graph is useful when you need a visual overview of relationships and want to keep the source document nearby. Treease lets you move between those views without losing the selected field or document context.',
+        ],
+        examples: [
+          {
+            label: 'Open a JSON viewer sample',
+            href: encodeEditorHref({ ui: 'viewer', text: '{"service":{"name":"api","port":8080}}' }),
+            displayHref: displayEditorHref({ ui: 'viewer', text: '{"service":{"name":"api","port":8080}}' }),
+            description: 'Open a focused viewer session with a nested JSON example.',
+          },
+        ],
+      },
+      {
+        title: 'Privacy and supported formats',
+        paragraphs: [
+          'Treease processes the document in the browser for the local editing workflow. It supports JSON, YAML, TOML, CSV, and embedded structured payloads; the exact behavior depends on the selected language and workflow.',
+        ],
+      },
+    ],
+    faq: [
+      {
+        question: 'What is a JSON viewer?',
+        answer:
+          'A JSON viewer displays nested objects and arrays in an expandable tree or graph so you can inspect structure, search fields, and navigate values more easily than in raw text.',
+      },
+      {
+        question: 'Is Treease a private JSON viewer?',
+        answer:
+          'Treease is designed around local browser processing for the editor workflow, so you can inspect local structured files without first uploading them to a formatting service.',
+      },
+    ],
+    relatedSlugs: ['json-formatter', 'json-compare', 'format-json-online'],
+  },
+  {
+    slug: 'json-formatter',
+    title: 'JSON Formatter Online: Format and Review JSON',
+    description:
+      'Format and beautify JSON online with Treease, then inspect the result in a tree or graph view before copying or exporting it.',
+    eyebrow: 'Tool guide',
+    lede:
+      'Treease formats compact or hard-to-read JSON while keeping the formatted source attached to a visual structure view. You can review nested data, search paths, and compare the result in one workflow.',
+    keywords: ['json formatter online', 'format json online', 'json beautifier', 'pretty print json'],
+    readingMinutes: 5,
+    updatedOn: '2026-07-22',
+    sections: [
+      {
+        title: 'What does a JSON formatter do?',
+        paragraphs: [
+          'A JSON formatter adds indentation and line breaks to valid JSON so objects, arrays, keys, and values are easier to read and review. Formatting changes presentation; it should not change the underlying data structure.',
+        ],
+      },
+      {
+        title: 'How to format JSON online',
+        bullets: [
+          'Paste JSON into Treease, open a local file, or load a hosted JSON sample.',
+          'Run the format command to create readable source text.',
+          'Inspect the graph and tree path to confirm the structure stayed intact.',
+          'Copy or export the reviewed result when it is ready to use.',
+        ],
+        examples: [
+          {
+            label: 'Format a compact JSON sample',
+            href: encodeEditorHref({ ui: 'viewer', text: '{"b":2,"a":{"enabled":true}}', command: 'format' }),
+            displayHref: displayEditorHref({ ui: 'viewer', text: '{"b":2,"a":{"enabled":true}}', command: 'format' }),
+            description: 'Open a prepared formatting flow with the format command ready to run.',
+          },
+        ],
+      },
+      {
+        title: 'Formatter, viewer, and compare in one workflow',
+        paragraphs: [
+          'Formatting is often only the first step. Use the JSON viewer guide to inspect nested data, or use the JSON compare guide when you need to review two versions after formatting.',
+        ],
+      },
+    ],
+    faq: [
+      {
+        question: 'Can I format JSON without installing software?',
+        answer:
+          'Yes. Treease provides a browser-based JSON formatting workflow that can open pasted text or local files and format the document in place.',
+      },
+      {
+        question: 'Does formatting change my JSON data?',
+        answer:
+          'Formatting changes whitespace and layout while preserving the parsed JSON structure. Review the graph or tree view if you want to confirm the result before export.',
+      },
+    ],
+    relatedSlugs: ['json-viewer', 'json-compare', 'format-json-online'],
+  },
+  {
+    slug: 'json-compare',
+    title: 'JSON Compare Online: Compare JSON Structurally',
+    description:
+      'Compare two JSON documents online with Treease. Review structural changes, inspect paths, and use a text fallback when a safe structural comparison is not possible.',
+    eyebrow: 'Tool guide',
+    lede:
+      'A useful JSON comparison should explain which fields changed, not only highlight different lines. Treease prepares two documents in the same workspace so you can review structural changes with graph and source context.',
+    keywords: ['json compare online', 'compare json files', 'json diff', 'json semantic diff'],
+    readingMinutes: 5,
+    updatedOn: '2026-07-22',
+    sections: [
+      {
+        title: 'What is structural JSON comparison?',
+        paragraphs: [
+          'Structural JSON comparison compares parsed objects and arrays so changes in values, keys, and nesting can be separated from differences caused only by indentation or line wrapping.',
+          'Treease prefers structural comparison when the documents can be compared safely and keeps a text fallback for cases where structure is not available.',
+        ],
+      },
+      {
+        title: 'How to compare JSON online',
+        bullets: [
+          'Open the first JSON document in the source editor.',
+          'Load the second document into the right-side preview pane.',
+          'Run compare to inspect changed fields and paths.',
+          'Use the graph and source views to understand the context of each change.',
+        ],
+        examples: [
+          {
+            label: 'Compare two JSON values',
+            href: encodeEditorHref({ text: '{"service":{"port":8080}}', rightText: '{"service":{"port":9090}}', command: 'compare' }),
+            displayHref: displayEditorHref({ text: '{"service":{"port":8080}}', rightText: '{"service":{"port":9090}}', command: 'compare' }),
+            description: 'Open a prepared compare session with one changed nested value.',
+          },
+        ],
+      },
+      {
+        title: 'When a text diff is still useful',
+        paragraphs: [
+          'Text diff remains useful when a document is invalid, contains formatting-only changes you need to review, or cannot be parsed into a comparable structure. Treease keeps that fallback visible instead of silently treating every difference as semantic.',
+        ],
+      },
+    ],
+    faq: [
+      {
+        question: 'Can I compare two JSON files online?',
+        answer:
+          'Yes. Open one document in the source editor, load the other into the right-side preview, and run compare to review the structural differences.',
+      },
+      {
+        question: 'What is the difference between JSON diff and structural compare?',
+        answer:
+          'A text diff compares lines, while structural comparison compares parsed keys, values, arrays, and nesting. Structural comparison usually reduces noise from formatting and key order.',
+      },
+    ],
+    relatedSlugs: ['json-viewer', 'json-formatter', 'compare-json-structurally'],
   },
 ];
 
