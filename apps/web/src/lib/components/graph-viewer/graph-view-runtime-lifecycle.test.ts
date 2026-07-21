@@ -3,6 +3,7 @@ import {
   createGraphViewRuntimeLifecycle,
   disposeGraphViewRuntime,
   isGraphViewRuntimeRenderCurrent,
+  type FullEditGraphRenderOwnership,
   type GraphViewRuntimeRenderInput,
 } from './graph-view-runtime-lifecycle';
 
@@ -23,7 +24,11 @@ function input(overrides: Partial<GraphViewRuntimeRenderInput> = {}): GraphViewR
 
 function createLifecycle(progress: { active: boolean }) {
   const calls = {
-    attach: vi.fn(),
+    attach: vi.fn((state, snapshot): FullEditGraphRenderOwnership =>
+      state?.active && snapshot.hasRenderRuntime && state.phase !== 'preparing' && state.phase !== 'idle'
+        ? { kind: 'started', documentKey: state.documentKey ?? snapshot.documentKey, revision: state.revision }
+        : { kind: 'not-started' },
+    ),
     json: vi.fn(),
     incremental: vi.fn(),
     complete: vi.fn(),
@@ -67,6 +72,33 @@ describe('Graph View Runtime lifecycle', () => {
     expect(calls.incremental).toHaveBeenLastCalledWith(expect.objectContaining({ isBlocked: true }));
   });
 
+  it('allows the canonical incremental render when Full Edit ended before runtime became ready', () => {
+    const progress = { active: true };
+    const { lifecycle, calls } = createLifecycle(progress);
+    const fullEditUiState = {
+      active: true,
+      documentKey: 'main',
+      revision: 3,
+      phase: 'finalizing',
+      reason: 'initial-example',
+    } as any;
+
+    lifecycle.syncRender(input({ fullEditUiState, renderRuntimeReady: false }));
+    expect(calls.attach).toHaveLastReturnedWith({ kind: 'not-started' });
+    lifecycle.settle({ ...fullEditUiState, phase: 'settled' });
+
+    progress.active = false;
+    lifecycle.syncRender(input({
+      fullEditUiState: { ...fullEditUiState, active: false, phase: 'idle' },
+      renderRuntimeReady: true,
+    }));
+
+    expect(calls.incremental).toHaveBeenLastCalledWith(expect.objectContaining({
+      hasRenderRuntime: true,
+      isBlocked: false,
+    }));
+  });
+
   it('keeps JSON block rendering mutually exclusive with incremental rendering', () => {
     const progress = { active: false };
     const { lifecycle, calls } = createLifecycle(progress);
@@ -81,7 +113,7 @@ describe('Graph View Runtime lifecycle', () => {
   it('settles progress and minimap through one runtime lifecycle', () => {
     const progress = { active: true };
     const { lifecycle, calls } = createLifecycle(progress);
-    lifecycle.settle({ active: true, documentKey: 'main', revision: 3, phase: 'settled' } as any, 'main');
+    lifecycle.settle({ active: true, documentKey: 'main', revision: 3, phase: 'settled' } as any);
 
     expect(calls.cleanup).toHaveBeenCalledWith('settled', expect.any(Function));
     const task = calls.cleanup.mock.calls[0][1] as () => void;

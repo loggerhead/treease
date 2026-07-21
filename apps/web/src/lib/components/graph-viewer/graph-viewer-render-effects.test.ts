@@ -120,7 +120,7 @@ describe('graph-viewer render effects JSON block scheduling', () => {
     const deps = createDeps();
     const effects = createGraphViewerRenderEffects(deps);
 
-    effects.maybeAttachFullEditSession(
+    const ownership = effects.maybeAttachFullEditSession(
       {
         active: true,
         sessionId: 'session-1',
@@ -152,6 +152,40 @@ describe('graph-viewer render effects JSON block scheduling', () => {
       text: '{"hello":"world"}',
       revision: 2,
     });
+    expect(ownership).toEqual({ kind: 'started', documentKey: 'doc-1', revision: 2 });
+  });
+
+  it('does not claim Full Edit graph ownership before the render runtime is ready', () => {
+    const deps = createDeps();
+    const effects = createGraphViewerRenderEffects(deps);
+
+    const ownership = effects.maybeAttachFullEditSession(
+      {
+        active: true,
+        sessionId: 'session-1',
+        ownerKey: 'owner-1',
+        documentKey: 'doc-1',
+        revision: 2,
+        streamSeq: 1,
+        inputByteLength: 12,
+        modelVersionId: 3,
+        byteLength: 12,
+        language: 'json',
+        phase: 'finalizing',
+        sessionKind: 'full-edit',
+        transportKind: 'memory',
+        reason: 'initial-example',
+      },
+      {
+        hasRenderRuntime: false,
+        documentKey: 'doc-1',
+        language: 'json',
+        sourceText: '{"hello":"world"}',
+      },
+    );
+
+    expect(ownership).toEqual({ kind: 'not-started' });
+    expect(deps.renderDocumentGraph).not.toHaveBeenCalled();
   });
 
   it('does not reattach full-edit render when only session transport identity changes', () => {
@@ -236,7 +270,7 @@ describe('graph-viewer render effects JSON block scheduling', () => {
       language: 'json',
       sourceText: '',
     });
-    effects.maybeAttachFullEditSession(fullEditUiState, {
+    const ownership = effects.maybeAttachFullEditSession(fullEditUiState, {
       hasRenderRuntime: true,
       documentKey: 'doc-1',
       language: 'json',
@@ -251,6 +285,7 @@ describe('graph-viewer render effects JSON block scheduling', () => {
       text: '{"object":{},"table_without_header":["a","b","c"]}',
       revision: 2,
     });
+    expect(ownership).toEqual({ kind: 'started', documentKey: 'doc-1', revision: 2 });
   });
 
   it('attaches file-import streaming to the external document job session without starting a text job', () => {
@@ -273,7 +308,7 @@ describe('graph-viewer render effects JSON block scheduling', () => {
       reason: 'drop-file' as const,
     };
 
-    effects.maybeAttachFullEditSession(fullEditUiState, {
+    const ownership = effects.maybeAttachFullEditSession(fullEditUiState, {
       hasRenderRuntime: true,
       documentKey: 'doc-file',
       language: 'json',
@@ -303,6 +338,7 @@ describe('graph-viewer render effects JSON block scheduling', () => {
       revision: 5,
     });
     expect(deps.renderDocumentGraph).not.toHaveBeenCalled();
+    expect(ownership).toEqual({ kind: 'started', documentKey: 'doc-file', revision: 5 });
   });
 
   it('does not start an incremental text job when source text catches up after external file graph final', () => {

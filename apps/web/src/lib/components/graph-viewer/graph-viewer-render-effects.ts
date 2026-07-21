@@ -4,6 +4,7 @@ import {
   type FullEditExternalRenderSessionRef,
 } from '../../graph-stream/full-edit-render-authority';
 import type { FullEditUiState, JsonBlockSelection } from '../../store/full-edit-ui-store';
+import type { FullEditGraphRenderOwnership } from './graph-view-runtime-lifecycle';
 
 type RenderDocumentGraph = (input: {
   kind: 'incremental' | 'full-edit';
@@ -74,14 +75,28 @@ export function createGraphViewerRenderEffects(deps: RenderEffectsDeps) {
   function maybeAttachFullEditSession(
     fullEditUiState: FullEditUiState | null | undefined,
     snapshot: FullEditSessionSnapshot,
-  ): void {
+  ): FullEditGraphRenderOwnership {
     const documentKey = fullEditUiState?.documentKey ?? snapshot.documentKey;
     const language = fullEditUiState?.language || snapshot.language;
     const renderSignature = `${documentKey}|${fullEditUiState?.revision ?? -1}|${language}|${snapshot.sourceText}`;
-    if (!snapshot.hasRenderRuntime || snapshot.documentKey === '' || fullEditUiState?.active !== true) return;
-    if (fullEditUiState.phase === 'preparing' || fullEditUiState.phase === 'idle') return;
+    const ownership = {
+      kind: 'started',
+      documentKey,
+      revision: fullEditUiState?.revision ?? -1,
+    } as const;
+    if (snapshot.documentKey === '' || fullEditUiState?.active !== true) return { kind: 'not-started' };
+    if (fullEditUiState.phase === 'preparing' || fullEditUiState.phase === 'idle') return { kind: 'not-started' };
     if (fullEditUiState.transportKind === 'file') {
-      if (!fullEditUiState.sessionId) return;
+      if (!fullEditUiState.sessionId) return { kind: 'not-started' };
+      if (
+        externalFullEditRenderAuthority.hasActiveRender(documentKey, fullEditUiState.revision, language) ||
+        externalFullEditRenderAuthority.hasCompletedRender(documentKey, fullEditUiState.revision, language)
+      ) {
+        return ownership;
+      }
+      // Without a ready View Runtime there is no graph request to own; the lifecycle must leave
+      // the revision available to the canonical incremental path once Full Edit ends.
+      if (!snapshot.hasRenderRuntime) return { kind: 'not-started' };
       deps.markGraphRequested({
         documentKey,
         revision: fullEditUiState.revision,
@@ -93,7 +108,7 @@ export function createGraphViewerRenderEffects(deps: RenderEffectsDeps) {
         language,
         revision: fullEditUiState.revision,
       });
-      if (!externalRender) return;
+      if (!externalRender) return { kind: 'not-started' };
       void deps
         .attachFullEditDocumentJobSession(externalRender)
         .then((result) => {
@@ -105,9 +120,11 @@ export function createGraphViewerRenderEffects(deps: RenderEffectsDeps) {
           externalFullEditRenderAuthority.release(externalRender);
           deps.onStreamingRenderError(error);
         });
-      return;
+      return ownership;
     }
-    if (renderSignature === lastFullEditRenderSignature) return;
+    if (renderSignature === lastFullEditRenderSignature) return ownership;
+    // Do not record ownership for a request that cannot reach the View Runtime yet.
+    if (!snapshot.hasRenderRuntime) return { kind: 'not-started' };
     lastFullEditRenderSignature = renderSignature;
     deps.markGraphRequested({
       documentKey,
@@ -121,6 +138,7 @@ export function createGraphViewerRenderEffects(deps: RenderEffectsDeps) {
       text: snapshot.sourceText,
       revision: fullEditUiState.revision,
     }).catch(deps.onStreamingRenderError);
+    return ownership;
   }
 
   function maybeRenderIncremental(snapshot: IncrementalRenderSnapshot): void {

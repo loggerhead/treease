@@ -1146,7 +1146,7 @@
       renderConfig,
     });
   }
-  $: graphViewRuntimeLifecycle.settle($fullEditUiState, documentKeyValue);
+  $: graphViewRuntimeLifecycle.settle($fullEditUiState);
 
   $: {
     const graphHighlight = $activeTempModel?.graphHighlight ?? null;

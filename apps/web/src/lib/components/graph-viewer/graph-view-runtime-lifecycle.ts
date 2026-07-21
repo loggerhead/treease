@@ -36,6 +36,10 @@ export type GraphViewRuntimeRenderGuard = {
   mode?: 'committed' | 'streaming' | 'json-block';
 };
 
+export type FullEditGraphRenderOwnership =
+  | { kind: 'not-started' }
+  | { kind: 'started'; documentKey: string; revision: number };
+
 export function isGraphViewRuntimeRenderCurrent(
   guard: GraphViewRuntimeRenderGuard | null,
   input: {
@@ -59,7 +63,10 @@ type GraphViewRuntimeLifecycleDeps = {
   setLastAutoOffset: (value: { x: number; y: number } | null) => void;
   isFullEditProgressActive: () => boolean;
   completeStreamProgress: () => void;
-  attachFullEditSession: (state: FullEditUiState | null | undefined, snapshot: FullEditRenderSnapshot) => void;
+  attachFullEditSession: (
+    state: FullEditUiState | null | undefined,
+    snapshot: FullEditRenderSnapshot,
+  ) => FullEditGraphRenderOwnership;
   renderJsonBlock: (selection: JsonBlockSelection | null, hasRenderRuntime: boolean) => void;
   renderIncremental: (snapshot: IncrementalRenderSnapshot) => void;
   scheduleFullEditCleanup: (kind: 'settled' | 'idle', task: () => void) => void;
@@ -74,9 +81,7 @@ type GraphViewRuntimeLifecycleDeps = {
  */
 export function createGraphViewRuntimeLifecycle(deps: GraphViewRuntimeLifecycleDeps) {
   let lastFullEditProgressActive = false;
-  let lastFullEditIncrementalActive = false;
-  let lastActiveFullEditDocumentKey = '';
-  let lastActiveFullEditRevision = -1;
+  let lastActiveFullEditOwnership: FullEditGraphRenderOwnership = { kind: 'not-started' };
   let lastFullEditHandledDocumentKey = '';
   let lastFullEditHandledRevision = -1;
 
@@ -87,27 +92,29 @@ export function createGraphViewRuntimeLifecycle(deps: GraphViewRuntimeLifecycleD
     if (lastFullEditProgressActive && !fullEditProgressActive) {
       deps.completeStreamProgress();
     }
-    if (fullEditProgressActive) {
-      lastActiveFullEditDocumentKey = state?.documentKey ?? input.documentKey;
-      lastActiveFullEditRevision = state?.revision ?? input.editorRevision;
-    }
-    lastFullEditProgressActive = fullEditProgressActive;
-
     if (state?.active && state.phase === 'streaming' && input.lastAutoOffset != null && deps.fullBuildReasons.has(state.reason)) {
       deps.setLastAutoOffset(null);
     }
-    deps.attachFullEditSession(state, {
+    const fullEditOwnership = deps.attachFullEditSession(state, {
       hasRenderRuntime: input.renderRuntimeReady,
       documentKey: input.documentKey,
       language: input.language,
       sourceText: input.sourceText,
     });
 
-    if (lastFullEditIncrementalActive && !fullEditProgressActive) {
-      lastFullEditHandledDocumentKey = lastActiveFullEditDocumentKey || input.documentKey;
-      lastFullEditHandledRevision = lastActiveFullEditRevision >= 0 ? lastActiveFullEditRevision : input.editorRevision;
+    if (fullEditProgressActive) {
+      // UI activity alone can precede Leafer readiness; only an actual graph render owner may suppress
+      // the same revision's canonical incremental render after Full Edit ends.
+      lastActiveFullEditOwnership = fullEditOwnership;
     }
-    lastFullEditIncrementalActive = fullEditProgressActive;
+    if (lastFullEditProgressActive && !fullEditProgressActive) {
+      if (lastActiveFullEditOwnership.kind === 'started') {
+        lastFullEditHandledDocumentKey = lastActiveFullEditOwnership.documentKey;
+        lastFullEditHandledRevision = lastActiveFullEditOwnership.revision;
+      }
+      lastActiveFullEditOwnership = { kind: 'not-started' };
+    }
+    lastFullEditProgressActive = fullEditProgressActive;
 
     const fullEditHandled =
       lastFullEditHandledDocumentKey === input.documentKey && lastFullEditHandledRevision === input.editorRevision;
@@ -123,11 +130,9 @@ export function createGraphViewRuntimeLifecycle(deps: GraphViewRuntimeLifecycleD
     });
   }
 
-  function settle(state: FullEditUiState | null | undefined, documentKey: string): void {
+  function settle(state: FullEditUiState | null | undefined): void {
     if (!state?.active) return;
     if (state.phase === 'settled') {
-      lastFullEditHandledDocumentKey = state.documentKey ?? documentKey;
-      lastFullEditHandledRevision = state.revision;
       deps.scheduleFullEditCleanup('settled', () => {
         deps.completeStreamProgress();
         deps.updateMinimap();
@@ -143,9 +148,7 @@ export function createGraphViewRuntimeLifecycle(deps: GraphViewRuntimeLifecycleD
 
   function reset(): void {
     lastFullEditProgressActive = false;
-    lastFullEditIncrementalActive = false;
-    lastActiveFullEditDocumentKey = '';
-    lastActiveFullEditRevision = -1;
+    lastActiveFullEditOwnership = { kind: 'not-started' };
     lastFullEditHandledDocumentKey = '';
     lastFullEditHandledRevision = -1;
   }
