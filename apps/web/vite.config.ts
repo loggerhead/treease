@@ -2,6 +2,7 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadEnv } from 'vite';
+import type { Plugin } from 'vite';
 import { defineConfig } from 'vite-plus';
 import { sveltekit } from '@sveltejs/kit/vite';
 import tailwindcss from '@tailwindcss/vite';
@@ -23,6 +24,26 @@ const wdioPluginAlias = process.env.TREEASE_WDIO_TEST === '1'
       find: 'virtual:wdio-plugin',
       replacement: path.resolve(configDir, 'src/lib/test-bridge/wdio-plugin.ts'),
     }];
+
+// adapter-static emits route HTML files, while E2E and deployed SPA entrypoints use extensionless URLs.
+// Rewrite these entrypoints before Vite's static middleware so --outDir cannot remove the route contract.
+const previewRouteFallback: Plugin = {
+  name: 'treease-preview-route-fallback',
+  configurePreviewServer(server) {
+    server.middlewares.use((request, _response, next) => {
+      const url = new URL(request.url ?? '/', 'http://127.0.0.1');
+      const fallback = {
+        '/': '/index.html',
+        '/editor': '/editor.html',
+      }[url.pathname];
+      if (fallback) {
+        url.pathname = fallback;
+        request.url = `${url.pathname}${url.search}`;
+      }
+      next();
+    });
+  },
+};
 
 // 仅接受正整数覆盖，避免 benchmark 时把非法字符串静默带进构建产物。
 function readPositiveIntEnv(name: string, fallback: number): number {
@@ -63,6 +84,7 @@ export default defineConfig(({ mode }) => {
     plugins: [
       sveltekit(),
       tailwindcss(),
+      previewRouteFallback,
       ...(bundleAnalyzeEnabled
         ? [
             analyzer({

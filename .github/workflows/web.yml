@@ -54,24 +54,7 @@ jobs:
           test -s build/editor.html
         working-directory: ${{ github.workspace }}/apps/web
       - name: Verify E2E preview routes
-        run: |
-          pnpm serve:e2e > "$RUNNER_TEMP/treease-e2e-preview.log" 2>&1 &
-          server_pid=$!
-          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
-          for attempt in {1..30}; do
-            if node -e "fetch('http://127.0.0.1:4173/editor').then((response) => { if (!response.ok) process.exit(1) }).catch(() => process.exit(1))"; then
-              break
-            fi
-            sleep 1
-          done
-          node - <<'NODE'
-          for (const route of ['/', '/editor', '/editor.html']) {
-            const response = await fetch(`http://127.0.0.1:4173${route}`);
-            console.log(`${route}: ${response.status}`);
-            if (!response.ok) process.exitCode = 1;
-          }
-          NODE
-          cat "$RUNNER_TEMP/treease-e2e-preview.log"
+        run: pnpm verify:e2e-preview
         working-directory: ${{ github.workspace }}/apps/web
       - name: Detect Playwright version
         id: playwright-version
@@ -144,7 +127,7 @@ jobs:
             apps/web/build
             apps/web/.svelte-kit/output/client
             apps/web/.svelte-kit/output/server
-          key: web-e2e-build-${{ runner.os }}-${{ hashFiles('apps/web/package.json', 'apps/web/pnpm-lock.yaml', 'apps/web/src/**', 'apps/web/static/**', 'apps/web/scripts/**', 'apps/web/svelte.config.js', 'apps/web/vite.config.ts', 'apps/web/tsconfig.json', 'scripts/release-metadata.mjs', 'packages/core/Cargo.toml', 'packages/core/Cargo.lock', 'packages/core/src/**', 'packages/core/wasm/**', 'packages/core/build.rs') }}
+          key: web-e2e-build-${{ runner.os }}-${{ hashFiles('apps/web/package.json', 'apps/web/pnpm-lock.yaml', 'apps/web/.env.test', 'apps/web/src/**', 'apps/web/static/**', 'apps/web/scripts/**', 'apps/web/svelte.config.js', 'apps/web/vite.config.ts', 'apps/web/tsconfig.json', 'scripts/release-metadata.mjs', 'packages/core/Cargo.toml', 'packages/core/Cargo.lock', 'packages/core/src/**', 'packages/core/wasm/**', 'packages/core/build.rs') }}
       - name: Build E2E artifact
         if: steps.e2e-build-cache.outputs.cache-hit != 'true'
         run: pnpm build:e2e
