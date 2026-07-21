@@ -1,6 +1,6 @@
 // Responsibility: GraphViewer viewport geometry helpers for center, zoom scale, bounds, intersection, and applyZoom.
-import type { App as LeaferApp, Box } from 'leafer-ui';
-import type { GraphBoxArgs, GraphNode } from '../../graph/graph-viewer-render';
+import type { App as LeaferApp, Box } from "leafer-ui";
+import type { GraphBoxArgs, GraphNode } from "../../graph/graph-viewer-render";
 
 export type LeaferZoomLayer = {
   x?: number;
@@ -34,7 +34,10 @@ export function getViewportCenter(container: HTMLElement | null): { x: number; y
   return { x: rect.width / 2, y: rect.height / 2 };
 }
 
-export function getZoomScale(layer: LeaferZoomLayer | null | undefined): { scaleX: number; scaleY: number } {
+export function getZoomScale(layer: LeaferZoomLayer | null | undefined): {
+  scaleX: number;
+  scaleY: number;
+} {
   const scaleX = layer?.scaleX ?? layer?.__?.scaleX ?? 1;
   const scaleY = layer?.scaleY ?? layer?.__?.scaleY ?? 1;
   return { scaleX, scaleY };
@@ -83,12 +86,17 @@ export function clampPanOffsetToGraphBounds(
   };
 }
 
-export function getViewportBounds(container: HTMLElement | null, leafer: (LeaferApp & { zoomLayer?: LeaferZoomLayer }) | null): ViewportBounds | null {
-  if (!container || !leafer?.zoomLayer) return null;
+export function getViewportBounds(
+  container: HTMLElement | null,
+  leafer: (LeaferApp & { zoomLayer?: LeaferZoomLayer }) | null,
+): ViewportBounds | null {
+  if (!container || typeof container.getBoundingClientRect !== "function" || !leafer?.zoomLayer)
+    return null;
   const rect = container.getBoundingClientRect();
   const layer = leafer.zoomLayer;
   const { scaleX, scaleY } = getZoomScale(layer);
-  if (!Number.isFinite(scaleX) || !Number.isFinite(scaleY) || scaleX <= 0 || scaleY <= 0) return null;
+  if (!Number.isFinite(scaleX) || !Number.isFinite(scaleY) || scaleX <= 0 || scaleY <= 0)
+    return null;
   const offsetX = layer.x ?? 0;
   const offsetY = layer.y ?? 0;
   return {
@@ -100,7 +108,12 @@ export function getViewportBounds(container: HTMLElement | null, leafer: (Leafer
 }
 
 export function isPointInBounds(point: { x: number; y: number }, bounds: ViewportBounds): boolean {
-  return point.x >= bounds.left && point.x <= bounds.right && point.y >= bounds.top && point.y <= bounds.bottom;
+  return (
+    point.x >= bounds.left &&
+    point.x <= bounds.right &&
+    point.y >= bounds.top &&
+    point.y <= bounds.bottom
+  );
 }
 
 export function doesBoxIntersectBounds(box: GraphBoxArgs, bounds: ViewportBounds): boolean {
@@ -123,7 +136,7 @@ export function applyZoom(
   const layer = leafer.zoomLayer as LeaferZoomLayer;
   const center = getViewportCenter(container);
   const { scaleX } = getZoomScale(layer);
-  const validScale = typeof getValidScale === 'function' ? getValidScale(changeScale) : changeScale;
+  const validScale = typeof getValidScale === "function" ? getValidScale(changeScale) : changeScale;
   const nextScale = scaleX * validScale;
   if (!Number.isFinite(nextScale) || nextScale <= 0) return;
   const currentX = layer.x ?? 0;

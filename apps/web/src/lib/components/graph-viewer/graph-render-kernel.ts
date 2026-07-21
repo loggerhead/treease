@@ -1,5 +1,5 @@
 // Responsibility: GraphViewer scene-rendering kernel for node/edge drawing, edge filtering, and render-config application.
-import type { GraphViewerConfig } from '../../settings/ui-settings';
+import type { GraphViewerConfig } from "../../settings/ui-settings";
 import {
   createCellText,
   drawSimpleNode,
@@ -7,7 +7,7 @@ import {
   type DrawContext,
   type GraphEdge,
   type GraphNode,
-} from '../../graph/graph-viewer-render';
+} from "../../graph/graph-viewer-render";
 
 type PenLike = {
   setStyle: (style: { stroke: string; strokeWidth: number }) => void;
@@ -20,6 +20,8 @@ type PenLike = {
     toX: number,
     toY: number,
   ) => void;
+  remove?: () => void;
+  destroy?: () => void;
 };
 
 type PenCtorLike = new () => PenLike;
@@ -35,19 +37,38 @@ type RenderGraphEdgesInput = {
   layer: LayerLike | null;
   PenCtor: PenCtorLike | null;
   renderConfig: GraphViewerConfig;
+  edgeRenderByKey?: Map<string, PenLike>;
 };
+
+function graphEdgeKey(edge: GraphEdge): string {
+  const curve = edge.bezierArgs;
+  return [
+    edge.fromRenderHandle,
+    edge.fromRow,
+    edge.toRenderHandle,
+    edge.toRow,
+    curve.fromX,
+    curve.fromY,
+    curve.c1x,
+    curve.c1y,
+    curve.c2x,
+    curve.c2y,
+    curve.toX,
+    curve.toY,
+  ].join(":");
+}
 
 type RenderGraphNodesInput = {
   nodes: GraphNode[];
   drawContext: DrawContext;
   nodeBoxMap: Map<number, any>;
-  registerMetaClickTarget?: (target: any, cell: GraphNode['meta'], kind: 'meta') => void;
+  registerMetaClickTarget?: (target: any, cell: GraphNode["meta"], kind: "meta") => void;
 };
 
 type RenderGraphNodeInput = {
   node: GraphNode;
   drawContext: DrawContext;
-  registerMetaClickTarget?: (target: any, cell: GraphNode['meta'], kind: 'meta') => void;
+  registerMetaClickTarget?: (target: any, cell: GraphNode["meta"], kind: "meta") => void;
   showMeta?: boolean;
 };
 
@@ -59,31 +80,52 @@ export type RenderGraphNodeResult = {
 
 export function renderGraphEdges(input: RenderGraphEdgesInput): GraphEdge[] {
   if (!input.layer || !input.PenCtor) return [];
-  input.layer.removeAll(true);
   const nodeMap = new Map(input.nodes.map((node) => [node.renderHandle, node]));
+  if (!input.edgeRenderByKey) input.layer.removeAll(true);
+  const renderedEdges: GraphEdge[] = [];
+  const desiredKeys = new Set<string>();
   input.edges.forEach((edge) => {
     const from = nodeMap.get(edge.fromRenderHandle);
     const to = nodeMap.get(edge.toRenderHandle);
     if (!from || !to) return;
+    const key = graphEdgeKey(edge);
+    desiredKeys.add(key);
+    renderedEdges.push(edge);
+    if (input.edgeRenderByKey?.has(key)) return;
     const curve = edge.bezierArgs;
     const pen = new input.PenCtor();
     pen.setStyle({ stroke: input.renderConfig.colors.edge, strokeWidth: 1 });
     pen.moveTo(curve.fromX, curve.fromY);
     pen.bezierCurveTo(curve.c1x, curve.c1y, curve.c2x, curve.c2y, curve.toX, curve.toY);
     input.layer.add(pen);
+    input.edgeRenderByKey?.set(key, pen);
   });
-  return input.edges;
+  if (input.edgeRenderByKey) {
+    for (const [key, pen] of input.edgeRenderByKey) {
+      if (desiredKeys.has(key)) continue;
+      pen.remove?.();
+      pen.destroy?.();
+      input.edgeRenderByKey.delete(key);
+    }
+  }
+  return renderedEdges;
 }
 
 export function renderGraphNode(input: RenderGraphNodeInput): RenderGraphNodeResult {
   const metaText =
     input.showMeta === false
       ? null
-      : createCellText(input.drawContext, input.drawContext.nodeLayer, input.node.meta, 'meta', input.node.kind);
+      : createCellText(
+          input.drawContext,
+          input.drawContext.nodeLayer,
+          input.node.meta,
+          "meta",
+          input.node.kind,
+        );
   if (metaText) {
-    input.registerMetaClickTarget?.(metaText, input.node.meta, 'meta');
+    input.registerMetaClickTarget?.(metaText, input.node.meta, "meta");
   }
-  if (input.node.kind === 'table' && input.node.table) {
+  if (input.node.kind === "table" && input.node.table) {
     const result = drawTableNode(input.drawContext, input.node);
     return {
       metaText,

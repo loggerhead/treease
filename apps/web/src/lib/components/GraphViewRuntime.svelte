@@ -313,6 +313,7 @@
     getMoveEventName: () => (MoveEventCtor?.BEFORE_MOVE ?? MoveEventCtor?.MOVE) as string | undefined,
     getZoomEventName: () => (ZoomEventCtor?.BEFORE_ZOOM ?? ZoomEventCtor?.ZOOM) as string | undefined,
     bindPointerClick: (target, handler) => graphPointerController.bindPointerClick(target, handler),
+    updateRenderableProjection: () => graphSceneController?.updateRenderableProjection(),
     updateViewportOverlays: () => {
       graphMinimapRuntimeController.updateViewport();
     },
@@ -472,6 +473,7 @@
     ...createGraphTextLinkageRenderDeps(graphRenderState, (anchor) =>
       graphSceneController.scrollTableToRow(anchor.nodeId, anchor.rowIndex),
     ),
+    ensureNodeMaterialized: (renderHandle) => graphSceneController.ensureNodeMaterialized(renderHandle),
   });
   const clearSearchHighlight = graphTextLinkageController.clearSearchHighlight;
   const resolveTreePathByPosition = graphTextLinkageController.resolveTreePathByPosition;

@@ -1,7 +1,7 @@
 // Responsibility: control GraphViewer viewport interactions, including mouse/touch pan and zoom, centerOnNode, event binding, and state adaptation.
-import type { GraphNode } from '../../graph/graph-viewer-render';
-import type { LeaferAppLike, LeaferBox } from './model';
-import type { LeaferEventTarget } from './graph-pointer-controller';
+import type { GraphNode } from "../../graph/graph-viewer-render";
+import type { LeaferAppLike, LeaferBox } from "./model";
+import type { LeaferEventTarget } from "./graph-pointer-controller";
 import {
   GRAPH_PAN_CONSTRAINT_PADDING,
   clampPanOffsetToGraphBounds,
@@ -9,18 +9,23 @@ import {
   getZoomScale,
   type GraphWorldBounds,
   type LeaferZoomLayer,
-} from './graph-viewport-geometry';
+} from "./graph-viewport-geometry";
 
-export type { LeaferZoomLayer } from './graph-viewport-geometry';
-
+export type { LeaferZoomLayer } from "./graph-viewport-geometry";
 
 type CreateGraphViewportControllerOptions = {
   getContainer: () => HTMLDivElement | null;
-  getLeafer: () => (LeaferAppLike & { zoomLayer?: LeaferZoomLayer; getValidScale?: (scale: number) => number }) | null;
+  getLeafer: () =>
+    | (LeaferAppLike & { zoomLayer?: LeaferZoomLayer; getValidScale?: (scale: number) => number })
+    | null;
   getSuppressGraphPointerUntil: () => number;
   getMoveEventName: () => string | undefined;
   getZoomEventName: () => string | undefined;
-  bindPointerClick: (target: LeaferEventTarget, handler: (event: unknown) => void | Promise<void>) => void;
+  bindPointerClick: (
+    target: LeaferEventTarget,
+    handler: (event: unknown) => void | Promise<void>,
+  ) => void;
+  updateRenderableProjection?: () => void;
   updateViewportOverlays: () => void;
   getLastAutoOffset: () => { x: number; y: number } | null;
   setLastAutoOffset: (value: { x: number; y: number } | null) => void;
@@ -67,6 +72,7 @@ export function createGraphViewportController(options: CreateGraphViewportContro
   }
 
   function syncViewportOverlays(): void {
+    options.updateRenderableProjection?.();
     options.updateViewportOverlays();
   }
 
@@ -99,7 +105,8 @@ export function createGraphViewportController(options: CreateGraphViewportContro
     const layer = leafer.zoomLayer as LeaferZoomLayer;
     const center = getViewportCenter();
     const { scaleX } = getZoomScale(layer);
-    const validScale = typeof leafer.getValidScale === 'function' ? leafer.getValidScale(changeScale) : changeScale;
+    const validScale =
+      typeof leafer.getValidScale === "function" ? leafer.getValidScale(changeScale) : changeScale;
     const nextScale = scaleX * validScale;
     if (!Number.isFinite(nextScale) || nextScale <= 0) return;
     const currentX = layer.x ?? 0;
@@ -123,10 +130,13 @@ export function createGraphViewportController(options: CreateGraphViewportContro
     const worldLeafer = leafer as LeaferAppLike & {
       updateClientBounds?: () => void;
       clientBounds?: { x: number; y: number; width: number; height: number };
-      getClientPointByWorld?: (point: { x: number; y: number }) => { x?: number; y?: number } | null;
+      getClientPointByWorld?: (point: {
+        x: number;
+        y: number;
+      }) => { x?: number; y?: number } | null;
     };
     const highlightWorld =
-      typeof worldBox.getWorldPointByBox === 'function'
+      typeof worldBox.getWorldPointByBox === "function"
         ? worldBox.getWorldPointByBox({ x: (box.width ?? 0) / 2, y: (box.height ?? 0) / 2 })
         : null;
     const highlightWorldX = Number(highlightWorld?.x);
@@ -136,7 +146,7 @@ export function createGraphViewportController(options: CreateGraphViewportContro
     const clientBounds = worldLeafer.clientBounds;
     if (!clientBounds) return false;
     const highlightClient =
-      typeof worldLeafer.getClientPointByWorld === 'function'
+      typeof worldLeafer.getClientPointByWorld === "function"
         ? worldLeafer.getClientPointByWorld({ x: highlightWorldX, y: highlightWorldY })
         : null;
     const highlightClientX = Number(highlightClient?.x);
