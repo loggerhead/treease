@@ -1,3 +1,5 @@
+#![doc = include_str!("../README.md")]
+
 use std::env;
 
 mod args;
@@ -7,6 +9,7 @@ mod cli_io;
 mod commands;
 mod errors;
 mod execute;
+#[doc(hidden)]
 pub mod internal_metadata;
 mod parser;
 mod spec;
@@ -17,6 +20,7 @@ mod web_server;
 
 use crate::args::CliError;
 
+#[doc(hidden)]
 pub fn main() {
     let args: Vec<String> = env::args().collect();
     let exit_code = match run(&args) {
