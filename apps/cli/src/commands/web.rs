@@ -2,7 +2,7 @@ use std::fs;
 use std::io::{self, Write};
 
 use crate::args::{CliError, ParsedArgs};
-use crate::{cli_io, execute, web_assets, web_payload, web_server};
+use crate::{cli_io, execute, web_payload, web_server};
 
 pub(crate) fn run_web_command(parsed: &ParsedArgs) -> Result<i32, CliError> {
     let result = match build_web_file_source_result(parsed)? {
@@ -18,11 +18,10 @@ pub(crate) fn run_web_command(parsed: &ParsedArgs) -> Result<i32, CliError> {
             )
         }
     };
-    let assets_dir = web_assets::ensure_available()?;
-    let server = web_server::WebServer::bind(result, assets_dir)?;
+    let server = web_server::WebServer::bind(result)?;
 
     let mut stdout = io::stdout();
-    writeln!(stdout, "{}", server.graph_url())?;
+    writeln!(stdout, "{}", server.editor_url())?;
     stdout.flush()?;
 
     server.serve_forever()?;

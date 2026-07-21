@@ -3,7 +3,7 @@ use crate::cli_io::input::{guess_input_format, prepare_streaming_inputs, resolve
 use crate::commands::metadata::execute_metadata_command;
 use crate::commands::run::should_render_root_help_on_empty_interactive_invocation;
 use crate::execute::execute_command;
-use crate::{errors, parser, web_assets, web_payload, web_server};
+use crate::{errors, parser, web_payload, web_server};
 use std::fs;
 use std::io::{Read, Write};
 use std::net::TcpStream;
@@ -36,14 +36,6 @@ fn request_web_server_once(state: web_server::WebServerState, target: &str) -> V
 }
 
 fn test_web_server_state() -> web_server::WebServerState {
-    let assets_dir = test_asset_dir(&[
-        ("index.html", b"<html><body>graph</body></html>".as_slice()),
-        ("_app/app.js", b"console.log('graph')".as_slice()),
-        (
-            "_app/immutable/assets/core.testhash.wasm",
-            b"\0asmtest".as_slice(),
-        ),
-    ]);
     web_server::WebServerState {
         token: "test-token".to_string(),
         result: web_server::WebServerResult::text(
@@ -52,7 +44,6 @@ fn test_web_server_state() -> web_server::WebServerState {
             "json".to_string(),
             r#"{"ok":true}"#.to_string(),
         ),
-        assets_dir,
     }
 }
 
@@ -90,43 +81,6 @@ fn test_asset_dir(files: &[(&str, &[u8])]) -> PathBuf {
 }
 
 #[test]
-fn embedded_assets_lookup_normalizes_graph_route_to_index() {
-    let asset_dir = test_asset_dir(&[
-        ("index.html", b"<html></html>".as_slice()),
-        ("_app/app.js", b"console.log(1)".as_slice()),
-    ]);
-
-    let index = web_assets::find_asset(&asset_dir, "/cli/graph")
-        .expect("graph route should use index.html");
-    assert!(index.path.ends_with("index.html"));
-
-    let graph_with_query = web_assets::find_asset(&asset_dir, "/cli/graph?token=x")
-        .expect("graph route with query should use index.html");
-    assert!(graph_with_query.path.ends_with("index.html"));
-
-    let script = web_assets::find_asset(&asset_dir, "/_app/app.js?hash=1")
-        .expect("static asset should resolve directly");
-    assert_eq!(script.content_type, "text/javascript; charset=utf-8");
-
-    assert!(
-        web_assets::find_asset(&asset_dir, "/missing").is_none(),
-        "unknown extensionless route should not fallback"
-    );
-    assert!(
-        web_assets::find_asset(&asset_dir, "/api/status").is_none(),
-        "api-looking route should not fallback"
-    );
-    assert!(
-        web_assets::find_asset(&asset_dir, "/missing.txt").is_none(),
-        "missing static asset should not fallback"
-    );
-    assert!(
-        web_assets::find_asset(&asset_dir, "/cli/graph/anything").is_none(),
-        "graph fallback should not cover unknown subpaths"
-    );
-}
-
-#[test]
 fn web_server_serves_result_only_with_matching_token() {
     let missing = request_web_server_once(test_web_server_state(), "/cli/result");
     assert_response_contains(&missing, "HTTP/1.1 403 Forbidden");
@@ -152,6 +106,7 @@ fn web_server_serves_cli_metadata_and_source_separately() {
     let meta = request_web_server_once(test_web_server_state(), "/cli/meta?token=test-token");
     assert_response_contains(&meta, "HTTP/1.1 200 OK");
     assert_response_contains(&meta, "Content-Type: application/json; charset=utf-8");
+    assert_response_contains(&meta, "Access-Control-Allow-Origin: *");
     assert_response_contains(&meta, r#""source_url":"/cli/source?token=test-token""#);
 
     let source = request_web_server_once(test_web_server_state(), "/cli/source?token=test-token");
@@ -162,7 +117,6 @@ fn web_server_serves_cli_metadata_and_source_separately() {
 
 #[test]
 fn web_server_streams_file_source() {
-    let assets_dir = test_asset_dir(&[("index.html", b"<html></html>".as_slice())]);
     let source_dir = test_asset_dir(&[("input.json", br#"{"streamed":true}"#.as_slice())]);
     let source_path = source_dir.join("input.json");
     let state = web_server::WebServerState {
@@ -173,7 +127,6 @@ fn web_server_streams_file_source() {
             "json".to_string(),
             source_path,
         ),
-        assets_dir,
     };
 
     let source = request_web_server_once(state, "/cli/source?token=test-token");
@@ -184,116 +137,13 @@ fn web_server_streams_file_source() {
 }
 
 #[test]
-fn web_server_serves_graph_route_from_index_asset() {
-    let missing = request_web_server_once(test_web_server_state(), "/cli/graph");
-    assert_response_contains(&missing, "HTTP/1.1 403 Forbidden");
-
-    let wrong = request_web_server_once(test_web_server_state(), "/cli/graph?token=wrong");
-    assert_response_contains(&wrong, "HTTP/1.1 403 Forbidden");
-
-    let graph = request_web_server_once(test_web_server_state(), "/cli/graph?token=test-token");
-    assert_response_contains(&graph, "HTTP/1.1 200 OK");
-    assert_response_contains(&graph, "Content-Type: text/html; charset=utf-8");
-    assert_eq!(response_body(&graph), b"<html><body>graph</body></html>");
-
-    let static_asset = request_web_server_once(test_web_server_state(), "/_app/app.js");
-    assert_response_contains(&static_asset, "HTTP/1.1 200 OK");
-    assert_response_contains(
-        &static_asset,
-        "Content-Type: text/javascript; charset=utf-8",
-    );
-    assert_eq!(response_body(&static_asset), b"console.log('graph')");
-
-    let root = request_web_server_once(test_web_server_state(), "/");
-    assert_response_contains(&root, "HTTP/1.1 200 OK");
-    assert_eq!(response_body(&root), b"<html><body>graph</body></html>");
-
-    let direct_index = request_web_server_once(test_web_server_state(), "/index.html");
-    assert_response_contains(&direct_index, "HTTP/1.1 200 OK");
-    assert_eq!(
-        response_body(&direct_index),
-        b"<html><body>graph</body></html>"
-    );
-
-    let wasm_asset = request_web_server_once(
-        test_web_server_state(),
-        "/_app/immutable/assets/core.testhash.wasm",
-    );
-    assert_response_contains(&wasm_asset, "HTTP/1.1 200 OK");
-    assert_response_contains(&wasm_asset, "Content-Type: application/wasm");
-    assert_eq!(response_body(&wasm_asset), b"\0asmtest");
-
-    let graph_subpath = request_web_server_once(
-        test_web_server_state(),
-        "/cli/graph/anything?token=test-token",
-    );
-    assert_response_contains(&graph_subpath, "HTTP/1.1 404 Not Found");
-
-    let unknown = request_web_server_once(test_web_server_state(), "/missing");
-    assert_response_contains(&unknown, "HTTP/1.1 404 Not Found");
-}
-
-#[test]
-fn web_asset_manifest_requires_matching_index_asset_version() {
-    let manifest = serde_json::json!({
-        "version": web_assets::WEB_ASSET_VERSION,
-        "assetVersion": "1761465123456",
-        "files": [
-            { "path": "index.html" },
-            { "path": "_app/app.js" }
-        ]
-    });
-    let asset_dir = test_asset_dir(&[
-        (
-            "index.html",
-            br#"<html data-treease-cli-asset-version="1761465123456"></html>"#,
-        ),
-        ("_app/app.js", b"console.log(1)".as_slice()),
-    ]);
-    fs::write(
-        asset_dir.join("manifest.json"),
-        serde_json::to_vec(&manifest).expect("manifest should serialize"),
-    )
-    .expect("manifest should write");
-
-    assert!(
-        web_assets::cache_is_complete_for_test(&asset_dir),
-        "matching assetVersion should be accepted"
-    );
-
-    fs::write(
-        asset_dir.join("index.html"),
-        br#"<html data-treease-cli-asset-version="1761465999999"></html>"#,
-    )
-    .expect("index should rewrite");
-
-    assert!(
-        !web_assets::cache_is_complete_for_test(&asset_dir),
-        "mismatched assetVersion should invalidate cache"
-    );
-}
-
-#[test]
-fn web_asset_index_parser_extracts_asset_version_from_html_attribute() {
-    let html = br#"<!doctype html>
-<html lang="en" data-treease-cli-asset-version="1761465123456">
-  <body></body>
-</html>
-"#;
-    assert_eq!(
-        web_assets::read_index_asset_version_for_test(html),
-        Some("1761465123456".to_string())
-    );
-    assert_eq!(
-        web_assets::read_index_asset_version_for_test(
-            br#"<html data-treease-cli-asset-version='abc-123'></html>"#
-        ),
-        Some("abc-123".to_string())
-    );
-    assert_eq!(
-        web_assets::read_index_asset_version_for_test(br#"<html lang="en"></html>"#),
-        None
-    );
+fn web_server_graph_url_reuses_remote_editor_and_local_source() {
+    let server =
+        web_server::WebServer::bind_for_test(test_web_server_state()).expect("server should bind");
+    let editor_url = server.editor_url();
+    assert!(editor_url.starts_with("https://treease.com/editor?textUrl=http%3A%2F%2F127.0.0.1%3A"));
+    assert!(editor_url.contains("%2Fcli%2Fsource%3Ftoken%3Dtest-token"));
+    assert!(editor_url.ends_with("&lang=json&ui=editor%2Cviewer"));
 }
 
 #[test]

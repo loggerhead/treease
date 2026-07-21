@@ -2,12 +2,6 @@
 
 TREEASE_WEB_PIDS=()
 TREEASE_WEB_LAST_PID=''
-TREEASE_WEB_ASSET_SERVER_PID=''
-TREEASE_WEB_ASSET_BASE_URL=''
-TREEASE_WEB_CACHE_DIR=''
-TREEASE_WEB_ASSET_VERSION=''
-TREEASE_WEB_ASSET_RUNTIME_VERSION='1762550945000'
-TREEASE_WEB_ASSET_PORT_FILE=''
 
 cleanup_web_servers() {
   local pid
@@ -19,11 +13,6 @@ cleanup_web_servers() {
   done
   TREEASE_WEB_PIDS=()
 
-  if [[ -n "$TREEASE_WEB_ASSET_SERVER_PID" ]] && kill -0 "$TREEASE_WEB_ASSET_SERVER_PID" 2>/dev/null; then
-    kill "$TREEASE_WEB_ASSET_SERVER_PID" 2>/dev/null || true
-    wait "$TREEASE_WEB_ASSET_SERVER_PID" 2>/dev/null || true
-  fi
-  TREEASE_WEB_ASSET_SERVER_PID=''
 }
 
 start_web_file() {
@@ -31,9 +20,7 @@ start_web_file() {
   local stderr_file="$2"
   shift 2
 
-  TREEASE_WEB_ASSET_BASE_URL="$TREEASE_WEB_ASSET_BASE_URL" \
-    TREEASE_WEB_CACHE_DIR="$TREEASE_WEB_CACHE_DIR" \
-    "$TREEASE_BIN" web "$@" >"$stdout_file" 2>"$stderr_file" &
+  "$TREEASE_BIN" web "$@" >"$stdout_file" 2>"$stderr_file" &
   local pid=$!
   TREEASE_WEB_PIDS+=("$pid")
   TREEASE_WEB_LAST_PID="$pid"
@@ -46,99 +33,10 @@ start_web_stdin() {
   shift 3
 
   printf '%s' "$stdin_text" | \
-    TREEASE_WEB_ASSET_BASE_URL="$TREEASE_WEB_ASSET_BASE_URL" \
-    TREEASE_WEB_CACHE_DIR="$TREEASE_WEB_CACHE_DIR" \
     "$TREEASE_BIN" web "$@" >"$stdout_file" 2>"$stderr_file" &
   local pid=$!
   TREEASE_WEB_PIDS+=("$pid")
   TREEASE_WEB_LAST_PID="$pid"
-}
-
-prepare_web_assets() {
-  TREEASE_WEB_ASSET_VERSION="$(python3 - <<'PY'
-import pathlib
-import re
-
-cargo = pathlib.Path("Cargo.toml").read_text()
-match = re.search(r'wasm_release_date\s*=\s*"([0-9]{8})"', cargo)
-if not match:
-    raise SystemExit("missing wasm_release_date")
-print(match.group(1))
-PY
-)"
-
-  local asset_root="$TMP_DIR/web-assets"
-  local version_dir="$asset_root/$TREEASE_WEB_ASSET_VERSION"
-  local server_log="$TMP_DIR/web-assets-server.log"
-  local server_port_file="$TMP_DIR/web-assets-server.port"
-  TREEASE_WEB_CACHE_DIR="$TMP_DIR/web-cache"
-  TREEASE_WEB_ASSET_PORT_FILE="$server_port_file"
-  mkdir -p "$version_dir/_app"
-
-  cat >"$version_dir/index.html" <<EOF
-<!doctype html>
-<html data-treease-cli-asset-version="$TREEASE_WEB_ASSET_RUNTIME_VERSION">
-  <head>
-    <meta charset="utf-8" />
-    <script src="/_app/app.js"></script>
-  </head>
-  <body>graph</body>
-</html>
-EOF
-  printf 'console.log("graph")\n' >"$version_dir/_app/app.js"
-  cat >"$version_dir/manifest.json" <<EOF
-{
-  "version": "$TREEASE_WEB_ASSET_VERSION",
-  "assetVersion": "$TREEASE_WEB_ASSET_RUNTIME_VERSION",
-  "files": [
-    { "path": "index.html" },
-    { "path": "_app/app.js" },
-    { "path": "landing/hero.webp" }
-  ]
-}
-EOF
-
-  python3 - "$asset_root" "$server_log" "$server_port_file" <<'PY' &
-import contextlib
-import http.server
-import pathlib
-import socketserver
-import sys
-
-asset_root = pathlib.Path(sys.argv[1])
-log_path = pathlib.Path(sys.argv[2])
-port_path = pathlib.Path(sys.argv[3])
-
-class Handler(http.server.SimpleHTTPRequestHandler):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, directory=str(asset_root), **kwargs)
-
-with log_path.open("w", encoding="utf-8") as log_file:
-    with contextlib.redirect_stderr(log_file), contextlib.redirect_stdout(log_file):
-        class Server(socketserver.TCPServer):
-            allow_reuse_address = True
-
-        with Server(("127.0.0.1", 0), Handler) as httpd:
-            port_path.write_text(f"{httpd.server_address[1]}\n", encoding="utf-8")
-            httpd.serve_forever()
-PY
-  TREEASE_WEB_ASSET_SERVER_PID=$!
-  for _ in {1..100}; do
-    if [[ -s "$server_port_file" ]]; then
-      local server_port
-      server_port="$(cat "$server_port_file")"
-      TREEASE_WEB_ASSET_BASE_URL="http://127.0.0.1:${server_port}"
-      return 0
-    fi
-    if ! kill -0 "$TREEASE_WEB_ASSET_SERVER_PID" 2>/dev/null; then
-      printf 'web asset server log:\n%s\n' "$(cat "$server_log" 2>/dev/null)" >&2
-      fail "web asset server exited before reporting its port"
-    fi
-    sleep 0.1
-  done
-
-  printf 'web asset server log:\n%s\n' "$(cat "$server_log" 2>/dev/null)" >&2
-  fail "timed out waiting for web asset server port"
 }
 
 wait_for_graph_url() {
@@ -154,7 +52,7 @@ import re
 import sys
 
 text = pathlib.Path(sys.argv[1]).read_text(errors="replace")
-match = re.search(r"http://127\.0\.0\.1:[0-9]+/cli/graph\?token=[A-Za-z0-9._~-]+", text)
+match = re.search(r"https://treease\.com/editor\?textUrl=[^&]+&lang=[^&]+&ui=editor%2Cviewer", text)
 print(match.group(0) if match else "")
 PY
 )"
@@ -177,8 +75,12 @@ PY
 
 meta_url_for_graph_url() {
   python3 - "$1" <<'PY'
+from urllib.parse import parse_qs, unquote, urlparse
 import sys
-print(sys.argv[1].replace("/cli/graph?", "/cli/meta?", 1))
+parsed = urlparse(sys.argv[1])
+query = parse_qs(parsed.query)
+source_url = unquote(query['textUrl'][0])
+print(source_url.replace('/cli/source?', '/cli/meta?', 1))
 PY
 }
 
@@ -277,11 +179,12 @@ source_url_from_meta_file() {
 import json
 import pathlib
 import sys
-from urllib.parse import urljoin
+from urllib.parse import parse_qs, unquote, urljoin, urlparse
 
 meta_file, graph_url = sys.argv[1:]
 payload = json.loads(pathlib.Path(meta_file).read_text())
-print(urljoin(graph_url, payload["source_url"]))
+parsed = urlparse(graph_url)
+print(unquote(parse_qs(parsed.query)["textUrl"][0]))
 PY
 }
 
@@ -300,10 +203,6 @@ test_web_file_result() {
   graph_url="$(wait_for_graph_url "$stdout_file" "$stderr_file" "$pid")"
   meta_url="$(meta_url_for_graph_url "$graph_url")"
 
-  fetch_url "$graph_url" "$body_file" "$status_file"
-  assert_eq 200 "$(cat "$status_file")" 'web graph URL should serve embedded index'
-  assert_contains "$(cat "$body_file")" '<!doctype html>' 'web graph URL should serve embedded web shell'
-
   fetch_url "$meta_url" "$body_file" "$status_file"
   assert_eq 200 "$(cat "$status_file")" 'web metadata should return 200 with matching token'
   assert_meta_payload "$body_file" "$input" '.foo' 'json' "$(source_path_for_meta_url "$meta_url")" 'web metadata payload should match file input'
@@ -311,10 +210,6 @@ test_web_file_result() {
   fetch_url "$source_url" "$body_file" "$status_file"
   assert_eq 200 "$(cat "$status_file")" 'web source should return 200 with matching token'
   assert_file_text "$body_file" $'1\n' 'web source should match file input'
-  assert_contains "$(cat "$stderr_file")" $'\rDownloading web assets (' 'web should refresh download progress in place'
-  assert_contains "$(cat "$stderr_file")" '_app/app.js' 'web should report downloaded asset path'
-  assert_not_contains "$(cat "$stderr_file")" 'landing/' 'web should skip landing-only assets during CLI download'
-
   wrong_url="$(wrong_token_url_for "$meta_url")"
   fetch_url "$wrong_url" "$body_file" "$status_file"
   assert_eq 403 "$(cat "$status_file")" 'web metadata should reject wrong token'
@@ -356,20 +251,16 @@ test_web_missing_file_error() {
   run_cli '' 'web' '.' "$TMP_DIR/missing.yaml"
   assert_eq 1 "$LAST_EXIT_CODE" 'web with missing file should exit 1'
   assert_contains "$LAST_STDERR" 'IO_ERROR' 'web missing file should include stable IO error code'
-  assert_not_contains "$LAST_STDERR" 'Downloading web assets' 'web missing file should fail before asset download'
+  assert_not_contains "$LAST_STDERR" 'web graph' 'web missing file should fail before starting the server'
 }
 
 test_web() {
-  prepare_web_assets
-
   test_web_file_result
   cleanup_web_servers
 
-  prepare_web_assets
   test_web_stdin_result
   cleanup_web_servers
 
-  prepare_web_assets
   test_web_multiple_files_error
 
   test_web_missing_file_error

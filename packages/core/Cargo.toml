@@ -12,14 +12,6 @@ exclude = ["**/AGENTS.md", ".config/nextest.toml"]
 keywords = ["treease", "tree-sitter", "structured-data", "yaml", "json"]
 categories = ["parser-implementations", "parsing"]
 
-[package.metadata.treease]
-# YYMMDDHH
-# YY: two-digit year
-# MM: two-digit month
-# DD: two-digit day of month
-# HH: two-digit hour in 24-hour time
-wasm_release_date = "26072109"
-
 [lib]
 path = "src/lib.rs"
 crate-type = ["cdylib", "rlib"]

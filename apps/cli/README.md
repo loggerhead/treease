@@ -15,7 +15,7 @@ treease web '.services.api' config.yaml
 - Expression evaluation over structured documents
 - Format conversion and in-place writes
 - Operator and format discovery commands
-- A downloaded-and-cached readonly local Web graph UI served by `treease web`
+- A hosted readonly Web graph UI backed by a short-lived localhost data service served by `treease web`
 
 ## Repository
 

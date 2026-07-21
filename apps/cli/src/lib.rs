@@ -12,7 +12,6 @@ mod parser;
 mod spec;
 #[cfg(test)]
 mod tests;
-mod web_assets;
 mod web_payload;
 mod web_server;
 

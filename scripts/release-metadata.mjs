@@ -11,30 +11,16 @@ export function loadCoreReleaseMetadata(rootDir = defaultRootDir) {
 
   const coreName = readTomlString(coreManifest, 'package', 'name', coreManifestPath);
   const coreVersion = readTomlString(coreManifest, 'package', 'version', coreManifestPath);
-  const coreWasmReleaseDate = readTomlString(
-    coreManifest,
-    'package.metadata.treease',
-    'wasm_release_date',
-    coreManifestPath
-  );
-
-  if (!/^\d{8}$/.test(coreWasmReleaseDate)) {
-    throw new Error(
-      `packages/core/Cargo.toml wasm_release_date must be an 8 digit string, got ${coreWasmReleaseDate}`
-    );
-  }
-
   return {
     coreName,
     coreVersion,
-    coreWasmReleaseDate,
   };
 }
 
 export function loadReleaseMetadata(rootDir = defaultRootDir) {
   const cliManifestPath = path.resolve(rootDir, 'apps', 'cli', 'Cargo.toml');
   const cliManifest = readFileSync(cliManifestPath, 'utf8');
-  const { coreName, coreVersion, coreWasmReleaseDate } = loadCoreReleaseMetadata(rootDir);
+  const { coreName, coreVersion } = loadCoreReleaseMetadata(rootDir);
   const webVersion = readPackageVersion(rootDir);
 
   if (webVersion !== coreVersion) {
@@ -45,12 +31,6 @@ export function loadReleaseMetadata(rootDir = defaultRootDir) {
 
   const cliName = readTomlString(cliManifest, 'package', 'name', cliManifestPath);
   const cliVersion = readTomlString(cliManifest, 'package', 'version', cliManifestPath);
-  const cliWasmReleaseDate = readTomlString(
-    cliManifest,
-    'package.metadata.treease',
-    'wasm_release_date',
-    cliManifestPath
-  );
   const cliCoreDependencyVersion = readInlineDependencyVersion(cliManifest, 'treease-core', cliManifestPath);
 
   if (cliCoreDependencyVersion !== coreVersion) {
@@ -58,20 +38,12 @@ export function loadReleaseMetadata(rootDir = defaultRootDir) {
       `apps/cli/Cargo.toml treease-core dependency version ${cliCoreDependencyVersion} does not match packages/core/Cargo.toml version ${coreVersion}`
     );
   }
-  if (cliWasmReleaseDate !== coreWasmReleaseDate) {
-    throw new Error(
-      `apps/cli/Cargo.toml wasm_release_date ${cliWasmReleaseDate} does not match packages/core/Cargo.toml wasm_release_date ${coreWasmReleaseDate}`
-    );
-  }
-
   return {
     cliName,
     cliVersion,
-    cliWasmReleaseDate,
     cliCoreDependencyVersion,
     coreName,
     coreVersion,
-    coreWasmReleaseDate,
     webVersion,
     coreReleaseTag: `v${coreVersion}`,
     cliReleaseTag: `cli-v${cliVersion}`,

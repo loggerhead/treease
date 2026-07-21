@@ -69,13 +69,8 @@ pub(crate) enum CliError {
     MultipleInputFilesForInplace,
     UnsupportedWebFlag(&'static str),
     InvalidWebInputCount,
-    WebAssetDownload(String),
-    WebAssetManifest(String),
-    WebAssetCache(String),
     #[allow(dead_code)]
     WebServer(String),
-    #[allow(dead_code)]
-    WebForbidden,
     UnknownCommand(String),
     UnknownFlag(String),
     Eval(String),

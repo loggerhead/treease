@@ -53,15 +53,9 @@ treease examples search "filter array"
 treease doctor --format json
 ```
 
-## 资产配置说明
+## Web CLI 配置
 
-Web 应用和 `treease web` 可以从远端静态资源源站拉取资源。当前仓库里的默认值指向 Treease 自己管理的基础设施，主要用于官方部署路径，不应默认视为适合第三方直接复用的公共地址或 bucket。
-
-- `PUBLIC_ASSET_BASE_URL` 用于控制 Web 应用的资源源站。
-- `TREEASE_R2_ASSET_BUCKET` 用于 `apps/web/scripts/` 下的资源上传与检查脚本。
-- CLI 构建也为 `treease web` 提供了一个默认的远端静态资源基地址。
-
-如果你要做自托管或社区部署，应当为自己的环境显式配置这些值，而不是依赖仓库里的默认值。
+`treease web` 打开托管的 `/editor` 页面，并由 CLI 在 localhost 上短暂提供输入数据。自托管 Web 时，可用 `TREEASE_WEB_URL` 指定部署的 `/editor` 地址。
 
 ## 开发
 
@@ -92,22 +86,13 @@ bash tests/acceptance/run.sh
 
 ### 本地调试 `treease web`
 
-当你需要在仓库里本地调试 CLI / Web 共用的 graph 页面时，先构建 Web 资源，再用仓库里的包装脚本指向本地 `cli-assets`，而不是公共资源地址：
+先启动 Web 开发服务，再把 `TREEASE_WEB_URL` 指向本地 `/editor`：
 
 ```bash
-pnpm --dir apps/web build
-node ./scripts/treease-web-local.mjs . path/to/file.json
+pnpm --dir apps/web dev --host 127.0.0.1 --port 5173
+TREEASE_WEB_URL=http://127.0.0.1:5173/editor \
+  cargo run --manifest-path apps/cli/Cargo.toml -- web '.' path/to/file.json
 ```
-
-`node ./scripts/treease-web-local.mjs` 会为已构建的 CLI assets 目录启动本地静态服务器，用 `cargo run` 运行当前 checkout 的 CLI，并在 `.tmp/` 下创建隔离的 `TREEASE_WEB_CACHE_DIR`。这样即使 `wasm_release_date` 不变，本地 bundle 更新后也不会命中旧缓存。
-
-如果你只想拿到手动运行所需的环境变量，可以执行：
-
-```bash
-node ./scripts/treease-web-local.mjs serve
-```
-
-它会打印本地 `TREEASE_WEB_ASSET_BASE_URL` 和配套的隔离 cache 路径，同时保持静态服务器以前台方式运行。
 
 ### 协议与 WASM 重新生成
 

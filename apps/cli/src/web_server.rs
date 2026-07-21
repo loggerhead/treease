@@ -4,8 +4,10 @@ use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::path::PathBuf;
 use std::time::Duration;
 
+use super::web_payload::CliGraphMetadataPayload;
 use super::{CliError, errors};
-use super::{web_assets, web_payload::CliGraphMetadataPayload};
+
+include!(concat!(env!("OUT_DIR"), "/treease_web_config.rs"));
 
 const LOCALHOST: &str = "127.0.0.1:0";
 const MAX_REQUEST_BYTES: usize = 16 * 1024;
@@ -16,7 +18,6 @@ const REQUEST_IO_TIMEOUT: Duration = Duration::from_secs(5);
 pub(super) struct WebServerState {
     pub token: String,
     pub result: WebServerResult,
-    pub assets_dir: PathBuf,
 }
 
 #[derive(Debug, Clone)]
@@ -42,18 +43,21 @@ pub(super) struct WebServer {
 
 #[allow(dead_code)]
 impl WebServer {
-    pub(super) fn bind(result: WebServerResult, assets_dir: PathBuf) -> Result<Self, CliError> {
+    pub(super) fn bind(result: WebServerResult) -> Result<Self, CliError> {
         Self::bind_with_state(WebServerState {
             token: generate_token()?,
             result,
-            assets_dir,
         })
     }
 
-    pub(super) fn graph_url(&self) -> String {
+    pub(super) fn editor_url(&self) -> String {
+        let api_url = format!("http://{}", self.local_addr);
+        let source_url = format!("{}/cli/source?token={}", api_url, self.state.token);
         format!(
-            "http://{}/cli/graph?token={}",
-            self.local_addr, self.state.token
+            "{}?textUrl={}&lang={}&ui=editor%2Cviewer",
+            DEFAULT_WEB_URL,
+            percent_encode(&source_url),
+            percent_encode(&self.state.result.language),
         )
     }
 
@@ -181,9 +185,10 @@ fn handle_request(state: &WebServerState, request: &str) -> HttpResponse {
         if !token_matches(target, &state.token) {
             return HttpResponse::forbidden();
         }
-        let metadata = state
-            .result
-            .metadata(format!("/cli/source?token={}", state.token));
+        let metadata = state.result.metadata(format!(
+            "/cli/source?token={}",
+            percent_encode(&state.token)
+        ));
         let metadata_json = match serde_json::to_vec(&metadata) {
             Ok(bytes) => bytes,
             Err(error) => {
@@ -206,14 +211,7 @@ fn handle_request(state: &WebServerState, request: &str) -> HttpResponse {
         );
     }
 
-    if path == "/cli/graph" {
-        if !token_matches(target, &state.token) {
-            return HttpResponse::forbidden();
-        }
-        return asset_response(state, target);
-    }
-
-    asset_response(state, target)
+    HttpResponse::not_found()
 }
 
 fn source_content_type(language: &str) -> &'static str {
@@ -319,24 +317,26 @@ fn token_matches(target: &str, expected: &str) -> bool {
     })
 }
 
-fn asset_response(state: &WebServerState, target: &str) -> HttpResponse {
-    web_assets::find_asset(&state.assets_dir, target).map_or_else(
-        HttpResponse::not_found,
-        |asset| match web_assets::read_asset_bytes(&asset) {
-            Ok(bytes) => HttpResponse::ok(asset.content_type, bytes),
-            Err(error) => HttpResponse::text(
-                "500 Internal Server Error",
-                &format!("failed to read asset: {error}\n"),
-            ),
-        },
-    )
-}
-
 fn generate_token() -> Result<String, CliError> {
     let mut bytes = [0_u8; 32];
     getrandom::fill(&mut bytes)
         .map_err(|error| CliError::WebServer(format!("failed to generate web token: {error}")))?;
     Ok(hex_encode(&bytes))
+}
+
+fn percent_encode(value: &str) -> String {
+    const HEX: &[u8; 16] = b"0123456789ABCDEF";
+    let mut encoded = String::new();
+    for byte in value.bytes() {
+        if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'.' | b'_' | b'~') {
+            encoded.push(byte as char);
+        } else {
+            encoded.push('%');
+            encoded.push(HEX[(byte >> 4) as usize] as char);
+            encoded.push(HEX[(byte & 0x0f) as usize] as char);
+        }
+    }
+    encoded
 }
 
 fn hex_encode(bytes: &[u8]) -> String {
@@ -408,7 +408,7 @@ impl HttpResponse {
         };
         write!(
             stream,
-            "HTTP/1.1 {}\r\nContent-Type: {}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+            "HTTP/1.1 {}\r\nContent-Type: {}\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
             self.status, self.content_type, content_length
         )
         .map_err(|error| CliError::WebServer(error.to_string()))?;
