@@ -20,83 +20,6 @@ class MockPen {
   }
 }
 
-function makeTableNode(renderHandle: number): GraphNode {
-  return {
-    renderHandle,
-    kind: 'table',
-    depth: 1,
-    path: [{ tag: 0, key: 'influences', index: 0 }],
-    boxArgs: { x: 294, y: 3292, width: 138, height: 1002, cornerRadius: 4 },
-    meta: {
-      text: 'influences',
-      value: '[3600]',
-      valueType: 'array',
-      isIndex: false,
-      path: [],
-      editable: false,
-      boxArgs: { x: 0, y: 0, width: 0, height: 0, cornerRadius: 0 },
-      textArgs: { x: 0, y: 0, width: 0, height: 0, text: 'influences', textAlign: 'left', verticalAlign: 'middle', editable: false },
-    },
-    rows: [],
-    table: {
-      columns: [],
-      rows: [],
-      headerHeight: 0,
-      totalHeight: 79200,
-      viewHeight: 1000,
-      rowHeight: 22,
-    },
-  };
-}
-
-function makeChildNode(renderHandle: number, y: number): GraphNode {
-  return {
-    renderHandle,
-    kind: 'table',
-    depth: 2,
-    path: [{ tag: 0, key: 'influences', index: 0 }, { tag: 0, key: '', index: renderHandle }],
-    boxArgs: { x: 764, y, width: 98, height: 46, cornerRadius: 4 },
-    meta: {
-      text: 'item',
-      value: '[2]',
-      valueType: 'array',
-      isIndex: false,
-      path: [],
-      editable: false,
-      boxArgs: { x: 0, y: 0, width: 0, height: 0, cornerRadius: 0 },
-      textArgs: { x: 0, y: 0, width: 0, height: 0, text: 'item', textAlign: 'left', verticalAlign: 'middle', editable: false },
-    },
-    rows: [],
-    table: {
-      columns: [],
-      rows: [],
-      headerHeight: 0,
-      totalHeight: 44,
-      viewHeight: 44,
-      rowHeight: 22,
-    },
-  };
-}
-
-function makeEdge(fromRow: number, toRenderHandle: number, fromY: number, toY: number): GraphEdge {
-  return {
-    fromRenderHandle: 5,
-    fromRow,
-    toRenderHandle,
-    toRow: 0,
-    bezierArgs: {
-      fromX: 432,
-      fromY,
-      c1x: 492,
-      c1y: fromY,
-      c2x: 704,
-      c2y: toY,
-      toX: 764,
-      toY,
-    },
-  };
-}
-
 function makeObjectNode(renderHandle: number, x: number, y: number, path: string[]): GraphNode {
   const width = renderHandle === 1 ? 306 : 338;
   return {
@@ -117,26 +40,6 @@ function makeObjectNode(renderHandle: number, x: number, y: number, path: string
 }
 
 describe('renderGraphEdges', () => {
-  it('skips edges from table rows outside the visible runtime window', () => {
-    const layer = { removeAll: vi.fn(), add: vi.fn() };
-    const nodes = [makeTableNode(5), makeChildNode(50, 7956), makeChildNode(51, 8062)];
-    const visibleEdge = makeEdge(45, 50, 4294, 7956);
-    const offscreenEdge = makeEdge(46, 51, 4316, 8062);
-
-    const rendered = renderGraphEdges({
-      nodes,
-      edges: [visibleEdge, offscreenEdge],
-      layer,
-      PenCtor: MockPen,
-      renderConfig: { colors: { edge: '#999' } } as any,
-      maxPerSource: 10,
-      tableVisibleRanges: new Map([[5, { start: 0, end: 46 }]]),
-    });
-
-    expect(rendered).toEqual([visibleEdge]);
-    expect(layer.add).toHaveBeenCalledTimes(1);
-  });
-
   it('preserves Core edge geometry instead of recalculating it from nodes', () => {
     const layer = { removeAll: vi.fn(), add: vi.fn() };
     const nodes = [
@@ -166,7 +69,6 @@ describe('renderGraphEdges', () => {
       layer,
       PenCtor: MockPen,
       renderConfig: { colors: { edge: '#999' } } as any,
-      maxPerSource: null,
     });
 
     expect(rendered).toHaveLength(1);

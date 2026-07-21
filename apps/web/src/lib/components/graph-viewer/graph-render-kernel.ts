@@ -1,6 +1,5 @@
 // Responsibility: GraphViewer scene-rendering kernel for node/edge drawing, edge filtering, and render-config application.
 import type { GraphViewerConfig } from '../../settings/ui-settings';
-import { filterDenseOffscreenEdges, type TableVisibleRange } from './graph-edge-filter';
 import {
   createCellText,
   drawSimpleNode,
@@ -36,10 +35,6 @@ type RenderGraphEdgesInput = {
   layer: LayerLike | null;
   PenCtor: PenCtorLike | null;
   renderConfig: GraphViewerConfig;
-  container?: HTMLElement | null;
-  leafer?: Parameters<typeof filterDenseOffscreenEdges>[3];
-  maxPerSource?: number | null;
-  tableVisibleRanges?: ReadonlyMap<number, TableVisibleRange>;
 };
 
 type RenderGraphNodesInput = {
@@ -66,18 +61,7 @@ export function renderGraphEdges(input: RenderGraphEdgesInput): GraphEdge[] {
   if (!input.layer || !input.PenCtor) return [];
   input.layer.removeAll(true);
   const nodeMap = new Map(input.nodes.map((node) => [node.renderHandle, node]));
-  const edgesToRender =
-    input.maxPerSource == null
-      ? input.edges
-      : filterDenseOffscreenEdges(
-          input.nodes,
-          input.edges,
-          input.container ?? null,
-          input.leafer ?? null,
-          input.maxPerSource,
-          input.tableVisibleRanges,
-        );
-  edgesToRender.forEach((edge) => {
+  input.edges.forEach((edge) => {
     const from = nodeMap.get(edge.fromRenderHandle);
     const to = nodeMap.get(edge.toRenderHandle);
     if (!from || !to) return;
@@ -88,7 +72,7 @@ export function renderGraphEdges(input: RenderGraphEdgesInput): GraphEdge[] {
     pen.bezierCurveTo(curve.c1x, curve.c1y, curve.c2x, curve.c2y, curve.toX, curve.toY);
     input.layer.add(pen);
   });
-  return edgesToRender;
+  return input.edges;
 }
 
 export function renderGraphNode(input: RenderGraphNodeInput): RenderGraphNodeResult {

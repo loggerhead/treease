@@ -1,6 +1,5 @@
-// Responsibility: unit tests for graph-edge-filter and graph-render-kernel.
+// Responsibility: unit tests for graph-render-kernel.
 import { describe, expect, it, vi } from 'vitest';
-import { filterDenseOffscreenEdges } from '../components/graph-viewer/graph-edge-filter';
 import { renderGraphEdges } from '../components/graph-viewer/graph-render-kernel';
 import type { GraphEdge, GraphNode } from './graph-viewer-render';
 
@@ -37,47 +36,6 @@ function createMockPenCtor() {
   (MockPen as any).pens = pens;
   return MockPen as any;
 }
-
-describe('graph edge filtering', () => {
-  it('returns all edges when bounds cannot be resolved', () => {
-    const nodes = [makeNode(1, 0, 0), makeNode(2, 200, 0)];
-    const edges = [makeEdge(1, 0, 2, 100, 25)];
-    expect(filterDenseOffscreenEdges(nodes, edges, null, null, 5)).toEqual(edges);
-  });
-
-  it('returns all edges when maxPerSource <= 0', () => {
-    const nodes = [makeNode(1, 0, 0)];
-    const edges = [makeEdge(1, 0, 1, 50, 25)];
-    const container = { getBoundingClientRect: () => ({ width: 500, height: 500 }) } as any;
-    const leafer = { zoomLayer: { scaleX: 1, scaleY: 1, x: 0, y: 0 } } as any;
-    expect(filterDenseOffscreenEdges(nodes, edges, container, leafer, 0)).toEqual(edges);
-  });
-
-  it('keeps edges where from or to is visible', () => {
-    const container = { getBoundingClientRect: () => ({ width: 500, height: 500 }) } as any;
-    const leafer = { zoomLayer: { scaleX: 1, scaleY: 1, x: 0, y: 0 } } as any;
-    const nodes = [makeNode(1, 50, 50), makeNode(2, 200, 200)];
-    const edges = [makeEdge(1, 0, 2, 100, 75)];
-    expect(filterDenseOffscreenEdges(nodes, edges, container, leafer, 5)).toHaveLength(1);
-  });
-
-  it('limits offscreen edges per source key', () => {
-    const container = { getBoundingClientRect: () => ({ width: 100, height: 100 }) } as any;
-    const leafer = { zoomLayer: { scaleX: 1, scaleY: 1, x: 0, y: 0 } } as any;
-    const nodes = Array.from({ length: 6 }, (_, i) => makeNode(i + 10, 5000 + i * 200, 5000, 50, 50));
-    nodes.push(makeNode(1, 5000, 5000, 50, 50));
-    const edges = nodes.slice(0, 5).map((node) => makeEdge(1, 0, node.renderHandle, 5050, 5025));
-    expect(filterDenseOffscreenEdges(nodes, edges, container, leafer, 2)).toHaveLength(2);
-  });
-
-  it('keeps edge with missing bezierArgs or missing target node', () => {
-    const container = { getBoundingClientRect: () => ({ width: 100, height: 100 }) } as any;
-    const leafer = { zoomLayer: { scaleX: 1, scaleY: 1, x: 0, y: 0 } } as any;
-    const nodes = [makeNode(1, 5000, 5000)];
-    const edgeNoBezier = { fromRenderHandle: 1, fromRow: 0, toRenderHandle: 999, toRow: 0, bezierArgs: undefined as any };
-    expect(filterDenseOffscreenEdges(nodes, [edgeNoBezier], container, leafer, 5)).toHaveLength(1);
-  });
-});
 
 describe('renderGraphEdges', () => {
   it('returns empty array when layer is null', () => {

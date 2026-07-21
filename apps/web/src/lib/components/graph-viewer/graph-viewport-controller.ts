@@ -21,7 +21,7 @@ type CreateGraphViewportControllerOptions = {
   getMoveEventName: () => string | undefined;
   getZoomEventName: () => string | undefined;
   bindPointerClick: (target: LeaferEventTarget, handler: (event: unknown) => void | Promise<void>) => void;
-  updateViewport: (options?: { redrawEdges?: boolean }) => void;
+  updateViewportOverlays: () => void;
   getLastAutoOffset: () => { x: number; y: number } | null;
   setLastAutoOffset: (value: { x: number; y: number } | null) => void;
   getPanConstraintBounds?: () => GraphWorldBounds | null;
@@ -66,21 +66,17 @@ export function createGraphViewportController(options: CreateGraphViewportContro
     return getViewportCenterFromContainer(options.getContainer());
   }
 
-  function scheduleViewportRedraw(): void {
-    options.updateViewport({ redrawEdges: true });
-  }
-
-  function syncViewportOverlays(optionsArg?: { redrawEdges?: boolean }): void {
-    options.updateViewport(optionsArg);
+  function syncViewportOverlays(): void {
+    options.updateViewportOverlays();
   }
 
   function handleViewportMove(): void {
     clampViewportPanOffset();
-    syncViewportOverlays({ redrawEdges: false });
+    syncViewportOverlays();
   }
 
   function handleViewportZoom(): void {
-    syncViewportOverlays({ redrawEdges: true });
+    syncViewportOverlays();
   }
 
   function handleCanvasClick(): void {
@@ -174,7 +170,6 @@ export function createGraphViewportController(options: CreateGraphViewportContro
     updateSize,
     getViewportCenter,
     getZoomScale,
-    scheduleViewportRedraw,
     syncViewportOverlays,
     clampViewportPanOffset,
     handleViewportMove,

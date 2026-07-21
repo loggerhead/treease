@@ -307,9 +307,6 @@ export function createGraphSceneRuntime(deps: GraphSceneRuntimeDeps) {
   let pendingStreamFrame: number | null = null;
   let pendingStreamRedrawDone: Promise<void> | null = null;
   let resolvePendingStreamRedraw: (() => void) | null = null;
-  let pendingViewportRedrawFrame: number | null = null;
-  let pendingViewportRedrawDone: Promise<void> | null = null;
-  let resolvePendingViewportRedraw: (() => void) | null = null;
   let renderWorkGeneration = 0;
 
   function flushLeaferSceneLayout(): void {
@@ -407,22 +404,14 @@ export function createGraphSceneRuntime(deps: GraphSceneRuntimeDeps) {
     }
   }
 
-  function drawEdges(nodes: GraphNode[], edges: GraphEdge[], options?: { layer?: any; maxPerSource?: number | null }) {
+  function drawEdges(nodes: GraphNode[], edges: GraphEdge[], options?: { layer?: any }) {
     ensureLayers();
-    const tableVisibleRanges =
-      tableRuntimeByNodeId.size === 0
-        ? undefined
-        : new Map(Array.from(tableRuntimeByNodeId.entries(), ([nodeId, runtime]) => [nodeId, runtime.visibleRange]));
     return renderGraphEdges({
       nodes,
       edges,
       layer: options?.layer ?? deps.getLayers().edgeLayer,
       PenCtor: deps.getPenCtor(),
       renderConfig: deps.getRenderConfig(),
-      container: deps.getContainer(),
-      leafer: deps.getLeafer(),
-      maxPerSource: options?.maxPerSource === undefined ? 10 : options.maxPerSource,
-      tableVisibleRanges,
     });
   }
 
@@ -742,7 +731,7 @@ export function createGraphSceneRuntime(deps: GraphSceneRuntimeDeps) {
       }
       return renderedView;
     }
-    const edges = drawEdges(graphData.nodes, graphData.edges, { maxPerSource: 10 });
+    const edges = drawEdges(graphData.nodes, graphData.edges);
     dirtyRegion.flush(deps.getLeafer(), false);
     const renderedView = { nodes: graphData.nodes, edges };
     if (!skipLeaferRender) flushLeaferSceneLayout();
@@ -756,16 +745,13 @@ export function createGraphSceneRuntime(deps: GraphSceneRuntimeDeps) {
 
   async function flushPendingRenderWork(): Promise<void> {
     await (pendingStreamRedrawDone ?? Promise.resolve());
-    await (pendingViewportRedrawDone ?? Promise.resolve());
   }
 
   function hasPendingRenderWork(): boolean {
     return Boolean(
       pendingStreamPatch ||
         pendingStreamFrame ||
-        pendingStreamRedrawDone ||
-        pendingViewportRedrawFrame ||
-        pendingViewportRedrawDone,
+        pendingStreamRedrawDone,
     );
   }
 
@@ -845,27 +831,6 @@ export function createGraphSceneRuntime(deps: GraphSceneRuntimeDeps) {
     return pendingStreamRedrawDone;
   }
 
-  function scheduleViewportRedraw(): Promise<void> {
-    if (pendingViewportRedrawFrame) return pendingViewportRedrawDone ?? Promise.resolve();
-    pendingViewportRedrawDone = new Promise<void>((resolve) => {
-      resolvePendingViewportRedraw = resolve;
-    });
-    pendingViewportRedrawFrame = requestAnimationFrame(() => {
-      pendingViewportRedrawFrame = null;
-      const graphData = lastGraphData;
-      if (graphData) {
-        lastGraphData = {
-          nodes: graphData.nodes,
-          edges: drawEdges(graphData.nodes, graphData.edges),
-        };
-      }
-      resolvePendingViewportRedraw?.();
-      resolvePendingViewportRedraw = null;
-      pendingViewportRedrawDone = null;
-    });
-    return pendingViewportRedrawDone;
-  }
-
   function replaceAll(graphData: GraphSceneViewData): GraphSceneViewData {
     replaceStreamState(streamState, graphData);
     dirtyRegion.reset();
@@ -906,10 +871,6 @@ export function createGraphSceneRuntime(deps: GraphSceneRuntimeDeps) {
       if (generation !== renderWorkGeneration) return;
     }
   }
-  function updateViewport(): Promise<void> {
-    return scheduleViewportRedraw();
-  }
-
   function clear(): void {
     cancelActiveRenderWork();
     clearStreamState(streamState);
@@ -927,11 +888,6 @@ export function createGraphSceneRuntime(deps: GraphSceneRuntimeDeps) {
     resolvePendingStreamRedraw?.();
     resolvePendingStreamRedraw = null;
     pendingStreamRedrawDone = null;
-    if (pendingViewportRedrawFrame) cancelAnimationFrame(pendingViewportRedrawFrame);
-    pendingViewportRedrawFrame = null;
-    resolvePendingViewportRedraw?.();
-    resolvePendingViewportRedraw = null;
-    pendingViewportRedrawDone = null;
   }
 
   function getLastGraphData(): GraphSceneViewData | null {
@@ -982,10 +938,8 @@ export function createGraphSceneRuntime(deps: GraphSceneRuntimeDeps) {
     drawEdges,
     replaceAll,
     applyGraphDelta,
-    updateViewport,
     flushPendingRenderWork,
     getInteractionState,
-    scheduleViewportRedraw,
     cancelActiveRenderWork,
     getLastGraphData,
     setLastViewData,

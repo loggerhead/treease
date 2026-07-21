@@ -525,7 +525,6 @@ export async function renderSubgraphWorkspaceGraph(
     layer: runtime.edgeLayer,
     PenCtor,
     renderConfig: deps.getRenderConfig(),
-    maxPerSource: null,
   });
   const resizeObserver =
     typeof ResizeObserver === 'undefined'

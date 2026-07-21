@@ -313,11 +313,8 @@
     getMoveEventName: () => (MoveEventCtor?.BEFORE_MOVE ?? MoveEventCtor?.MOVE) as string | undefined,
     getZoomEventName: () => (ZoomEventCtor?.BEFORE_ZOOM ?? ZoomEventCtor?.ZOOM) as string | undefined,
     bindPointerClick: (target, handler) => graphPointerController.bindPointerClick(target, handler),
-    updateViewport: (options) => {
+    updateViewportOverlays: () => {
       graphMinimapRuntimeController.updateViewport();
-      if (options?.redrawEdges) {
-        void graphSceneController?.updateViewport();
-      }
     },
     getLastAutoOffset: () => lastAutoOffset,
     setLastAutoOffset: (value) => {
@@ -857,9 +854,7 @@
 
   const graphMinimapRuntimeController = createGraphMinimapRuntimeController({
     getViewData: () => toMinimapViewData(graphSceneController.getLastGraphData()),
-    onViewportChange: () => {
-      void graphSceneController.updateViewport();
-    },
+    onViewportChange: () => undefined,
   });
   const graphViewRuntimeLifecycle = createGraphViewRuntimeLifecycle({
     fullBuildReasons: fullBuildReasonSet,
