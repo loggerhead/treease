@@ -402,7 +402,7 @@
     opacity: 0.7;
   }
 
-  .usage-refreshing svg {
+  .usage-refreshing :global(svg) {
     animation: usage-spin 700ms linear infinite;
   }
 
