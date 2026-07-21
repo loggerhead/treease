@@ -12,4 +12,6 @@ else
   exit 1
 fi
 
+"$node_bin" scripts/generate-sitemap.mjs
+git add -- apps/web/static/sitemap.xml
 exec "$node_bin" scripts/release-metadata.mjs >/dev/null

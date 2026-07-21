@@ -26,6 +26,7 @@
     "check:docs": "node ./scripts/check-docs.mjs && pnpm docs:map:check",
     "docs:map:gen": "node ./scripts/generate-docs-map.mjs",
     "docs:map:check": "node ./scripts/generate-docs-map.mjs --check",
+    "sitemap:generate": "node ./scripts/generate-sitemap.mjs",
     "changelog:generate": "pnpm --dir apps/web content:changelog"
   }
 }
