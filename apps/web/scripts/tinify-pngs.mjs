@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const webDir = path.resolve(here, '..');
-const envPath = path.resolve(webDir, '.env');
+const envPath = path.resolve(webDir, '.env.local');
 const manifestPath = path.resolve(webDir, '.tinify-manifest.json');
 const roots = [path.resolve(webDir, 'static')];
 

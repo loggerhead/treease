@@ -59,6 +59,18 @@ treease doctor --format json
 
 ## Development
 
+### Environment Files
+
+Each app owns its environment configuration. Copy the relevant `.env.example`
+to `.env.local` for local development; keep `.env.local` untracked and never
+put server secrets in `apps/web` configuration. Web tests may use the committed
+`apps/web/.env.test` defaults, with private overrides in `.env.test.local`.
+
+The server uses `apps/server/.env.local` for both Node.js and local Wrangler
+development. Wrangler-only local values may instead be placed in its ignored
+local vars file, based on `apps/server/.dev.vars.example`. Production values
+belong in the deployment platform's variables and secrets, not in `.env` files.
+
 ### Repository Layout
 
 - `apps/web/`: Svelte web application, editor UI, graph UI, and browser worker boundary.
