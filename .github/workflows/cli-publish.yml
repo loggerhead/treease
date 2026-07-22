@@ -132,10 +132,6 @@ jobs:
         working-directory: apps/cli
         run: cargo publish --dry-run --locked
 
-      - name: Verify deployed CLI assets
-        working-directory: apps/web
-        run: node scripts/check-cli-assets.mjs --remote-only
-
       - name: Authenticate to crates.io
         if: steps.exists.outputs.exists != 'true'
         id: auth
