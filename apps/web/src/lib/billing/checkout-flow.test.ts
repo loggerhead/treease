@@ -46,12 +46,13 @@ describe('startBillingCheckout', () => {
     const prewarmPricing = vi.fn().mockResolvedValue({
       plans: [],
       checkouts: [],
+      subscription: null,
     });
     const preloadCheckout = vi.fn().mockResolvedValue(undefined);
     const createCheckoutLink = vi.fn();
     const openCheckout = vi.fn();
 
-    await expect(prewarmBillingCheckout(returnUrl, { createCheckoutLink, openCheckout, preloadCheckout, prewarmPricing })).resolves.toEqual({ plans: [], checkouts: [] });
+    await expect(prewarmBillingCheckout(returnUrl, { createCheckoutLink, openCheckout, preloadCheckout, prewarmPricing })).resolves.toEqual({ plans: [], checkouts: [], subscription: null });
     expect(prewarmPricing).toHaveBeenCalledWith(returnUrl);
     expect(preloadCheckout).toHaveBeenCalledOnce();
   });

@@ -29,6 +29,7 @@ export type BillingPlanPrice = {
 export type BillingPricingPrewarm = {
   plans: BillingPlanPrice[];
   checkouts: BillingCheckoutLink[] | null;
+  subscription: CurrentSubscription | null;
 };
 
 export type CurrentSubscription = {
@@ -38,6 +39,8 @@ export type CurrentSubscription = {
   billingCadence: 'monthly' | 'yearly' | null;
   status: 'active' | 'inactive' | 'past_due' | 'canceled';
   currentPeriodEnd: string | null;
+  providerSubscriptionId?: string | null;
+  providerVariantId?: number | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -231,6 +234,22 @@ export async function createBillingPortalLink(returnUrl: string): Promise<Billin
   });
   if (!response.ok) throw await readError(response);
   return (await response.json()) as BillingPortalLink;
+}
+
+export async function changeBillingPlan(priceId: BillingPriceId): Promise<CurrentSubscription> {
+  const token = await getAccessToken();
+  if (!token) throw new BillingAuthenticationRequiredError();
+
+  const response = await fetch(`${apiOrigin}/v1/billing/change-plan`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ priceId }),
+  });
+  if (!response.ok) throw await readError(response);
+  return (await response.json()) as CurrentSubscription;
 }
 
 export async function getUsageSummary(clientId?: string): Promise<UsageSummary> {

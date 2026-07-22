@@ -7,11 +7,9 @@ const serverDir = path.join(root, 'apps', 'server');
 
 const requiredFiles = [
   'src/app.ts',
-  'src/routes/auth.ts',
-  'src/routes/billing.ts',
-  'src/routes/share.ts',
-  'src/routes/ai.ts',
-  'src/routes/usage.ts',
+  'src/api/routes.ts',
+  'src/api/fastify-adapter.ts',
+  'src/api/worker-adapter.ts',
   'src/worker.ts',
   'src/worker-app.ts',
   'wrangler.jsonc',
@@ -116,32 +114,28 @@ const workerAppSource = readFile(path.join(serverDir, 'src', 'worker-app.ts'));
 assert(workerSource.includes('workerApp'), 'src/worker.ts must export the Worker application');
 assert(workerAppSource.includes('new Hono'), 'src/worker-app.ts must use a fetch-native Worker router');
 
-const billingRoutesSource = readFile(path.join(serverDir, 'src', 'routes', 'billing.ts'));
+const apiRoutesSource = readFile(path.join(serverDir, 'src', 'api', 'routes.ts'));
 for (const routePath of [
+  '/health',
+  '/v1/auth/session',
+  '/v1/account',
   '/v1/billing/plans',
   '/v1/billing/subscription',
   '/v1/billing/pricing-prewarm',
   '/v1/billing/checkout-link',
   '/v1/billing/portal-link',
+  '/v1/billing/change-plan',
   '/v1/billing/webhooks/lemonsqueezy',
+  '/v1/share-links',
+  '/v1/ai/suggest-yq',
+  '/v1/usage',
+  '/v1/usage/event-counts',
+  '/v1/usage/events',
+  '/v1/usage/claim',
+  '/v1/public/shares/:shareID',
 ]) {
-  assert(billingRoutesSource.includes(routePath), `billing routes must expose ${routePath}`);
+  assert(apiRoutesSource.includes(routePath), `shared API routes must expose ${routePath}`);
 }
-
-const aiRoutesSource = readFile(path.join(serverDir, 'src', 'routes', 'ai.ts'));
-assert(aiRoutesSource.includes('/v1/ai/suggest-yq'), 'AI routes must expose /v1/ai/suggest-yq');
-
-const usageRoutesSource = readFile(path.join(serverDir, 'src', 'routes', 'usage.ts'));
-for (const routePath of ['/v1/usage', '/v1/usage/event-counts', '/v1/usage/events']) {
-  assert(usageRoutesSource.includes(routePath), `usage routes must expose ${routePath}`);
-}
-
-const shareRoutesSource = readFile(path.join(serverDir, 'src', 'routes', 'share.ts'));
-assert(shareRoutesSource.includes('/v1/share-links'), 'share routes must expose /v1/share-links');
-
-const publicRoutesSource = readFile(path.join(serverDir, 'src', 'routes', 'public.ts'));
-assert(publicRoutesSource.includes('/v1/public/shares/:shareID'), 'public routes must expose /v1/public/shares/:shareID');
-assert(publicRoutesSource.includes('/health'), 'public routes must expose /health');
 
 process.stdout.write('server deploy check passed\n');
 

@@ -21,7 +21,11 @@
   import { trackEvent } from '$lib/analytics/ga4';
   import { toast } from 'svelte-sonner';
   import { signOut } from '$lib/auth/supabase-auth';
-  import type { BillingPricingPrewarm } from '$lib/services/treease-server';
+  import {
+    changeBillingPlan,
+    createBillingPortalLink,
+    type BillingPricingPrewarm,
+  } from '$lib/services/treease-server';
 
   let cliInstallExpanded = false;
   let checkoutBusy = false;
@@ -30,6 +34,9 @@
   let pricingPrewarmKey: string | null = null;
   let pricingPrewarm: Promise<BillingPricingPrewarm> | null = null;
   let checkoutPreparations: Partial<Record<BillingPriceId, Promise<PreparedBillingCheckout>>> = {};
+  let currentSubscription: BillingPricingPrewarm['subscription'] = null;
+  let planChangeBusy: BillingPriceId | null = null;
+  let planChangeNotice: string | null = null;
   const yearlySavings = fixedYearlySavingsPercent;
   const siteOrigin = 'https://treease.com';
   const pageTitle = 'Treease: JSON, YAML & Structured Text Viewer with Graphs';
@@ -74,10 +81,13 @@
 
     pricingPrewarmKey = key;
     checkoutPreparations = {};
+    currentSubscription = null;
+    planChangeNotice = null;
     const prewarm = prewarmBillingCheckout(checkoutReturnUrl());
     pricingPrewarm = prewarm;
     void prewarm.then((result) => {
       if (pricingPrewarm !== prewarm) return;
+      currentSubscription = result.subscription;
       checkoutPreparations = Object.fromEntries(
         (result.checkouts ?? []).map((checkout) => [
           checkout.priceId,
@@ -145,6 +155,76 @@
       if (outcome.status === 'failed') toast.error(outcome.message);
     } finally {
       checkoutBusy = false;
+    }
+  }
+
+  function currentPlanIsPaid(): boolean {
+    if (!currentSubscription || currentSubscription.tier !== 'pro') return false;
+    if (currentSubscription.currentPeriodEnd) return Date.parse(currentSubscription.currentPeriodEnd) > Date.now();
+    return currentSubscription.status === 'active';
+  }
+
+  function billingNeedsManagement(): boolean {
+    if (!currentSubscription?.providerSubscriptionId) return false;
+    if (currentSubscription.currentPeriodEnd && Date.parse(currentSubscription.currentPeriodEnd) <= Date.now()) return false;
+    return currentSubscription.status === 'past_due'
+      || currentSubscription.status === 'canceled'
+      || (currentSubscription.status === 'inactive' && currentSubscription.tier === 'free');
+  }
+
+  function planActionLabel(plan: typeof pricingConfig.plans[number]): string {
+    if (!plan.billingPriceId) return plan.ctaLabel;
+    if (planChangeBusy === plan.billingPriceId) return 'Updating plan…';
+    if (billingNeedsManagement()) return 'Manage billing';
+    if (!currentPlanIsPaid()) return plan.ctaLabel;
+    if (currentSubscription?.billingCadence === plan.billingPriceId) return 'Current plan';
+    if (currentSubscription?.status === 'past_due') return 'Manage billing';
+    return plan.billingPriceId === 'yearly' ? 'Switch to yearly' : 'Switch to monthly';
+  }
+
+  async function openBillingPortal(): Promise<void> {
+    try {
+      const { url } = await createBillingPortalLink(window.location.href);
+      window.location.assign(url);
+    } catch {
+      toast.error('Unable to open plan management. Please try again later.');
+    }
+  }
+
+  async function handlePlanAction(priceId: BillingPriceId): Promise<void> {
+    if (planChangeBusy || checkoutBusy) return;
+
+    if (billingNeedsManagement()) {
+      await openBillingPortal();
+      return;
+    }
+
+    if (!currentPlanIsPaid()) {
+      await startCheckout(priceId);
+      return;
+    }
+
+    if (currentSubscription?.billingCadence === priceId) return;
+    if (currentSubscription?.status === 'past_due' || currentSubscription?.status === 'canceled') {
+      await openBillingPortal();
+      return;
+    }
+
+    const cadenceLabel = priceId === 'yearly' ? 'yearly' : 'monthly';
+    const renewalDate = currentSubscription?.currentPeriodEnd
+      ? new Intl.DateTimeFormat('en-US', { dateStyle: 'medium' }).format(new Date(currentSubscription.currentPeriodEnd))
+      : 'your next renewal';
+    if (!window.confirm(`Switch to Pro ${cadenceLabel}? Your current access continues until ${renewalDate}, and the new billing cadence starts at the next renewal.`)) return;
+
+    planChangeBusy = priceId;
+    try {
+      await changeBillingPlan(priceId);
+      planChangeNotice = `Pro ${cadenceLabel} is scheduled for your next renewal.`;
+      toast.success(planChangeNotice);
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : 'Unable to update your plan.');
+    } finally {
+      planChangeBusy = null;
     }
   }
 
@@ -453,6 +533,19 @@
           <p>{pricingConfig.description}</p>
         </div>
 
+        {#if currentSubscription && (currentPlanIsPaid() || billingNeedsManagement())}
+          <p class="pricing-current-plan" role="status">
+            {#if currentSubscription.tier === 'pro'}
+              Current plan: Pro {currentSubscription.billingCadence ?? ''}
+              {#if currentSubscription.currentPeriodEnd}
+                · access through {new Intl.DateTimeFormat('en-US', { dateStyle: 'medium' }).format(new Date(currentSubscription.currentPeriodEnd))}
+              {/if}
+            {:else}
+              Your existing subscription needs billing attention.
+            {/if}
+          </p>
+        {/if}
+
         <div class="pricing-grid">
           {#each pricingConfig.plans as plan}
             <article
@@ -479,9 +572,9 @@
                 <button
                   type="button"
                   class="pricing-card__cta"
-                  disabled={checkoutBusy}
-                  on:click={() => startCheckout(plan.billingPriceId!)}
-                >{checkoutBusy ? 'Opening checkout…' : plan.ctaLabel}</button>
+                  disabled={checkoutBusy || planChangeBusy !== null || (currentSubscription?.billingCadence === plan.billingPriceId && currentPlanIsPaid() && !billingNeedsManagement())}
+                  on:click={() => handlePlanAction(plan.billingPriceId!)}
+                >{planActionLabel(plan)}</button>
               {:else}
                 <a class="pricing-card__cta" href={plan.ctaHref}>{plan.ctaLabel}</a>
               {/if}
@@ -496,6 +589,9 @@
             </article>
           {/each}
         </div>
+        {#if planChangeNotice}
+          <p class="pricing-change-notice" role="status">{planChangeNotice}</p>
+        {/if}
       </section>
 
       <section class="faq-section" id="faq" aria-labelledby="faq-title">
@@ -1177,6 +1273,23 @@
     border-color: transparent;
     color: #173b8e;
     background: #dbeafe;
+  }
+
+  .pricing-change-notice {
+    margin: 18px auto 0;
+    max-width: 720px;
+    color: var(--muted);
+    font-size: 14px;
+    line-height: 1.6;
+    text-align: center;
+  }
+
+  .pricing-current-plan {
+    margin: -36px auto 0;
+    color: var(--muted);
+    font-size: 14px;
+    line-height: 1.6;
+    text-align: center;
   }
 
   .pricing-card__features {
