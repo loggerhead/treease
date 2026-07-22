@@ -12,6 +12,7 @@
     type AccountSummary,
     type UsageSummary,
   } from '../services/treease-server';
+  import { getUsageClientId } from '../billing/client-id';
   import {
     DropdownMenu,
     DropdownMenuContent,
@@ -29,6 +30,7 @@
   const desktop = import.meta.env.PUBLIC_WORKSPACE_SURFACE === 'desktop';
   let account: AccountSummary['user'] | null = null;
   let accountUserId: string | null = null;
+  let anonymousClientId: string | null = null;
   let subscription: AccountSummary['subscription'] | null = null;
   let subscriptionLoading = false;
   let usage: UsageSummary | null = null;
@@ -40,7 +42,11 @@
   let subscriptionViewTrackedForOpen = false;
   let usageExpanded = true;
 
-  onMount(observeAuthUser);
+  onMount(() => {
+    const stopAuthObserver = observeAuthUser();
+    void loadAccount(null);
+    return stopAuthObserver;
+  });
   onDestroy(() => {
     accountRequest += 1;
     usageRequest += 1;
@@ -51,7 +57,12 @@
     ...authUserDetails($authUser),
     email: signedInUser && account?.id === signedInUser.id ? account.email ?? '' : authUserDetails($authUser).email,
     avatarUrl: signedInUser && account?.id === signedInUser.id ? account.avatarUrl : authUserDetails($authUser).avatarUrl,
-  } : null;
+  } : {
+    name: 'Anonymous user',
+    email: anonymousClientId ? formatAnonymousId(anonymousClientId) : 'ID: loading…',
+    avatarUrl: null,
+    initial: 'A',
+  };
   $: if (signedInUser?.id !== accountUserId) void loadAccount(signedInUser?.id ?? null);
   $: planPresentation = subscription ? presentSubscription(subscription) : null;
   $: if (!accountMenuOpen) subscriptionViewTrackedForOpen = false;
@@ -66,12 +77,18 @@
     subscription = null;
     usage = null;
     subscriptionLoading = userId !== null;
-    usageLoading = userId !== null;
+    usageLoading = true;
     const request = ++accountRequest;
     usageRequest += 1;
-    if (!userId) return;
 
     try {
+      if (!userId) {
+        const clientId = await getUsageClientId();
+        if (request !== accountRequest || accountUserId !== userId) return;
+        anonymousClientId = clientId;
+        usage = await getUsageSummary(clientId);
+        return;
+      }
       const nextAccount = await getAccountSummary();
       if (request !== accountRequest || accountUserId !== userId) return;
       account = nextAccount.user;
@@ -90,12 +107,14 @@
 
   async function refreshUsage(): Promise<void> {
     const userId = accountUserId;
-    if (!userId || usageLoading) return;
+    if (usageLoading) return;
 
     usageLoading = true;
     const request = ++usageRequest;
     try {
-      const nextUsage = await getUsageSummary();
+      const clientId = userId ? undefined : anonymousClientId ?? await getUsageClientId();
+      if (!userId && clientId) anonymousClientId = clientId;
+      const nextUsage = await getUsageSummary(clientId);
       if (request !== usageRequest || accountUserId !== userId) return;
       usage = nextUsage;
     } catch {
@@ -147,11 +166,23 @@
     const date = new Date(Date.UTC(year, month, 0));
     return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }).format(date);
   }
+
+  function formatAnonymousId(clientId: string): string {
+    const fingerprintId = clientId.includes(':') ? clientId.slice(clientId.indexOf(':') + 1) : clientId;
+    return `ID: ${fingerprintId.slice(0, 8)}`;
+  }
+
+  async function copyAnonymousId(): Promise<void> {
+    if (!anonymousClientId) return;
+    try {
+      await navigator.clipboard.writeText(anonymousClientId);
+      toast.success('ID copied.');
+    } catch {
+      toast.error('Unable to copy ID.');
+    }
+  }
 </script>
 
-{#if variant === 'landing' && !details}
-  <button class="landing-login" type="button" data-testid="account-login-button" on:click={onLogin}>Login</button>
-{:else}
   <div>
   <DropdownMenu bind:open={accountMenuOpen}>
     <DropdownMenuTrigger
@@ -160,9 +191,9 @@
         : 'relative inline-grid h-6 w-6 cursor-pointer place-items-center rounded-full border-0 bg-transparent text-[var(--text-primary)] outline-none transition-[background-color,box-shadow] duration-150 hover:bg-[var(--panel-bg-alt)] data-[state=open]:bg-[var(--panel-bg-alt)] focus-visible:ring-2 focus-visible:ring-blue-600/30'}
       aria-label={details ? `Account for ${details.name}` : 'Account'}
       title={details ? details.name : 'Account'}
-      data-testid={details ? 'account-avatar-button' : 'account-menu-button'}
+      data-testid={signedInUser ? 'account-avatar-button' : 'account-menu-button'}
     >
-      {#if details}
+      {#if signedInUser}
         <span class="avatar-frame">
           {#if details.avatarUrl}
             <img class="avatar-image" src={details.avatarUrl} alt="" referrerpolicy="no-referrer" />
@@ -177,8 +208,8 @@
         <UserIcon size={12} />
       {/if}
     </DropdownMenuTrigger>
-    <DropdownMenuContent align="end" sideOffset={8} class={details ? 'w-[240px] rounded-[10px] p-2 shadow-[0_14px_38px_rgba(15,23,42,0.16)]' : undefined}>
-      {#if details}
+    <DropdownMenuContent align="end" sideOffset={8} class="w-[240px] rounded-[10px] p-2 shadow-[0_14px_38px_rgba(15,23,42,0.16)]">
+      {#if signedInUser}
         <div class="flex items-center gap-3 px-2 py-2" data-testid="account-details">
           <span class="account-panel-avatar" aria-hidden="true">
             {#if details.avatarUrl}
@@ -194,12 +225,30 @@
             {/if}
           </span>
         </div>
+      {:else}
+        <div class="flex items-center gap-3 px-2 py-2" data-testid="account-details">
+          <span class="account-panel-avatar" aria-hidden="true"><span class="avatar-fallback">A</span></span>
+          <span class="min-w-0">
+            <strong class="block truncate text-[14px] font-semibold text-[#111827]">Anonymous user</strong>
+            <button
+              class="mt-0.5 block max-w-full truncate border-0 bg-transparent p-0 text-left text-[12px] text-[#64748b] underline decoration-dotted underline-offset-2 hover:text-[#2563eb]"
+              type="button"
+              title="Copy full ID"
+              aria-label="Copy full ID"
+              data-testid="account-fingerprint-id"
+              on:click={() => void copyAnonymousId()}
+            >{details.email}</button>
+          </span>
+        </div>
+      {/if}
         <div class="mx-2 mb-1 flex items-center justify-between rounded-[7px] bg-[#f1f5f9] px-2 py-1.5 text-[12px]" data-testid="account-plan">
           <span class="text-[#64748b]">Plan</span>
           {#if planPresentation}
             <strong class="text-[#0f172a]">{planPresentation.label}{planPresentation.cadence ? ` · ${planPresentation.cadence}` : ''}</strong>
           {:else if subscriptionLoading}
             <span class="text-[#64748b]">Syncing…</span>
+          {:else if usage}
+            <strong class="text-[#0f172a]">{usage.tier === 'pro' ? 'Pro' : 'Free'}</strong>
           {:else}
             <span class="text-[#64748b]">Unavailable</span>
           {/if}
@@ -238,7 +287,8 @@
             </div>
           {/if}
         </div>
-        {#if subscription}
+        {#if signedInUser}
+          {#if subscription}
           <DropdownMenuItem
             class="rounded-[7px] px-2 py-2 text-[13px]"
             data-testid="account-manage-plan-menu-item"
@@ -247,16 +297,24 @@
           >
             {subscription.tier === 'free' ? 'Upgrade to Pro' : managingPlan ? 'Opening…' : 'Manage plan'}
           </DropdownMenuItem>
-        {/if}
-        <DropdownMenuSeparator class="my-1" />
-        <DropdownMenuItem
-          variant="destructive"
-          class="rounded-[7px] px-2 py-2 text-[13px]"
-          data-testid="account-logout-menu-item"
-          onSelect={() => void onLogout()}
-        >
-          <LogOut size={14} />Log out
+          {/if}
+          <DropdownMenuSeparator class="my-1" />
+          <DropdownMenuItem
+            variant="destructive"
+            class="rounded-[7px] px-2 py-2 text-[13px]"
+            data-testid="account-logout-menu-item"
+            onSelect={() => void onLogout()}
+          >
+            <LogOut size={14} />Log out
+          </DropdownMenuItem>
+        {:else}
+        <DropdownMenuItem data-testid="account-login-menu-item" onSelect={onLogin}>
+          {#if variant === 'editor'}
+            <UserIcon size={14} />
+          {/if}
+          Login
         </DropdownMenuItem>
+        {/if}
         {#if variant === 'editor'}
           <DropdownMenuSeparator class="my-1" />
           {#if desktop}
@@ -268,35 +326,11 @@
             <Settings size={14} />Settings
           </DropdownMenuItem>
         {/if}
-      {:else}
-        <DropdownMenuItem data-testid="account-login-menu-item" onSelect={onLogin}>Login</DropdownMenuItem>
-        {#if desktop}
-          <DropdownMenuItem data-testid="account-check-updates-menu-item" onSelect={() => void onCheckForUpdates()}>Check for updates</DropdownMenuItem>
-        {/if}
-        <DropdownMenuItem data-testid="account-settings-menu-item" onSelect={onOpenSettings}><Settings size={14} />Settings</DropdownMenuItem>
-      {/if}
     </DropdownMenuContent>
   </DropdownMenu>
   </div>
-{/if}
 
 <style>
-  .landing-login {
-    display: inline-flex;
-    align-items: center;
-    border: 0;
-    background: transparent;
-    color: var(--muted);
-    font-size: 14px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: color 160ms ease;
-  }
-
-  .landing-login:hover {
-    color: var(--accent-strong);
-  }
-
   .avatar-image,
   .avatar-fallback {
     width: 100%;

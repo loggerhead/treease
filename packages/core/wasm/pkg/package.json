@@ -1,6 +1,5 @@
 {
   "name": "treease-core",
-  "type": "module",
   "description": "Core parsing, evaluation, formatting, and graph runtime for Treease",
   "version": "1.2.0",
   "license": "SEE LICENSE IN LICENSE",
@@ -13,12 +12,10 @@
     "core.js",
     "core.d.ts"
   ],
-  "main": "core.js",
+  "module": "core.js",
   "homepage": "https://github.com/loggerhead/treease",
   "types": "core.d.ts",
-  "sideEffects": [
-    "./snippets/*"
-  ],
+  "sideEffects": false,
   "keywords": [
     "treease",
     "tree-sitter",

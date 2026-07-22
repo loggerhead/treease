@@ -38,6 +38,10 @@ guess-failure.md
 wasm-pkg-*/
 packages/core/wasm-pkg-*/
 packages/core/wasm/.pkg-bindgen/
+# wasm-bindgen package outputs; keep only the generated package metadata tracked.
+packages/core/wasm/pkg/core.js
+packages/core/wasm/pkg/core.d.ts
+packages/core/wasm/pkg/core.wasm.d.ts
 
 __pycache__
 *wasm.version.ts
