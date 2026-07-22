@@ -60,7 +60,9 @@ function enqueueGoogleTag(): GoogleTagCommand | null {
     gtag?: GoogleTagCommand;
   };
   scopedWindow.dataLayer ??= [];
-  scopedWindow.gtag ??= (...args: unknown[]) => scopedWindow.dataLayer?.push(args);
+  scopedWindow.gtag ??= function gtag() {
+    scopedWindow.dataLayer?.push(arguments);
+  };
   return scopedWindow.gtag;
 }
 
