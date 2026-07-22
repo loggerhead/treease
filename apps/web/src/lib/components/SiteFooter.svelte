@@ -2,7 +2,6 @@
   export let links: Array<{ href: string; label: string }> = [
     { href: '/about', label: 'About' },
     { href: '/changelog', label: 'Changelog' },
-    { href: 'https://github.com/loggerhead/treease', label: 'GitHub' },
     { href: 'https://docs.rs/treease-cli', label: 'CLI docs' },
     { href: '/terms', label: 'Terms' },
     { href: '/privacy', label: 'Privacy' },

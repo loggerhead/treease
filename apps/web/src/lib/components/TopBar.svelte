@@ -185,7 +185,7 @@
   </div>
   <div class="flex items-center justify-end gap-2">
     {#if showRightActions}
-      <ButtonGroup.Root variant="segmented-outline">
+      <ButtonGroup.Root variant="segmented-outline" class="h-6">
         <a
           class="inline-flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center whitespace-nowrap rounded-none border-0 bg-transparent text-[var(--text-primary)] outline-none transition-[color,background-color,border-color,box-shadow] hover:bg-[var(--panel-bg-alt)] hover:text-[var(--accent)] focus-visible:ring-2 focus-visible:ring-[var(--accent)]/25"
           data-slot="button"

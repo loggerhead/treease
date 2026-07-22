@@ -57,6 +57,30 @@ describe('startBillingCheckout', () => {
     expect(preloadCheckout).toHaveBeenCalledOnce();
   });
 
+  it('does not block pricing state when checkout preload fails', async () => {
+    const pricing = {
+      plans: [],
+      checkouts: null,
+      subscription: {
+        id: 'subscription-1',
+        userId: 'user-1',
+        tier: 'pro' as const,
+        billingCadence: 'monthly' as const,
+        status: 'active' as const,
+        currentPeriodEnd: null,
+        createdAt: '',
+        updatedAt: '',
+      },
+    };
+    const prewarmPricing = vi.fn().mockResolvedValue(pricing);
+    const preloadCheckout = vi.fn().mockRejectedValue(new Error('provider script unavailable'));
+
+    await expect(
+      prewarmBillingCheckout(returnUrl, { createCheckoutLink: vi.fn(), openCheckout: vi.fn(), preloadCheckout, prewarmPricing }),
+    ).resolves.toEqual(pricing);
+    expect(preloadCheckout).toHaveBeenCalledOnce();
+  });
+
   it('shows login only when the canonical server client cannot recover a session', async () => {
     const createCheckoutLink = vi.fn().mockRejectedValue(new BillingAuthenticationRequiredError());
     const openCheckout = vi.fn();

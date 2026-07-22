@@ -29,6 +29,10 @@ export type CheckoutStartOutcome =
   | { status: 'login-required' }
   | { status: 'failed'; message: string };
 
+function preloadCheckoutInBackground(dependencies: CheckoutDependencies): void {
+  void dependencies.preloadCheckout().catch(() => {});
+}
+
 const defaultDependencies: CheckoutDependencies = {
   createCheckoutLink: createBillingCheckoutLink,
   openCheckout: openLemonSqueezyCheckout,
@@ -40,7 +44,8 @@ export async function prewarmBillingCheckout(
   returnUrl: CheckoutReturnUrl,
   dependencies = defaultDependencies,
 ): Promise<BillingPricingPrewarm> {
-  const [pricing] = await Promise.all([dependencies.prewarmPricing(returnUrl), dependencies.preloadCheckout()]);
+  const pricing = await dependencies.prewarmPricing(returnUrl);
+  preloadCheckoutInBackground(dependencies);
   return pricing;
 }
 
@@ -58,10 +63,8 @@ export async function prepareBillingCheckout(
   returnUrl: CheckoutReturnUrl,
   dependencies = defaultDependencies,
 ): Promise<PreparedBillingCheckout> {
-  const [checkout] = await Promise.all([
-    dependencies.createCheckoutLink(priceId, returnUrl),
-    dependencies.preloadCheckout(),
-  ]);
+  const checkout = await dependencies.createCheckoutLink(priceId, returnUrl);
+  preloadCheckoutInBackground(dependencies);
   return { priceId, checkoutUrl: checkout.url };
 }
 

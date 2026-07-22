@@ -220,7 +220,7 @@ export async function getAccountSummary(): Promise<AccountSummary> {
   return (await response.json()) as AccountSummary;
 }
 
-export async function createBillingPortalLink(returnUrl: string): Promise<BillingPortalLink> {
+export async function createBillingPortalLink(): Promise<BillingPortalLink> {
   const token = await getAccessToken();
   if (!token) throw new BillingAuthenticationRequiredError();
 
@@ -230,7 +230,7 @@ export async function createBillingPortalLink(returnUrl: string): Promise<Billin
       'content-type': 'application/json',
       authorization: `Bearer ${token}`,
     },
-    body: JSON.stringify({ returnUrl }),
+    body: JSON.stringify({}),
   });
   if (!response.ok) throw await readError(response);
   return (await response.json()) as BillingPortalLink;

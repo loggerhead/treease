@@ -63,23 +63,6 @@ test("PKCE login returns to the original page, shows the account, and supports l
       body: JSON.stringify({ plans: [], checkouts: [] }),
     });
   });
-  await page.route("**/v1/usage?clientId=*", async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({
-        tier: "free",
-        periodKey: "2026-01",
-        limits: {
-          bidirectionalEditDocumentsMonthly: { kind: "limited", limit: 10 },
-          largeFileProcessingRunsMonthly: { kind: "limited", limit: 3 },
-          aiSuggestionsMonthly: { kind: "limited", limit: 0 },
-          shareMaxAgeDays: 7,
-        },
-        usage: {},
-      }),
-    });
-  });
   await page.route("**/v1/account", async (route) => {
     await route.fulfill({
       status: 200,
@@ -117,11 +100,8 @@ test("PKCE login returns to the original page, shows the account, and supports l
 
   await page.goto("/?source=pkce-e2e#pricing");
   await page.waitForLoadState("networkidle");
-  await page.getByTestId("account-menu-button").click();
-  await expect(page.getByTestId("account-fingerprint-id")).toContainText(
-    "ID:"
-  );
-  await page.getByTestId("account-login-menu-item").click();
+  await expect(page.getByTestId("account-login-button")).toBeVisible();
+  await page.getByTestId("account-login-button").click();
   await page.getByTestId("login-google-button").click();
 
   await expect(page).toHaveURL(/\/?source=pkce-e2e#pricing$/);
@@ -146,5 +126,5 @@ test("PKCE login returns to the original page, shows the account, and supports l
     0
   );
   await page.getByTestId("account-logout-menu-item").click();
-  await expect(page.getByTestId("account-menu-button")).toBeVisible();
+  await expect(page.getByTestId("account-login-button")).toBeVisible();
 });

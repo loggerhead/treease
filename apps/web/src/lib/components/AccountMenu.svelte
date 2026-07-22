@@ -81,6 +81,10 @@
     usageLoading = true;
     const request = ++accountRequest;
     usageRequest += 1;
+    if (!userId && variant === 'landing') {
+      usageLoading = false;
+      return;
+    }
 
     try {
       if (!userId) {
@@ -136,8 +140,8 @@
     });
 
     try {
-      const { url } = await createBillingPortalLink(window.location.href);
-      window.location.assign(url);
+      const { url } = await createBillingPortalLink();
+      window.open(url, '_blank', 'noopener,noreferrer');
     } catch {
       toast.error('Unable to open plan management. Please try again later.');
       managingPlan = false;
@@ -154,7 +158,7 @@
   }
 
   function monthlyLimit(limit: { kind: 'limited'; limit: number } | { kind: 'unlimited' }, used: number | undefined): string {
-    return limit.kind === 'unlimited' ? 'Unlimited' : `${used ?? 0} / ${limit.limit}`;
+    return limit.kind === 'unlimited' ? `${used ?? 0} / ♾️` : `${used ?? 0} / ${limit.limit}`;
   }
 
   function usagePercent(limit: { kind: 'limited'; limit: number } | { kind: 'unlimited' }, used: number | undefined): number | null {
@@ -166,6 +170,13 @@
     const [year, month] = periodKey.split('-').map(Number);
     const date = new Date(Date.UTC(year, month, 0));
     return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }).format(date);
+  }
+
+  function subscriptionExpiryDate(value: string | null): string {
+    if (!value) return 'Not set';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return 'Not set';
+    return date.toISOString().slice(0, 10);
   }
 
   function formatAnonymousId(clientId: string): string {
@@ -184,7 +195,10 @@
   }
 </script>
 
-  <div>
+{#if variant === 'landing' && !signedInUser}
+  <button class="landing-login" type="button" data-testid="account-login-button" on:click={onLogin}>Login</button>
+{:else}
+  <div class:editor-account-anchor={variant === 'editor'}>
   <DropdownMenu bind:open={accountMenuOpen}>
     <DropdownMenuTrigger
       class={variant === 'landing'
@@ -202,8 +216,8 @@
             <span class="avatar-fallback" aria-hidden="true">{details.initial}</span>
           {/if}
         </span>
-        {#if planPresentation}
-          <span class:pro-plan-badge={subscription?.tier === 'pro'} class="plan-badge" aria-label={`Current plan: ${planPresentation.label}`}>{planPresentation.badge}</span>
+        {#if planPresentation && subscription?.tier === 'pro'}
+          <span class="plan-badge pro-plan-badge" aria-label={`Current plan: ${planPresentation.label}`}></span>
         {/if}
       {:else}
         <UserIcon size={12} />
@@ -272,7 +286,14 @@
             </div>
           {:else if usage && usageExpanded}
             <div class="usage-details">
-              <div class="usage-cycle"><span>Monthly allowance</span><span>Resets {resetDate(usage.periodKey)}</span></div>
+              <div class="usage-cycle">
+                {#if subscription?.tier === 'pro'}
+                  <span>{subscription.status === 'canceled' ? 'Expired at' : 'Next renewal'}</span>
+                  <span>{subscriptionExpiryDate(subscription.currentPeriodEnd)}</span>
+                {:else}
+                  <span>Monthly allowance</span><span>Resets {resetDate(usage.periodKey)}</span>
+                {/if}
+              </div>
               <div class="usage-item">
                 <div class="usage-item-label"><span>Graph edits</span><span>{monthlyLimit(usage.limits.bidirectionalEditDocumentsMonthly, usage.usage.bidirectional_edit)}</span></div>
                 {#if usagePercent(usage.limits.bidirectionalEditDocumentsMonthly, usage.usage.bidirectional_edit) !== null}
@@ -330,8 +351,36 @@
     </DropdownMenuContent>
   </DropdownMenu>
   </div>
+{/if}
 
 <style>
+  .landing-login {
+    display: inline-flex;
+    align-items: center;
+    border: 0;
+    background: transparent;
+    color: var(--muted);
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: color 160ms ease;
+  }
+
+  .landing-login:hover {
+    color: var(--accent-strong);
+  }
+
+  .editor-account-anchor {
+    position: relative;
+    display: inline-flex;
+    width: 24px;
+    height: 24px;
+    flex: 0 0 24px;
+    align-items: center;
+    justify-content: center;
+    overflow: visible;
+  }
+
   .avatar-image,
   .avatar-fallback {
     width: 100%;
@@ -349,19 +398,18 @@
 
   .plan-badge {
     position: absolute;
-    top: -5px;
-    right: -13px;
+    top: auto;
+    right: -2px;
+    bottom: 1px;
     z-index: 1;
-    min-width: 22px;
-    padding: 1px 3px;
+    width: 8px;
+    height: 8px;
+    min-width: 8px;
+    padding: 0;
     border: 1px solid #ffffff;
     border-radius: 999px;
     background: #64748b;
     color: #ffffff;
-    font-size: 7px;
-    font-weight: 800;
-    letter-spacing: 0.04em;
-    line-height: 1.25;
     box-shadow: 0 1px 4px rgba(15, 23, 42, 0.2);
   }
 
