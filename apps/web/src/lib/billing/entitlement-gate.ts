@@ -5,7 +5,7 @@ import {
   type UsageSummary,
 } from '../services/treease-server';
 import { getUsageClientId } from './client-id';
-import { enqueueUsageEvent } from './usage-queue';
+import { enqueueUsageEvent, getPendingUsageDelta } from './usage-queue';
 import { isUsageCoolingDown } from './usage-rate-limit';
 
 type GateSurface = 'graph_edit' | 'file_import';
@@ -18,6 +18,15 @@ export type UsageBlock = {
 
 let latestUsage: UsageSummary | null = null;
 let usageRequest = 0;
+
+export async function applyLocalUsage(summary: UsageSummary): Promise<UsageSummary> {
+  const delta = await getPendingUsageDelta();
+  const usage = { ...summary.usage };
+  for (const [capability, quantity] of Object.entries(delta)) {
+    if (quantity) usage[capability as RecordedUsageCapability] = (usage[capability as RecordedUsageCapability] ?? 0) + quantity;
+  }
+  return { ...summary, usage };
+}
 
 function limitFor(summary: UsageSummary, capability: RecordedUsageCapability) {
   return capability === 'bidirectional_edit'
@@ -52,7 +61,7 @@ export async function refreshUsageGate(capability?: RecordedUsageCapability): Pr
   if (isUsageCoolingDown()) return capability ? usageBlockFor(latestUsage, capability) : null;
   const request = ++usageRequest;
   try {
-    const summary = await getUsageSummary(await getUsageClientId());
+    const summary = await applyLocalUsage(await getUsageSummary(await getUsageClientId()));
     if (request === usageRequest) latestUsage = summary;
   } catch {
     if (request === usageRequest && !isUsageCoolingDown()) latestUsage = null;
@@ -62,6 +71,8 @@ export async function refreshUsageGate(capability?: RecordedUsageCapability): Pr
 
 export async function runPostpaidCapability<T>(input: {
   capability: RecordedUsageCapability;
+  idempotencyKey: string;
+  quantity?: number;
   metadata: Record<string, unknown>;
   surface: GateSurface;
   execute: () => Promise<T>;
@@ -79,8 +90,11 @@ export async function runPostpaidCapability<T>(input: {
     try {
       await enqueueUsageEvent({
         capability: input.capability,
+        idempotencyKey: input.idempotencyKey,
+        quantity: input.quantity,
         metadata: input.metadata,
       });
+      if (latestUsage) latestUsage = await applyLocalUsage(latestUsage);
       void refreshUsageGate();
     } catch {
       // Usage telemetry must never delay or roll back a local graph result.

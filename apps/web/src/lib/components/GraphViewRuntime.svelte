@@ -498,6 +498,7 @@
     dispatchGraphEditEvent: (type, detail) => dispatchGraphEditEvent(container, type, detail),
     runBidirectionalEdit: async (documentKey, execute) => runPostpaidCapability({
       capability: 'bidirectional_edit',
+      idempotencyKey: documentKey,
       metadata: { surface: 'graph_cell' },
       surface: 'graph_edit',
       execute,

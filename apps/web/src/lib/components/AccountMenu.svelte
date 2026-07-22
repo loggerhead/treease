@@ -13,6 +13,7 @@
     type UsageSummary,
   } from '../services/treease-server';
   import { getUsageClientId } from '../billing/client-id';
+  import { applyLocalUsage } from '../billing/entitlement-gate';
   import {
     DropdownMenu,
     DropdownMenuContent,
@@ -86,14 +87,14 @@
         const clientId = await getUsageClientId();
         if (request !== accountRequest || accountUserId !== userId) return;
         anonymousClientId = clientId;
-        usage = await getUsageSummary(clientId);
+        usage = await applyLocalUsage(await getUsageSummary(clientId));
         return;
       }
       const nextAccount = await getAccountSummary();
       if (request !== accountRequest || accountUserId !== userId) return;
       account = nextAccount.user;
       subscription = nextAccount.subscription;
-      usage = nextAccount.usage;
+      usage = await applyLocalUsage(nextAccount.usage);
     } catch {
       if (request !== accountRequest || accountUserId !== userId) return;
       toast.error('Account information is temporarily unavailable. Please try again later.');
@@ -114,7 +115,7 @@
     try {
       const clientId = userId ? undefined : anonymousClientId ?? await getUsageClientId();
       if (!userId && clientId) anonymousClientId = clientId;
-      const nextUsage = await getUsageSummary(clientId);
+      const nextUsage = await applyLocalUsage(await getUsageSummary(clientId));
       if (request !== usageRequest || accountUserId !== userId) return;
       usage = nextUsage;
     } catch {

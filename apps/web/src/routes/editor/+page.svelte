@@ -444,6 +444,7 @@
     targetFormat: string;
     fileName: string;
   }) {
+    const largeFileOperationId = crypto.randomUUID();
     try {
       const sample = await readImportSourceSample(payload.file);
       const effectiveSource = await resolveImportSourceFormat(
@@ -460,6 +461,7 @@
       if (payload.file.size >= LARGE_FILE_PROCESSING_THRESHOLD_BYTES) {
         await runPostpaidCapability({
           capability: 'large_file_processing',
+          idempotencyKey: largeFileOperationId,
           metadata: { byteLength: payload.file.size },
           surface: 'file_import',
           execute: importFile,

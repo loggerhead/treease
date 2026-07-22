@@ -12,6 +12,9 @@ type UsageQueueEvent = {
   eventId: string;
   clientId: string;
   capability: RecordedUsageCapability;
+  periodKey: string;
+  idempotencyKey: string;
+  quantity: number;
   metadata: Record<string, unknown>;
   createdAt: string;
   status: 'pending' | 'uploaded';
@@ -40,19 +43,54 @@ async function getDb(): Promise<IDBPDatabase<UsageDatabase>> {
 
 export async function enqueueUsageEvent(input: {
   capability: RecordedUsageCapability;
+  idempotencyKey: string;
+  quantity?: number;
   metadata: Record<string, unknown>;
 }): Promise<void> {
   const clientId = await getUsageClientId();
+  const periodKey = currentPeriodKey();
   const db = await getDb();
+  const existing = await db.getAll('events');
+  if (existing.some((event) => event.clientId === clientId
+    && event.capability === input.capability
+    && event.periodKey === periodKey
+    && event.idempotencyKey === input.idempotencyKey)) return;
   await db.put('events', {
     eventId: crypto.randomUUID(),
     clientId,
     capability: input.capability,
+    periodKey,
+    idempotencyKey: input.idempotencyKey,
+    quantity: input.quantity ?? 1,
     metadata: input.metadata,
     createdAt: new Date().toISOString(),
     status: 'pending',
   });
   void flushUsageEvents();
+}
+
+export type UsageDelta = Partial<Record<RecordedUsageCapability, number>>;
+
+export async function getPendingUsageDelta(now = new Date()): Promise<UsageDelta> {
+  const db = await getDb();
+  const periodKey = currentPeriodKey(now);
+  return calculateUsageDelta(await db.getAll('events'), periodKey);
+}
+
+export function calculateUsageDelta(events: UsageQueueEvent[], periodKey: string): UsageDelta {
+  const seen = new Set<string>();
+  return events.reduce<UsageDelta>((delta, event) => {
+    if (event.status !== 'pending' || event.periodKey !== periodKey) return delta;
+    const key = `${event.capability}:${event.idempotencyKey}`;
+    if (seen.has(key)) return delta;
+    seen.add(key);
+    delta[event.capability] = (delta[event.capability] ?? 0) + event.quantity;
+    return delta;
+  }, {});
+}
+
+function currentPeriodKey(now = new Date()): string {
+  return now.toISOString().slice(0, 7);
 }
 
 export async function flushUsageEvents(): Promise<void> {
