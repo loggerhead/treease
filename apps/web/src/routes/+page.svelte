@@ -424,7 +424,7 @@
           </p>
         </div>
 
-        <div class="capability-grid" role="region" aria-labelledby="features-title">
+        <div class="capability-grid">
           <article class="capability-card capability-card--hero">
             <div class="story-copy">
               <h3>Open a local file and see the real structure.</h3>
@@ -542,7 +542,7 @@
           </p>
         </div>
 
-        <div class="workflow-story__grid" role="region" aria-labelledby="workflow-title">
+        <div class="workflow-story__grid">
           <article class="workflow-story__card workflow-story__card--progress">
             <div class="story-copy">
               <h3>Keep large JSON imports transparent.</h3>
