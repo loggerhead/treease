@@ -729,6 +729,83 @@ describe('graph-render-session coordinator', () => {
     expect(deps.setErrorMessage).not.toHaveBeenCalled();
   });
 
+  it('stale cleanup only cancels the job owned by the stale operation', async () => {
+    let resolveFirstChunk: (() => void) | null = null;
+    mockedCallWorker.mockImplementation((method: string, input: any) => {
+      if (method === 'startDocumentJob') {
+        const jobHandle = mockedCallWorker.mock.calls.filter(([name]) => name === 'startDocumentJob').length === 1 ? 42 : 43;
+        return Promise.resolve(startJobResult(jobHandle));
+      }
+      if (method === 'cancelDocumentJob') return Promise.resolve({ terminal: { type: 'cancelled' } });
+      if (method === 'advanceDocumentJob' && input.kind === 'textChunk' && input.jobHandle === 42) {
+        return new Promise<void>((resolve) => {
+          resolveFirstChunk = resolve;
+        }).then(() => textChunkBatch());
+      }
+      if (method === 'advanceDocumentJob' && input.kind === 'textChunk') return Promise.resolve(textChunkBatch());
+      if (method === 'advanceDocumentJob' && input.kind === 'close') {
+        return Promise.resolve(closeCompletedBatch(input.jobHandle, { mainGraph: projectionDelta(true) }));
+      }
+      return Promise.resolve(null);
+    });
+
+    const coordinator = createGraphRenderSession(createDeps() as any);
+    coordinator.attachSceneBridge(createSceneBridge());
+    const staleRender = coordinator.renderDocumentGraph({
+      kind: 'incremental',
+      documentKey: 'test-key',
+      language: 'json',
+      text: '{"a":1}',
+      revision: 5,
+    });
+    await vi.waitFor(() => expect(resolveFirstChunk).not.toBeNull());
+
+    const currentRender = coordinator.renderDocumentGraph({
+      kind: 'incremental',
+      documentKey: 'test-key',
+      language: 'json',
+      text: '{"a":2}',
+      revision: 6,
+    });
+    await currentRender;
+    resolveFirstChunk?.();
+    await staleRender;
+
+    expect(mockedCallWorker).toHaveBeenCalledWith('cancelDocumentJob', { jobHandle: 42 });
+    expect(mockedCallWorker).not.toHaveBeenCalledWith('cancelDocumentJob', { jobHandle: 43 });
+  });
+
+  it('cancels a handle that arrives after the operation became stale', async () => {
+    let resolveStart: ((value: ReturnType<typeof startJobResult>) => void) | null = null;
+    mockedCallWorker.mockImplementation((method: string) => {
+      if (method === 'startDocumentJob') {
+        return new Promise((resolve) => {
+          resolveStart = resolve;
+        });
+      }
+      if (method === 'cancelDocumentJob') return Promise.resolve({ terminal: { type: 'cancelled' } });
+      return Promise.resolve(null);
+    });
+
+    const coordinator = createGraphRenderSession(createDeps() as any);
+    const renderPromise = coordinator.renderDocumentGraph({
+      kind: 'incremental',
+      documentKey: 'test-key',
+      language: 'json',
+      text: '{"a":1}',
+      revision: 5,
+    });
+    await vi.waitFor(() => expect(mockedCallWorker).toHaveBeenCalledWith('startDocumentJob', expect.anything()));
+
+    const disposePromise = coordinator.dispose();
+    resolveStart?.(startJobResult(44));
+    await disposePromise;
+    await renderPromise;
+    await vi.waitFor(() => {
+      expect(mockedCallWorker).toHaveBeenCalledWith('cancelDocumentJob', { jobHandle: 44 });
+    });
+  });
+
   it('renderDocumentGraph catches errors and delegates to handleError', async () => {
     const error = new Error('worker crash');
     mockedCallWorker.mockRejectedValueOnce(error);

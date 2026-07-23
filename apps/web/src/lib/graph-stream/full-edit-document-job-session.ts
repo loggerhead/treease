@@ -1,12 +1,15 @@
 import type { EventBatch } from '@core-wasm/index';
 import { getSharedWasmWorkerClient } from '../wasm/wasm-worker-singleton';
 import {
+  runTextDocumentJobForGraph,
   runReadableDocumentJobForGraph,
   type DocumentJobGraphResult,
   type ReadableGraphDocumentJobInput,
 } from './document-job-runner';
 
-export type ReadableFullEditDocumentJobSessionInput = ReadableGraphDocumentJobInput & {
+export type FullEditDocumentJobSessionInput = Omit<ReadableGraphDocumentJobInput, 'readable'> & {
+  readable?: ReadableGraphDocumentJobInput['readable'];
+  text?: string;
   sessionId: string;
   revision: number;
   totalBytes?: number;
@@ -78,8 +81,10 @@ class ReadableDocumentJobSession implements FullEditDocumentJobSession {
   private closed = false;
   private failure: unknown = null;
   private currentJobHandle: number | null = null;
+  private cancelRequested = false;
+  private cancelPromise: Promise<void> | null = null;
 
-  constructor(input: ReadableFullEditDocumentJobSessionInput) {
+  constructor(input: FullEditDocumentJobSessionInput) {
     this.sessionId = input.sessionId;
     this.documentKey = input.documentKey;
     this.language = input.language;
@@ -121,20 +126,21 @@ class ReadableDocumentJobSession implements FullEditDocumentJobSession {
   }
 
   async cancel(): Promise<void> {
+    this.cancelRequested = true;
+    if (this.cancelPromise) return this.cancelPromise;
     const jobHandle = this.currentJobHandle;
     if (jobHandle == null) {
       this.close();
-      return;
+      return Promise.resolve();
     }
-    try {
-      const client = await getSharedWasmWorkerClient();
-      await client.call<EventBatch>('cancelDocumentJob', { jobHandle });
-    } catch {
-      // Best-effort cancellation for abandoned full-edit sessions.
-    } finally {
-      if (this.currentJobHandle === jobHandle) this.currentJobHandle = null;
-      this.close();
-    }
+    this.cancelPromise = getSharedWasmWorkerClient()
+      .then((client) => client.call<EventBatch>('cancelDocumentJob', { jobHandle }))
+      .catch(() => undefined)
+      .then(() => {
+        if (this.currentJobHandle === jobHandle) this.currentJobHandle = null;
+        this.close();
+      });
+    return this.cancelPromise;
   }
 
   private pushBatch(batch: EventBatch): void {
@@ -157,16 +163,24 @@ class ReadableDocumentJobSession implements FullEditDocumentJobSession {
     this.notify();
   }
 
-  private async run(input: ReadableFullEditDocumentJobSessionInput): Promise<DocumentJobGraphResult> {
+  private async run(input: FullEditDocumentJobSessionInput): Promise<DocumentJobGraphResult> {
     try {
-      const result = await runReadableDocumentJobForGraph(input, {
+      const hooks = {
         onJobHandle: (jobHandle) => {
           this.currentJobHandle = jobHandle;
+          if (this.cancelRequested) void this.cancel();
         },
         onBatch: (batch) => {
           this.pushBatch(batch);
         },
-      });
+      };
+      const result = input.text != null
+        ? await runTextDocumentJobForGraph({ ...input, text: input.text }, hooks)
+        : input.readable != null
+          ? await runReadableDocumentJobForGraph({ ...input, readable: input.readable }, hooks)
+          : (() => {
+              throw new Error('Full edit document job session requires text or readable input');
+            })();
       if (this.currentJobHandle === result.jobHandle) this.currentJobHandle = null;
       this.close();
       return result;
@@ -177,8 +191,8 @@ class ReadableDocumentJobSession implements FullEditDocumentJobSession {
   }
 }
 
-export function startReadableDocumentJobSessionForGraph(
-  input: ReadableFullEditDocumentJobSessionInput,
+export function startFullEditDocumentJobSessionForGraph(
+  input: FullEditDocumentJobSessionInput,
 ): FullEditDocumentJobSession {
   const previous = fullEditDocumentJobSessions.get(input.sessionId);
   if (previous) void previous.cancel();

@@ -188,7 +188,53 @@ export function createGraphRenderSession(deps: GraphRenderSessionDeps) {
     return `${documentKey}:${revision}:${streamRunSeq}`;
   }
 
-  let activeJobHandle: number | null = null;
+  type OwnedRenderOperation = {
+    lifecycle: ReturnType<typeof createViewRuntimeOperation>;
+    registerJobHandle: (jobHandle: number) => void;
+    releaseJobHandle: () => void;
+    cancel: () => Promise<void>;
+  };
+
+  function createOwnedRenderOperation(options: {
+    captured: Parameters<typeof createViewRuntimeOperation>[0]['captured'];
+    getCurrent: Parameters<typeof createViewRuntimeOperation>[0]['getCurrent'];
+    cancelResource?: () => Promise<void> | void;
+  }): OwnedRenderOperation {
+    let ownedJobHandle: number | null = null;
+    let cancelRequested = false;
+    let cancelPromise: Promise<void> | null = null;
+
+    const cancel = (): Promise<void> => {
+      cancelRequested = true;
+      if (cancelPromise) return cancelPromise;
+      const jobHandle = ownedJobHandle;
+      if (jobHandle == null && !options.cancelResource) return Promise.resolve();
+      cancelPromise = (jobHandle == null
+        ? Promise.resolve().then(() => options.cancelResource?.())
+        : deps.callWorker('cancelDocumentJob', { jobHandle }))
+        .then(() => undefined)
+        .catch(() => undefined)
+        .finally(() => {
+          if (ownedJobHandle === jobHandle) ownedJobHandle = null;
+        });
+      return cancelPromise;
+    };
+
+    const lifecycle = createViewRuntimeOperation({ ...options, onStale: cancel });
+    return {
+      lifecycle,
+      registerJobHandle: (jobHandle) => {
+        ownedJobHandle = jobHandle;
+        if (cancelRequested) void cancel();
+      },
+      releaseJobHandle: () => {
+        ownedJobHandle = null;
+      },
+      cancel,
+    };
+  }
+
+  let activeOperation: OwnedRenderOperation | null = null;
 
   function emptyRenderResult(): GraphRenderResult {
     return { nodes: [], edges: [] };
@@ -509,30 +555,11 @@ export function createGraphRenderSession(deps: GraphRenderSessionDeps) {
     return getSceneBridge().getLastRenderedGraph() ?? emptyRenderResult();
   }
 
-  async function cancelStartedJob(jobHandle: number | null): Promise<null> {
-    if (jobHandle == null) return null;
-    try {
-      await deps.callWorker('cancelDocumentJob', { jobHandle });
-    } catch {
-      // Best-effort cancellation for stale starts.
-    } finally {
-      if (activeJobHandle === jobHandle) activeJobHandle = null;
-    }
-    return null;
-  }
-
   async function dispose(): Promise<void> {
     activeRenderToken += 1;
-    if (activeJobHandle != null) {
-      const jobHandle = activeJobHandle;
-      try {
-        await deps.callWorker('cancelDocumentJob', { jobHandle });
-      } catch {
-        // Best-effort cleanup.
-      } finally {
-        if (activeJobHandle === jobHandle) activeJobHandle = null;
-      }
-    }
+    const operation = activeOperation;
+    activeOperation = null;
+    await operation?.cancel();
     if (renderedDocumentKey) {
       clearWorkspaceSnapshotBinding(renderedDocumentKey, activeSnapshotId);
     }
@@ -573,7 +600,7 @@ export function createGraphRenderSession(deps: GraphRenderSessionDeps) {
     const renderToken = ++activeRenderToken;
     deps.resetStreamProgress();
 
-    const freshness = createViewRuntimeOperation({
+    const operation = createOwnedRenderOperation({
       captured: {
         documentKey: request.documentKey,
         revision: request.revision,
@@ -586,8 +613,8 @@ export function createGraphRenderSession(deps: GraphRenderSessionDeps) {
         languageId: request.language,
         token: activeRenderToken,
       }),
-      onStale: () => cancelStartedJob(activeJobHandle),
     });
+    activeOperation = operation;
 
     try {
       const totalBytes = textEncoder.encode(request.text).length;
@@ -620,8 +647,8 @@ export function createGraphRenderSession(deps: GraphRenderSessionDeps) {
         outputGraph: true,
         builderConfig,
       });
-      activeJobHandle = started.jobHandle;
-      if (!freshness.isCurrent()) return null;
+      operation.registerJobHandle(started.jobHandle);
+      if (!operation.lifecycle.isCurrent()) return null;
 
       const streamedBatch = await streamDocumentJobText({
         jobHandle: started.jobHandle,
@@ -634,12 +661,12 @@ export function createGraphRenderSession(deps: GraphRenderSessionDeps) {
           return batch;
         },
         onBatch: async (batch) => {
-          if (!freshness.isCurrent()) return;
+          if (!operation.lifecycle.isCurrent()) return;
           await applyProjectionEvents(batch);
         },
       });
-      if (!freshness.isCurrent()) return null;
-      if (activeJobHandle === started.jobHandle) activeJobHandle = null;
+      if (!operation.lifecycle.isCurrent()) return null;
+      operation.releaseJobHandle();
 
       const result = collectGraphDocumentJobResult({
         documentKey: request.documentKey,
@@ -662,7 +689,7 @@ export function createGraphRenderSession(deps: GraphRenderSessionDeps) {
         analysis: result.analysis,
         snapshotId: result.snapshotId,
         renderToken,
-        freshness,
+        freshness: operation.lifecycle,
       });
     } catch (error) {
       deps.handleError(error, {
@@ -695,7 +722,7 @@ export function createGraphRenderSession(deps: GraphRenderSessionDeps) {
     deps.resetStreamProgress();
     deps.clearErrorMessage();
 
-    const freshness = createViewRuntimeOperation({
+    const operation = createOwnedRenderOperation({
       captured: {
         documentKey: session.documentKey,
         revision: session.revision,
@@ -708,8 +735,9 @@ export function createGraphRenderSession(deps: GraphRenderSessionDeps) {
         sessionId: activeExternalSessionId,
         token: activeRenderToken,
       }),
-      onStale: () => session.cancel(),
+      cancelResource: () => session.cancel(),
     });
+    activeOperation = operation;
 
     const totalBytes = session.totalBytes;
     const streamRunId = session.streamRunId || nextStreamRunId(session.documentKey, session.revision);
@@ -729,16 +757,17 @@ export function createGraphRenderSession(deps: GraphRenderSessionDeps) {
     try {
       await consumeGraphBatchStream({
         batches: session.batches(),
-        freshness,
+        freshness: operation.lifecycle,
         applyProjectionEvents,
         onBatch: (batch) => {
           recordAdvanceBatch(batch);
         },
       });
-      if (!freshness.isCurrent()) return null;
+      if (!operation.lifecycle.isCurrent()) return null;
+      operation.releaseJobHandle();
 
       const result = await session.result;
-      if (!freshness.isCurrent()) return null;
+      if (!operation.lifecycle.isCurrent()) return null;
 
       deps.updateStreamProgress(
         buildGraphLifecycleProgressEvent(streamRunId, totalBytes, 'flushing'),
@@ -747,7 +776,7 @@ export function createGraphRenderSession(deps: GraphRenderSessionDeps) {
         documentKey: session.documentKey,
         language: session.language,
         revision: session.revision,
-        renderedText: null,
+        renderedText: result.sourceText,
         redrawMode: 'streaming',
         totalBytes,
         streamRunId,
@@ -755,7 +784,7 @@ export function createGraphRenderSession(deps: GraphRenderSessionDeps) {
         analysis: result.analysis,
         snapshotId: result.snapshotId,
         renderToken,
-        freshness,
+        freshness: operation.lifecycle,
       });
     } catch (error) {
       deps.handleError(error, {
@@ -784,7 +813,7 @@ export function createGraphRenderSession(deps: GraphRenderSessionDeps) {
     deps.clearErrorMessage();
     deps.resetStreamProgress();
 
-    const freshness = createViewRuntimeOperation({
+    const operation = createOwnedRenderOperation({
       captured: {
         documentKey: selection.blockDocumentKey,
         revision: selection.revision,
@@ -803,8 +832,8 @@ export function createGraphRenderSession(deps: GraphRenderSessionDeps) {
           token: activeRenderToken,
         };
       },
-      onStale: () => cancelStartedJob(activeJobHandle),
     });
+    activeOperation = operation;
     const totalBytes = textEncoder.encode(selection.text).length;
     const chunkSize = selectGraphStreamChunkSize(totalBytes);
     const streamRunId = nextStreamRunId(selection.blockDocumentKey, selection.revision);
@@ -835,8 +864,8 @@ export function createGraphRenderSession(deps: GraphRenderSessionDeps) {
         outputGraph: true,
         builderConfig: getBuilderConfig(),
       });
-      activeJobHandle = started.jobHandle;
-      if (!freshness.isCurrent()) return null;
+      operation.registerJobHandle(started.jobHandle);
+      if (!operation.lifecycle.isCurrent()) return null;
 
       const streamedBatch = await streamDocumentJobText({
         jobHandle: started.jobHandle,
@@ -849,12 +878,11 @@ export function createGraphRenderSession(deps: GraphRenderSessionDeps) {
           return batch;
         },
         onBatch: async (batch) => {
-          if (!freshness.isCurrent()) return;
+          if (!operation.lifecycle.isCurrent()) return;
           await applyProjectionEvents(batch);
         },
       });
-      if (!freshness.isCurrent()) return null;
-      if (activeJobHandle === started.jobHandle) activeJobHandle = null;
+      if (!operation.lifecycle.isCurrent()) return null;
 
       const result = collectGraphDocumentJobResult({
         documentKey: selection.blockDocumentKey,
@@ -899,7 +927,7 @@ export function createGraphRenderSession(deps: GraphRenderSessionDeps) {
           failed: true,
         });
       }
-      if (!freshness.isCurrent()) return null;
+      if (!operation.lifecycle.isCurrent()) return null;
       const requestId = deps.nextTreeToken();
       deps.clearTreeState(requestId, 'graph', selection.revision, finalSnapshotId);
       deps.completeStreamProgress();
@@ -918,7 +946,7 @@ export function createGraphRenderSession(deps: GraphRenderSessionDeps) {
           revision: selection.revision,
           mode: 'json-block',
         },
-        freshness,
+        operation.lifecycle,
       );
       markGraphStreamDone();
       return getSceneBridge().getLastRenderedGraph() ?? emptyRenderResult();

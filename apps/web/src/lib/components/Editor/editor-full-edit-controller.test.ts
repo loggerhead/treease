@@ -6,6 +6,21 @@ const mockStartDocumentJobForGraph = vi.hoisted(() =>
 );
 const mockStartReadableDocumentJobSessionForGraph = vi.hoisted(() =>
   vi.fn((input: any) => {
+    if (input.text != null) {
+      return {
+        sessionId: input.sessionId,
+        documentKey: input.documentKey,
+        language: input.language,
+        revision: input.revision,
+        totalBytes: input.totalBytes ?? 0,
+        chunkSize: input.chunkSize,
+        streamRunId: input.sessionId,
+        jobHandle: 1,
+        result: mockStartDocumentJobForGraph(input),
+        batches: async function* () {},
+        cancel: vi.fn(async () => {}),
+      };
+    }
     const result = (async () => {
       const reader = input.readable.getReader();
       try {
@@ -60,7 +75,7 @@ vi.mock('../../graph-stream/document-job-runner', () => ({
 }));
 
 vi.mock('../../graph-stream/full-edit-document-job-session', () => ({
-  startReadableDocumentJobSessionForGraph: (input: any) => mockStartReadableDocumentJobSessionForGraph(input),
+  startFullEditDocumentJobSessionForGraph: (input: any) => mockStartReadableDocumentJobSessionForGraph(input),
   clearFullEditDocumentJobSession: (sessionId: any, expected?: any) =>
     mockClearFullEditDocumentJobSession(sessionId, expected),
 }));

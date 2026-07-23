@@ -58,7 +58,6 @@ export function createGraphViewerRenderEffects(deps: RenderEffectsDeps) {
   let lastRenderedDocumentKey = '';
   let lastRenderedSourceText = '';
   let lastRenderedLanguageId = '';
-  let lastFullEditRenderSignature = '';
   const externalFullEditRenderAuthority = createFullEditExternalRenderAuthority();
   let pendingJsonBlockSignature = '';
   let lastJsonBlockActive = false;
@@ -78,7 +77,6 @@ export function createGraphViewerRenderEffects(deps: RenderEffectsDeps) {
   ): FullEditGraphRenderOwnership {
     const documentKey = fullEditUiState?.documentKey ?? snapshot.documentKey;
     const language = fullEditUiState?.language || snapshot.language;
-    const renderSignature = `${documentKey}|${fullEditUiState?.revision ?? -1}|${language}|${snapshot.sourceText}`;
     const ownership = {
       kind: 'started',
       documentKey,
@@ -86,58 +84,37 @@ export function createGraphViewerRenderEffects(deps: RenderEffectsDeps) {
     } as const;
     if (snapshot.documentKey === '' || fullEditUiState?.active !== true) return { kind: 'not-started' };
     if (fullEditUiState.phase === 'preparing' || fullEditUiState.phase === 'idle') return { kind: 'not-started' };
-    if (fullEditUiState.transportKind === 'file') {
-      if (!fullEditUiState.sessionId) return { kind: 'not-started' };
-      if (
-        externalFullEditRenderAuthority.hasActiveRender(documentKey, fullEditUiState.revision, language) ||
-        externalFullEditRenderAuthority.hasCompletedRender(documentKey, fullEditUiState.revision, language)
-      ) {
-        return ownership;
-      }
-      // Without a ready View Runtime there is no graph request to own; the lifecycle must leave
-      // the revision available to the canonical incremental path once Full Edit ends.
-      if (!snapshot.hasRenderRuntime) return { kind: 'not-started' };
-      deps.markGraphRequested({
-        documentKey,
-        revision: fullEditUiState.revision,
-        mode: 'streaming',
-      });
-      const externalRender = externalFullEditRenderAuthority.claim({
-        sessionId: fullEditUiState.sessionId,
-        documentKey,
-        language,
-        revision: fullEditUiState.revision,
-      });
-      if (!externalRender) return { kind: 'not-started' };
-      void deps
-        .attachFullEditDocumentJobSession(externalRender)
-        .then((result) => {
-          if (result == null) {
-            externalFullEditRenderAuthority.release(externalRender);
-          }
-        })
-        .catch((error) => {
-          externalFullEditRenderAuthority.release(externalRender);
-          deps.onStreamingRenderError(error);
-        });
+    if (!fullEditUiState.sessionId) return { kind: 'not-started' };
+    if (
+      externalFullEditRenderAuthority.hasActiveRender(documentKey, fullEditUiState.revision, language) ||
+      externalFullEditRenderAuthority.hasCompletedRender(documentKey, fullEditUiState.revision, language)
+    ) {
       return ownership;
     }
-    if (renderSignature === lastFullEditRenderSignature) return ownership;
-    // Do not record ownership for a request that cannot reach the View Runtime yet.
+    // Without a ready View Runtime there is no graph request to own; keep the session available
+    // for attachment when the runtime becomes ready.
     if (!snapshot.hasRenderRuntime) return { kind: 'not-started' };
-    lastFullEditRenderSignature = renderSignature;
     deps.markGraphRequested({
       documentKey,
       revision: fullEditUiState.revision,
       mode: 'streaming',
     });
-    void deps.renderDocumentGraph({
-      kind: 'full-edit',
+    const externalRender = externalFullEditRenderAuthority.claim({
+      sessionId: fullEditUiState.sessionId,
       documentKey,
       language,
-      text: snapshot.sourceText,
       revision: fullEditUiState.revision,
-    }).catch(deps.onStreamingRenderError);
+    });
+    if (!externalRender) return { kind: 'not-started' };
+    void deps
+      .attachFullEditDocumentJobSession(externalRender)
+      .then((result) => {
+        if (result == null) externalFullEditRenderAuthority.release(externalRender);
+      })
+      .catch((error) => {
+        externalFullEditRenderAuthority.release(externalRender);
+        deps.onStreamingRenderError(error);
+      });
     return ownership;
   }
 

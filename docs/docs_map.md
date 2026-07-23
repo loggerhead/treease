@@ -90,6 +90,46 @@ Do not edit it by hand; run `pnpm docs:map:gen`.
   - H3: 5. Blank / whitespace close
   - H2: Primary-Document Data-Flow Checklist
 
+## contracts/file-storage.md
+
+- Route: /contracts/file-storage
+- Headings:
+  - H1: User File Storage Contract
+  - H2: Decision
+  - H2: Goals
+  - H2: Non-goals
+  - H2: Storage boundary
+  - H3: FileStorageService
+  - H3: Inline threshold
+  - H2: Database model
+  - H3: fileobjects
+  - H3: Share records
+  - H3: Feedback records
+  - H2: Write flows
+  - H3: Share creation
+  - H3: Feedback submission
+  - H2: Read flows
+  - H3: Public share
+  - H3: Feedback attachment
+  - H2: Cloudflare deployment
+  - H3: R2 binding
+  - H3: Runtime environment seam
+  - H2: Cleanup deployment
+  - H3: Cleanup algorithm
+  - H3: Orphan cleanup
+  - H2: Supabase responsibilities
+  - H2: API shape
+  - H3: Share API
+  - H3: Feedback API
+  - H2: Security and abuse controls
+  - H2: Verification plan
+  - H3: Storage tests
+  - H3: Service tests
+  - H3: Worker tests
+  - H3: Verification commands
+  - H2: Implementation order
+  - H2: Completion criteria
+
 ## contracts/layout.md
 
 - Route: /contracts/layout

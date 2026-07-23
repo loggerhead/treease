@@ -3,7 +3,7 @@ import type { BuilderConfig, SnapshotId } from '@core-wasm/index';
 import type * as Monaco from 'monaco-editor';
 import { toast } from 'svelte-sonner';
 
-import { runIntakeJob, type IntakeResult } from '../../services/DocumentIntake';
+import type { IntakeResult } from '../../services/DocumentIntake';
 import {
   beginEditorCommitTransaction,
   settleEditorCommitTransaction,
@@ -11,7 +11,7 @@ import {
 } from '../../services/EditorCommitTransaction';
 import {
   clearFullEditDocumentJobSession,
-  startReadableDocumentJobSessionForGraph,
+  startFullEditDocumentJobSessionForGraph,
   type FullEditDocumentJobSession,
 } from '../../graph-stream/full-edit-document-job-session';
 import { createFreshnessScope } from '../../guards/freshness-scope';
@@ -49,21 +49,16 @@ export type FullEditTerminalOutcome = {
   revision: number;
   status: FullEditTerminalStatus;
   snapshotId: SnapshotId | null;
-  result: IntakeResult | null;
+  result: IntakeResult | DocumentJobGraphResult | null;
 };
-type ImportIntakeOverride = {
-  snapshotId: SnapshotId | null;
-  analysis: DocumentAnalysisResult | null;
-  sourceText?: string | null;
-};
-type ImportIntakeResult = IntakeResult | ImportIntakeOverride | DocumentJobGraphResult;
+type ImportIntakeResult = IntakeResult | DocumentJobGraphResult;
 
 function isIntakeResult(result: ImportIntakeResult): result is IntakeResult {
   return 'resultStatus' in result;
 }
 
 function isDocumentJobGraphResult(result: ImportIntakeResult): result is DocumentJobGraphResult {
-  return 'status' in result && 'jobHandle' in result;
+  return 'status' in result && !('resultStatus' in result);
 }
 
 function isCancelledIntakeResult(result: IntakeResult): boolean {
@@ -80,7 +75,7 @@ function isDiagnosticsOnlyIntakeResult(result: ImportIntakeResult): boolean {
 function isFailedImportIntakeResult(result: ImportIntakeResult): boolean {
   if (isIntakeResult(result)) return result.status === 'failed';
   if (isDocumentJobGraphResult(result)) return result.status !== 'snapshotReady';
-  return result.snapshotId == null;
+  return false;
 }
 
 function getImportResultSourceText(result: ImportIntakeResult): string | null {
@@ -670,6 +665,16 @@ export function createEditorFullEditController(options: CreateEditorFullEditCont
     const modelVersionId = model.getVersionId();
     session.inputByteLength = bytes.byteLength;
     feedMemoryFullEditBytes(session, bytes, modelVersionId);
+    session.graphJobSession = startFullEditDocumentJobSessionForGraph({
+      sessionId: session.sessionId,
+      documentKey: session.documentKey,
+      revision: session.revision,
+      language: session.language,
+      text: params.text,
+      settings: documentJobSettingsFor(session.formatSourceOnClose),
+      builderConfig: options.getGraphBuilderConfig(),
+      totalBytes: bytes.byteLength,
+    });
     fullEditSink.markFinalizing({ sessionId: session.sessionId, ownerKey: session.ownerKey });
     return { session, isSessionCurrent };
   }
@@ -679,16 +684,18 @@ export function createEditorFullEditController(options: CreateEditorFullEditCont
     isSessionCurrent: () => boolean,
   ): Promise<FullEditTerminalOutcome> {
     try {
-      const intakeResult = await runIntakeJob({
-        documentKey: session.documentKey,
-        language: session.language,
-        text: session.visibleText,
-        settings: documentJobSettingsFor(session.formatSourceOnClose),
-        revision: session.revision,
-        builderConfig: options.getGraphBuilderConfig(),
-        isFresh: isSessionCurrent,
-        landing: createIntakeLanding(session),
-      });
+      const graphJobSession = session.graphJobSession;
+      if (!graphJobSession) throw new Error('Full edit document job session was not created');
+      const intakeResult = await graphJobSession.result;
+      const settled = await settleReadableImportResult(session, intakeResult);
+      if (!settled) {
+        return {
+          revision: session.revision,
+          status: 'stale',
+          snapshotId: null,
+          result: intakeResult,
+        };
+      }
       if (!isSessionCurrent()) {
         return {
           revision: session.revision,
@@ -697,7 +704,12 @@ export function createEditorFullEditController(options: CreateEditorFullEditCont
           result: intakeResult,
         };
       }
-      if (intakeResult.status === 'completed') {
+      const terminalStatus = intakeResult.status === 'snapshotReady'
+        ? 'completed'
+        : intakeResult.status === 'parseFailed'
+          ? 'diagnosticsOnly'
+          : 'failed';
+      if (terminalStatus === 'completed') {
         await applyIntakeDocumentEffects({
           documentKey: session.documentKey,
           language: session.language,
@@ -708,7 +720,7 @@ export function createEditorFullEditController(options: CreateEditorFullEditCont
           sourceText: intakeResult.sourceText,
         });
       }
-      if (intakeResult.status === 'diagnosticsOnly') {
+      if (terminalStatus === 'diagnosticsOnly') {
         await applyIntakeDocumentEffects({
           documentKey: session.documentKey,
           language: session.language,
@@ -719,22 +731,14 @@ export function createEditorFullEditController(options: CreateEditorFullEditCont
           sourceText: intakeResult.sourceText,
         });
       }
-      if (intakeResult.status === 'failed') {
-        if (isCancelledIntakeResult(intakeResult)) {
-          return {
-            revision: session.revision,
-            status: 'cancelled',
-            snapshotId: null,
-            result: intakeResult,
-          };
-        }
-        options.updateActiveTempModel((current) => ({ ...current, error: intakeResult.error }));
+      if (terminalStatus === 'failed') {
+        options.updateActiveTempModel((current) => ({ ...current, error: 'DocumentJob failed' }));
         toast.error('Graph rebuild failed');
       }
       return {
         revision: session.revision,
-        status: intakeResult.status,
-        snapshotId: intakeResult.status === 'completed' ? intakeResult.snapshotId : null,
+        status: terminalStatus,
+        snapshotId: terminalStatus === 'completed' ? intakeResult.snapshotId : null,
         result: intakeResult,
       };
     } catch (error) {
@@ -792,7 +796,7 @@ export function createEditorFullEditController(options: CreateEditorFullEditCont
     }
   }
 
-  async function finishImportStream(intakeOverride?: ImportIntakeOverride): Promise<void> {
+  async function finishImportStream(intakeOverride?: DocumentJobGraphResult): Promise<void> {
     const session = importSession;
     const model = options.getModel();
     if (!session?.active) return;
@@ -810,18 +814,8 @@ export function createEditorFullEditController(options: CreateEditorFullEditCont
         options.setModelDocumentKey(options.getModel(), documentKey);
         options.setDocumentKey(documentKey);
       }
-      const intakeResult =
-        intakeOverride ??
-        (await runIntakeJob({
-          documentKey,
-          language: session.language,
-          text: currentModelValue,
-          settings: documentJobSettingsFor(),
-          revision: session.revision,
-          builderConfig: options.getGraphBuilderConfig(),
-          isFresh: () => isCurrentImportSession(sessionId),
-          landing: createIntakeLanding(session),
-        }));
+      const intakeResult = intakeOverride ?? (await session.graphJobSession?.result);
+      if (!intakeResult) throw new Error('Full edit document job session did not produce a result');
       if (isDocumentJobGraphResult(intakeResult)) {
         const settled = await settleReadableImportResult(session, intakeResult);
         if (!settled) return;
@@ -847,7 +841,9 @@ export function createEditorFullEditController(options: CreateEditorFullEditCont
 
       if (isFailedImportIntakeResult(intakeResult)) {
         detachImportGraphJobSession(session);
-        const error = isIntakeResult(intakeResult) ? intakeResult.error : 'Graph import failed';
+        const error = 'error' in intakeResult && typeof intakeResult.error === 'string'
+          ? intakeResult.error
+          : 'Graph import failed';
         options.updateActiveTempModel((current) => ({ ...current, error: error ?? 'Graph import failed' }));
         toast.error('Graph import failed');
         return;
@@ -969,7 +965,7 @@ export function createEditorFullEditController(options: CreateEditorFullEditCont
     const session = await beginImportStream(targetLanguage, reason, file.size);
     if (!session) return;
     try {
-      const graphJobSession = startReadableDocumentJobSessionForGraph({
+      const graphJobSession = startFullEditDocumentJobSessionForGraph({
         sessionId: session.sessionId,
         documentKey: session.documentKey,
         revision: session.revision,

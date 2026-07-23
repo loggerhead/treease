@@ -116,7 +116,7 @@ describe('graph-viewer render effects JSON block scheduling', () => {
     expect(deps.resetStreamProgress).toHaveBeenCalledTimes(1);
   });
 
-  it('attaches a full-edit session even when it has already reached finalizing', () => {
+  it('attaches the canonical full-edit session even when it has already reached finalizing', () => {
     const deps = createDeps();
     const effects = createGraphViewerRenderEffects(deps);
 
@@ -145,13 +145,13 @@ describe('graph-viewer render effects JSON block scheduling', () => {
       },
     );
 
-    expect(deps.renderDocumentGraph).toHaveBeenCalledWith({
-      kind: 'full-edit',
+    expect(deps.attachFullEditDocumentJobSession).toHaveBeenCalledWith({
+      sessionId: 'session-1',
       documentKey: 'doc-1',
       language: 'json',
-      text: '{"hello":"world"}',
       revision: 2,
     });
+    expect(deps.renderDocumentGraph).not.toHaveBeenCalled();
     expect(ownership).toEqual({ kind: 'started', documentKey: 'doc-1', revision: 2 });
   });
 
@@ -241,10 +241,11 @@ describe('graph-viewer render effects JSON block scheduling', () => {
       },
     );
 
-    expect(deps.renderDocumentGraph).toHaveBeenCalledTimes(1);
+    expect(deps.attachFullEditDocumentJobSession).toHaveBeenCalledTimes(1);
+    expect(deps.renderDocumentGraph).not.toHaveBeenCalled();
   });
 
-  it('reattaches a full-edit render when the source text arrives after session creation', () => {
+  it('does not start another graph job when source text changes after session creation', () => {
     const deps = createDeps();
     const effects = createGraphViewerRenderEffects(deps);
     const fullEditUiState = {
@@ -277,14 +278,8 @@ describe('graph-viewer render effects JSON block scheduling', () => {
       sourceText: '{"object":{},"table_without_header":["a","b","c"]}',
     });
 
-    expect(deps.renderDocumentGraph).toHaveBeenCalledTimes(2);
-    expect(deps.renderDocumentGraph).toHaveBeenLastCalledWith({
-      kind: 'full-edit',
-      documentKey: 'doc-1',
-      language: 'json',
-      text: '{"object":{},"table_without_header":["a","b","c"]}',
-      revision: 2,
-    });
+    expect(deps.attachFullEditDocumentJobSession).toHaveBeenCalledTimes(1);
+    expect(deps.renderDocumentGraph).not.toHaveBeenCalled();
     expect(ownership).toEqual({ kind: 'started', documentKey: 'doc-1', revision: 2 });
   });
 

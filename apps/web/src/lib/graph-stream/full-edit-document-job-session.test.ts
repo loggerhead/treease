@@ -9,7 +9,7 @@ vi.mock('../wasm/wasm-worker-singleton', () => ({
 import {
   clearFullEditDocumentJobSession,
   getFullEditDocumentJobSession,
-  startReadableDocumentJobSessionForGraph,
+  startFullEditDocumentJobSessionForGraph,
 } from './full-edit-document-job-session';
 const documentJobSettings = {
   parser: { enableNest: false, nestMaxDepth: 8 },
@@ -57,7 +57,7 @@ describe('full-edit-document-job-session', () => {
     });
 
     const encoder = new TextEncoder();
-    const session = startReadableDocumentJobSessionForGraph({
+    const session = startFullEditDocumentJobSessionForGraph({
       sessionId: 'session-1',
       documentKey: 'doc-1',
       revision: 3,
@@ -125,7 +125,7 @@ describe('full-edit-document-job-session', () => {
       throw new Error(`unexpected worker call: ${method}`);
     });
 
-    const session = startReadableDocumentJobSessionForGraph({
+    const session = startFullEditDocumentJobSessionForGraph({
       sessionId: 'session-1',
       documentKey: 'doc-1',
       revision: 4,
@@ -146,5 +146,42 @@ describe('full-edit-document-job-session', () => {
 
     expect(replayed.length).toBeLessThanOrEqual(8);
     expect(replayed.at(-1)?.events.at(-1)).toMatchObject({ type: 'snapshotReady', snapshotId: 10 });
+  });
+
+  it('runs memory full-edit text through the same session path', async () => {
+    mockWorkerCall.mockImplementation(async (method: string, input: any) => {
+      if (method === 'startDocumentJob') {
+        return { jobHandle: 11, batch: { requestSeq: 0, events: [], terminal: null } };
+      }
+      if (method === 'advanceDocumentJob' && input.kind === 'textChunk') {
+        return { requestSeq: 1, events: [], terminal: null };
+      }
+      if (method === 'advanceDocumentJob' && input.kind === 'close') {
+        return {
+          requestSeq: 2,
+          events: [{ type: 'snapshotReady', snapshotId: 12, analysis: null, mainGraph: null }],
+          terminal: { type: 'completed' },
+        };
+      }
+      throw new Error(`unexpected worker call: ${method}`);
+    });
+
+    const session = startFullEditDocumentJobSessionForGraph({
+      sessionId: 'session-1',
+      documentKey: 'doc-1',
+      revision: 5,
+      language: 'json',
+      text: '{"a":1}',
+      settings: documentJobSettings,
+      totalBytes: 7,
+    });
+
+    const result = await session.result;
+    expect(result.snapshotId).toBe(12);
+    expect(mockWorkerCall).toHaveBeenNthCalledWith(2, 'advanceDocumentJob', expect.objectContaining({
+      jobHandle: 11,
+      kind: 'textChunk',
+      text: '{"a":1}',
+    }));
   });
 });
