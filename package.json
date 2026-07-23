@@ -17,7 +17,7 @@
     "core:test": "node -e \"console.log('If this hangs, see https://github.com/nextest-rs/nextest/issues/1161')\" && cd packages/core && cargo nextest run --locked",
     "test:e2e:core": "pnpm --dir apps/web test:e2e:core",
     "test:core:all": "cd packages/core && ./test.sh all",
-    "test:full": "pnpm run core:test && cd apps/cli && cargo nextest run --locked --lib && bash tests/acceptance/run.sh && cd ../web && pnpm test",
+    "test:full": "node scripts/test-full.mjs",
     "web:test": "pnpm --dir apps/web test",
     "web:assets:deploy": "pnpm --dir apps/web assets:r2:upload",
     "web:workers:deploy": "pnpm --dir apps/web deploy:workers",

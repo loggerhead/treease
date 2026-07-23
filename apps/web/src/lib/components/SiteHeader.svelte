@@ -1,5 +1,6 @@
 <script lang="ts">
   import { assetUrl, r2Assets } from '$lib/assets';
+  import { trackSeoConversion } from '$lib/analytics/ga4';
   import AccountMenu from './AccountMenu.svelte';
 
   export let navItems: Array<{ href: string; label: string }> = [];
@@ -10,6 +11,7 @@
 </script>
 
 <header class="site-header">
+  <a class="skip-link" href="#main-content">Skip to main content</a>
   <a class="brand" href="/" aria-label="Treease home">
     <img class="brand-logo" src={assetUrl(r2Assets.treeaseLogo)} alt="Treease logo" />
     <span class="brand-copy">
@@ -26,11 +28,13 @@
 
   <div class="header-actions">
     <AccountMenu variant="landing" {onLogin} {onLogout} />
-    <a class="header-cta" href={ctaHref}>{ctaLabel}</a>
+    <a class="header-cta" href={ctaHref} on:click={() => trackSeoConversion('editor_open', { source: 'site_header' })}>{ctaLabel}</a>
   </div>
 </header>
 
 <style>
+  .skip-link { position: absolute; top: 8px; left: 8px; z-index: 100; padding: 8px 12px; border-radius: 8px; color: #fff; background: var(--accent-strong, #1745b5); transform: translateY(-160%); transition: transform 160ms ease; }
+  .skip-link:focus-visible { transform: translateY(0); }
   .site-header { display: grid; align-items: center; grid-template-columns: minmax(0, 1fr) auto auto; gap: 24px; min-height: 68px; margin-bottom: 42px; padding: 0 0 18px; border-bottom: 1px solid var(--line); }
   .brand { display: inline-flex; align-items: center; gap: 12px; min-width: 0; color: inherit; text-decoration: none; }
   .brand-logo { width: 44px; height: 44px; flex: 0 0 auto; object-fit: contain; filter: drop-shadow(0 10px 18px rgba(45, 99, 226, 0.16)); }

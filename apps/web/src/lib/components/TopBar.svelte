@@ -197,7 +197,7 @@
           data-testid="topbar-tutorial-link"
           href="/tutorial"
           target="_blank"
-          rel="noopener noreferrer"
+          rel="noopener"
         >
           <BookOpen size={12} />
         </a>

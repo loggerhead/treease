@@ -34,7 +34,7 @@ const previewRouteFallback: Plugin = {
       const url = new URL(request.url ?? '/', 'http://127.0.0.1');
       const fallback = {
         '/': '/index.html',
-        '/editor': '/editor.html',
+        '/editor': '/200.html',
       }[url.pathname];
       if (fallback) {
         url.pathname = fallback;
@@ -114,6 +114,7 @@ export default defineConfig(({ mode }) => {
           sourcemap: 'hidden',
         }
       : undefined,
+    assetsInclude: ['**/*.ttf'],
     resolve: {
       alias: [
         {

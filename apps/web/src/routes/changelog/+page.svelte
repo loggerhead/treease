@@ -1,4 +1,5 @@
 <script lang="ts">
+  import SeoHead from '$lib/components/SeoHead.svelte';
   import { ArrowUpRight, Rss } from 'lucide-svelte';
   import SiteFooter from '$lib/components/SiteFooter.svelte';
   import SiteHeader from '$lib/components/SiteHeader.svelte';
@@ -15,24 +16,24 @@
 
 </script>
 
-<svelte:head>
-  <title>Changelog · Treease</title>
-  <meta name="description" content="New updates and product improvements in Treease." />
-  <link rel="canonical" href="https://treease.com/changelog" />
-</svelte:head>
+<SeoHead
+  title="Changelog · Treease"
+  description="New updates and product improvements in Treease."
+  canonical="https://treease.com/changelog"
+/>
 
 <div class="changelog-shell">
   <div class="changelog-inner">
     <SiteHeader navItems={[...homeHeaderNavItems, { href: '/changelog', label: 'Changelog' }]} />
 
-    <main aria-labelledby="changelog-title">
+    <main id="main-content" tabindex="-1" aria-labelledby="changelog-title">
       <section class="intro">
         <div>
           <p class="eyebrow">Product journal <span>✳</span></p>
           <h1 id="changelog-title">Changelog</h1>
           <p class="lede">Small releases, sharper workflows, and the details behind how Treease keeps structured text understandable.</p>
         </div>
-        <div class="intro-actions" aria-label="Changelog actions">
+        <div class="intro-actions" role="region" aria-label="Changelog actions">
           <a class="action-link" href="/changelog.xml"><Rss size={15} strokeWidth={1.8} /> RSS</a>
         </div>
       </section>
@@ -71,11 +72,20 @@
           <div><p class="eyebrow">The archive <span>↘</span></p><h2 id="archive-title">More updates</h2></div>
           <div class="year-tabs" role="tablist" aria-label="Filter by year">
             {#each years as year}
-              <button type="button" role="tab" aria-selected={activeYear === year} class:active={activeYear === year} on:click={() => (activeYear = year)}>{year}</button>
+              <button
+                id={`changelog-tab-${year}`}
+                type="button"
+                role="tab"
+                aria-controls="changelog-year-panel"
+                aria-selected={activeYear === year}
+                tabindex={activeYear === year ? 0 : -1}
+                class:active={activeYear === year}
+                on:click={() => (activeYear = year)}
+              >{year}</button>
             {/each}
           </div>
         </div>
-        <div class="timeline">
+        <div id="changelog-year-panel" role="tabpanel" aria-labelledby={`changelog-tab-${activeYear}`} class="timeline" tabindex="0">
           {#each entriesForYear(activeYear).filter((entry) => entry.slug !== changelogEntries[0]?.slug) as entry, index}
             <a class="timeline-item" href={`/changelog/${entry.slug}`} style={`--delay: ${index * 70}ms`}>
               <time datetime={entry.isoDate}>{entry.date.replace(', 2026', '')}</time>

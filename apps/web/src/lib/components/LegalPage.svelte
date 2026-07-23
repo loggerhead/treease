@@ -1,24 +1,22 @@
 <script lang="ts">
+  import SeoHead from './SeoHead.svelte';
   import SiteFooter from './SiteFooter.svelte';
   import SiteHeader from './SiteHeader.svelte';
   import { homeHeaderNavItems } from '$lib/navigation/home-header-nav';
 
   export let title: string
+  export let description: string
   export let html: string
   export let canonicalUrl: string
 </script>
 
-<svelte:head>
-  <title>{title} | Treease</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <link rel="canonical" href={canonicalUrl} />
-</svelte:head>
+<SeoHead title={`${title} | Treease`} description={description} canonical={canonicalUrl} />
 
 <div class="legal-page">
   <div class="legal-shell">
     <SiteHeader navItems={[...homeHeaderNavItems, { href: '/changelog', label: 'Changelog' }]} ctaLabel="Open Editor" />
 
-    <main class="legal-main">
+    <main class="legal-main" id="main-content" tabindex="-1">
       <article class="legal-card">
         <div class="legal-copy">
           {@html html}

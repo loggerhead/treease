@@ -75,6 +75,12 @@ body {
   width: 10px;
 }
 
+.app-split-divider__handle {
+  position: absolute;
+  inset: 0;
+  outline: none;
+}
+
 .app-split-divider--horizontal {
   @apply relative z-10 w-full cursor-row-resize;
   height: 1px;
@@ -149,6 +155,17 @@ body {
 
 .sr-only {
   @apply sr-only;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 
 [data-slot="dropdown-menu-content"] {

@@ -186,10 +186,10 @@
 </script>
 
 <Dialog bind:open onOpenChange={handleOpenChange}>
-<DialogContent aria-label="Settings dialog" data-testid="settings-dialog">
+<DialogContent aria-labelledby="settings-dialog-title" data-testid="settings-dialog">
   <div class="flex w-full flex-col gap-4">
       <DialogHeader>
-        <DialogTitle>Settings</DialogTitle>
+        <DialogTitle id="settings-dialog-title">Settings</DialogTitle>
       </DialogHeader>
     <div class="flex flex-1 flex-col gap-3">
       <div class="flex flex-wrap gap-2 rounded-[10px] border border-[var(--border-muted)] bg-[#f8fafc] p-1">

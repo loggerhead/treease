@@ -72,9 +72,9 @@
 </script>
 
 <Dialog bind:open>
-  <DialogContent aria-label="Share document" data-testid="share-dialog" class="max-w-md">
+  <DialogContent aria-labelledby="share-dialog-title" data-testid="share-dialog" class="max-w-md">
     <DialogHeader>
-      <DialogTitle>Share this document</DialogTitle>
+      <DialogTitle id="share-dialog-title">Share this document</DialogTitle>
     </DialogHeader>
     <div class="flex flex-col gap-4 text-[13px] text-[var(--text-muted)]">
       <p>Create a read-only snapshot link that anyone can open without signing in.</p>

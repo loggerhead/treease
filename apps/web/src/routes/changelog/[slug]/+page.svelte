@@ -1,4 +1,5 @@
 <script lang="ts">
+  import SeoHead from '$lib/components/SeoHead.svelte';
   import { ArrowLeft, Rss } from 'lucide-svelte';
   import SiteFooter from '$lib/components/SiteFooter.svelte';
   import SiteHeader from '$lib/components/SiteHeader.svelte';
@@ -8,17 +9,18 @@
   export let data: PageData;
 </script>
 
-<svelte:head>
-  <title>{data.entry.title} · Treease Changelog</title>
-  <meta name="description" content={data.entry.summary} />
-  <link rel="canonical" href={`https://treease.com/changelog/${data.entry.slug}`} />
-</svelte:head>
+<SeoHead
+  title={`${data.entry.title} · Treease Changelog`}
+  description={data.entry.summary}
+  canonical={`https://treease.com/changelog/${data.entry.slug}`}
+  type="article"
+/>
 
 <div class="entry-shell">
   <div class="entry-inner">
     <SiteHeader navItems={[...homeHeaderNavItems, { href: '/changelog', label: 'Changelog' }]} />
 
-    <main class="entry-main">
+    <main class="entry-main" id="main-content" tabindex="-1">
       <div class="entry-actions">
         <a href="/changelog"><ArrowLeft size={16} strokeWidth={1.8} /> Back to changelog</a>
         <a href="/changelog.xml"><Rss size={15} strokeWidth={1.8} /> RSS</a>

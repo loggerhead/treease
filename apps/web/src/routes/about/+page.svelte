@@ -1,23 +1,21 @@
 <script lang="ts">
+  import SeoHead from '$lib/components/SeoHead.svelte';
   import SiteFooter from '$lib/components/SiteFooter.svelte';
   import SiteHeader from '$lib/components/SiteHeader.svelte';
   import { homeHeaderNavItems } from '$lib/navigation/home-header-nav';
 </script>
 
-<svelte:head>
-  <title>About Treease | Structured Text Workspace</title>
-  <meta
-    name="description"
-    content="Learn what Treease is, how its browser workspace connects structured text with graph views, and where to find the open-source CLI and core packages."
-  />
-  <link rel="canonical" href="https://treease.com/about" />
-</svelte:head>
+<SeoHead
+  title="About Treease | Structured Text Workspace"
+  description="Learn what Treease is, how its browser workspace connects structured text with graph views, and where to find the open-source CLI and core packages."
+  canonical="https://treease.com/about"
+/>
 
 <div class="about-shell">
   <div class="about-shell__inner">
     <SiteHeader navItems={[...homeHeaderNavItems, { href: '/changelog', label: 'Changelog' }]} />
 
-    <main class="prose-page">
+    <main class="prose-page" id="main-content" tabindex="-1">
       <p class="eyebrow">About Treease</p>
       <h1>Understand structured text before you change it.</h1>
       <p class="lede">
@@ -38,9 +36,9 @@
         <h2>Open-source foundation</h2>
         <p>
           The CLI and parsing/runtime packages are published as open-source Rust crates. Read the
-          source on <a href="https://github.com/loggerhead/treease">GitHub</a>, install the
-          <a href="https://crates.io/crates/treease-cli">Treease CLI</a>, or browse its
-          <a href="https://docs.rs/treease-cli">API documentation</a>.
+          source on <a href="https://github.com/loggerhead/treease" target="_blank" rel="noopener">GitHub</a>, install the
+          <a href="https://crates.io/crates/treease-cli" target="_blank" rel="noopener">Treease CLI</a>, or browse its
+          <a href="https://docs.rs/treease-cli" target="_blank" rel="noopener">API documentation</a>.
         </p>
       </section>
 

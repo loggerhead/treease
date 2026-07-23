@@ -266,6 +266,14 @@
   let measureHeader: HTMLDivElement;
   let measureHeaderText: HTMLSpanElement;
   let resetActiveEditState: () => void = () => {};
+  const requestFrame =
+    typeof globalThis.requestAnimationFrame === 'function'
+      ? globalThis.requestAnimationFrame.bind(globalThis)
+      : () => 0;
+  const cancelFrame =
+    typeof globalThis.cancelAnimationFrame === 'function'
+      ? globalThis.cancelAnimationFrame.bind(globalThis)
+      : () => {};
   const graphFullEditRuntime = createGraphFullEditRuntime({
     getFullEditUiState: () => $fullEditUiState,
     getLeafer: () => leafer as LeaferAppLike | null,
@@ -274,7 +282,7 @@
     updateMinimap: () => graphMinimapRuntimeController.update(),
     resetActiveEditState,
     isInteractionBlocked: () => isFullEditInteractionBlocked(),
-    requestFrame: requestAnimationFrame,
+    requestFrame,
     completeStreamProgress: () => graphStreamProgressController.completeIfActive(),
     getCleanupHandles: () => ({
       settled: fullEditSettledCleanupHandle,
@@ -1080,7 +1088,7 @@
     graphReadinessWaiters.clear();
     disposeGraphViewRuntime({
       cleanupHandles: { settled: fullEditSettledCleanupHandle, idle: fullEditIdleCleanupHandle },
-      cancelFrame: cancelAnimationFrame,
+      cancelFrame,
       resetCanvasHint,
       disposeMeasurement: () => graphMeasurementController.dispose(),
       disposeRenderEffects: () => graphRenderEffects.dispose(),

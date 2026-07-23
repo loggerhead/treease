@@ -16,6 +16,7 @@
     <p>{lede}</p>
   </div>
 
+  <h2 class="sr-only" id="tutorial-cards-title">Available tutorials</h2>
   <div class="tutorial-hub__grid">
     {#each articles as article}
       <article class="tutorial-card">

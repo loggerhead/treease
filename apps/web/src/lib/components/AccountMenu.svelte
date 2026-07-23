@@ -217,7 +217,7 @@
           {/if}
         </span>
         {#if planPresentation && subscription?.tier === 'pro'}
-          <span class="plan-badge pro-plan-badge" aria-label={`Current plan: ${planPresentation.label}`}></span>
+          <span class="plan-badge pro-plan-badge" aria-hidden="true"></span>
         {/if}
       {:else}
         <UserIcon size={12} />
@@ -279,7 +279,7 @@
             </button>
           </div>
           {#if usageExpanded && usageLoading}
-            <div class="usage-details usage-details--loading" data-testid="usage-loading" aria-label="Loading usage">
+            <div class="usage-details usage-details--loading" data-testid="usage-loading" role="status" aria-label="Loading usage">
               <div class="usage-loading-line usage-loading-line--wide"></div>
               <div class="usage-loading-line"></div>
               <div class="usage-loading-line"></div>

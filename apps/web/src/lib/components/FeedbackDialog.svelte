@@ -214,9 +214,9 @@
 </script>
 
 <Dialog bind:open>
-  <DialogContent aria-label="Feedback" data-testid="feedback-dialog" class="max-h-[90vh] max-w-2xl gap-6 overflow-y-auto">
+  <DialogContent aria-labelledby="feedback-dialog-title" data-testid="feedback-dialog" class="max-h-[90vh] max-w-2xl gap-6 overflow-y-auto">
     <DialogHeader>
-      <DialogTitle>Send Feedback</DialogTitle>
+      <DialogTitle id="feedback-dialog-title">Send Feedback</DialogTitle>
     </DialogHeader>
 
     <div class="flex flex-col gap-5">

@@ -27,6 +27,17 @@ Do not edit it by hand; run `pnpm docs:map:gen`.
   - H2: Subgraph-Workspace Entry-Point Constraints
   - H2: Checklist
 
+## contracts/billing-entitlements.md
+
+- Route: /contracts/billing-entitlements
+- Headings:
+  - H1: Billing Entitlements
+  - H2: Terms and authority
+  - H2: Pro product limits
+  - H2: Enforcement path
+  - H2: Target server model
+  - H2: Web analytics contract
+
 ## contracts/desktop-workspace.md
 
 - Route: /contracts/desktop-workspace
@@ -246,6 +257,56 @@ Do not edit it by hand; run `pnpm docs:map:gen`.
   - H2: Operators
   - H2: Formats
 
+## geo-checklist.md
+
+- Route: /geo-checklist
+- Headings:
+  - H1: Treease GEO 提升 Checklist
+  - H2: 1. 先统一目标：GEO 不是“操纵 AI 推荐”
+  - H2: 2. 证据等级与使用方式
+  - H2: 3. P0：测量和基线
+  - H3: 3.1 建立固定 Prompt Set
+  - H3: 3.2 指标定义
+  - H3: 3.3 Treease 当前基线
+  - H2: 4. P0：抓取、索引和生成式搜索访问
+  - H3: 4.1 页面访问
+  - H3: 4.2 robots 与 OpenAI crawler
+  - H3: 4.3 可选的机器可读入口
+  - H2: 5. P0：实体、信任和事实一致性
+  - H3: 5.1 Treease 实体卡
+  - H3: 5.2 跨站一致性
+  - H3: 5.3 证据而不是口号
+  - H2: 6. P0：让页面成为“可引用单元”
+  - H3: 6.1 页面模板
+  - H3: 6.2 Treease 教程页
+  - H3: 6.3 结构化数据
+  - H2: 7. P1：主题集群与站内关系图
+  - H2: 8. P1：社区与第三方分发
+  - H3: 8.1 Reddit
+  - H3: 8.2 Hacker News
+  - H3: 8.3 知乎
+  - H3: 8.4 小红书
+  - H3: 8.5 掘金
+  - H3: 8.6 V2EX
+  - H2: 9. P1：官方 AI 生态给出的可执行启示
+  - H3: OpenAI
+  - H3: Anthropic
+  - H3: Meta AI
+  - H3: xAI / Grok
+  - H3: Google Research / DeepMind
+  - H2: 10. P1：Treease 90 天执行清单
+  - H3: 第 1～2 周：让所有事实可被读取
+  - H3: 第 3～6 周：提高引用价值
+  - H3: 第 7～10 周：建立第三方验证
+  - H3: 第 11～12 周：复测并做小步迭代
+  - H2: 11. 每周运营检查表
+  - H2: 12. 明确不做的事情
+  - H2: 13. 研究来源审计
+  - H3: 用户指定社区
+  - H3: 用户指定官方博客与研究站点
+  - H3: 补充来源
+  - H2: 14. 验收标准
+
 ## graph-stream-benchmark.md
 
 - Route: /graph-stream-benchmark
@@ -322,5 +383,6 @@ Do not edit it by hand; run `pnpm docs:map:gen`.
   - H3: US-12 Adjust Personal Preferences
   - H3: US-13 See Progress While Processing Large Files
   - H3: US-14 Process Structured Input on the Command Line
+  - H3: US-15 Continue the Current Journey After Login
   - H2: Product Boundaries
   - H2: Maintenance Rules

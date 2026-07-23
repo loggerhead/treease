@@ -26,7 +26,7 @@ type MonacoJsonContributionModule = {
 };
 
 export async function loadMonacoApi(): Promise<MonacoApi> {
-  return (await import('monaco-editor/esm/vs/editor/editor.api' as string)) as MonacoApi;
+  return (await import('monaco-editor/esm/vs/editor/editor.api.js' as string)) as MonacoApi;
 }
 
 export async function loadMonacoStandaloneConfiguration(): Promise<{
@@ -34,8 +34,8 @@ export async function loadMonacoStandaloneConfiguration(): Promise<{
   IConfigurationService: unknown;
 }> {
   const [{ StandaloneServices }, { IConfigurationService }] = await Promise.all([
-    import('monaco-editor/esm/vs/editor/standalone/browser/standaloneServices' as string) as Promise<StandaloneServicesModule>,
-    import('monaco-editor/esm/vs/platform/configuration/common/configuration' as string) as Promise<ConfigurationModule>,
+    import('monaco-editor/esm/vs/editor/standalone/browser/standaloneServices.js' as string) as Promise<StandaloneServicesModule>,
+    import('monaco-editor/esm/vs/platform/configuration/common/configuration.js' as string) as Promise<ConfigurationModule>,
   ]);
   return { StandaloneServices, IConfigurationService };
 }
@@ -56,7 +56,7 @@ export async function loadMonacoWorkers(): Promise<{
 
 export async function loadMonacoJsonDefaults(): Promise<MonacoJsonDefaults> {
   const jsonModule = (await import(
-    'monaco-editor/esm/vs/language/json/monaco.contribution' as string
+    'monaco-editor/esm/vs/language/json/monaco.contribution.js' as string
   )) as MonacoJsonContributionModule;
   const jsonDefaults = jsonModule.jsonDefaults ?? jsonModule.default?.jsonDefaults;
   if (!jsonDefaults) {

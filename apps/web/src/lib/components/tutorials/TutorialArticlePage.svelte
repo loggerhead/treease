@@ -1,19 +1,20 @@
 <script lang="ts">
   import TutorialCodeLink from '$lib/components/tutorials/TutorialCodeLink.svelte';
+  import SeoHead from '$lib/components/SeoHead.svelte';
   import { assetUrl, r2Assets } from '$lib/assets';
   import { getRelatedTutorialArticles } from '$lib/content/tutorials';
   import type { TutorialArticle } from '$lib/content/tutorials/types';
+  import { serializeJsonLd, siteOrigin } from '$lib/seo/site-seo';
 
   export let article: TutorialArticle;
 
-  const siteOrigin = 'https://treease.com';
   function sectionId(title: string): string {
     return title.toLowerCase().replaceAll(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
   }
 
   $: relatedArticles = getRelatedTutorialArticles(article);
   $: articleUrl = `${siteOrigin}/tutorial/${article.slug}`;
-  $: articleJsonLd = JSON.stringify({
+  $: articleJsonLd = serializeJsonLd({
     '@context': 'https://schema.org',
     '@type': 'TechArticle',
     headline: article.title,
@@ -40,7 +41,7 @@
       url: `${siteOrigin}/tutorial`,
     },
   });
-  $: breadcrumbJsonLd = JSON.stringify({
+  $: breadcrumbJsonLd = serializeJsonLd({
     '@context': 'https://schema.org',
     '@type': 'BreadcrumbList',
     itemListElement: [
@@ -49,24 +50,24 @@
       { '@type': 'ListItem', position: 3, name: article.title, item: articleUrl },
     ],
   });
+  $: faqJsonLd = serializeJsonLd({
+    '@context': 'https://schema.org',
+    '@type': 'FAQPage',
+    mainEntity: article.faq.map(({ question, answer }) => ({
+      '@type': 'Question',
+      name: question,
+      acceptedAnswer: { '@type': 'Answer', text: answer },
+    })),
+  });
 </script>
 
-<svelte:head>
-  <title>{article.title} | Treease Tutorial | Structured Text Workspace</title>
-  <meta name="description" content={article.description} />
-  <link rel="canonical" href={articleUrl} />
-  <meta property="og:type" content="article" />
-  <meta property="og:title" content={article.title} />
-  <meta property="og:description" content={article.description} />
-  <meta property="og:url" content={articleUrl} />
-  <meta property="og:image" content={assetUrl(r2Assets.heroDemoGraphPoster)} />
-  <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:title" content={article.title} />
-  <meta name="twitter:description" content={article.description} />
-  <meta name="twitter:image" content={assetUrl(r2Assets.heroDemoGraphPoster)} />
-  <script type="application/ld+json">{articleJsonLd}</script>
-  <script type="application/ld+json">{breadcrumbJsonLd}</script>
-</svelte:head>
+<SeoHead
+  title={`${article.title} | Treease`}
+  description={article.description}
+  canonical={articleUrl}
+  type="article"
+  jsonLd={[articleJsonLd, breadcrumbJsonLd, faqJsonLd]}
+/>
 
 <article class="tutorial-article">
   <header class="tutorial-article__hero">

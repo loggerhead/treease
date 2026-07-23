@@ -285,6 +285,7 @@
 <style>
   .hero-demo-deck {
     position: relative;
+    overflow: hidden;
   }
 
   .deck-stage {

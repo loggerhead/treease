@@ -77,10 +77,10 @@
 
     <section class="panel panel--graph">
       <div class="panel-head">
-        <span class="panel-title">Parsed graph</span>
+        <span id="parsed-graph-title" class="panel-title">Parsed graph</span>
         <span class="panel-note">preview</span>
       </div>
-      <div class="graph-root" aria-label="Parsed graph preview">
+      <div class="graph-root" role="region" aria-labelledby="parsed-graph-title">
         {#each graphLines as node}
           <div class="graph-row {node.selected ? 'graph-row--selected' : ''}">
             <span class={`graph-indent-${node.level}`}></span>

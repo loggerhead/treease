@@ -1,4 +1,5 @@
 <script lang="ts">
+  import SeoHead from '$lib/components/SeoHead.svelte';
   import SiteFooter from '$lib/components/SiteFooter.svelte';
   import SiteHeader from '$lib/components/SiteHeader.svelte';
   import TutorialHubSection from '$lib/components/tutorials/TutorialHubSection.svelte';
@@ -11,22 +12,13 @@
   const canonicalUrl = 'https://treease.com/tutorial';
 </script>
 
-<svelte:head>
-  <title>{pageTitle} | Structured Text Workspace</title>
-  <meta name="description" content={pageDescription} />
-  <link rel="canonical" href={canonicalUrl} />
-  <meta property="og:type" content="website" />
-  <meta property="og:title" content={pageTitle} />
-  <meta property="og:description" content={pageDescription} />
-  <meta property="og:url" content={canonicalUrl} />
-  <meta name="twitter:card" content="summary" />
-</svelte:head>
+<SeoHead title={`${pageTitle} | Structured Text Workspace`} description={pageDescription} canonical={canonicalUrl} />
 
 <div class="tutorial-shell">
   <div class="tutorial-shell__inner">
     <SiteHeader navItems={[...homeHeaderNavItems]} />
 
-    <main class="tutorial-shell__main">
+    <main class="tutorial-shell__main" id="main-content" tabindex="-1">
       <TutorialHubSection
         eyebrow="Tutorial Library"
         title="JSON viewer, formatter, and compare tutorials"

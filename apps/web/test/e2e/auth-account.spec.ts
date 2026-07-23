@@ -1,5 +1,38 @@
 import { expect, test } from "./fixtures";
 
+test("login dialog keeps focus and announces invalid email errors", async ({ page }) => {
+  await page.goto("/");
+  await page.waitForLoadState("networkidle");
+
+  const login = page.getByTestId("account-login-button");
+  await expect(login).toBeVisible();
+  await login.click();
+
+  const dialog = page.getByTestId("login-dialog");
+  await expect(dialog).toBeVisible();
+  await expect(page.getByRole("dialog", { name: "Log in" })).toBeVisible();
+  await expect(dialog).not.toHaveAttribute("aria-label");
+  await expect(dialog).not.toHaveAttribute("aria-describedby");
+  await expect(dialog).toContainText("Login with Google");
+  await expect(dialog).toContainText("Email address");
+  await expect(page.locator("#login-email")).not.toHaveAttribute("aria-describedby");
+  await expect(dialog.locator(":focus")).toBeVisible();
+
+  const email = page.locator("#login-email");
+  await email.fill("invalid-email");
+  await page.getByTestId("login-email-button").click();
+
+  const error = page.locator("#login-error");
+  await expect(error).toHaveRole("alert");
+  await expect(error).toContainText("Enter a valid email address.");
+  await expect(email).toHaveAttribute("aria-invalid", "true");
+  await expect(email).toHaveAttribute("aria-describedby", "login-error");
+
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeHidden();
+  await expect(login).toBeFocused();
+});
+
 test("PKCE login returns to the original page, shows the account, and supports logout", async ({
   page,
 }) => {

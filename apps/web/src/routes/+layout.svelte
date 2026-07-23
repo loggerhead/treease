@@ -13,6 +13,8 @@
     installTestBridge();
   }
 
+  const adsEnabled = !import.meta.env.DEV && import.meta.env.MODE !== 'test';
+
   onMount(() => {
     installFeedbackConsoleLogBuffer();
 
@@ -28,6 +30,13 @@
 
 <svelte:head>
   <link rel="icon" type="image/png" href={assetUrl(r2Assets.treeaseLogo)} />
+  {#if adsEnabled}
+    <script
+      async
+      src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6579013241267492"
+      crossorigin="anonymous"
+    ></script>
+  {/if}
 </svelte:head>
 
 <slot />

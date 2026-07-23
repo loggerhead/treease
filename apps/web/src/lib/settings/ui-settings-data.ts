@@ -25,7 +25,7 @@ export const editorUiColors = {
   // Editor foreground color
   'editor.foreground': '#0f172a',
   // Default line-number color
-  'editorLineNumber.foreground': '#94a3b8',
+  'editorLineNumber.foreground': '#64748b',
   // Active line-number color
   'editorLineNumber.activeForeground': '#0f172a',
   // Cursor color

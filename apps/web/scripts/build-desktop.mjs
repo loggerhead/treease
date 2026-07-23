@@ -16,7 +16,8 @@ function run(args, env) {
 
 run(["wasm:bindgen:check"]);
 run(["wasm:sync"]);
-run(["exec", "vp", "build"], {
+run(["sitemap:generate"]);
+run(["exec", "node", "./scripts/with-build-lock.mjs", "vp", "build"], {
   ...process.env,
   TREEASE_WORKSPACE_SURFACE: "desktop",
   WASM_VERSION: execFileSync(

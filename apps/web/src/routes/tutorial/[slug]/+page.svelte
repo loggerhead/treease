@@ -14,7 +14,7 @@
   <div class="tutorial-page-shell__inner">
     <SiteHeader navItems={[...homeHeaderNavItems]} />
 
-    <main class="tutorial-page-shell__main">
+    <main class="tutorial-page-shell__main" id="main-content" tabindex="-1">
       <TutorialArticlePage article={data.article} />
     </main>
 

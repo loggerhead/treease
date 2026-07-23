@@ -16,7 +16,8 @@ export type AnalyticsEventName =
   | 'subscription_viewed'
   | 'subscription_management_started'
   | 'entitlement_blocked'
-  | 'quota_threshold_reached';
+  | 'quota_threshold_reached'
+  | 'seo_conversion';
 
 export type AnalyticsEventParams = Record<string, string | number | boolean>;
 
@@ -39,7 +40,18 @@ const allowedParamKeys = new Set([
   'feature',
   'reason',
   'threshold',
+  'page_path',
+  'page_title',
+  'landing_page',
+  'landing_source',
+  'landing_medium',
+  'landing_campaign',
+  'landing_content',
+  'landing_referrer',
+  'conversion',
 ]);
+
+const landingAttributionKey = 'treease:landing-attribution';
 
 let initialized = false;
 let consentGranted = !consentRequired;
@@ -105,7 +117,8 @@ function enqueueEvent(name: string, params: AnalyticsEventParams): void {
   if (desktopSurface) return;
   if (!measurementId || (consentRequired && !consentGranted) || queuedEvents.length >= 100) return;
   const safeParams: AnalyticsEventParams = {};
-  for (const [key, value] of Object.entries(params)) {
+  const attribution = name === 'page_view' || name === 'seo_conversion' ? captureLandingAttribution() : {};
+  for (const [key, value] of Object.entries({ ...attribution, ...params })) {
     if (!allowedParamKeys.has(key)) continue;
     if (typeof value === 'string') safeParams[key] = value.slice(0, 100);
     else if (typeof value === 'number' && Number.isFinite(value)) safeParams[key] = value;
@@ -113,6 +126,55 @@ function enqueueEvent(name: string, params: AnalyticsEventParams): void {
   }
   queuedEvents.push({ name, params: safeParams });
   scheduleFlush();
+}
+
+type LandingAttribution = Pick<AnalyticsEventParams, 'landing_page' | 'landing_source' | 'landing_medium'> &
+  Partial<Pick<AnalyticsEventParams, 'landing_campaign' | 'landing_content' | 'landing_referrer'>>;
+
+function safeAttributionValue(value: string | null | undefined): string | undefined {
+  const normalized = value?.trim().slice(0, 100);
+  return normalized || undefined;
+}
+
+function captureLandingAttribution(): LandingAttribution {
+  if (typeof window === 'undefined') {
+    return { landing_page: '/', landing_source: 'direct', landing_medium: 'none' };
+  }
+
+  try {
+    const stored = window.sessionStorage.getItem(landingAttributionKey);
+    if (stored) return JSON.parse(stored) as LandingAttribution;
+  } catch {
+    // Storage may be unavailable in private browsing or embedded contexts.
+  }
+
+  const url = new URL(window.location.href);
+  let referrer: URL | null = null;
+  try {
+    if (document.referrer) referrer = new URL(document.referrer);
+  } catch {
+    referrer = null;
+  }
+  const utmSource = safeAttributionValue(url.searchParams.get('utm_source'));
+  const utmMedium = safeAttributionValue(url.searchParams.get('utm_medium'));
+  const attribution: LandingAttribution = {
+    landing_page: sanitizePagePath(url.pathname),
+    landing_source: utmSource ?? (referrer ? 'referral' : 'direct'),
+    landing_medium: utmMedium ?? (referrer ? 'referral' : 'none'),
+  };
+  const campaign = safeAttributionValue(url.searchParams.get('utm_campaign'));
+  const content = safeAttributionValue(url.searchParams.get('utm_content'));
+  const referrerOrigin = referrer && referrer.origin !== window.location.origin ? referrer.origin : undefined;
+  if (campaign) attribution.landing_campaign = campaign;
+  if (content) attribution.landing_content = content;
+  if (referrerOrigin) attribution.landing_referrer = safeAttributionValue(referrerOrigin);
+
+  try {
+    window.sessionStorage.setItem(landingAttributionKey, JSON.stringify(attribution));
+  } catch {
+    // The event remains useful even when session storage is unavailable.
+  }
+  return attribution;
 }
 
 export function sanitizePagePath(pathname: string): string {
@@ -172,4 +234,13 @@ export function trackPageView(pathname: string): void {
 
 export function trackEvent(name: AnalyticsEventName, params: AnalyticsEventParams = {}): void {
   enqueueEvent(name, params);
+}
+
+export type SeoConversionName = 'editor_open' | 'pricing_cta';
+
+export function trackSeoConversion(
+  conversion: SeoConversionName,
+  params: Omit<AnalyticsEventParams, 'conversion'> = {},
+): void {
+  trackEvent('seo_conversion', { ...params, conversion });
 }

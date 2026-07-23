@@ -272,7 +272,13 @@
 
 <div class="border-t border-[var(--border-strong)] bg-[var(--panel-bg-alt)] px-2 py-1.5" data-testid="yq-expression-panel">
   {#if error}
-    <p class="mb-1 text-[12px] text-[var(--danger-text,#dc2626)]" data-testid="yq-expression-error">{error}</p>
+    <p
+      class="mb-1 text-[12px] text-[var(--danger-text,#dc2626)]"
+      data-testid="yq-expression-error"
+      role="alert"
+      aria-live="assertive"
+      aria-atomic="true"
+    >{error}</p>
   {/if}
   <div class="flex items-center gap-1.5">
     <div class="min-w-0 flex-1 overflow-visible rounded-[8px] border border-[var(--border-muted)] bg-[var(--panel-bg)]">

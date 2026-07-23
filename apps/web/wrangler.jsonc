@@ -1,8 +1,16 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "treease-web",
-  "main": "./src/cloudflare-worker.ts",
+  "main": "./.svelte-kit/cloudflare/_worker.js",
   "compatibility_date": "2026-07-20",
+  "compatibility_flags": ["nodejs_compat"],
+  "rules": [
+    {
+      "type": "Data",
+      "globs": ["**/*.ttf"],
+      "fallthrough": false
+    }
+  ],
   "observability": {
     "enabled": true,
     "head_sampling_rate": 1
@@ -14,7 +22,8 @@
     }
   ],
   "assets": {
-    "directory": "./build",
-    "not_found_handling": "single-page-application"
+    "directory": "./.svelte-kit/cloudflare",
+    "binding": "ASSETS",
+    "not_found_handling": "none"
   }
 }

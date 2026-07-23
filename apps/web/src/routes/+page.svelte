@@ -19,8 +19,9 @@
     type PricingFeature,
   } from '$lib/config/pricing';
   import { homeHeaderNavItems } from '$lib/navigation/home-header-nav';
-  import { trackEvent } from '$lib/analytics/ga4';
+  import { trackEvent, trackSeoConversion } from '$lib/analytics/ga4';
   import { toast } from 'svelte-sonner';
+  import SeoHead from '$lib/components/SeoHead.svelte';
   import { signOut } from '$lib/auth/supabase-auth';
   import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '$lib/components/ui/dialog';
   import {
@@ -44,11 +45,11 @@
   let planChangeDialogOpen = false;
   let pendingPlanChange: { priceId: BillingPriceId; plan: typeof pricingConfig.plans[number] } | null = null;
   const yearlySavings = fixedYearlySavingsPercent;
-  const siteOrigin = 'https://treease.com';
+  import { serializeJsonLd, siteOrigin, socialLinks } from '$lib/seo/site-seo';
   const pageTitle = 'Treease: JSON, YAML & Structured Text Viewer with Graphs';
   const pageDescription =
     'View, format, compare, and edit JSON, YAML, TOML, CSV, and embedded payloads in a private browser workspace with graph and source views.';
-  const homeJsonLd = JSON.stringify({
+  const homeJsonLd = serializeJsonLd({
     '@context': 'https://schema.org',
     '@type': 'WebApplication',
     name: 'Treease',
@@ -60,7 +61,7 @@
       '@type': 'Organization',
       name: 'Treease',
       url: siteOrigin,
-      sameAs: ['https://github.com/loggerhead/treease', 'https://crates.io/crates/treease-cli'],
+      sameAs: ['https://github.com/loggerhead/treease', 'https://crates.io/crates/treease-cli', socialLinks.x, socialLinks.discord],
     },
   });
 
@@ -328,30 +329,25 @@
         'Use Treease when seeing the structure matters: inspecting nested data, tracing fields, checking changes, or previewing converted output. General-purpose editing, custom CLI filters, and batch automation still belong in an editor or terminal when the job stops being document-centric.'
     }
   ];
+  const homeFaqJsonLd = serializeJsonLd({
+    '@context': 'https://schema.org',
+    '@type': 'FAQPage',
+    mainEntity: faqItems.map(({ question, answer }) => ({
+      '@type': 'Question',
+      name: question,
+      acceptedAnswer: { '@type': 'Answer', text: answer },
+    })),
+  });
 
 </script>
 
-<svelte:head>
-  <title>{pageTitle}</title>
-  <meta name="description" content={pageDescription} />
-  <link rel="canonical" href={siteOrigin} />
-  <meta property="og:type" content="website" />
-  <meta property="og:title" content={pageTitle} />
-  <meta property="og:description" content={pageDescription} />
-  <meta property="og:url" content={siteOrigin} />
-  <meta property="og:image" content={assetUrl(r2Assets.heroDemoGraphPoster)} />
-  <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:title" content={pageTitle} />
-  <meta name="twitter:description" content={pageDescription} />
-  <meta name="twitter:image" content={assetUrl(r2Assets.heroDemoGraphPoster)} />
-  <script type="application/ld+json">{homeJsonLd}</script>
-</svelte:head>
+<SeoHead title={pageTitle} description={pageDescription} canonical={`${siteOrigin}/`} jsonLd={[homeJsonLd, homeFaqJsonLd]} />
 
 <div class="landing">
   <div class="landing-shell">
     <SiteHeader navItems={[...homeHeaderNavItems]} onLogin={() => (loginOpen = true)} onLogout={handleLogout} />
 
-    <main class="landing-main" id="top" aria-labelledby="hero-title">
+    <main class="landing-main" id="main-content" tabindex="-1" aria-labelledby="hero-title">
       <section class="hero">
         <div class="hero-copy">
           <p class="hero-kicker">Visualize structured text</p>
@@ -366,7 +362,7 @@
               <a
                 class="primary-cta"
                 href="/editor"
-                on:click={() => trackEvent('editor_open', { source: 'landing' })}
+                on:click={() => trackSeoConversion('editor_open', { source: 'landing' })}
               >Open Editor</a>
               <button
                 type="button"
@@ -381,7 +377,7 @@
               </button>
             </div>
             {#if cliInstallExpanded}
-              <div class="cli-quickstart" id="hero-cli-install" aria-label="Treease CLI quick start">
+              <div class="cli-quickstart" id="hero-cli-install" role="region" aria-label="Treease CLI quick start">
                 <div class="cli-quickstart__label">
                   <strong>Install the CLI, then open a readonly local graph view.</strong>
                 </div>
@@ -428,7 +424,7 @@
           </p>
         </div>
 
-        <div class="capability-grid" aria-label="Treease feature highlights">
+        <div class="capability-grid" role="region" aria-labelledby="features-title">
           <article class="capability-card capability-card--hero">
             <div class="story-copy">
               <h3>Open a local file and see the real structure.</h3>
@@ -546,7 +542,7 @@
           </p>
         </div>
 
-        <div class="workflow-story__grid" aria-label="Import progress, preview export, and compare structure">
+        <div class="workflow-story__grid" role="region" aria-labelledby="workflow-title">
           <article class="workflow-story__card workflow-story__card--progress">
             <div class="story-copy">
               <h3>Keep large JSON imports transparent.</h3>
@@ -613,8 +609,8 @@
               class="pricing-card"
             >
               {#if plan.billingPriceId === 'yearly'}
-                <p class="pricing-card__eyebrow" aria-label={yearlySavings === null ? 'Loading annual saving' : undefined}>
-                  SAVE {#if yearlySavings === null}<span class="pricing-card__loading-dash" aria-hidden="true">-</span>{:else}{yearlySavings}{/if}%
+                <p class="pricing-card__eyebrow" aria-live="polite" aria-atomic="true">
+                  SAVE {#if yearlySavings === null}<span class="pricing-card__loading-dash" aria-hidden="true">-</span><span class="sr-only">Loading annual saving</span>{:else}{yearlySavings}{/if}%
                 </p>
               {:else if plan.eyebrow}
                 <p class="pricing-card__eyebrow">{plan.eyebrow}</p>
@@ -623,7 +619,7 @@
                 <h3>{plan.name}</h3>
                 <p class="pricing-card__description">{plan.description}</p>
               </div>
-              <div class="pricing-card__price" aria-label={`${plan.price ?? ''} ${plan.cadence ?? ''}`}>
+              <div class="pricing-card__price">
                 <strong>{plan.price}</strong>
                 <span>{plan.cadence}</span>
               </div>
@@ -696,10 +692,10 @@
   </div>
   {#if pendingPlanChange}
     <Dialog bind:open={planChangeDialogOpen}>
-      <DialogContent aria-label="Confirm plan change" data-testid="plan-change-dialog" class="plan-change-dialog">
+      <DialogContent aria-labelledby="plan-change-dialog-title" aria-describedby="plan-change-dialog-description" data-testid="plan-change-dialog" class="plan-change-dialog">
         <DialogHeader>
-          <DialogTitle>Change your billing plan?</DialogTitle>
-          <DialogDescription>
+          <DialogTitle id="plan-change-dialog-title">Change your billing plan?</DialogTitle>
+          <DialogDescription id="plan-change-dialog-description">
             Your Pro access stays active. The new billing plan starts at your next renewal.
           </DialogDescription>
         </DialogHeader>
