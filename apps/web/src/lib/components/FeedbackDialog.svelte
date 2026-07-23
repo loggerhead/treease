@@ -1,8 +1,10 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import { LoaderCircle, RefreshCw, Trash2, Upload, X } from 'lucide-svelte';
   import { toast } from 'svelte-sonner';
   import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog';
   import { Button } from './ui/button';
+  import { authUser, observeAuthUser } from '../auth/auth-user-store';
   import { getFeedbackConsoleLogs } from '../feedback/console-log-buffer';
 
   const BUGDROP_API = 'https://feedback.treease.com/api';
@@ -14,6 +16,7 @@
 
   let category: Category = 'bug';
   let description = '';
+  let email = '';
   let includeScreenshot = true;
   let sendConsoleLogs = true;
   let screenshot = '';
@@ -24,10 +27,22 @@
   let uploadInput: HTMLInputElement | null = null;
   let captureFrame: number | null = null;
   let captureGeneration = 0;
+  let emailAutofilled = false;
+
+  onMount(() => observeAuthUser());
 
   $: if (open && !prepared) {
     prepared = true;
+    if ($authUser?.email) {
+      email = $authUser.email;
+      emailAutofilled = true;
+    }
     scheduleScreenshot();
+  }
+
+  $: if (open && !emailAutofilled && $authUser?.email) {
+    email = $authUser.email;
+    emailAutofilled = true;
   }
 
   $: if (!open && prepared) {
@@ -79,6 +94,8 @@
     prepared = false;
     category = 'bug';
     description = '';
+    email = '';
+    emailAutofilled = false;
     includeScreenshot = true;
     sendConsoleLogs = true;
     screenshot = '';
@@ -120,16 +137,26 @@
       return;
     }
 
+    const normalizedEmail = email.trim();
+    if (normalizedEmail && !normalizedEmail.includes('@')) {
+      errorMessage = 'Please enter a valid email address.';
+      return;
+    }
+
     submitBusy = true;
     errorMessage = '';
     try {
+      const feedbackDescription = normalizedEmail
+        ? `Contact email: ${normalizedEmail} ${description.trim()}`
+        : description.trim();
       const response = await fetch(`${BUGDROP_API}/feedback`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           repo: REPOSITORY,
           title: buildIssueTitle(description),
-          description: description.trim(),
+          description: feedbackDescription,
+          email: normalizedEmail || undefined,
           category,
           screenshot: includeScreenshot && screenshot ? screenshot : undefined,
           consoleLogs: sendConsoleLogs ? getFeedbackConsoleLogs() : undefined,
@@ -178,6 +205,12 @@
     const summary = nextDescription.replace(/\s+/g, ' ').trim().slice(0, 80);
     return `${summary}${nextDescription.trim().length > 80 ? '…' : ''}`;
   }
+
+  $: descriptionPlaceholder = {
+    bug: 'What went wrong? Include the steps to reproduce, what you expected, and what actually happened.',
+    feature: 'What would you like Treease to do? Describe the workflow, use case, and why it would be useful.',
+    question: 'What are you trying to accomplish? Include the context and where you got stuck.',
+  }[category];
 </script>
 
 <Dialog bind:open>
@@ -201,7 +234,12 @@
 
         <label class="flex flex-col gap-2 text-sm font-medium">
           Description
-          <textarea bind:value={description} class="min-h-28 resize-y rounded-[9px] border border-[var(--border-muted)] bg-[var(--panel-bg)] px-3 py-2.5 font-normal outline-none focus:border-[var(--accent)]" placeholder="Tell us what happened, how to reproduce it, or what you would like to see."></textarea>
+          <textarea bind:value={description} class="min-h-28 resize-y rounded-[9px] border border-[var(--border-muted)] bg-[var(--panel-bg)] px-3 py-2.5 font-normal outline-none focus:border-[var(--accent)]" placeholder={descriptionPlaceholder}></textarea>
+        </label>
+
+        <label class="flex flex-col gap-2 text-sm font-medium" for="feedback-email">
+          <span>Email <span class="font-normal text-[var(--text-muted)]">(optional, for follow-up)</span></span>
+          <input id="feedback-email" bind:value={email} type="email" autocomplete="email" placeholder="you@example.com" class="rounded-[9px] border border-[var(--border-muted)] bg-[var(--panel-bg)] px-3 py-2.5 font-normal outline-none focus:border-[var(--accent)]" on:input={() => (emailAutofilled = true)} />
         </label>
 
         <div class="rounded-[12px] border border-[var(--border-muted)] bg-[var(--panel-bg-alt)] p-3">
