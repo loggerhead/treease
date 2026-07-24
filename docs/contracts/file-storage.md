@@ -1,7 +1,8 @@
 ---
-summary: "Unified inline and Cloudflare R2 file storage contract for shares and feedback attachments."
+summary: "Unified inline and Cloudflare R2 file storage contract for shares, feedback attachments, and cloud document versions."
 read_when:
   - Adding or changing share resources or feedback attachments.
+  - Adding or changing persisted cloud document contents or versions.
   - Changing file upload, file download, retention, or cleanup behavior.
   - Changing the Cloudflare Worker, R2 binding, or Supabase metadata schema for user files.
 ---
@@ -10,7 +11,7 @@ read_when:
 
 ## Decision
 
-Treease uses one file-storage boundary for share resources and feedback attachments:
+Treease uses one file-storage boundary for share resources, feedback attachments, and cloud document versions:
 
 ```text
 ShareService / FeedbackService
@@ -34,9 +35,9 @@ This is a new canonical design. Compatibility with the current `share_links.reso
 
 - Store small structured share resources without an R2 round trip.
 - Store large share resources and user-submitted feedback files in R2.
-- Let share and feedback read either storage mode through the same service.
+- Let share, feedback, and cloud-document services read either storage mode through the same service.
 - Keep R2 private; no browser-held R2 credentials and no public bucket.
-- Make expiration and deletion idempotent across Supabase and R2.
+- Make retention and deletion idempotent across Supabase and R2.
 - Preserve enough metadata to validate size, content type, checksum, and cleanup state.
 - Keep the implementation owned by the existing `apps/server` Cloudflare Worker.
 
@@ -60,7 +61,9 @@ type CreateFileInput = {
   byteSize: number;
   contentType: string;
   fileName?: string;
-  expiresAt: string;
+  retention:
+    | { kind: 'expiring'; expiresAt: string }
+    | { kind: 'durable' };
 };
 
 type StoredFile = {
@@ -70,7 +73,9 @@ type StoredFile = {
   fileName: string | null;
   byteSize: number;
   sha256: string;
-  expiresAt: string;
+  retention:
+    | { kind: 'expiring'; expiresAt: string }
+    | { kind: 'durable' };
 };
 
 interface FileStorageService {
@@ -87,7 +92,7 @@ interface FileStorageService {
 2. Compute SHA-256 from the bytes that are stored.
 3. Select storage using the original byte size, not character count or base64 length.
 4. Return `file_not_found` for missing records or missing R2 objects.
-5. Return `file_expired` for expired records before opening content.
+5. Return `file_expired` for expired `expiring` records before opening content.
 6. Treat deletion of an already-deleted R2 object as success.
 7. Never return R2 credentials or an unrestricted object key to the browser.
 
@@ -127,7 +132,9 @@ create table public.file_objects (
   inline_bytes bytea,
   r2_key text,
   created_at timestamptz not null default now(),
-  expires_at timestamptz not null,
+  retention_kind text not null
+    check (retention_kind in ('expiring', 'durable')),
+  expires_at timestamptz,
   delete_attempts integer not null default 0,
   last_delete_error text,
   deleted_at timestamptz,
@@ -137,6 +144,11 @@ create table public.file_objects (
     (lifecycle_state <> 'deleted' and storage_kind = 'inline' and inline_bytes is not null and r2_key is null)
     or
     (lifecycle_state <> 'deleted' and storage_kind = 'r2' and inline_bytes is null and r2_key is not null)
+  ),
+  check (
+    (retention_kind = 'expiring' and expires_at is not null)
+    or
+    (retention_kind = 'durable' and expires_at is null)
   )
 );
 
@@ -206,7 +218,11 @@ alter table public.feedback_submissions enable row level security;
 alter table public.feedback_attachments enable row level security;
 ```
 
-Feedback attachments should have a shorter default retention than share links. The initial default is 30 days. The service must assign the explicit `expires_at`; cleanup must never infer it from the file type.
+Feedback attachments should have a shorter default retention than share links. The initial default is 30 days. Shares and feedback attachments use `retention_kind = 'expiring'`; the service must assign the explicit `expires_at` and cleanup must never infer it from the file type.
+
+### Cloud document versions
+
+Cloud document contents use this table through the cloud-document contract. They use `retention_kind = 'durable'` while a version is retained, with no `expires_at`. Version pruning or permanent document deletion must first remove the business reference, then transition the unreferenced file to an explicit expiring cleanup record. See [Cloud Documents](./cloud-documents.md).
 
 ## Write flows
 
@@ -214,7 +230,7 @@ Feedback attachments should have a shorter default retention than share links. T
 
 1. `ShareService` validates the requested share lifetime and calculates `expiresAt`.
 2. It serializes the resource envelope to UTF-8 bytes.
-3. It calls `FileStorageService.create` with the same `expiresAt`.
+3. It calls `FileStorageService.create` with `{ kind: 'expiring', expiresAt }`.
 4. It inserts `share_links.file_id` and the resource metadata.
 5. If the database insert fails after R2 creation, the file remains `pending` or is explicitly deleted; cleanup must reclaim it.
 
@@ -322,7 +338,8 @@ Process a bounded batch, for example 100 records per invocation:
 
 ```text
 1. Select file_objects where:
-   expires_at <= now()
+   retention_kind = 'expiring'
+   and expires_at <= now()
    and lifecycle_state = 'ready'
    limit 100
 
@@ -425,7 +442,7 @@ The client must never choose `storage_kind`; the Server decides it from the meas
 - SHA-256 and byte size match the stored bytes.
 - Reading an inline file and an R2 file returns the same bytes.
 - Missing R2 objects return `file_not_found`.
-- Expired files cannot be read.
+- Expired expiring files cannot be read; durable files remain readable.
 - Repeated deletion succeeds without changing the result.
 
 ### Service tests
@@ -468,8 +485,9 @@ Use a remote R2 binding for integration verification when local emulation cannot
 6. Add the first-party feedback route and migrate Web away from the external direct submission path.
 7. Add attachment authorization and GitHub Issue generation.
 8. Add the scheduled cleanup handler and the conservative R2 lifecycle safety net.
-9. Remove the old `resource_payload` path and obsolete external feedback client contract.
-10. Run server checks, Worker dry-run, storage integration tests, and docs checks.
+9. Add cloud-document version storage using durable files and its separate retention pruner.
+10. Remove the old `resource_payload` path and obsolete external feedback client contract.
+11. Run server checks, Worker dry-run, storage integration tests, and docs checks.
 
 ## Completion criteria
 
@@ -478,8 +496,8 @@ The implementation is complete when:
 - Share and feedback both use `FileStorageService` for every file read and write.
 - The database contains only metadata for R2-backed files.
 - No public endpoint exposes R2 credentials or unrestricted object keys.
-- Expiration is enforced on reads, not only by background cleanup.
-- Cloudflare scheduled cleanup removes expired inline and R2-backed files.
+- Expiration is enforced on reads for expiring files, not only by background cleanup.
+- Cloudflare scheduled cleanup removes expired inline and R2-backed files without deleting durable files.
 - Repeated cleanup and partial failures are safe to retry.
 - R2 lifecycle is configured as a fallback, not the primary retention mechanism.
 - The old share payload and external feedback storage paths are deleted.

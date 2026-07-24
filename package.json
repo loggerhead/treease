@@ -19,7 +19,7 @@
     "test:core:all": "cd packages/core && ./test.sh all",
     "test:full": "node scripts/test-full.mjs",
     "web:test": "pnpm --dir apps/web test",
-    "web:assets:deploy": "pnpm --dir apps/web assets:r2:upload",
+    "web:assets:deploy": "pnpm --dir apps/web assets:r2:sync",
     "web:workers:deploy": "pnpm --dir apps/web deploy:workers",
     "cli:build:release": "cd apps/cli && cargo build --locked --release",
     "cli:publish": "cd apps/cli && cargo publish --locked",

@@ -38,6 +38,28 @@ Do not edit it by hand; run `pnpm docs:map:gen`.
   - H2: Target server model
   - H2: Web analytics contract
 
+## contracts/cloud-documents.md
+
+- Route: /contracts/cloud-documents
+- Headings:
+  - H1: Cloud Documents Contract
+  - H2: Decision
+  - H2: Scope and non-goals
+  - H2: Terms and invariants
+  - H3: Cloud document
+  - H3: Cloud document version
+  - H3: Revision
+  - H2: Database model
+  - H2: File ownership and retention
+  - H2: Server API
+  - H2: Atomic save flow
+  - H2: Editor workspace integration
+  - H2: Autosave, offline state, and stale results
+  - H2: History, trash, and cleanup
+  - H2: Sharing
+  - H2: Security and limits
+  - H2: Verification and implementation order
+
 ## contracts/desktop-workspace.md
 
 - Route: /contracts/desktop-workspace
@@ -105,6 +127,7 @@ Do not edit it by hand; run `pnpm docs:map:gen`.
   - H3: fileobjects
   - H3: Share records
   - H3: Feedback records
+  - H3: Cloud document versions
   - H2: Write flows
   - H3: Share creation
   - H3: Feedback submission
