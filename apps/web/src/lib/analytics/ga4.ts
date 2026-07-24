@@ -25,6 +25,40 @@ const DEFAULT_MEASUREMENT_ID = 'G-N8DW5G72ZQ';
 const configuredMeasurementId = import.meta.env.GA_MEASUREMENT_ID ?? '';
 const measurementId = (configuredMeasurementId || (import.meta.env.PROD ? DEFAULT_MEASUREMENT_ID : '')).trim();
 const consentRequired = import.meta.env.GA_CONSENT_REQUIRED === '1';
+const CONSENT_REGIONS = [
+  'AT',
+  'BE',
+  'BG',
+  'CH',
+  'CY',
+  'CZ',
+  'DE',
+  'DK',
+  'EE',
+  'ES',
+  'FI',
+  'FR',
+  'GB',
+  'GR',
+  'HR',
+  'HU',
+  'IE',
+  'IS',
+  'IT',
+  'LI',
+  'LT',
+  'LU',
+  'LV',
+  'MT',
+  'NL',
+  'NO',
+  'PL',
+  'PT',
+  'RO',
+  'SE',
+  'SI',
+  'SK',
+] as const;
 const desktopSurface = import.meta.env.PUBLIC_WORKSPACE_SURFACE === 'desktop';
 const allowedParamKeys = new Set([
   'source',
@@ -113,6 +147,28 @@ function scheduleFlush(): void {
   window.setTimeout(flushQueuedEvents, 0);
 }
 
+function setDefaultConsent(gtag: GoogleTagCommand): void {
+  const grantedOutsideConsentRegions = consentRequired ? 'denied' : 'granted';
+  gtag('consent', 'default', {
+    ad_storage: grantedOutsideConsentRegions,
+    ad_user_data: grantedOutsideConsentRegions,
+    ad_personalization: grantedOutsideConsentRegions,
+    analytics_storage: grantedOutsideConsentRegions,
+    wait_for_update: 500,
+  });
+
+  if (!consentRequired) {
+    gtag('consent', 'default', {
+      ad_storage: 'denied',
+      ad_user_data: 'denied',
+      ad_personalization: 'denied',
+      analytics_storage: 'denied',
+      region: CONSENT_REGIONS,
+      wait_for_update: 500,
+    });
+  }
+}
+
 function enqueueEvent(name: string, params: AnalyticsEventParams): void {
   if (desktopSurface) return;
   if (!measurementId || (consentRequired && !consentGranted) || queuedEvents.length >= 100) return;
@@ -192,13 +248,7 @@ export async function initializeAnalytics(): Promise<void> {
 
   const timestamp = new Date();
   gtag('js', timestamp);
-  gtag('consent', 'default', {
-    ad_storage: 'denied',
-    ad_user_data: 'denied',
-    ad_personalization: 'denied',
-    analytics_storage: consentRequired ? 'denied' : 'granted',
-    wait_for_update: 500,
-  });
+  setDefaultConsent(gtag);
   gtag('config', measurementId, { send_page_view: false });
 
   try {
