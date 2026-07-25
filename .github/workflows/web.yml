@@ -51,7 +51,6 @@ jobs:
           find build -maxdepth 1 -type f -print | sort
           test -s build/index.html
           test -s build/200.html
-          test -s build/editor.html
         working-directory: ${{ github.workspace }}/apps/web
       - name: Verify E2E preview routes
         run: pnpm verify:e2e-preview

@@ -2,7 +2,7 @@ import { execFileSync, spawn } from "node:child_process";
 import process from "node:process";
 
 const buildDir = `${process.cwd()}/build`;
-const routes = ["/", "/editor", "/index.html", "/editor.html"];
+const routes = ["/", "/editor", "/index.html", "/200.html"];
 
 console.log(`node ${process.version}`);
 console.log(execFileSync("pnpm", ["exec", "vp", "--version"], { encoding: "utf8" }).trim());
@@ -64,7 +64,7 @@ try {
 
   const fallbackRoutes = {
     "/": "/index.html",
-    "/editor": "/editor.html",
+    "/editor": "/200.html",
   };
   for (const route of routes) {
     const explicitResult = explicitRoutes.get(route);
