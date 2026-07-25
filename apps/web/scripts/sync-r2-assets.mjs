@@ -36,9 +36,9 @@ async function main() {
   const manifest = buildBulkManifest({ files });
   const tempDir = await mkdtemp(path.join(os.tmpdir(), 'treease-r2-'));
   try {
-    await Promise.all([...groupManifestByContentType(manifest)].map(([contentType, entries]) => (
-      uploadGroup({ bucket: bucketName, contentType, entries, tempDir })
-    )));
+    for (const [contentType, entries] of groupManifestByContentType(manifest)) {
+      await uploadGroup({ bucket: bucketName, contentType, entries, tempDir });
+    }
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }
