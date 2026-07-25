@@ -61,7 +61,7 @@
       '@type': 'Organization',
       name: 'Treease',
       url: siteOrigin,
-      sameAs: ['https://github.com/loggerhead/treease', 'https://crates.io/crates/treease-cli', socialLinks.x, socialLinks.discord],
+      sameAs: [socialLinks.github, 'https://crates.io/crates/treease-cli', socialLinks.x, socialLinks.discord],
     },
   });
 

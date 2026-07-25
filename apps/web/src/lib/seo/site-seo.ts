@@ -4,6 +4,7 @@ export const siteOrigin = 'https://treease.com';
 export const defaultSocialImage = assetUrl(r2Assets.heroDemoGraphPoster);
 
 export const socialLinks = {
+  github: 'https://github.com/loggerhead/treease',
   x: 'https://x.com/1oggerhead',
   discord: 'https://discord.gg/vzM3Jdvav',
 } as const;

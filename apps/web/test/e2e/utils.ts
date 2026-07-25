@@ -436,6 +436,10 @@ export async function dropFile(
 ) {
   const target = page.getByTestId(options.targetTestId);
   await expect(target).toBeVisible({ timeout: DEFAULT_UI_TIMEOUT });
+  const tracksImport = options.targetTestId === 'source-editor-region' || options.targetTestId === 'import-drop-trigger';
+  const previousImportRevision = tracksImport
+    ? (await readRuntimeReadiness(page)).import.requestedRevision
+    : null;
   await target.evaluate(
     (node, payload) => {
       const dataTransfer = new DataTransfer();
@@ -450,6 +454,16 @@ export async function dropFile(
       mimeType: options.mimeType ?? 'text/plain',
     },
   );
+  if (previousImportRevision !== null) {
+    // The drop handler is async; wait until this event owns a new import revision.
+    // Otherwise callers can observe the initial settled=true state before import starts.
+    await expect
+      .poll(
+        async () => (await readRuntimeReadiness(page)).import.requestedRevision > previousImportRevision,
+        { timeout: DEFAULT_UI_TIMEOUT },
+      )
+      .toBe(true);
+  }
 }
 
 export async function waitForEditorReady(page: Page, timeout = DEFAULT_UI_TIMEOUT) {

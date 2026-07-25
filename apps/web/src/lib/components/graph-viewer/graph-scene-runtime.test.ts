@@ -259,14 +259,10 @@ function createDeps(options?: {
 }) {
   const container = {
     setAttribute: vi.fn(),
-    ...(options?.viewport
-      ? {
-          getBoundingClientRect: () => ({
-            width: options.viewport?.width ?? 0,
-            height: options.viewport?.height ?? 0,
-          }),
-        }
-      : {}),
+    getBoundingClientRect: () => ({
+      width: options?.viewport?.width ?? 10_000,
+      height: options?.viewport?.height ?? 10_000,
+    }),
   } as unknown as HTMLElement;
   const renderRoot = { add: vi.fn() };
   const probeStore: Record<string, any> = {};

@@ -15,32 +15,41 @@ import type { CellBoxEntry, LeaferBox, ScrollableBox } from '../model';
 import type { TableCellAnchor } from '../graph-table-anchor-index';
 
 export function createGraphRenderState() {
-  let nodeDataMap = new Map<number, GraphNode>();
+  let fullNodeDataMap = new Map<number, GraphNode>();
+  let renderedNodeDataMap = new Map<number, GraphNode>();
   let nodeBoxMap = new Map<number, LeaferBox>();
   let pathKeyToRenderHandleMap = new Map<string, number>();
   let cellBoxByPathMap = new Map<string, CellBoxEntry>();
   let tableCellAnchorMap = new Map<string, TableCellAnchor>();
 
-  function beginMainGraphRedraw(nodes: GraphNode[], resetClickTargets?: () => void): Map<number, LeaferBox> {
-    nodeDataMap = new Map(nodes.map((node) => [node.renderHandle, node]));
-    nodeBoxMap = new Map();
+  function setFullGraph(nodes: GraphNode[]): void {
+    fullNodeDataMap = new Map(nodes.map((node) => [node.renderHandle, node]));
     pathKeyToRenderHandleMap = new Map();
-    cellBoxByPathMap = new Map();
     tableCellAnchorMap = rebuildTableCellAnchorIndex(nodes);
-    resetClickTargets?.();
     nodes.forEach((node) => {
       const pathKey = buildPathKey(node.path ?? []);
-      if (!pathKey) return;
-      if (!pathKeyToRenderHandleMap.has(pathKey)) {
-        pathKeyToRenderHandleMap.set(pathKey, node.renderHandle);
-      }
+      if (!pathKey || pathKeyToRenderHandleMap.has(pathKey)) return;
+      pathKeyToRenderHandleMap.set(pathKey, node.renderHandle);
     });
+  }
+
+  function beginMainGraphRedraw(
+    nodes: GraphNode[],
+    resetClickTargets?: () => void,
+  ): Map<number, LeaferBox> {
+    setFullGraph(nodes);
+    renderedNodeDataMap = new Map();
+    nodeBoxMap = new Map();
+    cellBoxByPathMap = new Map();
+    resetClickTargets?.();
     return nodeBoxMap;
   }
 
   return {
     beginMainGraphRedraw,
-    getNodeDataMap: () => nodeDataMap,
+    setFullGraph,
+    getFullNodeDataMap: () => fullNodeDataMap,
+    getRenderedNodeDataMap: () => renderedNodeDataMap,
     getNodeBoxMap: () => nodeBoxMap,
     getPathKeyToRenderHandleMap: () => pathKeyToRenderHandleMap,
     getCellBoxByPathMap: () => cellBoxByPathMap,
@@ -72,7 +81,7 @@ export function createGraphTextLinkageRenderDeps(
   scrollTableCellAnchorIntoView: (anchor: TableCellAnchor) => boolean,
 ) {
   return {
-    getNodeDataMap: () => graphRenderState.getNodeDataMap(),
+    getNodeDataMap: () => graphRenderState.getFullNodeDataMap(),
     getNodeBoxMap: () => graphRenderState.getNodeBoxMap(),
     getCellBoxByPathMap: () => graphRenderState.getCellBoxByPathMap(),
     getTableCellAnchorMap: () => graphRenderState.getTableCellAnchorMap(),
@@ -88,10 +97,8 @@ export function createGraphSceneRenderDeps(
   return {
     beginMainGraphRedraw: (nodes: GraphNode[]) =>
       graphRenderState.beginMainGraphRedraw(nodes, resetRootClickTargets),
-    getNodeDataMap: () => graphRenderState.getNodeDataMap(),
+    setFullGraph: (nodes: GraphNode[]) => graphRenderState.setFullGraph(nodes),
+    getNodeDataMap: () => graphRenderState.getRenderedNodeDataMap(),
     getNodeBoxMap: () => graphRenderState.getNodeBoxMap(),
-    getPathKeyToRenderHandleMap: () => graphRenderState.getPathKeyToRenderHandleMap(),
-    indexTableCellAnchorsForNode: (node: GraphNode) => graphRenderState.indexTableCellAnchorsForNode(node),
-    removeTableCellAnchorsForNode: (nodeId: number) => graphRenderState.removeTableCellAnchorsForNode(nodeId),
   };
 }
