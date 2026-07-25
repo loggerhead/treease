@@ -163,7 +163,7 @@
   }
 
   function billingNeedsManagement(subscription = currentSubscription): boolean {
-    if (!subscription?.providerSubscriptionId) return false;
+    if (!subscription?.billingManagementAvailable) return false;
     if (subscription.currentPeriodEnd && Date.parse(subscription.currentPeriodEnd) <= Date.now()) return false;
     return subscription.status === 'past_due'
       || subscription.status === 'canceled'

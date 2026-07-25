@@ -99,9 +99,10 @@ export default defineConfig(({ mode }) => {
     // 以编译期常量注入，保证 benchmark 可复现，避免运行时代码各自解析环境变量。
     define: {
       ...Object.fromEntries(Object.entries(buildDefines).map(([key, value]) => [key, JSON.stringify(value)])),
-      // Keep the public Supabase names aligned with apps/server and Vercel production.
+      // Keep public Supabase names aligned with hosted Web deployments.
       'import.meta.env.SUPABASE_URL': JSON.stringify(env.SUPABASE_URL ?? ''),
       'import.meta.env.SUPABASE_ANON_KEY': JSON.stringify(env.SUPABASE_ANON_KEY ?? ''),
+      'import.meta.env.PUBLIC_API_ORIGIN': JSON.stringify(env.PUBLIC_API_ORIGIN ?? ''),
       'import.meta.env.GA_MEASUREMENT_ID': JSON.stringify(env.GA_MEASUREMENT_ID ?? ''),
       'import.meta.env.GA_CONSENT_REQUIRED': JSON.stringify(env.GA_CONSENT_REQUIRED ?? '0'),
       'import.meta.env.PUBLIC_PRICING_MONTHLY_PRICE': JSON.stringify(env.PUBLIC_PRICING_MONTHLY_PRICE ?? ''),

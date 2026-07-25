@@ -465,7 +465,6 @@ function validateHotDocBudgets() {
     'docs/AGENTS.md': 70,
     'apps/web/AGENTS.md': 26,
     'apps/cli/AGENTS.md': 24,
-    'apps/server/AGENTS.md': 28,
   };
 
   for (const [relativePath, maxLines] of Object.entries(budgets)) {

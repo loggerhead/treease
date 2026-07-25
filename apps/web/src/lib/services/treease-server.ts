@@ -1,79 +1,47 @@
+import type { ZodType } from 'zod';
+import {
+  accountSummarySchema,
+  billingCheckoutLinkSchema,
+  billingPortalLinkSchema,
+  billingPricingPrewarmResponseSchema,
+  claimUsageResponseSchema,
+  currentSubscriptionSchema,
+  errorResponseSchema,
+  feedbackResponseSchema,
+  publicShareResponseSchema,
+  shareLinkSchema,
+  structGenerationResponseSchema,
+  suggestYqResponseSchema,
+  usageSummarySchema,
+  type AccountSummary,
+  type BillingCheckoutLink,
+  type BillingPricingPrewarm,
+  type BillingPriceId,
+  type BillingPortalLink,
+  type CurrentSubscription,
+  type RecordedUsageCapability,
+  type ShareLink,
+  type StructLanguage,
+  type UsageSummary,
+} from '@treease/api-contracts';
 import { getSupabaseClient, getSupabaseConfiguration } from '../auth/supabase-auth';
-import type { BillingPriceId } from '../config/pricing';
 import { workspaceHost } from '../workspace-host';
 import { parseShareResource, type ShareResource } from '../share/share-resource';
 import { isUsageCoolingDown, markUsageRequestSucceeded, noteUsageRateLimit } from '../billing/usage-rate-limit';
 
+export type {
+  AccountSummary,
+  BillingCheckoutLink,
+  BillingPricingPrewarm,
+  BillingPortalLink,
+  CurrentSubscription,
+  RecordedUsageCapability,
+  ShareLink,
+  StructLanguage,
+  UsageCapability,
+  UsageSummary,
+} from '@treease/api-contracts';
 export type { ShareResource } from '../share/share-resource';
-
-export type ShareLink = {
-  id: string;
-  shareUrl: string;
-  expiresAt: string;
-  createdAt: string;
-};
-
-export type BillingCheckoutLink = {
-  priceId: BillingPriceId;
-  url: string;
-};
-
-export type BillingPlanPrice = {
-  priceId: BillingPriceId;
-  amount: number;
-  currency: string;
-  interval: 'day' | 'week' | 'month' | 'year';
-  intervalCount: number;
-};
-
-export type BillingPricingPrewarm = {
-  plans: BillingPlanPrice[];
-  checkouts: BillingCheckoutLink[] | null;
-  subscription: CurrentSubscription | null;
-};
-
-export type CurrentSubscription = {
-  id: string;
-  userId: string;
-  tier: 'free' | 'pro';
-  billingCadence: 'monthly' | 'yearly' | null;
-  status: 'active' | 'inactive' | 'past_due' | 'canceled';
-  currentPeriodEnd: string | null;
-  providerSubscriptionId?: string | null;
-  providerVariantId?: number | null;
-  createdAt: string;
-  updatedAt: string;
-};
-
-export type AccountSummary = {
-  user: {
-    id: string;
-    email: string | null;
-    avatarUrl: string | null;
-  };
-  subscription: CurrentSubscription;
-  usage: UsageSummary;
-};
-
-export type BillingPortalLink = {
-  url: string;
-};
-
-export type UsageSummary = {
-  tier: 'free' | 'pro';
-  periodKey: string;
-  limits: {
-    bidirectionalEditDocumentsMonthly: { kind: 'limited'; limit: number } | { kind: 'unlimited' };
-    largeFileProcessingRunsMonthly: { kind: 'limited'; limit: number } | { kind: 'unlimited' };
-    aiSuggestionsMonthly: { kind: 'limited'; limit: number } | { kind: 'unlimited' };
-    shareMaxAgeDays: number;
-  };
-  usage: Partial<Record<UsageCapability, number>>;
-};
-
-export type UsageCapability = 'bidirectional_edit' | 'large_file_processing' | 'ai_suggestion';
-export type RecordedUsageCapability = Exclude<UsageCapability, 'ai_suggestion'>;
-export type StructLanguage = 'typescript' | 'go' | 'rust' | 'python' | 'java' | 'kotlin' | 'csharp' | 'swift' | 'dart' | 'ruby' | 'php';
 
 export class TreeaseServerError extends Error {
   constructor(
@@ -104,7 +72,8 @@ export class BillingAuthenticationRequiredError extends Error {
   }
 }
 
-const apiOrigin = import.meta.env.PROD ? 'https://api.treease.com' : 'http://localhost:3000';
+const configuredApiOrigin = String(import.meta.env.PUBLIC_API_ORIGIN ?? '').trim();
+const apiOrigin = configuredApiOrigin || (import.meta.env.PROD ? 'https://api.treease.com' : 'http://localhost:3000');
 
 async function getAccessToken(): Promise<string | null> {
   const host = await workspaceHost;
@@ -123,30 +92,42 @@ async function readError(response: Response): Promise<TreeaseServerError> {
   let code: string | null = null;
   let details: Record<string, unknown> | null = null;
   try {
-    const body = (await response.json()) as { message?: string; error?: string; details?: unknown };
-    message = body.message || body.error || message;
-    code = body.error ?? null;
-    details = body.details && typeof body.details === 'object' && !Array.isArray(body.details)
-      ? body.details as Record<string, unknown>
-      : null;
+    const parsed = errorResponseSchema.safeParse(await response.json());
+    if (parsed.success) {
+      message = parsed.data.message || parsed.data.error || message;
+      code = parsed.data.error ?? null;
+      details = parsed.data.details && typeof parsed.data.details === 'object' && !Array.isArray(parsed.data.details)
+        ? parsed.data.details as Record<string, unknown>
+        : null;
+    }
   } catch {
     // Keep the HTTP status when the server does not return JSON.
   }
   return new TreeaseServerError(message, response.status, code, details, retryAfterMs(response));
 }
 
+async function readJsonResponse<T>(response: Response, schema: ZodType<T>): Promise<T> {
+  try {
+    const parsed = schema.safeParse(await response.json());
+    if (parsed.success) return parsed.data;
+  } catch {
+    // Treat invalid JSON and invalid schema output as the same protocol failure.
+  }
+  throw new TreeaseServerError('Treease server returned an invalid response.', response.status, 'invalid_server_response', null);
+}
+
 function throwIfUsageCoolingDown(): void {
   if (isUsageCoolingDown()) throw new TreeaseServerError('Usage requests are temporarily paused.', 429, null, null);
 }
 
-async function readUsageResponse<T>(response: Response): Promise<T> {
+async function readUsageResponse<T>(response: Response, schema: ZodType<T>): Promise<T> {
   if (!response.ok) {
     const error = await readError(response);
     if (error.status === 429) noteUsageRateLimit(error.retryAfterMs);
     throw error;
   }
   markUsageRequestSucceeded();
-  return await response.json() as T;
+  return readJsonResponse(response, schema);
 }
 
 export async function createShareLink(resource: ShareResource, expiresInDays = 7): Promise<ShareLink> {
@@ -162,7 +143,7 @@ export async function createShareLink(resource: ShareResource, expiresInDays = 7
     body: JSON.stringify({ resource, expiresInDays }),
   });
   if (!response.ok) throw await readError(response);
-  return (await response.json()) as ShareLink;
+  return readJsonResponse(response, shareLinkSchema);
 }
 
 export async function suggestYq(input: {
@@ -179,7 +160,7 @@ export async function suggestYq(input: {
     body: JSON.stringify(input),
   });
   if (!response.ok) throw await readError(response);
-  return await response.json() as { expression: string };
+  return readJsonResponse(response, suggestYqResponseSchema);
 }
 
 export async function generateStruct(input: {
@@ -196,7 +177,7 @@ export async function generateStruct(input: {
     body: JSON.stringify(input),
   });
   if (!response.ok) throw await readError(response);
-  return await response.json() as { language: StructLanguage; code: string };
+  return readJsonResponse(response, structGenerationResponseSchema);
 }
 
 export async function submitFeedback(input: { category: 'bug' | 'feature' | 'question'; description: string; email: string | null; screenshot: string; consoleLogs: string }): Promise<string | undefined> {
@@ -207,7 +188,7 @@ export async function submitFeedback(input: { category: 'bug' | 'feature' | 'que
   if (input.consoleLogs) form.append('console_logs', new File([input.consoleLogs], 'console-logs.txt', { type: 'text/plain' }));
   const response = await fetch(`${apiOrigin}/v1/feedback`, { method: 'POST', headers: token ? { authorization: `Bearer ${token}` } : {}, body: form });
   if (!response.ok) throw await readError(response);
-  return (await response.json() as { issueUrl?: string | null }).issueUrl ?? undefined;
+  return (await readJsonResponse(response, feedbackResponseSchema)).issueUrl ?? undefined;
 }
 
 function dataUrlFile(value: string, name: string): File {
@@ -235,7 +216,7 @@ export async function createBillingCheckoutLink(
     body: JSON.stringify({ priceId, ...returnUrl }),
   });
   if (!response.ok) throw await readError(response);
-  return (await response.json()) as BillingCheckoutLink;
+  return readJsonResponse(response, billingCheckoutLinkSchema);
 }
 
 export async function prewarmBillingPricing(
@@ -251,7 +232,7 @@ export async function prewarmBillingPricing(
     body: JSON.stringify(returnUrl),
   });
   if (!response.ok) throw await readError(response);
-  return (await response.json()) as BillingPricingPrewarm;
+  return readJsonResponse(response, billingPricingPrewarmResponseSchema);
 }
 
 export async function getCurrentSubscription(): Promise<CurrentSubscription> {
@@ -262,7 +243,7 @@ export async function getCurrentSubscription(): Promise<CurrentSubscription> {
     headers: { authorization: `Bearer ${token}` },
   });
   if (!response.ok) throw await readError(response);
-  return (await response.json()) as CurrentSubscription;
+  return readJsonResponse(response, currentSubscriptionSchema);
 }
 
 export async function getAccountSummary(): Promise<AccountSummary> {
@@ -272,7 +253,7 @@ export async function getAccountSummary(): Promise<AccountSummary> {
     headers: { authorization: `Bearer ${token}` },
   });
   if (!response.ok) throw await readError(response);
-  return (await response.json()) as AccountSummary;
+  return readJsonResponse(response, accountSummarySchema);
 }
 
 export async function createBillingPortalLink(): Promise<BillingPortalLink> {
@@ -288,7 +269,7 @@ export async function createBillingPortalLink(): Promise<BillingPortalLink> {
     body: JSON.stringify({}),
   });
   if (!response.ok) throw await readError(response);
-  return (await response.json()) as BillingPortalLink;
+  return readJsonResponse(response, billingPortalLinkSchema);
 }
 
 export async function changeBillingPlan(priceId: BillingPriceId): Promise<CurrentSubscription> {
@@ -304,7 +285,7 @@ export async function changeBillingPlan(priceId: BillingPriceId): Promise<Curren
     body: JSON.stringify({ priceId }),
   });
   if (!response.ok) throw await readError(response);
-  return (await response.json()) as CurrentSubscription;
+  return readJsonResponse(response, currentSubscriptionSchema);
 }
 
 export async function getUsageSummary(clientId?: string): Promise<UsageSummary> {
@@ -313,7 +294,7 @@ export async function getUsageSummary(clientId?: string): Promise<UsageSummary> 
   const query = clientId ? `?clientId=${encodeURIComponent(clientId)}` : '';
   if (!token && !clientId) throw new BillingAuthenticationRequiredError();
   const response = await fetch(`${apiOrigin}/v1/usage${query}`, { headers: token ? { authorization: `Bearer ${token}` } : {} });
-  return readUsageResponse<UsageSummary>(response);
+  return readUsageResponse(response, usageSummarySchema);
 }
 
 export async function recordUsageEvent(input: {
@@ -332,7 +313,7 @@ export async function recordUsageEvent(input: {
     },
     body: JSON.stringify(input),
   });
-  return readUsageResponse<UsageSummary>(response);
+  return readUsageResponse(response, usageSummarySchema);
 }
 
 export async function claimUsageEvents(clientId: string): Promise<number> {
@@ -344,8 +325,8 @@ export async function claimUsageEvents(clientId: string): Promise<number> {
     headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
     body: JSON.stringify({ clientId }),
   });
-  const body = await readUsageResponse<{ claimed?: unknown }>(response);
-  return Number(body.claimed ?? 0);
+  const body = await readJsonResponse(response, claimUsageResponseSchema);
+  return body.claimed;
 }
 
 export type PublicShare = {
@@ -355,7 +336,7 @@ export type PublicShare = {
 export async function getPublicShare(shareID: string): Promise<PublicShare> {
   const response = await fetch(`${apiOrigin}/v1/public/shares/${encodeURIComponent(shareID)}`);
   if (!response.ok) throw await readError(response);
-  const body = await response.json() as { resourceType?: unknown; resourcePayload?: unknown };
+  const body = await readJsonResponse(response, publicShareResponseSchema);
   const resource = parseShareResource({ type: body.resourceType, payload: body.resourcePayload });
   if (!resource) throw new Error('The shared content is invalid or corrupted.');
   return { resource };

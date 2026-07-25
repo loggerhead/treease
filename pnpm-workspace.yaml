@@ -1,5 +1,7 @@
 packages:
-  - 'apps/*'
+  - 'apps/web'
+  - 'apps/desktop'
+  - 'apps/cli'
   - 'packages/*'
 allowBuilds:
   edgedriver: true

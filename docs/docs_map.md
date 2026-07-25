@@ -3,6 +3,15 @@
 This file is generated from `docs/**/*.md` and `docs/**/*.mdx` headings to help agents navigate the documentation tree.
 Do not edit it by hand; run `pnpm docs:map:gen`.
 
+## contracts/api-boundary.md
+
+- Route: /contracts/api-boundary
+- Headings:
+  - H1: API Boundary
+  - H2: Ownership
+  - H2: Contract rules
+  - H2: Repository split gate
+
 ## contracts/bidirectional-edit.md
 
 - Route: /contracts/bidirectional-edit

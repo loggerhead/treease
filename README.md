@@ -63,19 +63,26 @@ treease doctor --format json
 
 Each app owns its environment configuration. Copy the relevant `.env.example`
 to `.env.local` for local development; keep `.env.local` untracked and never
-put server secrets in `apps/web` configuration. Web tests may use the committed
+put service credentials in `apps/web` configuration. Web tests may use the committed
 `apps/web/.env.test` defaults, with private overrides in `.env.test.local`.
 
-The server uses `apps/server/.env.local` for both Node.js and local Wrangler
-development. Wrangler-only local values may instead be placed in its ignored
-local vars file, based on `apps/server/.dev.vars.example`. Production values
-belong in the deployment platform's variables and secrets, not in `.env` files.
+The Web API origin is configured with `PUBLIC_API_ORIGIN`; it identifies the
+separately deployable API and is not a credential.
+
+Production service values belong in the private service repository's deployment
+platform variables and secrets, not in this repository's `.env` files.
 
 ### Repository Layout
 
 - `apps/web/`: Svelte web application, editor UI, graph UI, and browser worker boundary.
 - `apps/cli/`: standalone CLI crate, acceptance tests, and CLI metadata export.
 - `packages/core/`: Rust parser, formatter, operators, evaluation, graph build, snapshots, and WASM exports.
+- `packages/api-contracts/`: public HTTP request/response schemas shared by Web and the separately deployable service.
+- `packages/share-protocol/`: public serialized share-resource schema.
+
+The hosted API is a separately deployable service configured through
+`PUBLIC_API_ORIGIN`; its implementation and operational configuration are not part
+of this repository.
 
 ### Common Commands
 

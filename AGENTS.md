@@ -18,7 +18,7 @@ Telegraph style. Root rules only. Read scoped `AGENTS.md` before subtree work. r
 
 - `packages/core/`: Rust parsing, formatting, operators, evaluation, and graph construction.
 - `apps/web/`: editor and graph UI.
-- `apps/server/`: accounts, billing, sharing, and AI server capabilities.
+- Hosted API: accounts, billing, sharing, and AI capabilities are maintained outside this repository.
 - `apps/cli/`: standalone CLI crate, acceptance tests, and documentation entry points.
 - Docs: read `docs/AGENTS.md`; use `pnpm docs:list` to select the minimum relevant guide in `docs/contracts/`.
 
@@ -85,5 +85,5 @@ Telegraph style. Root rules only. Read scoped `AGENTS.md` before subtree work. r
 - Core: `cd packages/core && cargo nextest run --locked`
 - CLI: `cd apps/cli && cargo nextest run --locked --lib`; `cd apps/cli && bash tests/acceptance/run.sh`
 - Web: `cd apps/web && pnpm test:unit` / `pnpm test:integration` / `pnpm test:e2e`
-- Server: `cd apps/server && node --import tsx --test src/**/*.test.ts`
+- API boundary: `packages/api-contracts/` and the hosted service are verified in their respective repositories.
 - Protocol or WASM changes: `cd packages/core && cargo run --locked --bin export_document_protocol`, then `cd apps/web && pnpm wasm:bindgen`; run `pnpm wasm:sync` when needed.

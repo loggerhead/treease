@@ -1,7 +1,8 @@
 {
   "name": "@treease/share-protocol",
-  "private": true,
   "version": "0.2.0",
+  "description": "Public serialized share-resource contract for Treease",
+  "repository": "https://github.com/loggerhead/treease",
   "type": "module",
   "exports": {
     ".": "./src/index.ts"
