@@ -9,7 +9,6 @@ from pathlib import Path
 TS_EXTENSIONS = (".ts", ".tsx", ".mts", ".cts")
 CHECKS_BY_DIRECTORY = {
     "apps/web/": ("lint", "check"),
-    "apps/server/": ("check",),
 }
 
 

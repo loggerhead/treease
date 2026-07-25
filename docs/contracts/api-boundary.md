@@ -12,7 +12,7 @@ read_when:
 
 `packages/api-contracts/` is the public source of truth for the HTTP boundary between
 Treease clients and the service. It contains request schemas, client-visible response
-schemas, and shared error shapes only. It must not import `apps/server/` or contain
+schemas, and shared error shapes only. It must not import the private service or contain
 billing-provider, database, provider-key, or repository models.
 
 The private Hosted API owns authentication, persistence, billing, usage enforcement,
