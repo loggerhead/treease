@@ -164,6 +164,26 @@ export async function createShareLink(resource: ShareResource, expiresInDays = 7
   return (await response.json()) as ShareLink;
 }
 
+export async function submitFeedback(input: { category: 'bug' | 'feature' | 'question'; description: string; email: string | null; screenshot: string; consoleLogs: string }): Promise<string | undefined> {
+  const token = await getAccessToken();
+  const form = new FormData();
+  form.set('metadata', JSON.stringify({ category: input.category, description: input.description, email: input.email }));
+  if (input.screenshot) form.append('screenshot', dataUrlFile(input.screenshot, 'screenshot.png'));
+  if (input.consoleLogs) form.append('console_logs', new File([input.consoleLogs], 'console-logs.txt', { type: 'text/plain' }));
+  const response = await fetch(`${apiOrigin}/v1/feedback`, { method: 'POST', headers: token ? { authorization: `Bearer ${token}` } : {}, body: form });
+  if (!response.ok) throw await readError(response);
+  return (await response.json() as { issueUrl?: string | null }).issueUrl ?? undefined;
+}
+
+function dataUrlFile(value: string, name: string): File {
+  const [header, encoded] = value.split(',', 2);
+  const contentType = header.match(/^data:([^;]+);base64$/)?.[1];
+  if (!contentType || !encoded) throw new Error('Invalid screenshot data.');
+  const binary = atob(encoded);
+  const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
+  return new File([bytes], name, { type: contentType });
+}
+
 export async function createBillingCheckoutLink(
   priceId: BillingPriceId,
   returnUrl: { successUrl: string },

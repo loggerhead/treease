@@ -160,6 +160,7 @@ function shouldSkipDir(relativePath) {
     '.tmp',
     '.venv',
     '.venv-playwright',
+    '.zig',
     'node_modules',
   ].includes(base);
 }

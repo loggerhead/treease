@@ -7,8 +7,7 @@
   import { authUser, observeAuthUser } from '../auth/auth-user-store';
   import { getFeedbackConsoleLogs } from '../feedback/console-log-buffer';
 
-  const BUGDROP_API = 'https://feedback.treease.com/api';
-  const REPOSITORY = 'loggerhead/treease';
+  import { submitFeedback } from '../services/treease-server';
 
   type Category = 'bug' | 'feature' | 'question';
 
@@ -146,33 +145,7 @@
     submitBusy = true;
     errorMessage = '';
     try {
-      const feedbackDescription = normalizedEmail
-        ? `Contact email: ${normalizedEmail} ${description.trim()}`
-        : description.trim();
-      const response = await fetch(`${BUGDROP_API}/feedback`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          repo: REPOSITORY,
-          title: buildIssueTitle(description),
-          description: feedbackDescription,
-          email: normalizedEmail || undefined,
-          category,
-          screenshot: includeScreenshot && screenshot ? screenshot : undefined,
-          consoleLogs: sendConsoleLogs ? getFeedbackConsoleLogs() : undefined,
-          metadata: {
-            url: window.location.href,
-            userAgent: navigator.userAgent,
-            viewport: { width: window.innerWidth, height: window.innerHeight },
-            timestamp: new Date().toISOString(),
-            devicePixelRatio: window.devicePixelRatio,
-            language: navigator.language,
-          },
-        }),
-      });
-      const result = (await response.json()) as { issueUrl?: string; error?: string };
-      if (!response.ok) throw new Error(result.error || 'Unable to submit feedback.');
-      const issueUrl = result.issueUrl;
+      const issueUrl = await submitFeedback({ category, description: description.trim(), email: normalizedEmail || null, screenshot: includeScreenshot ? screenshot : '', consoleLogs: sendConsoleLogs ? JSON.stringify(getFeedbackConsoleLogs(), null, 2) : '' });
       toast.success('Feedback submitted', {
         description: 'Your feedback has been sent to GitHub.',
         ...(issueUrl
@@ -201,10 +174,6 @@
     });
   }
 
-  function buildIssueTitle(nextDescription: string): string {
-    const summary = nextDescription.replace(/\s+/g, ' ').trim().slice(0, 80);
-    return `${summary}${nextDescription.trim().length > 80 ? '…' : ''}`;
-  }
 
   $: descriptionPlaceholder = {
     bug: 'What went wrong? Include the steps to reproduce, what you expected, and what actually happened.',

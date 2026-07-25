@@ -1097,7 +1097,7 @@
     <section class="m-auto max-w-md rounded-[18px] border border-[var(--border-muted)] bg-white p-8 text-center shadow-sm" data-testid="share-load-error" role="alert" aria-live="assertive">
       <h1 class="text-xl font-semibold">Unable to open share link</h1>
       <p class="mt-2 text-sm text-[var(--text-muted)]">{shareLoadError}</p>
-      <a class="mt-6 inline-flex rounded-[9px] bg-[var(--accent)] px-4 py-2 text-sm text-white" href="/editor">Open a blank editor</a>
+      <a class="mt-6 inline-flex rounded-[9px] bg-[var(--accent)] px-4 py-2 text-sm text-white" href="/editor" data-sveltekit-reload>Open a blank editor</a>
     </section>
   {:else}
   <div class="grid h-full min-h-0 min-w-0 overflow-hidden" style:grid-template-rows={shellRowsClass}>

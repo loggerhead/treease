@@ -3,98 +3,106 @@ import type { ChangelogEntry } from './changelog';
 
 export const generatedChangelog = [
   {
-    "slug": "2026-07-22",
-    "title": "Faster, More Reliable Graphs and Better Product Feedback",
-    "summary": "Treease improves graph rendering performance and stability, adds an in-app feedback dialog, and strengthens product discoverability.",
-    "date": "2026-07-22",
-    "isoDate": "2026-07-22",
+    "slug": "2026-07-25",
+    "title": "Cloudflare Hosting and Richer Feedback Reports",
+    "summary": "Treease moved web delivery onto Cloudflare, tightened graph render ownership, and made feedback reports more useful with optional contact details and file uploads.",
+    "date": "2026-07-25",
+    "isoDate": "2026-07-25",
     "tags": [
-      "performance",
-      "reliability",
-      "feedback",
-      "SEO"
+      "web",
+      "hosting",
+      "feedback"
     ],
     "author": "Treease Team",
     "featured": true,
     "sections": [
       {
-        "heading": "Graph performance and reliability",
+        "heading": "Hosting and stability",
         "paragraphs": [
-          "Large graph scenes now render more efficiently by focusing work on the visible viewport and avoiding unnecessary redraws.",
-          "Graph ownership and streaming table layout are more stable during runtime startup and updates. Usage requests also back off more gracefully after rate limits."
+          "Treease is now delivered through Cloudflare, with deployment hardening and graph render ownership fixes that reduce stale or incorrectly claimed render jobs during startup and refreshes.",
+          "Site disclosures were also updated to better match the new production setup and advertising requirements."
         ]
       },
       {
-        "heading": "A clearer product experience",
+        "heading": "Feedback reports",
         "paragraphs": [
-          "Treease now includes a generated changelog page and a BugDrop feedback dialog, making it easier to follow product updates and report problems.",
-          "Repository-facing product text has been standardized in English, while discoverability improvements help more users find Treease."
-        ]
-      },
-      {
-        "heading": "Account and usage behavior",
-        "paragraphs": [
-          "Client and user usage metering is now unified. Anonymous sign-in has been removed, subscription webhook handling is idempotent, and anonymous usage identity is preserved consistently where supported."
+          "Feedback reports can now include an optional contact email and uploaded files, making it easier to send actionable bug reports and follow up when needed."
         ]
       }
     ],
     "tutorialLinks": []
   },
   {
-    "slug": "2026-07-19",
-    "title": "Smoother Accounts, Sharing, Billing, and Editor Navigation",
-    "summary": "Treease brings a more dependable account and sharing experience, clearer billing flows, improved editor navigation, and a smoother homepage demo.",
-    "date": "2026-07-19",
-    "isoDate": "2026-07-19",
+    "slug": "2026-07-23",
+    "title": "Clearer Usage and Subscription Management",
+    "summary": "Account usage is easier to understand, anonymous usage now appears in the account menu, and subscription changes are handled more reliably end to end.",
+    "date": "2026-07-23",
+    "isoDate": "2026-07-23",
     "tags": [
-      "accounts",
-      "sharing",
       "billing",
-      "editor",
-      "AI"
+      "account",
+      "usage"
     ],
     "author": "Treease Team",
     "featured": false,
     "sections": [
       {
-        "heading": "Accounts and sign-in",
+        "heading": "Usage visibility",
         "paragraphs": [
-          "OAuth linking and fallback login flows are more resilient, including recovery from OAuth link failures and clearer handling of anonymous account details.",
-          "Account navigation is more consistent, with improved menu loading, icons, home navigation, and protection for anonymous sign-in."
+          "The account menu now shows anonymous usage, and local usage counts are deduplicated so activity totals stay more accurate.",
+          "Client-side and account-level usage tracking now line up more consistently when you switch between anonymous and signed-in use."
         ]
       },
       {
-        "heading": "Sharing, selection, and graph viewing",
+        "heading": "Billing reliability",
         "paragraphs": [
-          "Shared graph links now use a unified restore flow that preserves editor selections and reliably restores graph focus after the runtime is ready.",
-          "Graph selection remains stable across hover interactions, and the CLI graph can be prerendered for web viewing."
-        ]
-      },
-      {
-        "heading": "Billing and product polish",
-        "paragraphs": [
-          "Pricing checkout now adapts to the user's sign-in state, postpaid usage is gated correctly, and anonymous users can see their usage summary.",
-          "Treease adds a recursive compact operator, removes workspace commands from the command panel, improves semantic text colors, and makes homepage demo playback smoother.",
-          "AI credential routing and workspace file actions are available through clearer product flows."
+          "Subscription plan changes now follow a more unified flow, and subscription status normalization is more robust across billing events."
         ]
       }
     ],
-    "tutorialLinks": [
-      {
-        "href": "/tutorial/json-viewer",
-        "label": "JSON Viewer Online: Explore JSON as a Tree and Graph"
-      }
-    ]
+    "tutorialLinks": []
   },
   {
-    "slug": "2026-07-12",
-    "title": "Faster Stream Imports and a New Desktop Workspace Foundation",
-    "summary": "Streaming trace imports are faster, and Treease gains the foundation for a desktop workspace and release channel.",
-    "date": "2026-07-12",
-    "isoDate": "2026-07-12",
+    "slug": "2026-07-22",
+    "title": "Feedback, Changelog, and Discoverability",
+    "summary": "Treease added an in-app feedback dialog and a generated changelog page, while improving search discoverability and graph startup reliability.",
+    "date": "2026-07-22",
+    "isoDate": "2026-07-22",
+    "tags": [
+      "web",
+      "feedback",
+      "seo"
+    ],
+    "author": "Treease Team",
+    "featured": false,
+    "sections": [
+      {
+        "heading": "Stay informed and send feedback",
+        "paragraphs": [
+          "Treease now includes a built-in feedback dialog for reporting issues or sharing ideas without leaving the app.",
+          "A generated changelog page is now available so product updates are easier to review in one place."
+        ]
+      },
+      {
+        "heading": "Search and startup improvements",
+        "paragraphs": [
+          "Search discoverability was improved for both traditional SEO and newer AI-driven discovery surfaces.",
+          "Graph render ownership is preserved more reliably across runtime startup, reducing cases where the graph could fail to settle into the correct render state."
+        ]
+      }
+    ],
+    "tutorialLinks": []
+  },
+  {
+    "slug": "2026-07-21",
+    "title": "Smoother Large Graph Rendering",
+    "summary": "Viewport virtualization and redraw trimming make large graphs faster to navigate, while table layout, request backoff, and cross-origin access are more stable.",
+    "date": "2026-07-21",
+    "isoDate": "2026-07-21",
     "tags": [
       "performance",
-      "desktop"
+      "graph",
+      "reliability"
     ],
     "author": "Treease Team",
     "featured": false,
@@ -102,13 +110,160 @@ export const generatedChangelog = [
       {
         "heading": "Performance",
         "paragraphs": [
-          "Streamed trace imports now complete more efficiently, improving responsiveness when loading large inputs."
+          "Large graphs now render through viewport virtualization, so Treease does less work for off-screen content and feels faster while panning and exploring.",
+          "Unnecessary redraws along viewport edges were also removed to cut down on visual churn and extra render cost."
         ]
       },
       {
-        "heading": "Desktop workspace",
+        "heading": "Reliability",
         "paragraphs": [
-          "Treease adds a desktop workspace host and release pipeline, establishing a dedicated desktop experience."
+          "Streaming table layouts are more stable, usage requests now back off after rate limits instead of hammering the server, and server CORS handling supports multiple allowed origins more cleanly."
+        ]
+      }
+    ],
+    "tutorialLinks": []
+  },
+  {
+    "slug": "2026-07-20",
+    "title": "Workers Rollout and Metering Cleanup",
+    "summary": "Treease moved its server and asset delivery onto Cloudflare Workers, unified usage metering, improved billing webhook safety, and fixed streaming graph ownership issues.",
+    "date": "2026-07-20",
+    "isoDate": "2026-07-20",
+    "tags": [
+      "hosting",
+      "billing",
+      "usage"
+    ],
+    "author": "Treease Team",
+    "featured": false,
+    "sections": [
+      {
+        "heading": "Cloudflare rollout",
+        "paragraphs": [
+          "Treease server deployment and web asset delivery now run on Cloudflare Workers, including the production domain routing needed for the new setup.",
+          "The move also came with graph ownership fixes for streaming updates, helping parent relationships stay correct while documents update incrementally."
+        ]
+      },
+      {
+        "heading": "Account and billing changes",
+        "paragraphs": [
+          "Usage metering is now unified across client and signed-in account activity, making totals more consistent.",
+          "Subscription webhooks are idempotent, which reduces the chance of duplicate billing-side changes, and anonymous sign-in was removed in favor of a cleaner account model."
+        ]
+      }
+    ],
+    "tutorialLinks": []
+  },
+  {
+    "slug": "2026-07-19",
+    "title": "Anonymous Accounts, Sharing, and Editor Polish",
+    "summary": "Treease improved anonymous account handling, strengthened share-link restore behavior, polished homepage and editor UI, and added a recursive compact operator for nested data cleanup.",
+    "date": "2026-07-19",
+    "isoDate": "2026-07-19",
+    "tags": [
+      "account",
+      "share",
+      "editor"
+    ],
+    "author": "Treease Team",
+    "featured": false,
+    "sections": [
+      {
+        "heading": "Accounts and usage",
+        "paragraphs": [
+          "Anonymous usage identity is preserved more reliably, anonymous account details and usage summaries are clearer, and login flows recover more gracefully across OAuth and standalone sign-in paths.",
+          "Postpaid usage gating was added, the account menu loads through a more unified path, and account-related icons and navigation affordances were cleaned up."
+        ]
+      },
+      {
+        "heading": "Sharing and interface polish",
+        "paragraphs": [
+          "Shared links now restore graph focus and editor selection more reliably, even when the graph runtime is still starting up.",
+          "The editor keeps graph selection through hover changes, homepage demo playback was improved, semantic text colors were unified, workspace-only commands were removed from the command panel, and Treease branding in the top bar and home link was refreshed."
+        ]
+      },
+      {
+        "heading": "New compact behavior",
+        "paragraphs": [
+          "A new recursive compact operator can compact nested structures in one pass, making it easier to clean up deeply nested data."
+        ]
+      }
+    ],
+    "tutorialLinks": []
+  },
+  {
+    "slug": "2026-07-18",
+    "title": "Pricing, Navigation, and Desktop Actions",
+    "summary": "Checkout now respects login state, account navigation is easier to use, desktop file actions moved into menus, and Treease added AI credential routing plus prerendered CLI graph pages.",
+    "date": "2026-07-18",
+    "isoDate": "2026-07-18",
+    "tags": [
+      "billing",
+      "desktop",
+      "navigation"
+    ],
+    "author": "Treease Team",
+    "featured": false,
+    "sections": [
+      {
+        "heading": "Account and billing flow",
+        "paragraphs": [
+          "Pricing checkout now behaves correctly for signed-in and signed-out users, and account navigation was reorganized to make common destinations easier to reach.",
+          "Treease also added AI credential routing support for account-driven AI features."
+        ]
+      },
+      {
+        "heading": "Desktop and delivery",
+        "paragraphs": [
+          "Desktop file actions were moved into the app menu for a cleaner workspace surface.",
+          "CLI graph pages can now be prerendered, improving how those pages load and ship on the web."
+        ]
+      }
+    ],
+    "tutorialLinks": []
+  },
+  {
+    "slug": "2026-07-12",
+    "title": "Faster Trace Imports and Desktop Hosting",
+    "summary": "Streamed trace imports are faster, and the desktop app gained workspace hosting support.",
+    "date": "2026-07-12",
+    "isoDate": "2026-07-12",
+    "tags": [
+      "performance",
+      "desktop",
+      "import"
+    ],
+    "author": "Treease Team",
+    "featured": false,
+    "sections": [
+      {
+        "heading": "Highlights",
+        "paragraphs": [
+          "Treease now imports streamed traces more efficiently, reducing waiting time on large trace inputs.",
+          "The desktop app also gained workspace hosting support, expanding how local workspaces can be opened and managed."
+        ]
+      }
+    ],
+    "tutorialLinks": []
+  },
+  {
+    "slug": "2026-07-10",
+    "title": "Sharing, Sign-In, and Pricing Flow Update",
+    "summary": "Treease shipped a broader pass across auth, sharing, analytics-backed product flows, and pricing.",
+    "date": "2026-07-10",
+    "isoDate": "2026-07-10",
+    "tags": [
+      "auth",
+      "share",
+      "billing"
+    ],
+    "author": "Treease Team",
+    "featured": false,
+    "sections": [
+      {
+        "heading": "Highlights",
+        "paragraphs": [
+          "Treease updated core account, sharing, and pricing flows together so access and upgrade paths feel more coherent across the product."
         ]
       }
     ],
@@ -116,21 +271,22 @@ export const generatedChangelog = [
   },
   {
     "slug": "2026-07-08",
-    "title": "Clearer Structured Compare Diffs",
-    "summary": "Compare results now use explicit byte spans so differences are represented more accurately and remain easier to inspect.",
+    "title": "More Precise Structural Compare Results",
+    "summary": "Structural compare results now point to explicit byte spans, making diffs easier to locate and review.",
     "date": "2026-07-08",
     "isoDate": "2026-07-08",
     "tags": [
       "compare",
-      "JSON"
+      "json",
+      "web"
     ],
     "author": "Treease Team",
     "featured": false,
     "sections": [
       {
-        "heading": "More precise comparisons",
+        "heading": "Highlights",
         "paragraphs": [
-          "Structured compare diffs now identify exact changed spans, improving the accuracy and clarity of comparison results."
+          "Treease now uses structured compare diffs with explicit byte spans, so compare results can point to the exact source ranges that changed."
         ]
       }
     ],
@@ -147,23 +303,22 @@ export const generatedChangelog = [
   },
   {
     "slug": "2026-07-07",
-    "title": "More Stable Graph Rendering During Workspace Changes",
-    "summary": "Graph rendering and workspace resizing are now more dependable, with fewer readiness races and redundant controllers.",
+    "title": "More Reliable Graph Startup and Resize",
+    "summary": "Graph readiness is more stable, and workspace resizing now stays in sync more consistently.",
     "date": "2026-07-07",
     "isoDate": "2026-07-07",
     "tags": [
-      "reliability",
       "graph",
-      "workspace"
+      "workspace",
+      "reliability"
     ],
     "author": "Treease Team",
     "featured": false,
     "sections": [
       {
-        "heading": "Rendering reliability",
+        "heading": "Highlights",
         "paragraphs": [
-          "Workspace resizing now stays synchronized with the graph, and graph readiness is handled more consistently during startup and updates.",
-          "Graph probing uses a single controller, reducing duplicate work and preventing inconsistent render state."
+          "Graph rendering now reaches a ready state more consistently, and workspace resize behavior stays synchronized more reliably during layout changes."
         ]
       }
     ],
@@ -172,20 +327,21 @@ export const generatedChangelog = [
   {
     "slug": "2026-07-06",
     "title": "Standalone API Service",
-    "summary": "Treease now provides a standalone API service for integrations and programmatic access.",
+    "summary": "Treease now includes a standalone API service for external integrations and hosted workflows.",
     "date": "2026-07-06",
     "isoDate": "2026-07-06",
     "tags": [
-      "API",
-      "server"
+      "api",
+      "server",
+      "integration"
     ],
     "author": "Treease Team",
     "featured": false,
     "sections": [
       {
-        "heading": "API access",
+        "heading": "Highlights",
         "paragraphs": [
-          "A standalone API service is now available, making Treease capabilities easier to consume independently from the web application."
+          "A standalone API service is now available, opening a cleaner path for integrations and server-backed Treease workflows."
         ]
       }
     ],
@@ -193,21 +349,22 @@ export const generatedChangelog = [
   },
   {
     "slug": "2026-07-05",
-    "title": "More Consistent Example Loading",
-    "summary": "Initial examples now follow the same complete editing and language-services flow as subsequent edits.",
+    "title": "Cleaner Initial Example Loading",
+    "summary": "The initial example now goes through the full editing pipeline, so first-load behavior matches regular editing more closely.",
     "date": "2026-07-05",
     "isoDate": "2026-07-05",
     "tags": [
       "editor",
+      "web",
       "reliability"
     ],
     "author": "Treease Team",
     "featured": false,
     "sections": [
       {
-        "heading": "Editor behavior",
+        "heading": "Highlights",
         "paragraphs": [
-          "Examples loaded when the editor opens now receive the same processing as later edits, keeping highlighting, analysis, and graph output consistent."
+          "The first example document now loads through the same full edit and language-services path as normal editing, which makes initial behavior more consistent."
         ]
       }
     ],
@@ -215,38 +372,30 @@ export const generatedChangelog = [
   },
   {
     "slug": "2026-07-04",
-    "title": "New Editor Presets, Tutorials, and Smoother Viewer Interactions",
-    "summary": "Treease adds reusable tutorial pages and URL-backed editor presets while improving graph navigation, import feedback, and CLI rendering.",
+    "title": "URL-Driven Presets and Better Viewer Sync",
+    "summary": "Treease added URL-backed editor presets and reusable tutorial pages, while improving graph search, import progress, viewer mounting, drag guidance, and CLI graph rendering.",
     "date": "2026-07-04",
     "isoDate": "2026-07-04",
     "tags": [
       "editor",
       "tutorials",
-      "graph",
-      "CLI",
-      "JSON"
+      "graph"
     ],
     "author": "Treease Team",
     "featured": false,
     "sections": [
       {
-        "heading": "URL-backed editing",
+        "heading": "URL setup and tutorials",
         "paragraphs": [
-          "Editors can now initialize from URL presets, making it easier to share and reopen structured-text examples and documents."
+          "Treease can now initialize editor presets from the URL and supports reusable tutorial pages, making it easier to share preloaded examples and guided workflows.",
+          "The editor also gained split-collapse animations and a graph canvas drag hint to make the interface easier to learn."
         ]
       },
       {
-        "heading": "Viewer and graph improvements",
+        "heading": "Editing and graph fixes",
         "paragraphs": [
-          "Graph search reveals the relevant table cells, empty containers render correctly, and full document replacement resets subgraph workspaces cleanly.",
-          "Viewer panes remain mounted when switching modes, graph canvases provide a drag hint, and split-collapse transitions are animated."
-        ]
-      },
-      {
-        "heading": "Guidance and import feedback",
-        "paragraphs": [
-          "Treease now includes reusable tutorial pages and clearer editor call-to-action labels.",
-          "Import progress communicates its final state more clearly, while CLI graph output handles missing and scalar values more gracefully. Local web testing is also supported by the CLI."
+          "Graph search can now reveal table cells by anchor, subgraph workspaces reset correctly after full replacements, and empty containers render more sensibly as scalar cells when needed.",
+          "Blank input now clears the document, import progress messaging is clearer at the finish line, viewer panes stay mounted across mode switches, and CLI graph output handles missing and scalar cases more cleanly."
         ]
       }
     ],
@@ -260,6 +409,10 @@ export const generatedChangelog = [
         "label": "How to Load URL Content into a JSON Editor"
       },
       {
+        "href": "/tutorial/json-viewer",
+        "label": "JSON Viewer Online: Explore JSON as a Tree and Graph"
+      },
+      {
         "href": "/tutorial/json-formatter",
         "label": "JSON Formatter Online: Format and Review JSON"
       }
@@ -267,21 +420,21 @@ export const generatedChangelog = [
   },
   {
     "slug": "2026-07-01",
-    "title": "Clearer CLI Version and Asset Download Feedback",
+    "title": "CLI Progress and Version Visibility",
     "summary": "The CLI now shows its version in help output and reports asset download progress.",
     "date": "2026-07-01",
     "isoDate": "2026-07-01",
     "tags": [
-      "CLI",
-      "usability"
+      "cli",
+      "ux"
     ],
     "author": "Treease Team",
     "featured": false,
     "sections": [
       {
-        "heading": "CLI improvements",
+        "heading": "Highlights",
         "paragraphs": [
-          "CLI help now includes version information, and asset downloads provide visible progress so long-running setup is easier to understand."
+          "Treease CLI help now includes the current version, and asset downloads report visible progress so long-running setup steps are easier to track."
         ]
       }
     ],
@@ -289,21 +442,21 @@ export const generatedChangelog = [
   },
   {
     "slug": "2026-06-30",
-    "title": "More Reliable Runtime Readiness",
-    "summary": "Web runtime readiness is now more stable, reducing flaky behavior during graph loading and interaction.",
+    "title": "More Reliable Web Startup",
+    "summary": "Web runtime readiness was stabilized to reduce flaky startup behavior.",
     "date": "2026-06-30",
     "isoDate": "2026-06-30",
     "tags": [
-      "reliability",
-      "web"
+      "web",
+      "reliability"
     ],
     "author": "Treease Team",
     "featured": false,
     "sections": [
       {
-        "heading": "Stable loading",
+        "heading": "Highlights",
         "paragraphs": [
-          "Runtime readiness handling has been improved so graph interactions become available more consistently after loading."
+          "Treease startup is more reliable thanks to improved runtime readiness handling, reducing flaky load behavior."
         ]
       }
     ],
@@ -311,36 +464,29 @@ export const generatedChangelog = [
   },
   {
     "slug": "2026-06-29",
-    "title": "Improved Subgraph Workspaces and Graph Editing",
-    "summary": "Subgraph editing is more coherent and reliable, while graph layout, edge convergence, minimap rendering, and CLI parsing receive important fixes.",
+    "title": "Subgraph Workspace Editing Refresh",
+    "summary": "Subgraph workspaces received a layout and editing overhaul, with better toolbar polish, safer cell editing rules, cleaner minimap rendering, and fixes for JSON formatting and graph edges.",
     "date": "2026-06-29",
     "isoDate": "2026-06-29",
     "tags": [
-      "graph",
-      "editing",
-      "workspace",
-      "CLI"
+      "subgraph",
+      "editor",
+      "graph"
     ],
     "author": "Treease Team",
     "featured": false,
     "sections": [
       {
-        "heading": "Subgraph workspace",
+        "heading": "Workspace layout and editing",
         "paragraphs": [
-          "The subgraph workspace has a clearer layout and command toolbar, more reliable interactions, and improved handling of missing graph cells.",
-          "Editing paths now target the correct cells, while unavailable cells are no longer presented as editable."
+          "The subgraph workspace layout and editing flow were refined, including command and toolbar UI updates, simpler split-handle presentation, and safer behavior for missing graph cells.",
+          "Editing is now disabled where cells are genuinely missing, and table edit paths inside subgraph workspaces are handled more reliably."
         ]
       },
       {
-        "heading": "Graph and layout reliability",
+        "heading": "Rendering and formatting fixes",
         "paragraphs": [
-          "Minimap borders render consistently, graph edges converge correctly, and graph relayout behavior is improved."
-        ]
-      },
-      {
-        "heading": "Parsing and formatting",
-        "paragraphs": [
-          "Nest-aware JSON formatting and CLI parsing regressions have been fixed, improving results for structured input and graph display."
+          "Minimap borders now render more consistently, graph edge convergence was fixed, and nest-aware JSON formatting behaves more predictably."
         ]
       }
     ],
@@ -348,33 +494,38 @@ export const generatedChangelog = [
       {
         "href": "/tutorial/format-json-online",
         "label": "How to Format JSON Online with Treease"
+      },
+      {
+        "href": "/tutorial/json-formatter",
+        "label": "JSON Formatter Online: Format and Review JSON"
       }
     ]
   },
   {
-    "slug": "2026-06-24",
-    "title": "More Predictable Parsing and Editor Highlighting",
-    "summary": "Treease fixes parsing regressions, clarifies null input behavior in the CLI, and preserves highlighting when switching language examples.",
-    "date": "2026-06-24",
-    "isoDate": "2026-06-24",
+    "slug": "2026-06-26",
+    "title": "CLI Parsing and Version Support Improvements",
+    "summary": "The CLI improved version support, parsing reliability, null-input behavior, and command surface, while example switching keeps its highlight state more reliably.",
+    "date": "2026-06-26",
+    "isoDate": "2026-06-26",
     "tags": [
+      "cli",
       "parsing",
-      "editor",
-      "CLI"
+      "editor"
     ],
     "author": "Treease Team",
     "featured": false,
     "sections": [
       {
-        "heading": "Input behavior",
+        "heading": "CLI improvements",
         "paragraphs": [
-          "Parsing regressions have been corrected, and the CLI now handles null input with the intended document semantics."
+          "CLI version handling and graph relayout behavior were improved, parsing regressions were fixed, and null input semantics are more consistent.",
+          "The examples doctor command was removed, simplifying the CLI surface."
         ]
       },
       {
-        "heading": "Editor highlighting",
+        "heading": "Editor polish",
         "paragraphs": [
-          "Syntax highlighting is preserved when switching between language examples, making exploration more fluid."
+          "Switching between language examples now preserves the active highlight more reliably."
         ]
       }
     ],
@@ -382,23 +533,30 @@ export const generatedChangelog = [
   },
   {
     "slug": "2026-06-18",
-    "title": "Better Nested JSON Expansion and Blank Input Handling",
-    "summary": "Nested JSON expansion is available again, blank text is processed consistently, and scalar output no longer adds an unwanted trailing newline.",
+    "title": "NDJSON Import, Linked Scrolling, and CLI Upgrades",
+    "summary": "Treease added JSONL and NDJSON import support, a scroll-and-reveal sync toggle, a web graph CLI route, and a more discoverable CLI, while fixing YAML parsing, blank-input analysis, compact output formatting, nested expansion, and several render races.",
     "date": "2026-06-18",
     "isoDate": "2026-06-18",
     "tags": [
-      "JSON",
-      "formatting",
+      "import",
+      "cli",
       "editor"
     ],
     "author": "Treease Team",
     "featured": false,
     "sections": [
       {
-        "heading": "JSON editing and output",
+        "heading": "New capabilities",
         "paragraphs": [
-          "Nested JSON structures can be expanded again for deeper inspection.",
-          "Blank text now follows the normal analysis path, and scalar output is emitted without an extra trailing newline."
+          "Treease now supports JSONL and NDJSON import, re-enabled nested JSON expansion, and added a toggle to keep scrolling and reveal behavior linked only when you want it.",
+          "The CLI gained a web graph route plus a more agent-friendly command surface with structured errors and discovery commands."
+        ]
+      },
+      {
+        "heading": "Fixes and polish",
+        "paragraphs": [
+          "Blank text now continues through analysis instead of short-circuiting, YAML block sequence parsing was restored after a regression, and compact scalar output no longer adds an extra trailing newline.",
+          "Several race conditions were fixed across full-edit intake, graph render flushing, and hover overflow handling."
         ]
       }
     ],
@@ -414,74 +572,25 @@ export const generatedChangelog = [
     ]
   },
   {
-    "slug": "2026-06-16",
-    "title": "NDJSON Import, Synchronized Viewing, and a More Capable CLI",
-    "summary": "Treease adds JSONL/NDJSON import support, improves editor-to-graph synchronization, and delivers a more agent-friendly CLI with a web graph route.",
-    "date": "2026-06-16",
-    "isoDate": "2026-06-16",
-    "tags": [
-      "NDJSON",
-      "import",
-      "CLI",
-      "graph"
-    ],
-    "author": "Treease Team",
-    "featured": false,
-    "sections": [
-      {
-        "heading": "Import and runtime reliability",
-        "paragraphs": [
-          "JSONL and NDJSON files can now be imported, with language detection routed through the shared processing path.",
-          "Race conditions affecting full edits, graph rendering, and hover overflow have been fixed."
-        ]
-      },
-      {
-        "heading": "Editor and graph synchronization",
-        "paragraphs": [
-          "A sync toggle now links scrolling and reveal behavior between the editor and graph, making it easier to follow corresponding content."
-        ]
-      },
-      {
-        "heading": "CLI improvements",
-        "paragraphs": [
-          "The CLI now includes an agent-friendly command structure, structured errors, discovery commands, and a web graph route.",
-          "Block-sequence parsing has been restored after a grammar regression."
-        ]
-      }
-    ],
-    "tutorialLinks": [
-      {
-        "href": "/tutorial/json-viewer",
-        "label": "JSON Viewer Online: Explore JSON as a Tree and Graph"
-      }
-    ]
-  },
-  {
     "slug": "2026-06-14",
-    "title": "Treease Initial Release",
-    "summary": "Treease launches as a structured-text graph editor for exploring documents as synchronized text, tables, and graphs.",
+    "title": "Initial Release",
+    "summary": "Treease launched its first public release as a structured-text graph editor.",
     "date": "2026-06-14",
     "isoDate": "2026-06-14",
     "tags": [
       "release",
-      "editor",
-      "graph"
+      "launch"
     ],
     "author": "Treease Team",
     "featured": false,
     "sections": [
       {
-        "heading": "Explore structured text visually",
+        "heading": "Highlights",
         "paragraphs": [
-          "Treease connects structured-text editing with table and graph views, helping users inspect relationships and navigate complex documents."
+          "Treease made its first public debut, introducing its foundation for structured-text editing and graph-based exploration."
         ]
       }
     ],
-    "tutorialLinks": [
-      {
-        "href": "/tutorial/json-viewer",
-        "label": "JSON Viewer Online: Explore JSON as a Tree and Graph"
-      }
-    ]
+    "tutorialLinks": []
   }
 ] satisfies readonly ChangelogEntry[];
