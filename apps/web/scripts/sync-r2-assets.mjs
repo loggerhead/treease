@@ -5,7 +5,9 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { assetSourceDir, bucketName, getContentType, listAssetFiles } from './r2-assets.mjs';
 
-const bulkConcurrency = 4;
+// Cloudflare's experimental remote bulk endpoint intermittently returns 400s for concurrent puts.
+// Serializing the small asset set keeps deployment deterministic.
+const bulkConcurrency = 1;
 const cacheControl = 'public, max-age=3600';
 const webDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
