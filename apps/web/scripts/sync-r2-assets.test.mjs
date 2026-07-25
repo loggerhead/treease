@@ -1,40 +1,31 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createHash } from 'node:crypto';
-import { readFile } from 'node:fs/promises';
-import { assetSourceDir } from './r2-assets.mjs';
-import { shouldUpload, syncAssets } from './sync-r2-assets.mjs';
+import { buildBulkManifest, groupManifestByContentType } from './sync-r2-assets.mjs';
 
-test('uploads an asset when the remote object is absent', () => {
-  assert.equal(shouldUpload(null, 'local-hash'), true);
+test('builds a Wrangler bulk manifest with absolute source paths', () => {
+  const manifest = buildBulkManifest({
+    files: ['treease-logo.png', 'landing/hero-demo-graph.mp4'],
+    sourceDir: '/tmp/treease-static',
+  });
+
+  assert.deepEqual(manifest, [
+    { key: 'treease-logo.png', file: '/tmp/treease-static/treease-logo.png' },
+    { key: 'landing/hero-demo-graph.mp4', file: '/tmp/treease-static/landing/hero-demo-graph.mp4' },
+  ]);
 });
 
-test('skips an asset when the stored hash is unchanged', () => {
-  assert.equal(shouldUpload('same-hash', 'same-hash'), false);
-});
+test('groups bulk manifest entries by content type', () => {
+  const groups = groupManifestByContentType([
+    { key: 'one.png', file: '/tmp/one.png' },
+    { key: 'two.mp4', file: '/tmp/two.mp4' },
+    { key: 'three.png', file: '/tmp/three.png' },
+  ]);
 
-test('uploads an asset when its content hash changed', () => {
-  assert.equal(shouldUpload('old-hash', 'new-hash'), true);
-});
-
-test('syncs only assets whose remote hash is absent or changed', async () => {
-  const relativePath = 'treease-logo.png';
-  const body = await readFile(`${assetSourceDir}/${relativePath}`);
-  const localHash = createHash('sha256').update(body).digest('hex');
-  const uploaded = [];
-  const client = {
-    async headObject(key) {
-      return key === relativePath ? localHash : null;
-    },
-    async putObject(input) {
-      uploaded.push(input.key);
-    },
-  };
-
-  await syncAssets({ client, files: [relativePath] });
-  assert.deepEqual(uploaded, []);
-
-  client.headObject = async () => null;
-  await syncAssets({ client, files: [relativePath] });
-  assert.deepEqual(uploaded, [relativePath]);
+  assert.deepEqual([...groups], [
+    ['image/png', [
+      { key: 'one.png', file: '/tmp/one.png' },
+      { key: 'three.png', file: '/tmp/three.png' },
+    ]],
+    ['video/mp4', [{ key: 'two.mp4', file: '/tmp/two.mp4' }]],
+  ]);
 });

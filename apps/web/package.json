@@ -27,7 +27,7 @@
     "analyze:bundle": "pnpm wasm:bindgen:check && pnpm wasm:sync && TREEASE_BUNDLE_ANALYZE=1 WASM_VERSION=$(node ./scripts/wasm-version.mjs) node ./scripts/with-build-lock.mjs vp build",
     "preview": "vp preview",
     "seo:verify": "node ./scripts/verify-seo.mjs",
-    "deploy:workers": "pnpm build && pnpm assets:r2:sync && pnpm assets:r2:check && pnpm exec wrangler deploy",
+    "deploy:workers": "pnpm build && pnpm assets:r2:sync && pnpm exec wrangler deploy",
     "check:circular": "pnpm exec madge --circular --extensions ts --ts-config ./tsconfig.json src",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json && tsc -p tsconfig.json --noEmit",
     "check:watch": "svelte-check --tsconfig ./tsconfig.json --watch",
