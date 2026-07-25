@@ -1,7 +1,7 @@
 import type { SupportedLanguageId } from './monaco/language-support'
 
 export type CommandId =
-  | 'format' | 'minify' | 'compact' | 'sort' | 'show-yq-input' | 'toggle-nest' | 'toggle-auto-format' | 'escape' | 'unescape'
+  | 'format' | 'minify' | 'compact' | 'sort' | 'show-yq-input' | 'generate-struct' | 'toggle-nest' | 'toggle-auto-format' | 'escape' | 'unescape'
   | 'workspace:new' | 'workspace:open' | 'workspace:save' | 'workspace:save-as' | 'workspace:close-tab'
 
 export type CommandLangs = '*' | SupportedLanguageId
@@ -34,6 +34,14 @@ export const commandItems: CommandItem[] = [
     description: 'Open the yq expression box below the editor. Enter a query to transform or inspect the current document and preview the result without replacing the source text.',
     type: 'action',
     langs: ['*'],
+  },
+  {
+    id: 'generate-struct',
+    label: 'Generate structure definition',
+    keywords: ['json', 'type', 'interface', 'struct', 'class', 'codegen'],
+    description: 'Generate a typed structure definition from the active JSON document.',
+    type: 'action',
+    langs: ['json'],
   },
   {
     id: 'toggle-nest',

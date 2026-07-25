@@ -11,6 +11,7 @@
   import SettingsDialog from '../../lib/components/SettingsDialog.svelte';
   import ShareDialog from '../../lib/components/ShareDialog.svelte';
   import FeedbackDialog from '../../lib/components/FeedbackDialog.svelte';
+  import StructGenerationInput from '../../lib/components/StructGenerationInput.svelte';
   import LoginDialog from '../../lib/components/LoginDialog.svelte';
   import YqExpressionInput from '../../lib/components/YqExpressionInput.svelte';
   import { settings, settingsStore } from '../../lib/settings/settings-store';
@@ -80,7 +81,7 @@
   import { editorWorkspace, getWorkspaceState, updateWorkspaceTab } from '../../lib/store/workspace-store';
   import { isWorkspaceTabDirty, type EditorWorkspaceTabSummary } from '../../lib/store/editor-workspace';
   import { clearCompareState, compareState } from '../../lib/store/compare-state';
-  import { getPublicShare } from '../../lib/services/treease-server';
+  import { generateStruct, getPublicShare, type StructLanguage } from '../../lib/services/treease-server';
   import { createShareResource as createResourceFromState, type ShareInteraction, type SharePathSegment, type ShareResource } from '../../lib/share/share-resource';
   import { restoreShareResource } from '../../lib/share/share-restore';
   import type { WorkspaceCommand, WorkspaceSession } from '../../lib/workspace-host';
@@ -113,6 +114,11 @@
   let settingsOpen = false;
   let shareOpen = false;
   let feedbackOpen = false;
+  let structGenerationOpen = false;
+  let structGenerationTarget: StructLanguage = 'typescript';
+  let structGenerationRootName = 'Root';
+  let structGenerationBusy = false;
+  let structGenerationError = '';
   let loginOpen = false;
   let viewerViewMode: 'graph' | 'text' = 'graph';
   let editorRuntimeLoading = true;
@@ -383,8 +389,11 @@
     });
   }
 
-  async function showViewerTextPreview(text: string) {
-    await viewerRef?.showTextPreview(text);
+  async function showViewerTextPreview(
+    text: string,
+    language: SupportedEditorLanguageId | undefined = undefined,
+  ): Promise<void> {
+    await viewerRef?.showTextPreview(text, language);
   }
 
   async function showViewerTextPreviewForRevision(text: string, sourceRevision: number) {
@@ -658,6 +667,7 @@
   }
 
   function handleShowYqInput() {
+    structGenerationOpen = false;
     yqInputOpen = true;
     yqError = '';
     void tick().then(() => {
@@ -668,6 +678,47 @@
   function handleCloseYqInput() {
     yqInputOpen = false;
     yqError = '';
+  }
+
+  function handleShowStructGeneration(): void {
+    yqInputOpen = false;
+    structGenerationError = '';
+    structGenerationOpen = true;
+  }
+
+  function handleCloseStructGeneration(): void {
+    if (structGenerationBusy) return;
+    structGenerationOpen = false;
+    structGenerationError = '';
+  }
+
+  // The right pane's document runtime currently accepts Treease structured languages only.
+  // Keep generated code visible while using the closest lexical mode until code-only languages are supported.
+  function rightEditorLanguageForStruct(language: StructLanguage): SupportedEditorLanguageId {
+    return language === 'python' ? 'python' : 'javascript';
+  }
+
+  async function handleSubmitStructGeneration(): Promise<void> {
+    const sourceJson = getActiveDocumentText() || editorRef?.getActiveText() || '';
+    if (!sourceJson.trim()) {
+      structGenerationError = 'The active JSON document is empty.';
+      return;
+    }
+
+    structGenerationBusy = true;
+    structGenerationError = '';
+    try {
+      const result = await generateStruct({
+        sourceJson,
+        targetLanguage: structGenerationTarget,
+        rootName: structGenerationRootName.trim() || 'Root',
+      });
+      await showViewerTextPreview(result.code, rightEditorLanguageForStruct(result.language));
+    } catch (error) {
+      structGenerationError = error instanceof Error ? error.message : 'Unable to generate the structure definition.';
+    } finally {
+      structGenerationBusy = false;
+    }
   }
 
   async function handleSubmitYq(expression: string) {
@@ -1162,6 +1213,17 @@
               onSubmit={handleSubmitYq}
               onClose={handleCloseYqInput}
             />
+          {:else if structGenerationOpen}
+            <StructGenerationInput
+              targetLanguage={structGenerationTarget}
+              rootName={structGenerationRootName}
+              busy={structGenerationBusy}
+              error={structGenerationError}
+              onChangeTargetLanguage={(value) => (structGenerationTarget = value)}
+              onChangeRootName={(value) => (structGenerationRootName = value)}
+              onSubmit={handleSubmitStructGeneration}
+              onClose={handleCloseStructGeneration}
+            />
           {/if}
         </section>
       {/if}
@@ -1297,6 +1359,7 @@
         onCompact={() => editorRef?.compactActive()}
         onSort={() => editorRef?.sortActive()}
         onShowYqInput={handleShowYqInput}
+        onGenerateStruct={handleShowStructGeneration}
         onEscape={() => editorRef?.escapeActive()}
         onUnescape={() => editorRef?.unescapeActive()}
         onNewDocument={workspaceCommands['workspace:new']}

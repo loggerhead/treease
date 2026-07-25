@@ -23,6 +23,7 @@
     compact: Minimize2,
     sort: ArrowDownWideNarrow,
     'show-yq-input': ListFilter,
+    'generate-struct': Code,
     escape: WrapText,
     unescape: Code,
   }

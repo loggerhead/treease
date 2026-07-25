@@ -9,6 +9,7 @@ describe('command-registry', () => {
     expect(ids).toContain('compact');
     expect(ids).toContain('sort');
     expect(ids).toContain('show-yq-input');
+    expect(ids).toContain('generate-struct');
     expect(ids).toContain('escape');
     expect(ids).toContain('unescape');
     expect(ids).not.toEqual(expect.arrayContaining([
@@ -36,6 +37,11 @@ describe('command-registry', () => {
     );
   });
 
+  it('restricts JSON structure generation to json', () => {
+    const generateStruct = commandItems.find((c) => c.id === 'generate-struct')!;
+    expect(generateStruct.langs).toEqual(['json']);
+  });
+
   it('restricts toggle-nest/escape/unescape to json', () => {
     const toggleNest = commandItems.find((c) => c.id === 'toggle-nest')!;
     expect(toggleNest.langs).toEqual(['json']);
@@ -49,5 +55,6 @@ describe('command-registry', () => {
     const yamlCommands = commandItems.filter((c) => c.langs.includes('*') || c.langs.includes('yaml'));
     expect(jsonCommands.find((c) => c.id === 'escape')).toBeTruthy();
     expect(yamlCommands.find((c) => c.id === 'escape')).toBeFalsy();
+    expect(yamlCommands.find((c) => c.id === 'generate-struct')).toBeFalsy();
   });
 });

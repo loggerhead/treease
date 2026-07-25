@@ -17,6 +17,7 @@
   export let onCompact: () => void | Promise<void> = () => {};
   export let onSort: () => void | Promise<void> = () => {};
   export let onShowYqInput: () => void | Promise<void> = () => {};
+  export let onGenerateStruct: () => void | Promise<void> = () => {};
   export let onEscape: () => void | Promise<void> = () => {};
   export let onUnescape: () => void | Promise<void> = () => {};
   export let onNewDocument: () => void | Promise<void> = () => {};
@@ -38,6 +39,7 @@
     compact: () => onCompact(),
     sort: () => onSort(),
     'show-yq-input': () => onShowYqInput(),
+    'generate-struct': () => onGenerateStruct(),
     escape: () => onEscape(),
     unescape: () => onUnescape(),
     'toggle-nest': async () => {

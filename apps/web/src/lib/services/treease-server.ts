@@ -73,6 +73,7 @@ export type UsageSummary = {
 
 export type UsageCapability = 'bidirectional_edit' | 'large_file_processing' | 'ai_suggestion';
 export type RecordedUsageCapability = Exclude<UsageCapability, 'ai_suggestion'>;
+export type StructLanguage = 'typescript' | 'go' | 'rust' | 'python' | 'java' | 'kotlin' | 'csharp' | 'swift' | 'dart' | 'ruby' | 'php';
 
 export class TreeaseServerError extends Error {
   constructor(
@@ -162,6 +163,40 @@ export async function createShareLink(resource: ShareResource, expiresInDays = 7
   });
   if (!response.ok) throw await readError(response);
   return (await response.json()) as ShareLink;
+}
+
+export async function suggestYq(input: {
+  instruction: string;
+  editorTextSnapshot?: string;
+  treePathSet?: string[];
+}): Promise<{ expression: string }> {
+  const token = await getAccessToken();
+  if (!token) throw new Error('Sign in to request an AI suggestion.');
+
+  const response = await fetch(`${apiOrigin}/v1/ai/suggest-yq`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+    body: JSON.stringify(input),
+  });
+  if (!response.ok) throw await readError(response);
+  return await response.json() as { expression: string };
+}
+
+export async function generateStruct(input: {
+  sourceJson: string;
+  targetLanguage: StructLanguage;
+  rootName?: string;
+}): Promise<{ language: StructLanguage; code: string }> {
+  const token = await getAccessToken();
+  if (!token) throw new Error('Sign in to generate a structure definition.');
+
+  const response = await fetch(`${apiOrigin}/v1/codegen/struct`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+    body: JSON.stringify(input),
+  });
+  if (!response.ok) throw await readError(response);
+  return await response.json() as { language: StructLanguage; code: string };
 }
 
 export async function submitFeedback(input: { category: 'bug' | 'feature' | 'question'; description: string; email: string | null; screenshot: string; consoleLogs: string }): Promise<string | undefined> {
