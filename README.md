@@ -57,6 +57,24 @@ treease doctor --format json
 
 `treease web` opens the hosted `/editor` page and keeps the input data in a short-lived localhost service. Set `TREEASE_WEB_URL` when using a self-hosted Web deployment; it should point to that deployment's `/editor` route.
 
+## Repository Boundary
+
+This repository contains the public Web, Desktop, CLI, Core, and protocol packages.
+The hosted API implementation for accounts, billing, sharing, AI, usage, and file
+storage is maintained separately and is consumed over the documented HTTPS API
+boundary.
+
+## License
+
+Treease is source-available under the [Treease Community License](LICENSE). It is
+not an OSI-approved open source license. Review the license before using Treease
+in a commercial product or hosted service.
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development checks, scope boundaries,
+and pull request expectations.
+
 ## Development
 
 ### Environment Files

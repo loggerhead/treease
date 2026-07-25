@@ -57,6 +57,20 @@ treease doctor --format json
 
 `treease web` 打开托管的 `/editor` 页面，并由 CLI 在 localhost 上短暂提供输入数据。自托管 Web 时，可用 `TREEASE_WEB_URL` 指定部署的 `/editor` 地址。
 
+## 仓库边界
+
+本仓库包含公开的 Web、Desktop、CLI、Core 和协议包。
+账号、计费、分享、AI、用量和文件存储等 Hosted API 实现维护在独立的私有仓库中，公开客户端仅通过文档化的 HTTPS API 边界访问。
+
+## 许可证
+
+Treease 使用 [Treease Community License](LICENSE) source-available 许可证发布，
+不是 OSI 认可的开源许可证。将 Treease 用于商业产品或托管服务前，请先阅读完整许可证条款。
+
+## 参与贡献
+
+开发检查、边界约束和 Pull Request 要求见 [CONTRIBUTING.md](CONTRIBUTING.md)。
+
 ## 开发
 
 ### 仓库结构
