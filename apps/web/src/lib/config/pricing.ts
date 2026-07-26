@@ -77,7 +77,7 @@ export const pricingConfig: { title: string; description: string; plans: Pricing
           label: 'Large-file visualizations and processing: up to 3 runs per month',
           emphasis: 'up to 3 runs per month'
         },
-        { label: 'AI processing: up to 1 run per month', emphasis: 'up to 1 run per month' }
+        { label: 'AI processing: up to 3 run per month', emphasis: 'up to 3 run per month' }
       ]
     },
     {
