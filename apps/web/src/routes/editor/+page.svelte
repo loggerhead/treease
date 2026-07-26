@@ -33,6 +33,7 @@
   import { callSharedWasmWorker, getSharedWasmWorkerClient } from '../../lib/wasm/wasm-worker-singleton';
   import { getDefaultWasmURL } from '../../lib/wasm/wasm-worker-singleton';
   import { runYqPreview } from './yq-preview-controller';
+  import { prepareStructGenerationSource } from './struct-generation-controller';
   import {
     canExecuteUrlCommandForLanguage,
     resolveEditorUrlPreset,
@@ -762,15 +763,22 @@
   }
 
   async function handleSubmitStructGeneration(): Promise<void> {
-    const sourceJson = getActiveDocumentText() || editorRef?.getActiveText() || '';
-    if (!sourceJson.trim()) {
-      structGenerationError = 'The active JSON document is empty.';
+    const sourceText = getActiveDocumentText() || editorRef?.getActiveText() || '';
+    const sourceLanguage = editorRef?.getActiveLanguage() ?? $languageIdStore;
+    if (!sourceText.trim()) {
+      structGenerationError = 'The active document is empty.';
       return;
     }
 
     structGenerationBusy = true;
     structGenerationError = '';
     try {
+      const sourceJson = await prepareStructGenerationSource({
+        text: sourceText,
+        language: sourceLanguage,
+        formatting: $settings.formatting,
+        callWorker: callSharedWasmWorker,
+      });
       const result = await generateStruct({
         sourceJson,
         targetLanguage: structGenerationTarget,

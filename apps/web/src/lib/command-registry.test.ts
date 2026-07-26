@@ -37,9 +37,9 @@ describe('command-registry', () => {
     );
   });
 
-  it('restricts JSON structure generation to json', () => {
+  it('makes structure generation available for every supported document language', () => {
     const generateStruct = commandItems.find((c) => c.id === 'generate-struct')!;
-    expect(generateStruct.langs).toEqual(['json']);
+    expect(generateStruct.langs).toEqual(['*']);
   });
 
   it('restricts toggle-nest/escape/unescape to json', () => {
@@ -55,6 +55,6 @@ describe('command-registry', () => {
     const yamlCommands = commandItems.filter((c) => c.langs.includes('*') || c.langs.includes('yaml'));
     expect(jsonCommands.find((c) => c.id === 'escape')).toBeTruthy();
     expect(yamlCommands.find((c) => c.id === 'escape')).toBeFalsy();
-    expect(yamlCommands.find((c) => c.id === 'generate-struct')).toBeFalsy();
+    expect(yamlCommands.find((c) => c.id === 'generate-struct')).toBeTruthy();
   });
 });

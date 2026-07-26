@@ -39,9 +39,9 @@ export const commandItems: CommandItem[] = [
     id: 'generate-struct',
     label: 'Generate structure definition',
     keywords: ['json', 'type', 'interface', 'struct', 'class', 'codegen'],
-    description: 'Generate a typed structure definition from the active JSON document.',
+    description: 'Generate a typed structure definition from the active document. Non-JSON documents are converted to JSON first.',
     type: 'action',
-    langs: ['json'],
+    langs: ['*'],
   },
   {
     id: 'toggle-nest',
