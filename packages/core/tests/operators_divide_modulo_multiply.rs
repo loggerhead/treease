@@ -86,6 +86,15 @@ fn divide_with_nodes_supports_split_numbers_custom_tags_and_errors() {
     assert_eq!(split.content[0].value, "cat");
     assert_eq!(split.content[1].value, "meow");
 
+    let exact_quotient = divide_with_nodes(&int_scalar(12), &int_scalar(2)).unwrap();
+    assert_eq!(exact_quotient.kind, NodeKind::Scalar);
+    assert_eq!(exact_quotient.tag, "!!int");
+    assert_eq!(exact_quotient.value, "6");
+
+    let fractional_quotient = divide_with_nodes(&int_scalar(12), &int_scalar(5)).unwrap();
+    assert_eq!(fractional_quotient.tag, "!!float");
+    assert_eq!(fractional_quotient.value, "2.4");
+
     let quotient = divide_with_nodes(&int_scalar(12), &float_scalar("2.5")).unwrap();
     assert_eq!(quotient.kind, NodeKind::Scalar);
     assert_eq!(quotient.tag, "!!float");

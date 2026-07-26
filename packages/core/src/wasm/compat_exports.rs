@@ -558,7 +558,12 @@ fn json_to_evaluator_value(value: &serde_json::Value) -> crate::evaluator::Value
     match value {
         serde_json::Value::Null => Value::Null,
         serde_json::Value::Bool(flag) => Value::Bool(*flag),
-        serde_json::Value::Number(number) => Value::Number(number.as_f64().unwrap_or(0.0)),
+        serde_json::Value::Number(number) => match number.as_i64() {
+            Some(value) => Value::Number(crate::evaluator::Numeric::Int(value)),
+            None => Value::Number(crate::evaluator::Numeric::Float(
+                number.as_f64().unwrap_or(0.0),
+            )),
+        },
         serde_json::Value::String(text) => Value::String(text.clone()),
         serde_json::Value::Array(items) => {
             Value::Array(items.iter().map(json_to_evaluator_value).collect())
@@ -577,7 +582,14 @@ fn evaluator_value_to_json(value: &crate::evaluator::Value) -> serde_json::Value
     match value {
         Value::Null => serde_json::Value::Null,
         Value::Bool(flag) => serde_json::Value::Bool(*flag),
-        Value::Number(number) => serde_json::json!(*number),
+        Value::Number(crate::evaluator::Numeric::Int(number)) => {
+            serde_json::Value::Number(serde_json::Number::from(*number))
+        }
+        Value::Number(crate::evaluator::Numeric::Float(number)) => {
+            serde_json::Number::from_f64(*number)
+                .map(serde_json::Value::Number)
+                .unwrap_or(serde_json::Value::Null)
+        }
         Value::String(text) => serde_json::Value::String(text.clone()),
         Value::Array(items) => {
             serde_json::Value::Array(items.iter().map(evaluator_value_to_json).collect())
@@ -748,6 +760,19 @@ mod tests {
             serde_json::from_str(&output).expect("edited json should stay valid");
         assert_eq!(value, serde_json::json!({ "arr": [1, "test", 3] }));
     }
+    #[test]
+    fn compat_exports_preserve_integer_numbers_in_expression_output() {
+        crate::wasm::init_wasm();
+        let output = run_yq_text_impl(
+            "json",
+            r#"{"table_with_header":[{"h2":12},{"h2":22}]}"#,
+            ".table_with_header[].h2",
+            0,
+        )
+        .expect("expression should evaluate");
+        assert_eq!(output, "[12,22]");
+    }
+
     #[test]
     fn compat_exports_apply_value_edit_canonical_returns_text_tree_and_value() {
         crate::wasm::init_wasm();

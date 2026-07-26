@@ -4,7 +4,7 @@ use crate::{
         CoreError as ApiCoreError, EvalError as ApiEvalError, FormatError as ApiFormatError,
         ParseError as ApiParseError, SystemError as ApiSystemError,
     },
-    evaluator::{AllAtOnceEvaluator, EvaluationError, Value},
+    evaluator::{AllAtOnceEvaluator, EvaluationError, Numeric, Value},
     operators::{
         self, ADD_ASSIGN_OP_TYPE, ADD_OP_TYPE, ALL_CONDITION_OP_TYPE, ALL_OP_TYPE,
         ALTERNATIVE_OP_TYPE, AND_OP_TYPE, ANY_CONDITION_OP_TYPE, ANY_OP_TYPE, ASSIGN_OP_TYPE,
@@ -203,19 +203,21 @@ fn compat_tree_to_value(node: &operators::TreeNode) -> Result<Value, PipelineErr
             Some(operators::SemType::Int) => node
                 .value
                 .parse::<i64>()
-                .map(|value| Value::Number(value as f64))
+                .map(|value| Value::Number(Numeric::Int(value)))
                 .map_err(|_| {
                     PipelineError::Compat(CoreError::Eval(
                         operators::EvalError::CannotConvertNodeToNumber,
                     ))
                 }),
-            Some(operators::SemType::Float) => {
-                node.value.parse::<f64>().map(Value::Number).map_err(|_| {
+            Some(operators::SemType::Float) => node
+                .value
+                .parse::<f64>()
+                .map(|value| Value::Number(Numeric::Float(value)))
+                .map_err(|_| {
                     PipelineError::Compat(CoreError::Eval(
                         operators::EvalError::CannotConvertNodeToNumber,
                     ))
-                })
-            }
+                }),
             _ => Ok(Value::String(node.value.clone())),
         },
         operators::NodeKind::Alias | operators::NodeKind::Unknown => Err(PipelineError::Evaluate(
@@ -231,12 +233,11 @@ fn value_to_compat_tree(value: &Value) -> Result<operators::TreeNode, PipelineEr
             operators::SemType::Boolean,
             if *value { "true" } else { "false" },
         ),
-        Value::Number(value) => {
-            if value.fract() == 0.0 {
-                operators::TreeNode::scalar(operators::SemType::Int, (*value as i64).to_string())
-            } else {
-                operators::TreeNode::scalar(operators::SemType::Float, value.to_string())
-            }
+        Value::Number(Numeric::Int(value)) => {
+            operators::TreeNode::scalar(operators::SemType::Int, value.to_string())
+        }
+        Value::Number(Numeric::Float(value)) => {
+            operators::TreeNode::scalar(operators::SemType::Float, value.to_string())
         }
         Value::String(value) => operators::TreeNode::scalar(operators::SemType::Str, value.clone()),
         Value::Array(values) => {

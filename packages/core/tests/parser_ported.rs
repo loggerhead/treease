@@ -2,7 +2,9 @@ use treease_core::core::{
     ExpressionBuildError, Operation, OperationId, SemType, build_expression_tree_from_postfix_ops,
     query_cursor_exec, query_cursor_new, query_new, tree_sitter_language,
 };
-use treease_core::evaluator::{AllAtOnceEvaluator, EvaluationError, StreamEvaluator, Value};
+use treease_core::evaluator::{
+    AllAtOnceEvaluator, EvaluationError, Numeric, StreamEvaluator, Value,
+};
 use treease_core::parser::{
     LexerError, ParserError, ParticipleLexerError, Token, TokenKind, lex, parse_expression,
 };
@@ -389,10 +391,10 @@ fn evaluator_returns_input_when_expression_is_empty() {
 fn evaluator_applies_pipe_to_self_reference() {
     let tree = parse_expression("self | self + 1").unwrap().unwrap();
     let result = AllAtOnceEvaluator::new()
-        .evaluate(&Value::Number(41.0), Some(&tree))
+        .evaluate(&Value::Number(Numeric::Float(41.0)), Some(&tree))
         .unwrap();
 
-    assert_eq!(result, Value::Number(42.0));
+    assert_eq!(result, Value::Number(Numeric::Float(42.0)));
 }
 
 #[test]
@@ -419,7 +421,7 @@ fn stream_evaluator_evaluates_scalar_events() {
         .evaluate_events(Some(&expression), &events)
         .unwrap();
 
-    assert_eq!(results, vec![Value::Number(42.0)]);
+    assert_eq!(results, vec![Value::Number(Numeric::Int(42))]);
 }
 
 // ── Gap Group 1: expression_parser.zig error-detection tests ────────

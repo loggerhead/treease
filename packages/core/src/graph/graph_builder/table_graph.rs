@@ -488,5 +488,4 @@ mod tests {
         assert_eq!(table.view_height, table.total_height);
         assert!(table.view_height > builder.config.table_max_height);
     }
-
 }

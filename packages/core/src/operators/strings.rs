@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use crate::evaluator::{EvaluationError, Value};
+use crate::evaluator::{EvaluationError, Numeric, Value};
 use crate::expression_pipeline;
 use crate::operators::operator_helpers::*;
 /// String operators: join, match, capture, test, sub, split, trim,
@@ -31,8 +31,8 @@ struct RegexCapture {
 
 impl RegexStub {
     fn new(pattern: &str) -> Result<Self, CoreError> {
-        let inner = regex::Regex::new(pattern)
-            .map_err(|_| CoreError::Parse(ParseError::InvalidSyntax))?;
+        let inner =
+            regex::Regex::new(pattern).map_err(|_| CoreError::Parse(ParseError::InvalidSyntax))?;
         Ok(Self { inner })
     }
 
@@ -542,12 +542,12 @@ fn tree_to_value(node: &TreeNode) -> Result<Value, CoreError> {
             Some(SemType::Int) => node
                 .value
                 .parse::<i64>()
-                .map(|value| Value::Number(value as f64))
+                .map(|value| Value::Number(Numeric::Int(value)))
                 .map_err(|_| CoreError::Eval(EvalError::CannotConvertNodeToNumber)),
             Some(SemType::Float) => node
                 .value
                 .parse::<f64>()
-                .map(Value::Number)
+                .map(|value| Value::Number(Numeric::Float(value)))
                 .map_err(|_| CoreError::Eval(EvalError::CannotConvertNodeToNumber)),
             _ => Ok(Value::String(node.value.clone())),
         },
@@ -567,18 +567,20 @@ fn value_to_tree(value: &Value) -> Result<TreeNode, CoreError> {
             node.value = value.to_string();
             Ok(node)
         }
-        Value::Number(value) => {
+        Value::Number(Numeric::Int(value)) => {
             let mut node = TreeNode::default();
             node.kind = NodeKind::Scalar;
-            if value.fract() == 0.0 {
-                node.sem_type = Some(SemType::Int);
-                node.tag = SemType::Int.to_string().into();
-                node.value = (*value as i64).to_string();
-            } else {
-                node.sem_type = Some(SemType::Float);
-                node.tag = SemType::Float.to_string().into();
-                node.value = float_to_string(*value);
-            }
+            node.sem_type = Some(SemType::Int);
+            node.tag = SemType::Int.to_string().into();
+            node.value = value.to_string();
+            Ok(node)
+        }
+        Value::Number(Numeric::Float(value)) => {
+            let mut node = TreeNode::default();
+            node.kind = NodeKind::Scalar;
+            node.sem_type = Some(SemType::Float);
+            node.tag = SemType::Float.to_string().into();
+            node.value = float_to_string(*value);
             Ok(node)
         }
         Value::String(value) => {

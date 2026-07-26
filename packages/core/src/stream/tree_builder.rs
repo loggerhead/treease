@@ -543,9 +543,9 @@ mod tests {
     use crate::language::SemType;
     use crate::stream::decode;
     use crate::stream::tree_patch::TreePatch;
-    use crate::tree::{get_map_entry, TreeNodeKind};
+    use crate::tree::{TreeNodeKind, get_map_entry};
 
-    use super::{decode_events, Builder};
+    use super::{Builder, decode_events};
 
     #[test]
     fn tree_builder_converts_streaming_json_events_into_tree_store() {

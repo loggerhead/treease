@@ -50,6 +50,21 @@ pub fn divide_scalars(
         return Ok(());
     }
 
+    // Integer division preserves the left-hand integer representation when it
+    // is exact. Division by zero deliberately remains floating-point so the
+    // established +Inf/-Inf behavior is retained.
+    if lhs_sem_type == Some(SemType::Int) && rhs_sem_type == Some(SemType::Int) {
+        let lhs_parsed = parse_int64_with_fmt(&lhs.value)?;
+        let rhs_parsed = parse_int64(&rhs.value)?;
+        if rhs_parsed != 0 && lhs_parsed.value % rhs_parsed == 0 {
+            target.kind = NodeKind::Scalar;
+            target.sem_type = lhs.resolved_sem_type();
+            target.tag.clone_from(&lhs.tag);
+            target.value = format_int64_with_fmt(&lhs_parsed.fmt, lhs_parsed.value / rhs_parsed)?;
+            return Ok(());
+        }
+    }
+
     // Numeric division
     let lhs_is_number = lhs_sem_type == Some(SemType::Int) || lhs_sem_type == Some(SemType::Float);
     let rhs_is_number = rhs_sem_type == Some(SemType::Int) || rhs_sem_type == Some(SemType::Float);

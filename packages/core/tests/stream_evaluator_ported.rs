@@ -6,7 +6,7 @@ use treease_core::core::{
     RegistryHandle, format_string_from_filename, io_adapters::reader_from_pointer,
 };
 use treease_core::evaluator::{
-    AllAtOnceEvaluator, EvaluationError, ReaderInput, StreamEvaluator, Value,
+    AllAtOnceEvaluator, EvaluationError, Numeric, ReaderInput, StreamEvaluator, Value,
 };
 use treease_core::parser::parse_expression;
 
@@ -85,7 +85,7 @@ fn stream_evaluator_should_fallback_to_evaluate_new_when_inputs_are_empty() {
     let results = evaluate_readers_values(Some("self // 42"), &mut inputs)
         .expect("empty inputs should fall back to null evaluation");
 
-    assert_eq!(results, vec![Value::Number(42.0)]);
+    assert_eq!(results, vec![Value::Number(Numeric::Int(42))]);
 }
 
 #[test]
@@ -99,7 +99,7 @@ fn stream_evaluator_should_treat_empty_sources_as_zero_documents() {
     let results = evaluate_readers_values(Some("self // 42"), &mut inputs)
         .expect("empty source should fall back to null evaluation");
 
-    assert_eq!(results, vec![Value::Number(42.0)]);
+    assert_eq!(results, vec![Value::Number(Numeric::Int(42))]);
 }
 
 #[test]
@@ -114,7 +114,7 @@ fn stream_evaluator_should_skip_empty_sources_when_other_documents_exist() {
     let results =
         evaluate_readers_values(Some(".foo"), &mut inputs).expect("empty source should be skipped");
 
-    assert_eq!(results, vec![Value::Number(7.0)]);
+    assert_eq!(results, vec![Value::Number(Numeric::Int(7))]);
 }
 
 #[test]
@@ -129,7 +129,13 @@ fn stream_evaluator_should_preserve_input_order_across_formats() {
     let results = evaluate_readers_values(Some(".a"), &mut inputs)
         .expect("mixed formats should evaluate in order");
 
-    assert_eq!(results, vec![Value::Number(1.0), Value::Number(2.0)]);
+    assert_eq!(
+        results,
+        vec![
+            Value::Number(Numeric::Int(1)),
+            Value::Number(Numeric::Int(2))
+        ]
+    );
 }
 
 #[test]
@@ -235,11 +241,11 @@ fn stream_evaluator_should_isolate_per_file_mutations_and_observable_output() {
         vec![
             Value::Object(std::collections::BTreeMap::from([
                 ("foo".to_string(), Value::String("bar".to_string())),
-                ("id".to_string(), Value::Number(1.0)),
+                ("id".to_string(), Value::Number(Numeric::Int(1))),
             ])),
             Value::Object(std::collections::BTreeMap::from([
                 ("foo".to_string(), Value::String("bar".to_string())),
-                ("id".to_string(), Value::Number(2.0)),
+                ("id".to_string(), Value::Number(Numeric::Int(2))),
             ])),
         ]
     );

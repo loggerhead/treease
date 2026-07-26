@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use treease_core::evaluator::Value;
+use treease_core::evaluator::{Numeric, Value};
 use treease_core::expression_pipeline;
 use treease_core::operators::compact::compact_operator;
 use treease_core::operators::{
@@ -135,7 +135,7 @@ fn compact_expression_is_registered_and_evaluates_mappings_and_arrays() {
         ("false".to_owned(), Value::Bool(false)),
         ("empty_array".to_owned(), Value::Array(Vec::new())),
         ("empty_object".to_owned(), Value::Object(BTreeMap::new())),
-        ("zero".to_owned(), Value::Number(0.0)),
+        ("zero".to_owned(), Value::Number(Numeric::Float(0.0))),
         ("empty_string".to_owned(), Value::String(String::new())),
         (
             "items".to_owned(),
@@ -143,7 +143,7 @@ fn compact_expression_is_registered_and_evaluates_mappings_and_arrays() {
                 Value::Null,
                 Value::Bool(false),
                 Value::String(String::new()),
-                Value::Number(2.0),
+                Value::Number(Numeric::Float(2.0)),
             ]),
         ),
     ]));
@@ -151,7 +151,7 @@ fn compact_expression_is_registered_and_evaluates_mappings_and_arrays() {
     let output = expression_pipeline::evaluate(&input, "compact").unwrap();
     let expected = Value::Object(BTreeMap::from([(
         "items".to_owned(),
-        Value::Array(vec![Value::Number(2.0)]),
+        Value::Array(vec![Value::Number(Numeric::Float(2.0))]),
     )]));
 
     assert_eq!(output, expected);

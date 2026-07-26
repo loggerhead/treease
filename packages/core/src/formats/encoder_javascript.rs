@@ -235,7 +235,7 @@ fn root_mapping_needs_wrap(store: &TreeStore, node: NodeId) -> Result<bool, Core
 
 #[cfg(test)]
 mod tests {
-    use crate::evaluator::Value;
+    use crate::evaluator::{Numeric, Value};
     use crate::formats::{Decode, Encode, JavascriptObjectDecoder, PythonObjectDecoder};
 
     use super::JavascriptEncoder;
@@ -270,7 +270,7 @@ mod tests {
             ("safeKey".to_string(), Value::Bool(true)),
             (
                 "bad-key".to_string(),
-                Value::Array(vec![Value::Number(1.0), Value::Null]),
+                Value::Array(vec![Value::Number(Numeric::Int(1)), Value::Null]),
             ),
         ]));
         let mut direct = Vec::new();

@@ -1258,7 +1258,7 @@ pub fn decode_yaml(input: &str) -> Result<DecodedDocument, CoreError> {
 mod tests {
     use super::YamlDecoder;
     use crate::errors::{CoreError, ParseError};
-    use crate::evaluator::{AllAtOnceEvaluator, Value};
+    use crate::evaluator::{AllAtOnceEvaluator, Numeric, Value};
     use crate::formats::Decode;
     use crate::tree::TreeNodeKind;
 
@@ -1289,7 +1289,7 @@ mod tests {
         let selected = AllAtOnceEvaluator::new()
             .evaluate_nodes(&decoded.store, ".foo", &[decoded.root])
             .unwrap();
-        assert_eq!(selected, vec![Value::Number(1.0)]);
+        assert_eq!(selected, vec![Value::Number(Numeric::Int(1))]);
     }
 
     #[test]

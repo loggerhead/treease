@@ -11,7 +11,7 @@
 
 use std::collections::BTreeMap;
 
-use treease_core::evaluator::Value;
+use treease_core::evaluator::{Numeric, Value};
 use treease_core::expression_pipeline;
 
 const BASH_ENV_SCRIPT: &str = r#".[] |(
@@ -53,11 +53,11 @@ fn find_items_in_array() {
     let input = Value::Array(vec![
         Value::Object(BTreeMap::from([
             ("name".to_string(), Value::String("Foo".to_string())),
-            ("numBuckets".to_string(), Value::Number(0.0)),
+            ("numBuckets".to_string(), Value::Number(Numeric::Float(0.0))),
         ])),
         Value::Object(BTreeMap::from([
             ("name".to_string(), Value::String("Bar".to_string())),
-            ("numBuckets".to_string(), Value::Number(0.0)),
+            ("numBuckets".to_string(), Value::Number(Numeric::Float(0.0))),
         ])),
     ]);
 
@@ -68,7 +68,7 @@ fn find_items_in_array() {
         result,
         Value::Array(vec![Value::Object(BTreeMap::from([
             ("name".to_string(), Value::String("Foo".to_string())),
-            ("numBuckets".to_string(), Value::Number(0.0)),
+            ("numBuckets".to_string(), Value::Number(Numeric::Float(0.0))),
         ]))])
     );
 }
@@ -85,11 +85,11 @@ fn sort_array_by_field() {
         Value::Array(vec![
             Value::Object(BTreeMap::from([
                 ("name".to_string(), Value::String("Foo".to_string())),
-                ("numBuckets".to_string(), Value::Number(1.0)),
+                ("numBuckets".to_string(), Value::Number(Numeric::Float(1.0))),
             ])),
             Value::Object(BTreeMap::from([
                 ("name".to_string(), Value::String("Bar".to_string())),
-                ("numBuckets".to_string(), Value::Number(0.0)),
+                ("numBuckets".to_string(), Value::Number(Numeric::Float(0.0))),
             ])),
         ]),
     )]));
@@ -102,11 +102,11 @@ fn sort_array_by_field() {
         Value::Array(vec![
             Value::Object(BTreeMap::from([
                 ("name".to_string(), Value::String("Bar".to_string())),
-                ("numBuckets".to_string(), Value::Number(0.0)),
+                ("numBuckets".to_string(), Value::Number(Numeric::Float(0.0))),
             ])),
             Value::Object(BTreeMap::from([
                 ("name".to_string(), Value::String("Foo".to_string())),
-                ("numBuckets".to_string(), Value::Number(1.0)),
+                ("numBuckets".to_string(), Value::Number(Numeric::Float(1.0))),
             ])),
         ]),
     )]));
@@ -119,11 +119,11 @@ fn update_items_in_array_increments_matching_bucket_count() {
     let input = Value::Array(vec![
         Value::Object(BTreeMap::from([
             ("name".to_string(), Value::String("Foo".to_string())),
-            ("numBuckets".to_string(), Value::Number(0.0)),
+            ("numBuckets".to_string(), Value::Number(Numeric::Float(0.0))),
         ])),
         Value::Object(BTreeMap::from([
             ("name".to_string(), Value::String("Bar".to_string())),
-            ("numBuckets".to_string(), Value::Number(0.0)),
+            ("numBuckets".to_string(), Value::Number(Numeric::Float(0.0))),
         ])),
     ]);
 
@@ -138,11 +138,11 @@ fn update_items_in_array_increments_matching_bucket_count() {
         Value::Array(vec![
             Value::Object(BTreeMap::from([
                 ("name".to_string(), Value::String("Foo".to_string())),
-                ("numBuckets".to_string(), Value::Number(1.0)),
+                ("numBuckets".to_string(), Value::Number(Numeric::Float(1.0))),
             ])),
             Value::Object(BTreeMap::from([
                 ("name".to_string(), Value::String("Bar".to_string())),
-                ("numBuckets".to_string(), Value::Number(0.0)),
+                ("numBuckets".to_string(), Value::Number(Numeric::Float(0.0))),
             ])),
         ])
     );
@@ -443,19 +443,19 @@ fn nested_custom_format_matches_recipe_outputs() {
 fn simple_arithmetic_expression() {
     let result =
         expression_pipeline::evaluate(&Value::Null, "1 + 2").expect("evaluation should succeed");
-    assert_eq!(result, Value::Number(3.0));
+    assert_eq!(result, Value::Number(Numeric::Int(3)));
 
     let result =
         expression_pipeline::evaluate(&Value::Null, "10 - 3").expect("evaluation should succeed");
-    assert_eq!(result, Value::Number(7.0));
+    assert_eq!(result, Value::Number(Numeric::Int(7)));
 
     let result =
         expression_pipeline::evaluate(&Value::Null, "4 * 5").expect("evaluation should succeed");
-    assert_eq!(result, Value::Number(20.0));
+    assert_eq!(result, Value::Number(Numeric::Int(20)));
 
     let result =
         expression_pipeline::evaluate(&Value::Null, "10 / 2").expect("evaluation should succeed");
-    assert_eq!(result, Value::Number(5.0));
+    assert_eq!(result, Value::Number(Numeric::Int(5)));
 }
 
 // ── Test 6: String concatenation ─────────────────────────────────
@@ -481,9 +481,9 @@ fn string_concatenation() {
 #[test]
 fn map_values_transformation() {
     let input = Value::Array(vec![
-        Value::Number(1.0),
-        Value::Number(2.0),
-        Value::Number(3.0),
+        Value::Number(Numeric::Float(1.0)),
+        Value::Number(Numeric::Float(2.0)),
+        Value::Number(Numeric::Float(3.0)),
     ]);
 
     let result =
@@ -492,9 +492,9 @@ fn map_values_transformation() {
     assert_eq!(
         result,
         Value::Array(vec![
-            Value::Number(2.0),
-            Value::Number(3.0),
-            Value::Number(4.0),
+            Value::Number(Numeric::Float(2.0)),
+            Value::Number(Numeric::Float(3.0)),
+            Value::Number(Numeric::Float(4.0)),
         ])
     );
 }

@@ -4,7 +4,7 @@ use treease_core::core::{
     CodecService, CompactTag, CoreError, EvalError, NodeId, SemType, TreeNode, TreeNodeKind,
     TreeStore, io_adapters::reader_from_pointer,
 };
-use treease_core::evaluator::{AllAtOnceEvaluator, ReaderInput, Value};
+use treease_core::evaluator::{AllAtOnceEvaluator, Numeric, ReaderInput, Value};
 use treease_core::parser::parse_expression;
 
 fn missing_tree_node() -> CoreError {
@@ -61,10 +61,12 @@ fn add_value(store: &mut TreeStore, value: &Value) -> Result<NodeId, CoreError> 
     match value {
         Value::Null => Ok(store.add(TreeNode::scalar(SemType::Nil, ""))),
         Value::Bool(value) => Ok(store.add(TreeNode::scalar(SemType::Boolean, value.to_string()))),
-        Value::Number(value) if value.fract() == 0.0 => {
-            Ok(store.add(TreeNode::scalar(SemType::Int, format!("{value:.0}"))))
+        Value::Number(Numeric::Int(value)) => {
+            Ok(store.add(TreeNode::scalar(SemType::Int, value.to_string())))
         }
-        Value::Number(value) => Ok(store.add(TreeNode::scalar(SemType::Float, value.to_string()))),
+        Value::Number(Numeric::Float(value)) => {
+            Ok(store.add(TreeNode::scalar(SemType::Float, value.to_string())))
+        }
         Value::String(value) => Ok(store.add(TreeNode {
             kind: TreeNodeKind::Scalar,
             value: value.clone().into(),

@@ -14,7 +14,7 @@ use crate::tree::tree_node::{CompactTag, NodeId, TreeNode as CoreTreeNode, TreeN
 use crate::tree::tree_store::TreeStore as CoreTreeStore;
 
 use super::stream_evaluator::print_value_result;
-use super::{EvaluationError, Value as EvalValue};
+use super::{EvaluationError, Numeric, Value as EvalValue};
 
 /// Input descriptor for reader-based evaluation.
 ///
@@ -358,7 +358,9 @@ impl AllAtOnceEvaluator {
             }
             Length => {
                 if let Some(length) = input.clone().direct_length()? {
-                    return Ok(InputValue::Owned(EvalValue::Number(length as f64)));
+                    return Ok(InputValue::Owned(EvalValue::Number(Numeric::Int(
+                        length as i64,
+                    ))));
                 }
             }
             Keys => {
@@ -775,7 +777,9 @@ impl AllAtOnceEvaluator {
             OperationId::TraversePath => {
                 let key = match rhs {
                     EvalValue::String(value) => value,
-                    EvalValue::Number(value) if value.fract() == 0.0 => format!("{value:.0}"),
+                    EvalValue::Number(value) if numeric_path_key(value).is_some() => {
+                        numeric_path_key(value).expect("guard ensures a path key")
+                    }
                     other => {
                         return Err(EvaluationError::TypeMismatch {
                             expected: "string",
@@ -808,15 +812,15 @@ impl AllAtOnceEvaluator {
                             return Ok(InputValue::TreeNode { store, id });
                         }
                         if let EvalValue::Number(index) = rhs {
-                            if index.fract() != 0.0 || index < 0.0 {
+                            let Some(index) = numeric_index(index) else {
                                 return Err(EvaluationError::TypeMismatch {
                                     expected: "non-negative integer",
-                                    actual: index.to_string(),
+                                    actual: index.display(),
                                 });
-                            }
+                            };
                             return Ok(node
                                 .content
-                                .get(index as usize)
+                                .get(index)
                                 .copied()
                                 .map(|child| InputValue::TreeNode { store, id: child })
                                 .unwrap_or(InputValue::Owned(EvalValue::Null)));
@@ -824,16 +828,16 @@ impl AllAtOnceEvaluator {
                         if let EvalValue::Array(indices) = rhs {
                             let mut selected = Vec::with_capacity(indices.len());
                             for index_value in indices {
-                                let index = index_value.as_number()?;
-                                if index.fract() != 0.0 || index < 0.0 {
+                                let index = index_value.as_numeric()?;
+                                let Some(index) = numeric_index(index) else {
                                     return Err(EvaluationError::TypeMismatch {
                                         expected: "non-negative integer",
-                                        actual: index.to_string(),
+                                        actual: index.display(),
                                     });
-                                }
+                                };
                                 selected.push(
                                     node.content
-                                        .get(index as usize)
+                                        .get(index)
                                         .copied()
                                         .map(|child| tree_node_to_value(store, child))
                                         .transpose()?
@@ -868,7 +872,9 @@ impl AllAtOnceEvaluator {
             OperationId::TraversePath => {
                 let key = match rhs {
                     EvalValue::String(value) => value,
-                    EvalValue::Number(value) if value.fract() == 0.0 => format!("{value:.0}"),
+                    EvalValue::Number(value) if numeric_path_key(value).is_some() => {
+                        numeric_path_key(value).expect("guard ensures a path key")
+                    }
                     other => {
                         return Err(EvaluationError::TypeMismatch {
                             expected: "string",
@@ -936,18 +942,18 @@ impl AllAtOnceEvaluator {
         input: &EvalValue,
     ) -> Result<EvalValue, EvaluationError> {
         match id {
-            OperationId::Length => Ok(EvalValue::Number(match input {
-                EvalValue::Null => 0.0,
-                EvalValue::Bool(_) => 1.0,
-                EvalValue::Number(value) => render_number(*value).len() as f64,
-                EvalValue::String(value) => value.chars().count() as f64,
-                EvalValue::Array(values) => values.len() as f64,
-                EvalValue::Object(values) => values.len() as f64,
-            })),
+            OperationId::Length => Ok(EvalValue::Number(Numeric::Int(match input {
+                EvalValue::Null => 0,
+                EvalValue::Bool(_) => 1,
+                EvalValue::Number(value) => render_number(*value).len() as i64,
+                EvalValue::String(value) => value.chars().count() as i64,
+                EvalValue::Array(values) => values.len() as i64,
+                EvalValue::Object(values) => values.len() as i64,
+            }))),
             OperationId::Keys => match input {
                 EvalValue::Array(values) => Ok(EvalValue::Array(
                     (0..values.len())
-                        .map(|idx| EvalValue::Number(idx as f64))
+                        .map(|idx| EvalValue::Number(Numeric::Int(idx as i64)))
                         .collect(),
                 )),
                 EvalValue::Object(values) => Ok(EvalValue::Array(
@@ -958,7 +964,7 @@ impl AllAtOnceEvaluator {
                     actual: render_type(other).to_string(),
                 }),
             },
-            OperationId::ToNumber => Ok(EvalValue::Number(input.as_number()?)),
+            OperationId::ToNumber => Ok(EvalValue::Number(input.as_numeric()?)),
             OperationId::ToString => Ok(EvalValue::String(render_value(input))),
             OperationId::Trim => match input {
                 EvalValue::String(value) => Ok(EvalValue::String(value.trim().to_string())),
@@ -1099,7 +1105,7 @@ impl AllAtOnceEvaluator {
                             selected = value;
                         }
                     }
-                    Ok(EvalValue::Number(selected))
+                    Ok(EvalValue::Number(Numeric::Float(selected)))
                 }
                 other => Err(EvaluationError::TypeMismatch {
                     expected: "array",
@@ -1190,8 +1196,8 @@ impl AllAtOnceEvaluator {
         match lhs {
             EvalValue::Object(values) => Ok(values.contains_key(&value_to_key(rhs))),
             EvalValue::Array(values) => match rhs {
-                EvalValue::Number(index) if index.fract() == 0.0 && *index >= 0.0 => {
-                    Ok((*index as usize) < values.len())
+                EvalValue::Number(index) if numeric_index(*index).is_some() => {
+                    Ok(numeric_index(*index).expect("guard ensures an index") < values.len())
                 }
                 other => Err(EvaluationError::TypeMismatch {
                     expected: "non-negative integer",
@@ -1217,7 +1223,7 @@ impl AllAtOnceEvaluator {
         match id {
             Add => match (lhs, rhs) {
                 (EvalValue::Number(lhs), EvalValue::Number(rhs)) => {
-                    Ok(EvalValue::Number(lhs + rhs))
+                    Ok(EvalValue::Number(add_numbers(lhs, rhs)))
                 }
                 (EvalValue::String(lhs), EvalValue::String(rhs)) => {
                     Ok(EvalValue::String(lhs + &rhs))
@@ -1228,26 +1234,26 @@ impl AllAtOnceEvaluator {
                     render_value(&rhs)
                 ))),
             },
-            Subtract => Ok(EvalValue::Number(lhs.as_number()? - rhs.as_number()?)),
-            Multiply => Ok(EvalValue::Number(lhs.as_number()? * rhs.as_number()?)),
-            Divide => {
-                let rhs = rhs.as_number()?;
-                if rhs == 0.0 {
-                    return Err(EvaluationError::DivisionByZero);
-                }
-                Ok(EvalValue::Number(lhs.as_number()? / rhs))
-            }
-            Modulo => {
-                let rhs = rhs.as_number()?;
-                if rhs == 0.0 {
-                    return Err(EvaluationError::DivisionByZero);
-                }
-                Ok(EvalValue::Number(lhs.as_number()? % rhs))
-            }
+            Subtract => Ok(EvalValue::Number(subtract_numbers(
+                lhs.as_numeric()?,
+                rhs.as_numeric()?,
+            ))),
+            Multiply => Ok(EvalValue::Number(multiply_numbers(
+                lhs.as_numeric()?,
+                rhs.as_numeric()?,
+            ))),
+            Divide => Ok(EvalValue::Number(divide_numbers(
+                lhs.as_numeric()?,
+                rhs.as_numeric()?,
+            )?)),
+            Modulo => Ok(EvalValue::Number(modulo_numbers(
+                lhs.as_numeric()?,
+                rhs.as_numeric()?,
+            )?)),
             And => Ok(EvalValue::Bool(lhs.truthy() && rhs.truthy())),
             Or => Ok(EvalValue::Bool(lhs.truthy() || rhs.truthy())),
-            Equals => Ok(EvalValue::Bool(lhs == rhs)),
-            NotEquals => Ok(EvalValue::Bool(lhs != rhs)),
+            Equals => Ok(EvalValue::Bool(values_equal(&lhs, &rhs))),
+            NotEquals => Ok(EvalValue::Bool(!values_equal(&lhs, &rhs))),
             Alternative => Ok(if lhs.truthy() { lhs } else { rhs }),
             Relational => {
                 let lhs = lhs.as_number()?;
@@ -1327,7 +1333,7 @@ impl<'a> InputValue<'a> {
                 .content
                 .iter()
                 .enumerate()
-                .map(|(index, _)| EvalValue::Number(index as f64))
+                .map(|(index, _)| EvalValue::Number(Numeric::Int(index as i64)))
                 .collect(),
             TreeNodeKind::Mapping => {
                 let mut out = Vec::with_capacity(node.content.len() / 2);
@@ -1358,9 +1364,9 @@ impl<'a> InputValue<'a> {
                 tree_mapping_child(store, id, &value_to_key(rhs))?.is_some(),
             )),
             TreeNodeKind::Sequence => match rhs {
-                EvalValue::Number(index) if index.fract() == 0.0 && *index >= 0.0 => {
-                    Ok(Some((*index as usize) < node.content.len()))
-                }
+                EvalValue::Number(index) if numeric_index(*index).is_some() => Ok(Some(
+                    numeric_index(*index).expect("guard ensures an index") < node.content.len(),
+                )),
                 other => Err(EvaluationError::TypeMismatch {
                     expected: "non-negative integer",
                     actual: render_type(other).to_string(),
@@ -1484,11 +1490,99 @@ fn is_upper_case_operation(operation_text: &str) -> bool {
     matches!(name, "upcase" | "ascii_upcase" | "asciiupcase")
 }
 
-fn render_number(value: f64) -> String {
-    if value.fract() == 0.0 {
-        format!("{value:.0}")
-    } else {
-        value.to_string()
+fn add_numbers(lhs: Numeric, rhs: Numeric) -> Numeric {
+    match (lhs, rhs) {
+        (Numeric::Int(lhs), Numeric::Int(rhs)) => Numeric::Int(lhs + rhs),
+        (lhs, rhs) => Numeric::Float(lhs.as_f64() + rhs.as_f64()),
+    }
+}
+
+fn subtract_numbers(lhs: Numeric, rhs: Numeric) -> Numeric {
+    match (lhs, rhs) {
+        (Numeric::Int(lhs), Numeric::Int(rhs)) => Numeric::Int(lhs - rhs),
+        (lhs, rhs) => Numeric::Float(lhs.as_f64() - rhs.as_f64()),
+    }
+}
+
+fn multiply_numbers(lhs: Numeric, rhs: Numeric) -> Numeric {
+    match (lhs, rhs) {
+        (Numeric::Int(lhs), Numeric::Int(rhs)) => Numeric::Int(lhs * rhs),
+        (lhs, rhs) => Numeric::Float(lhs.as_f64() * rhs.as_f64()),
+    }
+}
+
+fn divide_numbers(lhs: Numeric, rhs: Numeric) -> Result<Numeric, EvaluationError> {
+    if rhs.is_zero() {
+        return Err(EvaluationError::DivisionByZero);
+    }
+    match (lhs, rhs) {
+        (Numeric::Int(lhs), Numeric::Int(rhs)) if lhs % rhs == 0 => Ok(Numeric::Int(lhs / rhs)),
+        (lhs, rhs) => Ok(Numeric::Float(lhs.as_f64() / rhs.as_f64())),
+    }
+}
+
+fn modulo_numbers(lhs: Numeric, rhs: Numeric) -> Result<Numeric, EvaluationError> {
+    if rhs.is_zero() {
+        return Err(EvaluationError::DivisionByZero);
+    }
+    Ok(match (lhs, rhs) {
+        (Numeric::Int(lhs), Numeric::Int(rhs)) => Numeric::Int(lhs % rhs),
+        (lhs, rhs) => Numeric::Float(lhs.as_f64() % rhs.as_f64()),
+    })
+}
+
+fn numeric_path_key(value: Numeric) -> Option<String> {
+    match value {
+        Numeric::Int(value) => Some(value.to_string()),
+        Numeric::Float(value) if value.fract() == 0.0 => Some(format!("{value:.0}")),
+        Numeric::Float(_) => None,
+    }
+}
+
+fn numeric_index(value: Numeric) -> Option<usize> {
+    match value {
+        Numeric::Int(value) => usize::try_from(value).ok(),
+        Numeric::Float(value)
+            if value.fract() == 0.0 && value >= 0.0 && value <= usize::MAX as f64 =>
+        {
+            Some(value as usize)
+        }
+        Numeric::Float(_) => None,
+    }
+}
+
+fn render_number(value: Numeric) -> String {
+    value.display()
+}
+
+fn numeric_equal(lhs: Numeric, rhs: Numeric) -> bool {
+    match (lhs, rhs) {
+        (Numeric::Int(lhs), Numeric::Int(rhs)) => lhs == rhs,
+        (Numeric::Float(lhs), Numeric::Float(rhs)) => lhs == rhs,
+        (Numeric::Int(integer), Numeric::Float(float))
+        | (Numeric::Float(float), Numeric::Int(integer)) => {
+            float.is_finite()
+                && float.fract() == 0.0
+                && float >= i64::MIN as f64
+                && float <= i64::MAX as f64
+                && float as i64 == integer
+        }
+    }
+}
+
+fn values_equal(lhs: &EvalValue, rhs: &EvalValue) -> bool {
+    match (lhs, rhs) {
+        (EvalValue::Number(lhs), EvalValue::Number(rhs)) => numeric_equal(*lhs, *rhs),
+        (EvalValue::Array(lhs), EvalValue::Array(rhs)) => {
+            lhs.len() == rhs.len() && lhs.iter().zip(rhs).all(|(lhs, rhs)| values_equal(lhs, rhs))
+        }
+        (EvalValue::Object(lhs), EvalValue::Object(rhs)) => {
+            lhs.len() == rhs.len()
+                && lhs
+                    .iter()
+                    .all(|(key, lhs)| rhs.get(key).is_some_and(|rhs| values_equal(lhs, rhs)))
+        }
+        _ => lhs == rhs,
     }
 }
 
@@ -1506,7 +1600,7 @@ fn value_sort_key(value: &EvalValue) -> String {
     match value {
         EvalValue::Null => "0:null".to_string(),
         EvalValue::Bool(value) => format!("1:{value}"),
-        EvalValue::Number(value) => format!("2:{value:020}"),
+        EvalValue::Number(value) => format!("2:{:020}", value.as_f64()),
         EvalValue::String(value) => format!("3:{value}"),
         EvalValue::Array(_) | EvalValue::Object(_) => format!("4:{}", render_value(value)),
     }
@@ -1646,7 +1740,9 @@ fn extract_path_key(node: &ExpressionNode) -> Result<String, EvaluationError> {
     }
     match EvalValue::from_literal(&node.operation.string_value)? {
         EvalValue::String(value) => Ok(value),
-        EvalValue::Number(value) if value.fract() == 0.0 => Ok(format!("{value:.0}")),
+        EvalValue::Number(value) if numeric_path_key(value).is_some() => {
+            Ok(numeric_path_key(value).expect("guard ensures a path key"))
+        }
         other => Err(EvaluationError::TypeMismatch {
             expected: "string",
             actual: render_type(&other).to_string(),
@@ -1661,7 +1757,9 @@ fn extract_path_index(node: &ExpressionNode) -> Result<usize, EvaluationError> {
         ));
     }
     match EvalValue::from_literal(&node.operation.string_value)? {
-        EvalValue::Number(value) if value.fract() == 0.0 && value >= 0.0 => Ok(value as usize),
+        EvalValue::Number(value) if numeric_index(value).is_some() => {
+            Ok(numeric_index(value).expect("guard ensures an index"))
+        }
         other => Err(EvaluationError::TypeMismatch {
             expected: "non-negative integer",
             actual: render_type(&other).to_string(),
@@ -1760,8 +1858,10 @@ fn scalar_node_to_value(store: &CoreTreeStore, id: NodeId) -> Result<EvalValue, 
     match store.value_rep_for(id)? {
         crate::tree::tree_node::ValueRep::Nil => Ok(EvalValue::Null),
         crate::tree::tree_node::ValueRep::Boolean(value) => Ok(EvalValue::Bool(value)),
-        crate::tree::tree_node::ValueRep::Int(value) => Ok(EvalValue::Number(value as f64)),
-        crate::tree::tree_node::ValueRep::Float(value) => Ok(EvalValue::Number(value)),
+        crate::tree::tree_node::ValueRep::Int(value) => Ok(EvalValue::Number(Numeric::Int(value))),
+        crate::tree::tree_node::ValueRep::Float(value) => {
+            Ok(EvalValue::Number(Numeric::Float(value)))
+        }
         crate::tree::tree_node::ValueRep::Str(value) => {
             if store.resolved_sem_type_for(id)? == Some(SemType::Nil) {
                 Ok(EvalValue::Null)
@@ -1787,12 +1887,11 @@ fn shallow_tree_node_for_value(value: &EvalValue) -> CoreTreeNode {
     match value {
         EvalValue::Null => CoreTreeNode::scalar(SemType::Nil, "null"),
         EvalValue::Bool(v) => CoreTreeNode::scalar(SemType::Boolean, v.to_string()),
-        EvalValue::Number(v) => {
-            if v.fract() == 0.0 {
-                CoreTreeNode::scalar(SemType::Int, (*v as i64).to_string())
-            } else {
-                CoreTreeNode::scalar(SemType::Float, v.to_string())
-            }
+        EvalValue::Number(Numeric::Int(value)) => {
+            CoreTreeNode::scalar(SemType::Int, value.to_string())
+        }
+        EvalValue::Number(Numeric::Float(value)) => {
+            CoreTreeNode::scalar(SemType::Float, value.to_string())
         }
         EvalValue::String(v) => CoreTreeNode::scalar(SemType::Str, v.clone()),
         EvalValue::Array(_) => CoreTreeNode {
@@ -1887,7 +1986,7 @@ mod tests {
             .evaluate(&Value::Null, Some(&tree))
             .expect("evaluation should succeed");
 
-        assert_eq!(value, Value::Number(7.0));
+        assert_eq!(value, Value::Number(Numeric::Int(7)));
     }
 
     #[test]
@@ -1898,7 +1997,10 @@ mod tests {
         let mut root = BTreeMap::new();
         root.insert(
             "a".to_string(),
-            Value::Array(vec![Value::Number(1.0), Value::Number(2.0)]),
+            Value::Array(vec![
+                Value::Number(Numeric::Int(1)),
+                Value::Number(Numeric::Int(2)),
+            ]),
         );
         root.insert("b".to_string(), Value::Object(inner));
 
@@ -2024,7 +2126,10 @@ mod tests {
 
         assert_eq!(
             values,
-            vec![Value::Array(vec![Value::Number(1.0), Value::Number(2.0)])]
+            vec![Value::Array(vec![
+                Value::Number(Numeric::Int(1)),
+                Value::Number(Numeric::Int(2)),
+            ])]
         );
     }
 }

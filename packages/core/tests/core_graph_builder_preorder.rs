@@ -1,6 +1,4 @@
-use treease_core::core::graph_builder::{
-    GraphEdge, GraphModel, GraphNode, GraphRow,
-};
+use treease_core::core::graph_builder::{GraphEdge, GraphModel, GraphNode, GraphRow};
 use treease_core::core::{GraphBuilderPreorder, GraphKind, GraphLanguage, PathSeg, default_config};
 use treease_core::operators::{NodeKind, SemType, TreeNode};
 use treease_core::stream::streaming_events::{Meta, StreamingEvent};
@@ -274,30 +272,21 @@ fn graph_builder_preorder_reconstructs_paths_from_split_streamed_json_fixture() 
     assert_eq!(row18.text, "{42}");
     assert_eq!(
         row18.path,
-        vec![
-            PathSeg::Key("ApiList".to_string()),
-            PathSeg::Index(18),
-        ]
+        vec![PathSeg::Key("ApiList".to_string()), PathSeg::Index(18),]
     );
 
     // Row 19 keeps the same item-level path after the split.
     let row19 = &table.rows[19][1];
     assert_eq!(
         row19.path,
-        vec![
-            PathSeg::Key("ApiList".to_string()),
-            PathSeg::Index(19),
-        ]
+        vec![PathSeg::Key("ApiList".to_string()), PathSeg::Index(19),]
     );
 
     // Row 20 also retains its item-level path.
     let row20 = &table.rows[20][1];
     assert_eq!(
         row20.path,
-        vec![
-            PathSeg::Key("ApiList".to_string()),
-            PathSeg::Index(20),
-        ]
+        vec![PathSeg::Key("ApiList".to_string()), PathSeg::Index(20),]
     );
 }
 
@@ -346,19 +335,13 @@ fn graph_builder_preorder_works_with_stream_decoder_split_fixture() {
     assert_eq!(row18.text, "{42}");
     assert_eq!(
         row18.path,
-        vec![
-            PathSeg::Key("ApiList".to_string()),
-            PathSeg::Index(18),
-        ]
+        vec![PathSeg::Key("ApiList".to_string()), PathSeg::Index(18),]
     );
 
     let row19 = &table.rows[19][1];
     assert_eq!(
         row19.path,
-        vec![
-            PathSeg::Key("ApiList".to_string()),
-            PathSeg::Index(19),
-        ]
+        vec![PathSeg::Key("ApiList".to_string()), PathSeg::Index(19),]
     );
 }
 
@@ -412,10 +395,7 @@ fn graph_builder_preorder_still_finishes_after_state_move_like_stream_view_finis
     assert_eq!(row18.text, "{42}");
     assert_eq!(
         row18.path,
-        vec![
-            PathSeg::Key("ApiList".to_string()),
-            PathSeg::Index(18),
-        ]
+        vec![PathSeg::Key("ApiList".to_string()), PathSeg::Index(18),]
     );
 }
 

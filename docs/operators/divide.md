@@ -32,13 +32,13 @@ c:
 
 ## Number division
 
-The result during division is calculated as a float
+When both operands are integers and the division is exact, the result remains an integer. Otherwise, the result is a float.
 
 Given a sample.yml file of:
 
 ```yaml
 a: 12
-b: 2.5
+b: 2
 ```
 
 then
@@ -50,8 +50,8 @@ treease '.a = .a / .b' sample.yml
 will output
 
 ```yaml
-a: 4.8
-b: 2.5
+a: 6
+b: 2
 ```
 
 ## Number division by zero

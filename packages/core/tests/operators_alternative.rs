@@ -1,5 +1,5 @@
 use treease_core::core::OperationId;
-use treease_core::evaluator::{AllAtOnceEvaluator, Value};
+use treease_core::evaluator::{AllAtOnceEvaluator, Numeric, Value};
 use treease_core::parser::{TokenKind, lex, parse_expression};
 
 #[test]
@@ -22,13 +22,13 @@ fn parser_and_evaluator_support_alternative_operator() {
     let null_result = AllAtOnceEvaluator::new()
         .evaluate(&Value::Null, Some(&null_fallback))
         .unwrap();
-    assert_eq!(null_result, Value::Number(1.0));
+    assert_eq!(null_result, Value::Number(Numeric::Int(1)));
 
     let false_fallback = parse_expression("false // 7").unwrap().unwrap();
     let false_result = AllAtOnceEvaluator::new()
         .evaluate(&Value::Null, Some(&false_fallback))
         .unwrap();
-    assert_eq!(false_result, Value::Number(7.0));
+    assert_eq!(false_result, Value::Number(Numeric::Int(7)));
 
     let true_keeps_lhs = parse_expression("true // 7").unwrap().unwrap();
     let true_result = AllAtOnceEvaluator::new()
@@ -40,17 +40,17 @@ fn parser_and_evaluator_support_alternative_operator() {
     let zero_result = AllAtOnceEvaluator::new()
         .evaluate(&Value::Null, Some(&zero_fallback))
         .unwrap();
-    assert_eq!(zero_result, Value::Number(2.0));
+    assert_eq!(zero_result, Value::Number(Numeric::Int(2)));
 
     let left_truthy = parse_expression("1 // 2 * 3").unwrap().unwrap();
     let truthy_result = AllAtOnceEvaluator::new()
         .evaluate(&Value::Null, Some(&left_truthy))
         .unwrap();
-    assert_eq!(truthy_result, Value::Number(1.0));
+    assert_eq!(truthy_result, Value::Number(Numeric::Int(1)));
 
     let divide_then_alternative = parse_expression("6 / 3 // 0").unwrap().unwrap();
     let divide_result = AllAtOnceEvaluator::new()
         .evaluate(&Value::Null, Some(&divide_then_alternative))
         .unwrap();
-    assert_eq!(divide_result, Value::Number(2.0));
+    assert_eq!(divide_result, Value::Number(Numeric::Int(2)));
 }

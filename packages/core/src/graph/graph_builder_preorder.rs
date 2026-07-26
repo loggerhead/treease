@@ -5,11 +5,11 @@ use crate::operators::compat::SemType as CompatSemType;
 use crate::operators::{NodeKind, TreeNode};
 use crate::stream::streaming_events::{EventSink, Meta, StreamingEvent};
 
+use super::graph_builder::shared::sequence_has_header_table;
 use super::graph_builder::{
     BuilderConfig, GraphBuilder, GraphCell, GraphEdge, GraphLanguage, GraphModel, GraphNode,
     GraphRow, PathSeg, SequencePresentation, graph_kind_for_node, graph_node_key,
 };
-use super::graph_builder::shared::sequence_has_header_table;
 use crate::tree::{NodeId, TreeNodeKind, TreeStore};
 
 // ---------------------------------------------------------------------------
@@ -1021,9 +1021,10 @@ impl Builder {
         // completed row proves that the sequence is a header table.
         let first_row_is_incomplete = parent_node.kind == NodeKind::Sequence
             && parent_node.content.len() <= 1
-            && parent_node.content.first().is_none_or(|row| {
-                row.kind == NodeKind::Mapping && row.content.is_empty()
-            });
+            && parent_node
+                .content
+                .first()
+                .is_none_or(|row| row.kind == NodeKind::Mapping && row.content.is_empty());
         if self.frame_hides_containers_in_parent_view(parent_frame) && !first_row_is_incomplete {
             return true;
         }
@@ -1296,7 +1297,8 @@ impl Builder {
                 None => return Ok(false),
             };
         let node = &self.node_pool[finished.node_index];
-        let header_row_is_inline = self.node_pool[parent_view_source_index].kind == NodeKind::Sequence
+        let header_row_is_inline = self.node_pool[parent_view_source_index].kind
+            == NodeKind::Sequence
             && sequence_has_header_table(&self.node_pool[parent_view_source_index])
             && matches!(finished.path.last(), Some(PathSeg::Index(0)));
         if !node.content.is_empty() && !header_row_is_inline {

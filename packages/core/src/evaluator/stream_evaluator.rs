@@ -23,7 +23,7 @@ use crate::{
 };
 
 use super::all_at_once_evaluator::{AllAtOnceEvaluator, value_to_tree_node};
-use super::{EvaluationError, Value};
+use super::{EvaluationError, Numeric, Value};
 
 /// Input descriptor for reader-based streaming evaluation.
 ///
@@ -613,8 +613,8 @@ fn scalar_node_to_value(store: &TreeStore, id: NodeId) -> Result<Value, Evaluati
     match store.value_rep_for(id)? {
         crate::tree::ValueRep::Nil => Ok(Value::Null),
         crate::tree::ValueRep::Boolean(value) => Ok(Value::Bool(value)),
-        crate::tree::ValueRep::Int(value) => Ok(Value::Number(value as f64)),
-        crate::tree::ValueRep::Float(value) => Ok(Value::Number(value)),
+        crate::tree::ValueRep::Int(value) => Ok(Value::Number(Numeric::Int(value))),
+        crate::tree::ValueRep::Float(value) => Ok(Value::Number(Numeric::Float(value))),
         crate::tree::ValueRep::Str(value) => {
             if store.resolved_sem_type_for(id)? == Some(crate::language::SemType::Nil) {
                 Ok(Value::Null)
@@ -717,7 +717,7 @@ fn direct_length_values_for_nodes(
             },
             TreeNodeKind::Alias | TreeNodeKind::Unknown => return Ok(Vec::new()),
         };
-        out.push(Value::Number(length as f64));
+        out.push(Value::Number(Numeric::Int(length as i64)));
     }
     Ok(out)
 }
@@ -907,7 +907,8 @@ fn parse_direct_lookup_literal_segment(node: &ExpressionNode) -> Option<ParsedKe
     }
     match Value::from_literal(&node.operation.string_value).ok()? {
         Value::String(value) => Some(ParsedKey::Str(value)),
-        Value::Number(value)
+        Value::Number(Numeric::Int(value)) => Some(ParsedKey::Int(value)),
+        Value::Number(Numeric::Float(value))
             if value.fract() == 0.0 && value >= i64::MIN as f64 && value <= i64::MAX as f64 =>
         {
             Some(ParsedKey::Int(value as i64))
@@ -1058,7 +1059,7 @@ mod tests {
             .evaluate_events(Some(&expression), &events)
             .expect("stream evaluation should succeed");
 
-        assert_eq!(results, vec![Value::Number(42.0)]);
+        assert_eq!(results, vec![Value::Number(Numeric::Int(42))]);
     }
 
     #[test]
@@ -1076,7 +1077,7 @@ mod tests {
             .evaluate_events_from_readers(Some(&expression), &mut inputs)
             .expect("reader evaluation should succeed");
 
-        assert_eq!(results, vec![Value::Number(7.0)]);
+        assert_eq!(results, vec![Value::Number(Numeric::Int(7))]);
     }
 
     #[test]
@@ -1423,7 +1424,7 @@ mod tests {
         let values = direct_unary_values(&store, root_id, Some(&expression))
             .expect("direct unary should succeed")
             .expect("path + length should use direct unary");
-        assert_eq!(values, vec![Value::Number(2.0)]);
+        assert_eq!(values, vec![Value::Number(Numeric::Int(2))]);
     }
 
     #[test]
@@ -1482,7 +1483,13 @@ mod tests {
         let values = direct_unary_values(&store, root_id, Some(&expression))
             .expect("direct unary should succeed")
             .expect("splat + length should use direct unary");
-        assert_eq!(values, vec![Value::Number(1.0), Value::Number(2.0)]);
+        assert_eq!(
+            values,
+            vec![
+                Value::Number(Numeric::Int(1)),
+                Value::Number(Numeric::Int(2))
+            ]
+        );
     }
 
     #[test]

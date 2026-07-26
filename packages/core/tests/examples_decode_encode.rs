@@ -1,5 +1,5 @@
 use treease_core::core::CodecService;
-use treease_core::evaluator::{AllAtOnceEvaluator, Value};
+use treease_core::evaluator::{AllAtOnceEvaluator, Numeric, Value};
 
 const SIMPLE_JSON: &str = include_str!("../../../example/simple.json");
 const SIMPLE_YAML: &str = include_str!("../../../example/simple.yaml");
@@ -243,7 +243,7 @@ fn examples_roundtrip_preserves_semantic_key_values() {
         .evaluate_nodes(&decoded.store, ".count", &[decoded.root])
         .unwrap();
     assert_eq!(count_result.len(), 1);
-    assert_eq!(count_result[0], Value::Number(7.0));
+    assert_eq!(count_result[0], Value::Number(Numeric::Int(7)));
 
     let enabled_result = evaluator
         .evaluate_nodes(&decoded.store, ".enabled", &[decoded.root])
