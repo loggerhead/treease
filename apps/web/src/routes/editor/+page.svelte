@@ -13,6 +13,7 @@
   import FeedbackDialog from '../../lib/components/FeedbackDialog.svelte';
   import StructGenerationInput from '../../lib/components/StructGenerationInput.svelte';
   import LoginDialog from '../../lib/components/LoginDialog.svelte';
+  import AiInput from '../../lib/components/AiInput.svelte';
   import YqExpressionInput from '../../lib/components/YqExpressionInput.svelte';
   import { settings, settingsStore } from '../../lib/settings/settings-store';
   import {
@@ -81,7 +82,7 @@
   import { editorWorkspace, getWorkspaceState, updateWorkspaceTab } from '../../lib/store/workspace-store';
   import { isWorkspaceTabDirty, type EditorWorkspaceTabSummary } from '../../lib/store/editor-workspace';
   import { clearCompareState, compareState } from '../../lib/store/compare-state';
-  import { generateStruct, getPublicShare, type StructLanguage } from '../../lib/services/treease-server';
+  import { generateStruct, getPublicShare, suggestYq, type StructLanguage } from '../../lib/services/treease-server';
   import { createShareResource as createResourceFromState, type ShareInteraction, type SharePathSegment, type ShareResource } from '../../lib/share/share-resource';
   import { restoreShareResource } from '../../lib/share/share-restore';
   import type { WorkspaceCommand, WorkspaceSession } from '../../lib/workspace-host';
@@ -125,6 +126,11 @@
   let viewerRuntimeLoading = true;
   let synchronizedRuntimeLoading = true;
   let syncScrollEnabled = true;
+  let aiInputOpen = false;
+  let aiInstruction = '';
+  let aiBusy = false;
+  let aiError = '';
+  let aiSuccess = '';
   let yqInputOpen = false;
   let yqExpression = '';
   let yqBusy = false;
@@ -666,8 +672,64 @@
     }
   }
 
+  function handleShowAiInput() {
+    structGenerationOpen = false;
+    yqInputOpen = false;
+    aiInputOpen = true;
+    aiError = '';
+    aiSuccess = '';
+  }
+
+  function handleCloseAiInput() {
+    if (aiBusy) return;
+    aiInputOpen = false;
+    aiError = '';
+    aiSuccess = '';
+  }
+
+  async function handleSubmitAi(instruction: string) {
+    const sourceText = getActiveDocumentText();
+    aiInstruction = instruction;
+    aiBusy = true;
+    aiError = '';
+    aiSuccess = '';
+    if (!sourceText.trim()) {
+      aiError = 'The active document is empty.';
+      aiBusy = false;
+      return;
+    }
+
+    try {
+      const currentPath = get(activeTempModel).treePath;
+      const suggestion = await suggestYq({
+        instruction,
+        editorTextSnapshot: sourceText,
+        treePathSet: currentPath.length ? [serializePath(currentPath)] : undefined,
+      });
+      const result = await runYqPreview({
+        expression: suggestion.expression,
+        text: sourceText,
+        language: editorRef?.getActiveLanguage() ?? $languageIdStore,
+        formatting: $settings.formatting,
+        enableNest: $settings.parser.enableNest,
+        callWorker: callSharedWasmWorker,
+      });
+      if ('error' in result) {
+        aiError = result.error;
+        return;
+      }
+      await showViewerTextPreviewForRevision(result.result, $editorRevision);
+      aiSuccess = suggestion.expression;
+    } catch (error) {
+      aiError = error instanceof Error ? error.message : 'Unable to generate a yq expression.';
+    } finally {
+      aiBusy = false;
+    }
+  }
+
   function handleShowYqInput() {
     structGenerationOpen = false;
+    aiInputOpen = false;
     yqInputOpen = true;
     yqError = '';
     void tick().then(() => {
@@ -681,6 +743,7 @@
   }
 
   function handleShowStructGeneration(): void {
+    aiInputOpen = false;
     yqInputOpen = false;
     structGenerationError = '';
     structGenerationOpen = true;
@@ -1200,7 +1263,21 @@
               onScroll={handleEditorScroll}
             />
           </div>
-          {#if yqInputOpen}
+          {#if aiInputOpen}
+            <AiInput
+              value={aiInstruction}
+              busy={aiBusy}
+              error={aiError}
+              success={aiSuccess}
+              onChange={(value) => {
+                aiInstruction = value;
+                aiError = '';
+                aiSuccess = '';
+              }}
+              onSubmit={handleSubmitAi}
+              onClose={handleCloseAiInput}
+            />
+          {:else if yqInputOpen}
             <YqExpressionInput
               bind:this={yqInputRef}
               value={yqExpression}
@@ -1358,6 +1435,7 @@
         onMinify={() => editorRef?.minifyActive()}
         onCompact={() => editorRef?.compactActive()}
         onSort={() => editorRef?.sortActive()}
+        onShowAiInput={handleShowAiInput}
         onShowYqInput={handleShowYqInput}
         onGenerateStruct={handleShowStructGeneration}
         onEscape={() => editorRef?.escapeActive()}

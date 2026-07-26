@@ -306,6 +306,12 @@
                   <div class="usage-progress"><span style={`width: ${usagePercent(usage.limits.largeFileProcessingRunsMonthly, usage.usage.large_file_processing)}%`}></span></div>
                 {/if}
               </div>
+              <div class="usage-item" data-testid="usage-ai-suggestions">
+                <div class="usage-item-label"><span>AI processing</span><span>{monthlyLimit(usage.limits.aiSuggestionsMonthly, usage.usage.ai_suggestion)}</span></div>
+                {#if usagePercent(usage.limits.aiSuggestionsMonthly, usage.usage.ai_suggestion) !== null}
+                  <div class="usage-progress"><span style={`width: ${usagePercent(usage.limits.aiSuggestionsMonthly, usage.usage.ai_suggestion)}%`}></span></div>
+                {/if}
+              </div>
             </div>
           {/if}
         </div>

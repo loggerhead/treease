@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Wand2, Shrink } from 'lucide-svelte';
+  import { Sparkles, Wand2, Shrink } from 'lucide-svelte';
   import { languageId as languageIdStore } from '../store/document-session-store';
   import { activeTempModel } from '../store/diagnostics-store';
   import type { PathSeg } from '../store/tree-path';
@@ -17,6 +17,7 @@
   export let onCompact: () => void | Promise<void> = () => {};
   export let onSort: () => void | Promise<void> = () => {};
   export let onShowYqInput: () => void | Promise<void> = () => {};
+  export let onShowAiInput: () => void | Promise<void> = () => {};
   export let onGenerateStruct: () => void | Promise<void> = () => {};
   export let onEscape: () => void | Promise<void> = () => {};
   export let onUnescape: () => void | Promise<void> = () => {};
@@ -115,6 +116,15 @@
       variant="segmented-outline"
       class="rounded-[7px] border-[rgba(15,23,42,0.10)] bg-[var(--panel-bg)] [&>[data-slot=button]:not(:first-child)]:border-[rgba(15,23,42,0.10)]"
     >
+      <IconButton
+        aria-label="AI"
+        title="Ask AI"
+        class="h-[23px] min-w-[37px] gap-1 rounded-[6px] bg-[#f5f8ff] px-1.5 text-[#4779c9] hover:bg-[#edf3ff] hover:text-[#2f63b1]"
+        on:click={onShowAiInput}
+      >
+        <Sparkles size={11.5} strokeWidth={1.9} />
+        <span class="text-[10px] font-semibold tracking-[0.01em]">AI</span>
+      </IconButton>
       <IconButton
         aria-label="Format"
         title="Format"
