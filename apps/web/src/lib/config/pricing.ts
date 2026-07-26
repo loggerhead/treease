@@ -50,7 +50,7 @@ const proFeatures = [
   { label: 'Share link validity: up to 365 days', emphasis: 'up to 365 days' },
   { label: 'Bidirectional editing: unlimited', emphasis: 'unlimited' },
   { label: 'Large-file visualizations and processing: unlimited', emphasis: 'unlimited' },
-  { label: 'AI features: included usage', emphasis: 'included usage' }
+  { label: 'AI processing: up to 100 runs per month', emphasis: 'up to 100 runs per month' }
 ] satisfies PricingFeature[];
 
 export const pricingConfig: { title: string; description: string; plans: PricingPlan[] } = {
@@ -77,7 +77,7 @@ export const pricingConfig: { title: string; description: string; plans: Pricing
           label: 'Large-file visualizations and processing: up to 3 runs per month',
           emphasis: 'up to 3 runs per month'
         },
-        { label: 'AI features: not included', emphasis: 'not included', showCheck: false }
+        { label: 'AI processing: up to 1 run per month', emphasis: 'up to 1 run per month' }
       ]
     },
     {

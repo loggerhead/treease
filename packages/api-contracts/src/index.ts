@@ -23,7 +23,7 @@ export type EntitlementLimit = z.infer<typeof entitlementLimitSchema>;
 const usageLimitsSchema = z.object({
   bidirectionalEditDocumentsMonthly: entitlementLimitSchema,
   largeFileProcessingRunsMonthly: entitlementLimitSchema,
-  aiSuggestionsMonthly: entitlementLimitSchema,
+  aiProcessingMonthly: entitlementLimitSchema,
   shareMaxAgeDays: z.number().int().positive(),
 }).strict();
 

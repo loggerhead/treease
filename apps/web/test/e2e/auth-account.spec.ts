@@ -122,7 +122,7 @@ test("PKCE login returns to the original page, shows the account, and supports l
           limits: {
             bidirectionalEditDocumentsMonthly: { kind: "limited", limit: 10 },
             largeFileProcessingRunsMonthly: { kind: "limited", limit: 3 },
-            aiSuggestionsMonthly: { kind: "limited", limit: 0 },
+            aiProcessingMonthly: { kind: "limited", limit: 1 },
             shareMaxAgeDays: 7,
           },
           usage: {},

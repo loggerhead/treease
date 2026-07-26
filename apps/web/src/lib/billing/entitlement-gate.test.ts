@@ -9,7 +9,7 @@ const summary = (used: number): UsageSummary => ({
   limits: {
     bidirectionalEditDocumentsMonthly: { kind: 'limited', limit: 10 },
     largeFileProcessingRunsMonthly: { kind: 'limited', limit: 3 },
-    aiSuggestionsMonthly: { kind: 'limited', limit: 0 },
+    aiProcessingMonthly: { kind: 'limited', limit: 0 },
     shareMaxAgeDays: 7,
   },
   usage: { bidirectional_edit: used },
