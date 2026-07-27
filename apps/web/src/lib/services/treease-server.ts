@@ -73,7 +73,8 @@ export class BillingAuthenticationRequiredError extends Error {
 }
 
 const configuredApiOrigin = String(import.meta.env.PUBLIC_API_ORIGIN ?? '').trim();
-const apiOrigin = configuredApiOrigin || (import.meta.env.PROD ? 'https://api.treease.com' : 'http://localhost:3000');
+const productionRuntime = import.meta.env.PROD || import.meta.env.SIMULATE_PROD;
+const apiOrigin = configuredApiOrigin || (productionRuntime ? 'https://api.treease.com' : 'http://localhost:3000');
 
 async function getAccessToken(): Promise<string | null> {
   const host = await workspaceHost;

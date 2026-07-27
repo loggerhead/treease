@@ -343,6 +343,15 @@
 
 <SeoHead title={pageTitle} description={pageDescription} canonical={`${siteOrigin}/`} jsonLd={[homeJsonLd, homeFaqJsonLd]} />
 
+<svelte:head>
+  <link
+    rel="preload"
+    as="image"
+    href={assetUrl(r2Assets.heroDemoGraphPoster)}
+    fetchpriority="high"
+  />
+</svelte:head>
+
 <div class="landing">
   <div class="landing-shell">
     <SiteHeader navItems={[...homeHeaderNavItems]} onLogin={() => (loginOpen = true)} onLogout={handleLogout} />
@@ -863,7 +872,7 @@
     align-items: center;
     gap: clamp(32px, 5vw, 72px);
     grid-template-columns: minmax(0, 0.84fr) minmax(420px, 1.16fr);
-    min-height: min(620px, calc(100dvh - 168px));
+    min-height: 646px;
     padding-top: 0;
   }
 
@@ -873,6 +882,7 @@
     align-items: flex-start;
     gap: 18px;
     max-width: 520px;
+    min-height: 360px;
     padding-top: 0;
   }
 
@@ -1702,6 +1712,10 @@
 
     .hero {
       min-height: auto;
+    }
+
+    .hero-copy {
+      min-height: 0;
     }
 
     .hero-demo {

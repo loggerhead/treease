@@ -223,11 +223,16 @@
           on:click={() => handleDemoSelect(index)}
         >
           <div class="demo-card__media">
-            <img
-              src={demo.poster}
-              alt={demo.title}
-              loading={index === 0 ? 'eager' : 'lazy'}
-            />
+            {#if index === activeDemo}
+              <img
+                src={demo.poster}
+                alt={demo.title}
+                width="1200"
+                height="860"
+                loading="eager"
+                fetchpriority={index === 0 ? 'high' : 'auto'}
+              />
+            {/if}
 
             <video
               bind:this={videoRefs[index]}
@@ -237,7 +242,7 @@
               loop
               playsinline
               preload="none"
-              poster={demo.poster}
+              poster={index === activeDemo ? demo.poster : undefined}
               on:loadeddata={() => markVideoReady(index)}
               on:error={() => markVideoUnavailable(index)}
             >
@@ -285,6 +290,7 @@
 <style>
   .hero-demo-deck {
     position: relative;
+    min-height: 646px;
     overflow: hidden;
   }
 
@@ -492,6 +498,10 @@
   }
 
   @media (max-width: 860px) {
+    .hero-demo-deck {
+      min-height: 0;
+    }
+
     .deck-stage {
       min-height: auto;
       padding: 0;

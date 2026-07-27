@@ -9,11 +9,13 @@
   import { initializeAnalytics, trackPageView } from '$lib/analytics/ga4';
   import 'virtual:wdio-plugin';
 
-  if (typeof window !== 'undefined' && (import.meta.env.DEV || import.meta.env.MODE === 'test')) {
+  const productionRuntime = import.meta.env.PROD || import.meta.env.SIMULATE_PROD;
+
+  if (typeof window !== 'undefined' && !productionRuntime && (import.meta.env.DEV || import.meta.env.MODE === 'test')) {
     installTestBridge();
   }
 
-  const adsEnabled = !import.meta.env.DEV && import.meta.env.MODE !== 'test';
+  const adsEnabled = productionRuntime && import.meta.env.MODE !== 'test';
 
   onMount(() => {
     installFeedbackConsoleLogBuffer();

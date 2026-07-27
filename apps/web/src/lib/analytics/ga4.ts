@@ -23,7 +23,8 @@ export type AnalyticsEventParams = Record<string, string | number | boolean>;
 
 const DEFAULT_MEASUREMENT_ID = 'G-N8DW5G72ZQ';
 const configuredMeasurementId = import.meta.env.GA_MEASUREMENT_ID ?? '';
-const measurementId = (configuredMeasurementId || (import.meta.env.PROD ? DEFAULT_MEASUREMENT_ID : '')).trim();
+const productionRuntime = import.meta.env.PROD || import.meta.env.SIMULATE_PROD;
+const measurementId = (configuredMeasurementId || (productionRuntime ? DEFAULT_MEASUREMENT_ID : '')).trim();
 const consentRequired = import.meta.env.GA_CONSENT_REQUIRED === '1';
 const CONSENT_REGIONS = [
   'AT',

@@ -109,6 +109,8 @@ export default defineConfig(({ mode }) => {
       'import.meta.env.PUBLIC_PRICING_YEARLY_PRICE': JSON.stringify(env.PUBLIC_PRICING_YEARLY_PRICE ?? ''),
       'import.meta.env.PUBLIC_WORKSPACE_SURFACE': JSON.stringify(workspaceSurface),
       'import.meta.env.PUBLIC_WDIO_TEST': JSON.stringify(process.env.TREEASE_WDIO_TEST ?? '0'),
+      // Explicit opt-in for production runtime branches while retaining Vite's dev module server.
+      'import.meta.env.SIMULATE_PROD': JSON.stringify(process.env.simulate_prod === '1'),
     },
     build: bundleAnalyzeEnabled
       ? {
