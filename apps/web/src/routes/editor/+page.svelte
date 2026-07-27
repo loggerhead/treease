@@ -403,13 +403,17 @@
     await viewerRef?.showTextPreview(text, language);
   }
 
-  async function showViewerTextPreviewForRevision(text: string, sourceRevision: number) {
+  async function showViewerTextPreviewForRevision(
+    text: string,
+    language: SupportedEditorLanguageId,
+    sourceRevision: number,
+  ) {
     const requestId = ++previewRequestId;
     markPreviewRequested({
       requestId,
       sourceRevision,
     });
-    await showViewerTextPreview(text);
+    await showViewerTextPreview(text, language);
     markPreviewCompleted({
       requestId,
       sourceRevision,
@@ -642,7 +646,7 @@
       targetFormat: format,
       formatOptions,
     });
-    await showViewerTextPreviewForRevision(text, $editorRevision);
+    await showViewerTextPreviewForRevision(text, preview.previewLanguage, $editorRevision);
     trackEvent('document_export', { source: 'preview', format, result: 'success' });
     toast.success(preview.toastMessage);
   }
@@ -719,7 +723,7 @@
         aiError = result.error;
         return;
       }
-      await showViewerTextPreviewForRevision(result.result, $editorRevision);
+      await showViewerTextPreviewForRevision(result.result, result.previewLanguage, $editorRevision);
       aiSuccess = suggestion.expression;
     } catch (error) {
       aiError = error instanceof Error ? error.message : 'Unable to generate a yq expression.';
@@ -808,7 +812,7 @@
     if ('error' in result) {
       yqError = result.error;
     } else {
-      await showViewerTextPreviewForRevision(result.result, $editorRevision);
+      await showViewerTextPreviewForRevision(result.result, result.previewLanguage, $editorRevision);
     }
     yqBusy = false;
   }
@@ -857,8 +861,9 @@
 
   async function handleSwapEditors(payload: { rightText: string; rightLanguage: SupportedEditorLanguageId }) {
     const leftText = getActiveDocumentText();
+    const leftLanguage = editorRef?.getActiveLanguage() ?? $languageIdStore;
     await editorRef?.importAs(payload.rightLanguage, payload.rightText, payload.rightLanguage);
-    await showViewerTextPreviewForRevision(leftText, $editorRevision);
+    await showViewerTextPreviewForRevision(leftText, leftLanguage, $editorRevision);
   }
 
   async function toggleSyncScroll() {

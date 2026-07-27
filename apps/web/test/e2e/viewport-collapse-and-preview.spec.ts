@@ -1,6 +1,7 @@
 import { expect, test } from './fixtures';
 import {
   getLatestGraphProbes,
+  getMonacoLanguage,
   getMonacoScroll,
   getMonacoValue,
   setMonacoScroll,
@@ -33,6 +34,7 @@ test('export preview renders converted text in right panel', async ({ page }) =>
   await page.getByRole('button', { name: 'Preview export result', exact: true }).click();
   await waitForPreviewSettled(page);
   await expect.poll(async () => getMonacoValue(page, 'right-editor'), { timeout: 5_000 }).toContain('title: Example');
+  await expect.poll(async () => getMonacoLanguage(page, 'right-editor'), { timeout: 5_000 }).toBe('yaml');
   await expect(page.getByText('Previewed JSON to YAML')).toBeVisible();
 });
 
