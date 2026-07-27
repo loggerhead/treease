@@ -1,4 +1,4 @@
-use crate::compare::{Diff, DiffType, compare_text, diff_texts_structured};
+use crate::compare::{Diff, DiffPair, DiffType, compare_text, diff_texts_structured};
 use crate::core::{
     Language, NodeId, TreeStore,
     document_analysis::{DocumentAnalysisDemand, analyze_document_internal_with_demand},
@@ -335,6 +335,117 @@ struct DiffOutput {
 #[serde(rename_all = "camelCase")]
 struct DiffTextOutput {
     pairs: Vec<DiffPairOutput>,
+    // Structured comparison is independent of object key order. It therefore
+    // has no meaningful text-line alignment gaps to synthesize in the UI.
+    // Keeping these explicit makes the renderer a consumer, not an inference
+    // layer; text comparison can populate them when it gains an alignment plan.
+    left_fill_ranges: Vec<DiffFillRangeOutput>,
+    right_fill_ranges: Vec<DiffFillRangeOutput>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DiffFillRangeOutput {
+    start_line_number: u32,
+    end_line_number: u32,
+}
+
+#[derive(Clone, Copy)]
+struct DiffLineRange {
+    start: i32,
+    end: i32,
+}
+
+fn diff_line_range(source: &str, diff: &Diff) -> DiffLineRange {
+    let start_offset = usize::try_from(diff.offset.max(0))
+        .unwrap_or(0)
+        .min(source.len());
+    let end_offset = usize::try_from((diff.offset + diff.length.max(1)).max(0))
+        .unwrap_or(source.len())
+        .min(source.len());
+    let start = source.as_bytes()[..start_offset]
+        .iter()
+        .filter(|byte| **byte == b'\n')
+        .count() as i32
+        + 1;
+    let mut end = source.as_bytes()[..end_offset]
+        .iter()
+        .filter(|byte| **byte == b'\n')
+        .count() as i32
+        + 1;
+    let starts_at_line_start = start_offset == 0 || source.as_bytes()[start_offset - 1] == b'\n';
+    let ends_at_line_start = end_offset == 0 || source.as_bytes()[end_offset - 1] == b'\n';
+    if diff.length == 1 && starts_at_line_start && ends_at_line_start {
+        end = start;
+    }
+    DiffLineRange { start, end }
+}
+
+fn build_text_fill_ranges(
+    pairs: &[DiffPair],
+    left_source: &str,
+    right_source: &str,
+) -> (Vec<DiffFillRangeOutput>, Vec<DiffFillRangeOutput>) {
+    let mut left_ranges = Vec::new();
+    let mut right_ranges = Vec::new();
+    let mut left_offset = 0_i32;
+    let mut right_offset = 0_i32;
+
+    for pair in pairs {
+        let left = pair
+            .left
+            .as_ref()
+            .map(|diff| diff_line_range(left_source, diff));
+        let right = pair
+            .right
+            .as_ref()
+            .map(|diff| diff_line_range(right_source, diff));
+        let left_end = left.map(|range| range.end + left_offset).unwrap_or(0);
+        let right_end = right.map(|range| range.end + right_offset).unwrap_or(0);
+        let left_fill_start = left.map(|range| range.start + left_offset).unwrap_or(0);
+        let right_fill_start = right.map(|range| range.start + right_offset).unwrap_or(0);
+
+        if left_end < right_fill_start || right_end < left_fill_start {
+            if let Some(range) = left {
+                let count = range.end - range.start + 1;
+                right_ranges.push(DiffFillRangeOutput {
+                    start_line_number: (range.start + left_offset) as u32,
+                    end_line_number: (range.end + left_offset) as u32,
+                });
+                right_offset += count;
+            }
+            if let Some(range) = right {
+                let count = range.end - range.start + 1;
+                left_ranges.push(DiffFillRangeOutput {
+                    start_line_number: (range.start + right_offset) as u32,
+                    end_line_number: (range.end + right_offset) as u32,
+                });
+                left_offset += count;
+            }
+        } else if left_end <= right_end {
+            if left.is_some() && right.is_some() && right_end > left_end {
+                let count = right_end - (left_end + 1).max(right_fill_start) + 1;
+                if count > 0 {
+                    left_ranges.push(DiffFillRangeOutput {
+                        start_line_number: (left_end + 1).max(right_fill_start) as u32,
+                        end_line_number: right_end as u32,
+                    });
+                    left_offset += count;
+                }
+            }
+        } else if right_end < left_end && left.is_some() && right.is_some() {
+            let start = (right_end + 1).max(left_fill_start);
+            let count = left_end - start + 1;
+            if count > 0 {
+                right_ranges.push(DiffFillRangeOutput {
+                    start_line_number: start as u32,
+                    end_line_number: left_end as u32,
+                });
+                right_offset += count;
+            }
+        }
+    }
+    (left_ranges, right_ranges)
 }
 
 fn diff_type_to_output(diff_type: DiffType) -> u8 {
@@ -385,6 +496,8 @@ pub fn diff_structured_wasm(spec: JsValue) -> Result<JsValue, JsValue> {
                 right: diff_to_output(pair.right.as_ref()),
             })
             .collect(),
+        left_fill_ranges: Vec::new(),
+        right_fill_ranges: Vec::new(),
     };
     to_json_compatible_js_value(&output)
 }
@@ -396,6 +509,8 @@ pub fn diff_text_wasm(spec: JsValue) -> Result<JsValue, JsValue> {
     let input: DiffInput =
         serde_wasm_bindgen::from_value(spec).map_err(|e| JsValue::from_str(&e.to_string()))?;
     let pairs = compare_text(&input.left, &input.right);
+    let (left_fill_ranges, right_fill_ranges) =
+        build_text_fill_ranges(&pairs, &input.left, &input.right);
     let output = DiffTextOutput {
         pairs: pairs
             .into_iter()
@@ -406,6 +521,8 @@ pub fn diff_text_wasm(spec: JsValue) -> Result<JsValue, JsValue> {
                 right: diff_to_output(p.right.as_ref()),
             })
             .collect(),
+        left_fill_ranges,
+        right_fill_ranges,
     };
     to_json_compatible_js_value(&output)
 }

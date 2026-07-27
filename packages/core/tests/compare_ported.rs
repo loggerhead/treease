@@ -1,7 +1,56 @@
 use treease_core::compare::diff::sort_diffs;
 use treease_core::compare::{
-    Diff, DiffPair, DiffType, compare_text, histogram_diff, myers_diff, new_diff,
+    Diff, DiffPair, DiffType, compare_text, diff_texts_structured, histogram_diff, myers_diff,
+    new_diff,
 };
+
+#[test]
+fn structured_compare_orders_presentation_by_right_source_and_marks_added_array_item_inline() {
+    let left = r#"{
+  "service": {"name": "api", "port": 8080},
+  "features": ["graph", "compare"]
+}"#;
+    let right = r#"{
+  "features": ["graph", "compare", "export"],
+  "service": {"name": "api", "port": 9090}
+}"#;
+
+    let pairs = diff_texts_structured("json", left, right).expect("valid json");
+    assert_eq!(pairs.len(), 2);
+
+    let added = pairs[0]
+        .right
+        .as_ref()
+        .expect("first operation is right insertion");
+    assert!(pairs[0].left.is_none());
+    assert_eq!(
+        &right[added.offset as usize..(added.offset + added.length) as usize],
+        "\"export\""
+    );
+    assert_eq!(added.inline_diffs.len(), 1);
+    assert_eq!(added.inline_diffs[0].offset, added.offset);
+    assert_eq!(added.inline_diffs[0].length, added.length);
+    assert_eq!(added.inline_diffs[0].diff_type, added.diff_type);
+
+    let changed = pairs[1]
+        .right
+        .as_ref()
+        .expect("second operation is paired port change");
+    assert!(pairs[1].left.is_some());
+    assert!(added.offset < changed.offset);
+}
+
+#[test]
+fn structured_compare_ignores_object_key_reordering_without_presentation_operations() {
+    let left = r#"{"service":{"port":8080},"features":["graph","compare"]}"#;
+    let right = r#"{"features":["graph","compare"],"service":{"port":8080}}"#;
+
+    assert!(
+        diff_texts_structured("json", left, right)
+            .expect("valid json")
+            .is_empty()
+    );
+}
 
 #[test]
 fn text_compare_empty_inputs_have_no_diffs() {

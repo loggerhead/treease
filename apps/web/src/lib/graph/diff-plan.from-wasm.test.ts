@@ -96,6 +96,32 @@ describe('diff-plan with real wasm compare output', () => {
     ]);
   });
 
+  it('returns presentation-ready structured changes for an added array item after key reordering', async () => {
+    const left = `{
+  "service": {"name": "api", "port": 8080},
+  "features": ["graph", "compare"]
+}`;
+    const right = `{
+  "features": ["graph", "compare", "export"],
+  "service": {"name": "api", "port": 9090}
+}`;
+    const result = await diffStructured('json', left, right);
+    const plans = buildDiffPlans(monaco, result.pairs ?? [], left, right, {
+      left: result.leftFillRanges,
+      right: result.rightFillRanges,
+    });
+
+    const rightInlineTexts = plans.right.decorations
+      .filter((item) => item.options.inlineClassName === 'diff-inline-ins')
+      .map((item) => extractRangeText(right, item.range));
+
+    expect(rightInlineTexts).toContain('"export"');
+    expect(result.pairs[0].hasLeft).toBe(false);
+    expect(result.pairs[0].right.byteOffset).toBeLessThan(result.pairs[1].right.byteOffset);
+    expect(plans.left.fillRanges).toEqual([]);
+    expect(plans.right.fillRanges).toEqual([]);
+  });
+
   it('maps structured object-entry hunks to Monaco whole-line decorations', async () => {
     const left = '{"editor.detectIndentation": false,"editor.tabSize": 2,"files.exclude": {".vscode/": true,"foo": "bar"}}';
     const right = '{"editor.detectIndentation": false,"editor.tabSize": 2,"files.exclude": {".slash/": true,"foo": "bar"}}';

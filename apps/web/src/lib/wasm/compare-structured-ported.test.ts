@@ -65,6 +65,10 @@ function collectHunks(result: RawDiffResult): FlatDiff[] {
 function collectInlines(result: RawDiffResult): FlatDiff[] {
   const inlines: FlatDiff[] = [];
   for (const pair of result.pairs ?? []) {
+    // These upstream compatibility vectors cover only paired replacements.
+    // Standalone array additions/deletions intentionally carry their whole
+    // node as an inline range and are asserted by presentation tests.
+    if (!pair.hasLeft || !pair.hasRight) continue;
     for (const side of [pair.left, pair.right]) {
       for (const inline of side?.inlineDiffs ?? []) {
         inlines.push({ byteOffset: inline.byteOffset, byteLength: inline.byteLength, type: inline.type });

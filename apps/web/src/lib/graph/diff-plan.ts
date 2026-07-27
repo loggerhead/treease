@@ -132,71 +132,6 @@ function buildDecorations(monaco: any, pairs: DiffPairRanges[], side: 'left' | '
   return inlineDecorations.concat(mergeDecorations(hunkDecorations));
 }
 
-function countRange(range?: DiffRange): number {
-  if (!range) return 0;
-  return Math.max(0, range.endLineNumber - range.startLineNumber + 1);
-}
-
-function rangeMinus(range: FillRange, n: number): FillRange {
-  return { startLineNumber: range.startLineNumber - n, endLineNumber: range.endLineNumber - n };
-}
-
-function buildFillRanges(pairs: DiffPairRanges[]): { left: FillRange[]; right: FillRange[] } {
-  const leftRanges: FillRange[] = [];
-  const rightRanges: FillRange[] = [];
-  let lAggr = 0;
-  let rAggr = 0;
-
-  const addLeftFill = (fill: FillRange) => {
-    const lineCount = countRange(fill as DiffRange);
-    if (lineCount <= 0) return;
-    leftRanges.push(rangeMinus(fill, lAggr));
-    lAggr += lineCount;
-  };
-
-  const addRightFill = (fill: FillRange) => {
-    const lineCount = countRange(fill as DiffRange);
-    if (lineCount <= 0) return;
-    rightRanges.push(rangeMinus(fill, rAggr));
-    rAggr += lineCount;
-  };
-
-  for (let index = 0; index < pairs.length; index += 1) {
-    const { left, right } = pairs[index];
-    const prev = pairs[index - 1];
-    const next = pairs[index + 1];
-    const lStart = left?.startLineNumber ?? 0;
-    const lEnd = left?.endLineNumber ?? 0;
-    const rStart = right?.startLineNumber ?? 0;
-    const rEnd = right?.endLineNumber ?? 0;
-    const lFillStart = left ? lStart + lAggr : 0;
-    const lFillEnd = left ? lEnd + lAggr : 0;
-    const rFillStart = right ? rStart + rAggr : 0;
-    const rFillEnd = right ? rEnd + rAggr : 0;
-    const internalLeftOnly = left && !right && prev?.left && prev?.right && next?.left && next?.right;
-    const internalRightOnly = !left && right && prev?.left && prev?.right && next?.left && next?.right;
-
-    if (lFillEnd < rFillStart || rFillEnd < lFillStart) {
-      if (left) {
-        const fill = { startLineNumber: lStart + lAggr, endLineNumber: lEnd + lAggr };
-        if (internalLeftOnly) rAggr += countRange(fill as DiffRange);
-        else addRightFill(fill);
-      }
-      if (right) {
-        const fill = { startLineNumber: rStart + rAggr, endLineNumber: rEnd + rAggr };
-        if (internalRightOnly) lAggr += countRange(fill as DiffRange);
-        else addLeftFill(fill);
-      }
-    } else if (lFillEnd <= rFillEnd) {
-      addLeftFill({ startLineNumber: Math.max(lFillEnd + 1, rFillStart), endLineNumber: rFillEnd });
-    } else if (rFillEnd < lFillEnd) {
-      addRightFill({ startLineNumber: Math.max(rFillEnd + 1, lFillStart), endLineNumber: lFillEnd });
-    }
-  }
-
-  return { left: leftRanges, right: rightRanges };
-}
-
 function findFirstLine(pairs: DiffPairRanges[], side: 'left' | 'right'): number | undefined {
   for (const pair of pairs) {
     const diff = side === 'left' ? pair.left : pair.right;
@@ -205,9 +140,14 @@ function findFirstLine(pairs: DiffPairRanges[], side: 'left' | 'right'): number 
   return undefined;
 }
 
-export function buildDiffPlans(monaco: any, pairs: DiffPair[], leftText: string, rightText: string): { left: DiffPlan; right: DiffPlan } {
+export function buildDiffPlans(
+  monaco: any,
+  pairs: DiffPair[],
+  leftText: string,
+  rightText: string,
+  fillRanges: { left: FillRange[]; right: FillRange[] } = { left: [], right: [] },
+): { left: DiffPlan; right: DiffPlan } {
   const pairRanges = buildPairRanges(pairs, leftText, rightText);
-  const fillRanges = buildFillRanges(pairRanges);
   return {
     left: {
       decorations: buildDecorations(monaco, pairRanges, 'left'),

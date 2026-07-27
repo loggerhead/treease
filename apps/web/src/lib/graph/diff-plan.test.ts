@@ -144,8 +144,8 @@ describe('diff-plan', () => {
     });
   });
 
-  describe('fill ranges and deletion-only cases', () => {
-    it('produces fillRanges for line alignment', () => {
+  describe('WASM-provided fill ranges and deletion-only cases', () => {
+    it('passes through fillRanges provided by the compare result', () => {
       const pairs: DiffPair[] = [
         {
           hasLeft: 1,
@@ -154,11 +154,11 @@ describe('diff-plan', () => {
           right: { byteOffset: 0, byteLength: 0, type: 0, inlineDiffs: [] },
         },
       ];
-      const result = buildDiffPlans(monaco, pairs, 'abc', '');
-      expect(result.right.fillRanges.length).toBeGreaterThan(0);
-      const fill = result.right.fillRanges[0];
-      expect(fill.startLineNumber).toBeGreaterThanOrEqual(1);
-      expect(fill.endLineNumber).toBeGreaterThanOrEqual(fill.startLineNumber);
+      const result = buildDiffPlans(monaco, pairs, 'abc', '', {
+        left: [],
+        right: [{ startLineNumber: 1, endLineNumber: 1 }],
+      });
+      expect(result.right.fillRanges).toEqual([{ startLineNumber: 1, endLineNumber: 1 }]);
     });
 
     it('keeps fill ranges anchored to local hunk gaps across multiple pairs', () => {
@@ -180,7 +180,10 @@ describe('diff-plan', () => {
       const leftText = 'x\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx';
       const rightText = 'y\ny\ny\ny\ny\ny\ny\ny\ny\ny\ny\ny\ny\ny\ny\ny\ny\ny\ny\ny\ny\ny\ny';
 
-      const result = buildDiffPlans(monaco, pairs, leftText, rightText);
+      const result = buildDiffPlans(monaco, pairs, leftText, rightText, {
+        left: [{ startLineNumber: 13, endLineNumber: 21 }],
+        right: [{ startLineNumber: 6, endLineNumber: 9 }],
+      });
 
       expect(result.right.fillRanges).toEqual([{ startLineNumber: 6, endLineNumber: 9 }]);
       expect(result.left.fillRanges).toEqual([{ startLineNumber: 13, endLineNumber: 21 }]);
@@ -300,7 +303,10 @@ describe('diff-plan', () => {
         },
       ];
 
-      const result = buildDiffPlans(monaco, pairs, leftText, rightText);
+      const result = buildDiffPlans(monaco, pairs, leftText, rightText, {
+        left: [],
+        right: [{ startLineNumber: 15, endLineNumber: 18 }],
+      });
       const leftHunks = result.left.decorations.filter((d) => d.options.isWholeLine);
       const lastLeftHunk = leftHunks[leftHunks.length - 1];
 

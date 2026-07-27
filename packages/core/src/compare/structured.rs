@@ -58,6 +58,14 @@ fn raw_diff(node: &TreeNode, diff_type: DiffType) -> Diff {
     )
 }
 
+// A standalone array element has no opposite-side text from which to derive a
+// character diff.  Its complete lexical node is therefore the inline change.
+fn raw_diff_with_inline(node: &TreeNode, diff_type: DiffType) -> Diff {
+    let mut diff = raw_diff(node, diff_type);
+    diff.inline_diffs.push(raw_diff(node, diff_type));
+    diff
+}
+
 fn object_entry_diff(key: &TreeNode, value: &TreeNode, diff_type: DiffType) -> Diff {
     new_diff(
         i32::try_from(key.start_byte).unwrap_or(0),
@@ -199,10 +207,22 @@ impl<'a> StructuredComparer<'a> {
             self.pairs.push(DiffPair {
                 left: left_index
                     .and_then(|candidate| left.content.get(candidate))
-                    .map(|node| raw_diff(node, DiffType::Delete)),
+                    .map(|node| {
+                        if right_index.is_none() {
+                            raw_diff_with_inline(node, DiffType::Delete)
+                        } else {
+                            raw_diff(node, DiffType::Delete)
+                        }
+                    }),
                 right: right_index
                     .and_then(|candidate| right.content.get(candidate))
-                    .map(|node| raw_diff(node, DiffType::Insert)),
+                    .map(|node| {
+                        if left_index.is_none() {
+                            raw_diff_with_inline(node, DiffType::Insert)
+                        } else {
+                            raw_diff(node, DiffType::Insert)
+                        }
+                    }),
             });
         }
     }
@@ -269,5 +289,23 @@ pub fn diff_texts_structured(
 ) -> Result<Vec<DiffPair>, String> {
     let left_root = decode_to_compat_tree(language, left)?;
     let right_root = decode_to_compat_tree(language, right)?;
-    Ok(StructuredComparer::new(left, right).compare(&left_root, &right_root))
+    let mut pairs = StructuredComparer::new(left, right).compare(&left_root, &right_root);
+
+    // Object comparison is intentionally key-order insensitive, so traversal
+    // order is not source order.  Presentation consumers require a stable
+    // top-to-bottom order; use the right document when available, then the
+    // left document for deletions.
+    pairs.sort_by_key(|pair| {
+        (
+            pair.right
+                .as_ref()
+                .map(|diff| diff.offset)
+                .unwrap_or(i32::MAX),
+            pair.left
+                .as_ref()
+                .map(|diff| diff.offset)
+                .unwrap_or(i32::MAX),
+        )
+    });
+    Ok(pairs)
 }

@@ -54,7 +54,7 @@
   type DiffResponse = {
     mode: 'tree' | 'text'
     equal: boolean
-    result: { pairs: DiffPair[] }
+    result: { pairs: DiffPair[]; leftFillRanges: { startLineNumber: number; endLineNumber: number }[]; rightFillRanges: { startLineNumber: number; endLineNumber: number }[] }
   }
 
   let diffError = ''
@@ -177,7 +177,10 @@
       setCompareOutcome(data)
       const monaco = readySidecarEditor?.getMonaco()
       if (monaco) {
-        const plans = buildDiffPlans(monaco, data.result.pairs ?? [], leftText, rightText)
+        const plans = buildDiffPlans(monaco, data.result.pairs ?? [], leftText, rightText, {
+          left: data.result.leftFillRanges ?? [],
+          right: data.result.rightFillRanges ?? [],
+        })
         applyRightDiffPlan(plans.right)
         onApplyDiff(plans.left)
       } else {

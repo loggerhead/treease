@@ -133,8 +133,15 @@ export type RawDiffPair = {
   right: RawDiff;
 };
 
+export type RawDiffFillRange = {
+  startLineNumber: number;
+  endLineNumber: number;
+};
+
 export type RawDiffResult = {
   pairs: RawDiffPair[];
+  leftFillRanges: RawDiffFillRange[];
+  rightFillRanges: RawDiffFillRange[];
 };
 export type DiffResult = RawDiffResult;
 
@@ -167,7 +174,6 @@ export type FormatOptions = {
   nest?: boolean;
   sortKeys?: boolean;
 };
-
 
 
 
