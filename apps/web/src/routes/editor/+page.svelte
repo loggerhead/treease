@@ -16,6 +16,7 @@
   import AiInput from '../../lib/components/AiInput.svelte';
   import YqExpressionInput from '../../lib/components/YqExpressionInput.svelte';
   import { settings, settingsStore } from '../../lib/settings/settings-store';
+  import { DEFAULT_EDITOR_SPLIT_RATIO } from '../../lib/settings/editor-layout-state';
   import {
     activeTempModel,
     type GraphHighlightTarget,
@@ -100,7 +101,8 @@
   let showTabDirty = false;
   let activeTabId = '';
   let scrollSyncLock: 'editor' | 'viewer' | null = null;
-  let splitLayoutState = createSplitLayoutState(0.28);
+  let splitLayoutState = createSplitLayoutState(DEFAULT_EDITOR_SPLIT_RATIO);
+  let layoutReady = false;
   let layoutMode = splitLayoutState.layoutMode;
   let splitRatio = splitLayoutState.splitRatio;
   let lastSplitRatio = splitLayoutState.lastSplitRatio;
@@ -158,7 +160,7 @@
   type SplitLayoutState = ReturnType<typeof createSplitLayoutState>;
 
   const formatOptions = importFormatOptions;
-  const defaultSplitRatio = 0.28;
+  const defaultSplitRatio = DEFAULT_EDITOR_SPLIT_RATIO;
   const splitLayoutConfig: SplitLayoutConfig = {
     defaultSplitRatio,
     minPaneWidthPx: 200,
@@ -222,7 +224,6 @@
     applyUrlPresetUi(nextPreset);
     setUrlPresetBridgeState(nextPreset);
     await tick();
-    await settingsStore.load();
     if (nextPreset.nest !== null) {
       await settingsStore.save({ parser: { enableNest: nextPreset.nest } });
     }
@@ -854,6 +855,7 @@
     splitterDragRect = null;
     isDraggingSplitter = false;
     syncSplitLayoutState({ ...splitLayoutState, lastSplitRatio: splitRatio });
+    void settingsStore.saveEditorSplitRatio(splitRatio);
   }
 
   function handleApplyDiff(plan: DiffPlan) {
@@ -1173,15 +1175,25 @@
       const message = error instanceof Error ? error.message : String(error);
       toast.error(`Desktop workspace initialization failed: ${message}`);
     });
-    if (shareID.present) {
-      if (shareID.valid && shareID.value) void restoreShare(shareID.value);
-    } else {
-      void applyEditorUrlPreset(urlPreset).catch((error) => {
+    void (async () => {
+      await settingsStore.load();
+      const savedSplitRatio = settingsStore.getEditorSplitRatio();
+      if (savedSplitRatio !== null) {
+        syncSplitLayoutState(createSplitLayoutState(savedSplitRatio));
+      }
+      layoutReady = true;
+      await tick();
+      if (shareID.present) {
+        if (shareID.valid && shareID.value) await restoreShare(shareID.value);
+      } else {
+        await applyEditorUrlPreset(urlPreset);
+      }
+    })().catch((error) => {
         const message = error instanceof Error ? error.message : String(error);
-        console.error('[editor] failed to apply url preset', { error: message });
-        toast.error(`Editor URL preset failed: ${message}`);
+        console.error('[editor] failed to initialize settings and layout', { error: message });
+        layoutReady = true;
+        toast.error(`Editor initialization failed: ${message}`);
       });
-    }
     const handleResize = () => {
       syncSplitLayoutState(syncSplitRatio(splitLayoutState, getContainerWidth(), splitLayoutConfig));
     };
@@ -1254,7 +1266,7 @@
         onOpenSettings={() => (settingsOpen = true)}
       />
     {/if}
-    <div bind:this={splitLayoutContainer} bind:clientWidth={containerWidth} class="app-split-layout">
+    <div bind:this={splitLayoutContainer} bind:clientWidth={containerWidth} class="app-split-layout" class:invisible={!layoutReady}>
       {#if showEditorPane}
         <section
           class="app-split-pane app-split-pane--left flex flex-col border-r border-[var(--border-strong)] bg-[var(--panel-bg)]"

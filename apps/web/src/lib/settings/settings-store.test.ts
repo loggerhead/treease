@@ -17,6 +17,7 @@ vi.mock('../utils/error-handler', () => ({
 import {
   settingsStore,
   settings,
+  settingsDialogDocument,
   settingsDocument,
   settingsStatus,
 } from './settings-store';
@@ -81,6 +82,13 @@ describe('settings-store', () => {
     expect(state.document).toEqual({ formatting: { indent: 'bad' } });
     expect(state.settings.formatting.indent).toBe(defaultSettings.formatting.indent);
     expect(mockDb.get).toHaveBeenCalled();
+  });
+
+  it('loads a persisted editor split ratio without adding it to effective settings', async () => {
+    mockDbStore['user'] = { __treeaseEditorLayout: { splitRatio: 0.42 } };
+    await settingsStore.load();
+    expect(settingsStore.getEditorSplitRatio()).toBe(0.42);
+    expect(settingsStore.get().settings).not.toHaveProperty('__treeaseEditorLayout');
   });
 
   it('load migrates legacy boolean and nil editor colors', async () => {
@@ -194,6 +202,34 @@ describe('settings-store', () => {
     });
     expect(state.settings.formatting.indent).toBe(defaultSettings.formatting.indent);
     expect(state.settings.parser.enableNest).toBe(false);
+  });
+
+  it('persists an editor split ratio without applying it as a user setting', async () => {
+    await settingsStore.saveEditorSplitRatio(0.42);
+    const state = settingsStore.get();
+    expect(settingsStore.getEditorSplitRatio()).toBe(0.42);
+    expect(state.document).toEqual(expect.objectContaining({
+      __treeaseEditorLayout: { splitRatio: 0.42 }
+    }));
+    expect(state.settings).not.toHaveProperty('__treeaseEditorLayout');
+    expect(mockDbStore.user).toEqual(expect.objectContaining({
+      __treeaseEditorLayout: { splitRatio: 0.42 }
+    }));
+  });
+
+  it('keeps editor layout state out of the Settings dialog document and preserves it on dialog save', async () => {
+    await settingsStore.saveEditorSplitRatio(0.42);
+    let dialogDocument: unknown;
+    const unsubscribe = settingsDialogDocument.subscribe((value) => { dialogDocument = value; });
+    expect(dialogDocument).not.toHaveProperty('__treeaseEditorLayout');
+    unsubscribe();
+
+    await settingsStore.saveSettingsDialogDocument({ parser: { enableNest: false } });
+    expect(settingsStore.getEditorSplitRatio()).toBe(0.42);
+    expect(settingsStore.get().document).toEqual(expect.objectContaining({
+      parser: { enableNest: false },
+      __treeaseEditorLayout: { splitRatio: 0.42 }
+    }));
   });
 
   it('reset saves defaultSettings to IndexedDB and resets store to defaults', async () => {

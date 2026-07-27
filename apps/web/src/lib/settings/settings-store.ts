@@ -8,6 +8,12 @@ import {
   type Settings,
   type SettingsDocument
 } from './ui-settings';
+import {
+  getEditorSplitRatio,
+  mergeEditorLayoutState,
+  omitEditorLayoutState,
+  withEditorSplitRatio,
+} from './editor-layout-state';
 import { handleError } from '../utils/error-handler';
 
 const DB_NAME = 'treease-settings';
@@ -132,6 +138,17 @@ function createSettingsStore() {
         internalStore.update(s => ({ ...s, status: 'error' }));
       }
     },
+    saveSettingsDialogDocument: async (document: SettingsDocument) => {
+      const currentState = get(internalStore);
+      await settingsStore.saveDocument(mergeEditorLayoutState(document, currentState.document));
+    },
+    saveEditorSplitRatio: async (splitRatio: number) => {
+      const currentState = get(internalStore);
+      const document = withEditorSplitRatio(currentState.document, splitRatio);
+      if (document === currentState.document) return;
+      await settingsStore.saveDocument(document);
+    },
+    getEditorSplitRatio: () => getEditorSplitRatio(get(internalStore).document),
     reset: async () => {
       const document = mergeSettings(defaultSettings, {});
       internalStore.set({ document, settings: document, status: 'ready' });
@@ -151,5 +168,6 @@ function createSettingsStore() {
 export const settingsStore = createSettingsStore();
 
 export const settingsDocument: Readable<SettingsDocument> = derived(internalStore, $s => $s.document);
+export const settingsDialogDocument: Readable<SettingsDocument> = derived(internalStore, $s => omitEditorLayoutState($s.document));
 export const settings: Readable<Settings> = derived(internalStore, $s => $s.settings);
 export const settingsStatus: Readable<SettingsStatus> = derived(internalStore, $s => $s.status);

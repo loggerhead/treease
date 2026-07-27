@@ -5,7 +5,7 @@
   import { fade, fly } from 'svelte/transition';
   import type * as Monaco from 'monaco-editor';
   import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog';
-  import { settingsDocument, settingsStore } from '../settings/settings-store';
+  import { settingsDialogDocument, settingsStore } from '../settings/settings-store';
   import { defaultSettings, settingsJsonSchema } from '../settings/ui-settings';
   import { initMonacoRuntime } from '../monaco/editor-runtime';
   import { loadMonacoJsonDefaults } from '../monaco/runtime-adapter';
@@ -141,7 +141,7 @@
   async function handleSave() {
     try {
       const parsed = JSON.parse(draft);
-      await settingsStore.saveDocument(parsed);
+      await settingsStore.saveSettingsDialogDocument(parsed);
       dirty = false;
       disposeMonacoEditor();
       open = false;
@@ -166,13 +166,13 @@
       return;
     }
     dirty = false;
-    applyDraft(stringifySettingsDocument(get(settingsDocument)));
+    applyDraft(stringifySettingsDocument(get(settingsDialogDocument)));
     error = '';
     void tick().then(() => ensureMonacoEditor());
   }
 
   $: if (open && !dirty) {
-    applyDraft(stringifySettingsDocument($settingsDocument));
+    applyDraft(stringifySettingsDocument($settingsDialogDocument));
     error = '';
   }
 
