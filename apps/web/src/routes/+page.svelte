@@ -11,7 +11,7 @@
     startBillingCheckout,
     type PreparedBillingCheckout,
   } from '$lib/billing/checkout-flow';
-  import { authUser } from '$lib/auth/auth-user-store';
+  import { authReady, authUser } from '$lib/auth/auth-user-store';
   import {
     fixedYearlySavingsPercent,
     pricingConfig,
@@ -116,7 +116,7 @@
 
   $: if (browser) {
     const authKey = $authUser?.id ?? 'anonymous';
-    if (pricingPrewarmKey !== authKey) startPricingPrewarm();
+    if ($authReady && pricingPrewarmKey !== authKey) startPricingPrewarm();
   }
 
   async function handleLogout(): Promise<void> {

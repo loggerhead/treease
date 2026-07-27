@@ -3,6 +3,7 @@ import { writable } from 'svelte/store';
 import { ensureAuthSession, getSupabaseClient } from './supabase-auth';
 
 export const authUser = writable<User | null>(null);
+export const authReady = writable(false);
 
 // Landing and editor headers share one Supabase listener. The generation guard
 // prevents a retired listener from overwriting the next mounted header's state.
@@ -13,6 +14,7 @@ let observerGeneration = 0;
 export function observeAuthUser(): () => void {
   observerCount += 1;
   if (!stopAuthObserver) {
+    authReady.set(false);
     const generation = ++observerGeneration;
     const { data } = getSupabaseClient().auth.onAuthStateChange((_event, session) => {
       if (generation === observerGeneration) authUser.set(session?.user ?? null);
@@ -23,6 +25,9 @@ export function observeAuthUser(): () => void {
       })
       .catch(() => {
         if (generation === observerGeneration) authUser.set(null);
+      })
+      .finally(() => {
+        if (generation === observerGeneration) authReady.set(true);
       });
     stopAuthObserver = () => data.subscription.unsubscribe();
   }
@@ -35,6 +40,7 @@ export function observeAuthUser(): () => void {
     stopAuthObserver?.();
     stopAuthObserver = null;
     authUser.set(null);
+    authReady.set(false);
   };
 }
 
