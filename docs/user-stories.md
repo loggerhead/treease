@@ -25,6 +25,7 @@ Treease focuses on a continuous experience: users open content, understand its s
 - Frontend and backend developers: need to quickly locate deeply nested fields between the editor, Graph, and Tree Path, and confirm structural changes after edits.
 - Debugging and testing users: need to compare two pieces of structured content, copy structural paths, locate differences, and reproduce issues.
 - Large-file analysis users: need to import large JSON files and see clear processing progress while waiting.
+- AI-assisted data users: want to describe a structured-data transformation in natural language and inspect the result without manually writing a query first.
 - Command-line users: need to process structured input in the terminal, control output formats, or update files directly.
 
 ## Core User Journeys
@@ -41,7 +42,8 @@ Treease focuses on a continuous experience: users open content, understand its s
 10. Open a specified editor, viewer, or compare scenario through a URL preset to reproduce a demo, shared link, or issue state.
 11. Open Settings to adjust editor, formatting, view, and interaction preferences and save them locally.
 12. Use `treease` on the command line to process input, inspect output, or update files directly.
-13. Log in from the current page, return to the same work after authentication, and manage the active account from the header.
+13. Ask AI to turn a natural-language request into a yq transformation, preview the result, and keep the source document unchanged.
+14. Log in from the current page, return to the same work after authentication, and manage the active account from the header.
 
 ## User Stories
 
@@ -237,6 +239,21 @@ As a user enabling account-backed features, I want to log in without losing the 
   - Logged-in headers show the provider avatar when available and a readable initial otherwise.
   - The account menu shows the user's name or email and provides Log out.
 
+### US-16 Transform Structured Data with AI Assistance
+
+As an AI-assisted data user, I want to describe the transformation I need in natural language, so Treease can generate a yq expression and show me the resulting structured data without requiring me to write the query first.
+
+- User behavior: Open AI from the editor, describe the desired transformation, and submit the request while a structured document is active.
+- User expectation: Treease uses the current document and, when available, the current Tree Path as context, generates an executable yq expression, and displays the result in the viewer.
+- User value: Makes common structured-data exploration and transformation tasks accessible to users who know the desired result but do not know the query syntax.
+- Expected experience:
+  - The AI input is available from the editor action bar and accepts a concise natural-language instruction.
+  - Treease requires the user to sign in before sending the request and clearly explains when sign-in is needed.
+  - The current document remains unchanged; the generated result is shown as a preview in the viewer.
+  - The generated yq expression is visible so users can understand or reuse the transformation.
+  - Empty documents, invalid generated expressions, provider failures, and other processing failures produce clear feedback while preserving the source document.
+  - Each successful AI processing request consumes the server-enforced monthly allowance; users can see their AI processing usage and understand when the allowance is exhausted or an upgrade is required.
+
 ## Product Boundaries
 
 - Treease is for structured text, not a general rich-text editor.
@@ -245,6 +262,7 @@ As a user enabling account-backed features, I want to log in without losing the 
 - Compare primarily serves structured-content review. Users should still be able to see text-level differences when content cannot be understood structurally.
 - Settings targets advanced users familiar with JSON configuration, not a form wizard for every option.
 - Command-line capabilities serve automation and batch processing; they are not equivalent to the full interactive Web experience.
+- AI processing assists with generating and previewing a structured-data query; it does not silently overwrite the source document or guarantee that the generated result is correct.
 
 ## Maintenance Rules
 

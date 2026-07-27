@@ -18,7 +18,7 @@
     "unicode": "你好",
     "base64": "aHR0cHM6Ly90cmVlYXNlLmRldi9wcmV2aWV3",
     "jwt": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ0cmVlYXNlIiwicm9sZSI6ImRlbW8iLCJleHAiOjE5MDAwMDAwMDB9.c2lnbmF0dXJl",
-    "img": "https://treease.com/icon.png",
+    "img": "https://assets.treease.com/treease-logo.png",
     "uris": [
       "https%3A%2F%2Ftreease.com%2Fpreview%3Ffrom%3Dhover",
       "https://treease.com/path?redirect=https%3A%2F%2Ftreease.com%2Fdone"
