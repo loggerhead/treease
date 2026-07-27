@@ -305,6 +305,12 @@
     await showRightPanelText(value, nextLanguage)
   }
 
+  export async function waitForIdle(): Promise<void> {
+    if (graphOnly) return
+    const readySidecarEditor = await ensureSidecarEditorReady()
+    await readySidecarEditor?.waitForIdle()
+  }
+
   export async function runCompare(): Promise<void> {
     if (graphOnly) return
     await runDiffCompare()

@@ -69,6 +69,16 @@ test('url compare command reads the right side from workspace state', async ({ p
     .toBeGreaterThan(0);
 });
 
+test('url compare waits for right-side inline decorations before completing', async ({ page }) => {
+  await page.goto('/editor?text=%7B%0A%20%20%22service%22%3A%20%7B%22name%22%3A%20%22api%22%2C%20%22port%22%3A%208080%7D%2C%0A%20%20%22features%22%3A%20%5B%22graph%22%2C%20%22compare%22%5D%0A%7D&rightText=%7B%0A%20%20%22features%22%3A%20%5B%22graph%22%2C%20%22compare%22%2C%20%22export%22%5D%2C%0A%20%20%22service%22%3A%20%7B%22name%22%3A%20%22api%22%2C%20%22port%22%3A%209090%7D%0A%7D&command=compare');
+
+  await waitForMonacoHook(page, 'right-editor');
+  await expect(page.getByText('Compare completed (differences found)')).toBeVisible();
+  const rightEditor = page.getByTestId('monaco-right-editor');
+  await expect(rightEditor.locator('.diff-inline-ins').filter({ hasText: '"export"' })).toHaveCount(1);
+  await expect(rightEditor.locator('.diff-line-ins')).toHaveCount(2);
+});
+
 test('textUrl preset fetches same-origin json into the source editor', async ({ page }) => {
   await page.goto('/editor?textUrl=%2Furl-preset%2Fsource.json');
 

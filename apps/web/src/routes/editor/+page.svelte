@@ -270,6 +270,7 @@
         if (!nextPreset.rightText.effective) {
           await viewerRef?.showTextPreview(viewerRef?.getActiveText() ?? '', viewerRef?.getActiveLanguage() ?? effectiveLanguage);
         }
+        await viewerRef?.waitForIdle?.();
         await viewerRef?.runCompare?.();
       } else {
         const previousText = getActiveDocumentText();

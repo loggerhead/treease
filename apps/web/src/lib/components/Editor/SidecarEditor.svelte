@@ -490,6 +490,13 @@
     await ensureEditor();
   }
 
+  export async function waitForIdle(): Promise<void> {
+    await ensureReady();
+    while (fullEditController.isImportActive() || fullEditSink.getState().active) {
+      await new Promise<void>((resolve) => setTimeout(resolve, 16));
+    }
+  }
+
   export function getMonaco(): typeof import('monaco-editor') | undefined {
     return monaco;
   }
