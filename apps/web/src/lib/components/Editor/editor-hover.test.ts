@@ -160,6 +160,41 @@ describe('registerEditorHoverPreview', () => {
     expect(generatePreview).not.toHaveBeenCalled();
   });
 
+  it('skips preview work for long lines', async () => {
+    const model = {
+      getValue: vi.fn(() => 'x'.repeat(10_001)),
+      getLineLength: vi.fn(() => 10_001),
+    } as any;
+    const editor = {
+      getModel: vi.fn(() => model),
+    } as any;
+    const monaco = {
+      languages: {
+        registerHoverProvider: vi.fn((_language: string, provider: unknown) => {
+          return { dispose: vi.fn(), provider };
+        }),
+      },
+      Range: class Range {},
+    } as any;
+
+    registerEditorHoverPreview({
+      monaco,
+      editor,
+      getTreeState: () => ({ tree: valueToTreeNode({}), value: {}, revision: 3, source: 'editor' }),
+      getRevision: () => 3,
+      getDocumentKey: () => 'vitest://hover/long-line',
+      getLanguageId: () => 'json',
+      getNestEnabled: () => true,
+    });
+
+    const provider = getProvider(monaco);
+    const hover = await provider.provideHover(model, { lineNumber: 1, column: 10_001 });
+
+    expect(hover).toBeNull();
+    expect(resolveTreePathResult).not.toHaveBeenCalled();
+    expect(generatePreview).not.toHaveBeenCalled();
+  });
+
 
   it('maps multiple preview blocks into hover contents', async () => {
     const model = {

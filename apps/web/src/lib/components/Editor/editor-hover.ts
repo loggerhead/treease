@@ -26,6 +26,7 @@ type RegisterEditorHoverPreviewOptions = {
 
 const utf8Encoder = new TextEncoder();
 const utf8Decoder = new TextDecoder();
+const MAX_HOVER_PREVIEW_LINE_LENGTH = 10_000;
 
 function sliceUtf8ByBytes(text: string, startByte: number, endByte: number): string {
   if (startByte < 0 || endByte <= startByte) return '';
@@ -111,6 +112,11 @@ function isPositionInsideModel(model: Monaco.editor.ITextModel, position: Monaco
   }
 }
 
+function isLongHoverPreviewLine(model: Monaco.editor.ITextModel, lineNumber: number): boolean {
+  const getLineLength = (model as Monaco.editor.ITextModel & { getLineLength?: (line: number) => number }).getLineLength;
+  return typeof getLineLength === 'function' && getLineLength.call(model, lineNumber) > MAX_HOVER_PREVIEW_LINE_LENGTH;
+}
+
 async function resolveHoverPreviewContext(
   model: Monaco.editor.ITextModel,
   path: PathSeg[],
@@ -155,6 +161,7 @@ export function registerEditorHoverPreview({
         if (isImportActive?.()) return null;
         if (editor.getModel() !== model) return null;
         if (!isPositionInsideModel(model, position)) return null;
+        if (isLongHoverPreviewLine(model, position.lineNumber)) return null;
         const requestRevision = getRevision();
         const requestDocumentKey = getDocumentKey();
         const activeLanguageId = getLanguageId();
