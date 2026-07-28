@@ -1,5 +1,5 @@
 import type { GraphViewerConfig } from "../../settings/ui-settings";
-import { type GraphNode } from "../../graph/graph-viewer-render";
+import { type GraphNode } from '@treease/graph-viewer-runtime';
 import { createGraphSceneRuntime } from "./graph-scene-runtime";
 import type { GraphSceneLayers, GraphViewerClickTargetStore } from "./model";
 

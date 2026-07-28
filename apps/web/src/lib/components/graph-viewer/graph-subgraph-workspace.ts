@@ -5,14 +5,14 @@ import type { DocumentProjectionDelta, SnapshotId, SnapshotReadResult } from '@c
 import type { GraphViewerConfig } from '../../settings/ui-settings';
 import type { SupportedEditorLanguageId } from '../../monaco/language-support';
 import { buildReadablePath, isPathSegKey, pathSegKeyValue, type PathSeg } from '../../store/tree-path';
-import type { DrawContext, GraphCell, GraphCellKind, GraphEdge, GraphNode } from '../../graph/graph-viewer-render';
-import { renderGraphEdges, renderGraphNode } from './graph-render-kernel';
+import type { DrawContext, GraphCell, GraphCellKind, GraphEdge, GraphNode } from '@treease/graph-viewer-runtime';
+import { renderGraphEdges, renderGraphNode } from '@treease/graph-viewer-runtime';
 import {
   GRAPH_PAN_CONSTRAINT_PADDING,
   clampPanOffsetToGraphBounds,
   getZoomScale,
   type GraphWorldBounds,
-} from './graph-viewport-geometry';
+} from '@treease/graph-viewer-runtime';
 import type {
   LeaferAppLike,
   LeaferBox,

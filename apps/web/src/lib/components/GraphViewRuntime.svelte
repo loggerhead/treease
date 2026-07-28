@@ -37,13 +37,13 @@
     createGraphStreamProgressController,
     createGraphTreeStateController,
     createGraphTextLinkageController,
-    createGraphValueEditController,
     createGraphViewportController,
     shouldApplyGraphHighlight,
     type GraphStreamProgressState,
     type LeaferEventTarget,
     type LeaferZoomLayer,
   } from './graph-viewer/interaction';
+  import { createWebGraphEditAdapter } from './graph-viewer/web-graph-edit-adapter';
   import {
     createGraphRenderBindings,
     createGraphSceneRenderDeps,
@@ -101,8 +101,8 @@
   import type { EditorIO } from '../store/document-session-store';
   import { handleError } from '../utils/error-handler';
   import { GRAPH_CONFIG } from '../config/constants';
-  import { resolveGraphCellDisplayText } from '../graph/literal-display';
-  import { type GraphCell, type GraphCellKind, type GraphNode } from '../graph/graph-viewer-render';
+  import { resolveGraphCellDisplayText } from '@treease/graph-viewer-runtime';
+  import { type GraphCell, type GraphCellKind, type GraphNode } from '@treease/graph-viewer-runtime';
   import { buildPathKey } from '../graph/graph-viewer-path';
   import { isDocumentRevisionGuardCurrent } from '../guards/document-revision-guard';
   import { clearGraphSelectionForFullEdit } from './GraphViewer.graph-highlight';
@@ -488,7 +488,7 @@
   const ensurePathIndex = graphTextLinkageController.ensurePathIndex;
   const emitReveal = graphTextLinkageController.emitReveal;
 
-  const graphValueEditController = createGraphValueEditController({
+  const graphEditAdapter = createWebGraphEditAdapter({
     getCurrentData: () => null,
     getSourceText: () => $sourceText ?? '',
     getDocumentKey: () => documentKeyValue,
@@ -516,10 +516,11 @@
     }),
     handleError,
   });
-  const hasActiveEdit = graphValueEditController.hasActiveEdit;
-  const applyGraphEdit = graphValueEditController.applyGraphEdit;
-  const bindGraphEditorLifecycle = graphValueEditController.bindGraphEditorLifecycle;
-  resetActiveEditState = graphValueEditController.resetActiveEditState;
+  const hasActiveEdit = graphEditAdapter.hasActiveEdit;
+  const applyGraphEdit = graphEditAdapter.applyGraphEdit;
+  const bindGraphEditorLifecycle = graphEditAdapter.bindRuntimeEditor;
+  resetActiveEditState = graphEditAdapter.resetActiveEditState;
+  const onRuntimeReady = ({ editor }: { editor: unknown | null }) => bindGraphEditorLifecycle(editor);
   const subgraphWorkspaceController = createSubgraphWorkspaceController({
     defaultHeightPx: SUBGRAPH_WORKSPACE_DEFAULT_HEIGHT,
     getActiveSnapshotId: () => graphRenderCoordinator.getActiveSnapshotId(),
@@ -1253,7 +1254,7 @@
         bind:PointerEventCtor
         minimapRuntimeController={graphMinimapRuntimeController}
         {registerViewportEvents}
-        {bindGraphEditorLifecycle}
+        {onRuntimeReady}
         {updateSize}
         {scheduleMeasure}
         minimapWidth={MINIMAP_WIDTH}

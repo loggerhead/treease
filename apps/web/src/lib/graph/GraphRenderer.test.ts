@@ -1,7 +1,7 @@
 // Responsibility: unit tests for graph-render-kernel.
 import { describe, expect, it, vi } from "vitest";
-import { renderGraphEdges } from "../components/graph-viewer/graph-render-kernel";
-import type { GraphEdge, GraphNode } from "./graph-viewer-render";
+import { renderGraphEdges } from '@treease/graph-viewer-runtime';
+import type { GraphEdge, GraphNode } from '@treease/graph-viewer-runtime';
 
 function makeNode(
   renderHandle: number,

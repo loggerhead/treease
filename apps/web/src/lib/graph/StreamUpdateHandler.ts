@@ -1,5 +1,5 @@
 // Responsibility: convert Worker stream deltas into graph updates consumed by GraphViewer.
-import type { GraphNode, GraphEdge } from './graph-viewer-render';
+import type { GraphNode, GraphEdge } from '@treease/graph-viewer-runtime';
 import {
   isRawGraphDelta,
   normalizeRawEdge,

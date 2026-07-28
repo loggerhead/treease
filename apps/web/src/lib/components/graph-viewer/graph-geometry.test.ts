@@ -3,7 +3,7 @@ import {
   getClientProbeCoordFromBoxLike,
   getClientRectFromWorldRect,
   getWorldRectFromBoxLike,
-} from './graph-geometry';
+} from '@treease/graph-viewer-runtime';
 
 describe('graph-geometry', () => {
   it('resolves world rects through the nearest Leafer world transform', () => {

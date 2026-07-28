@@ -138,7 +138,45 @@ const mockRenderState = vi.hoisted(() => ({
 
 vi.mock("../../graph/StreamUpdateHandler", () => mockStreamUpdateHandler);
 
-vi.mock("../../graph/graph-viewer-render", () => ({
+vi.mock('@treease/graph-viewer-runtime', async (importOriginal) => ({
+  ...(await importOriginal()),
+  ...renderKernelMocks,
+  createGraphDirtyRegion: vi.fn(() => ({
+    reset: vi.fn(),
+    mark: vi.fn(),
+    flush: vi.fn(),
+    getCurrent: vi.fn(() => null),
+  })),
+  getViewportBounds: vi.fn((container: any, leafer: any) => {
+    const rect = container?.getBoundingClientRect?.();
+    const layer = leafer?.zoomLayer;
+    if (!rect || !layer) return null;
+    const scaleX = layer.scaleX ?? 1;
+    const scaleY = layer.scaleY ?? 1;
+    return {
+      left: -(layer.x ?? 0) / scaleX,
+      right: (rect.width - (layer.x ?? 0)) / scaleX,
+      top: -(layer.y ?? 0) / scaleY,
+      bottom: (rect.height - (layer.y ?? 0)) / scaleY,
+    };
+  }),
+  doesBoxIntersectBounds: vi.fn((box: any, bounds: any) =>
+    box.x + box.width >= bounds.left && box.x <= bounds.right && box.y + box.height >= bounds.top && box.y <= bounds.bottom,
+  ),
+  ensureGraphViewerLayers: vi.fn(({ root, BoxCtor, layers }: any) => {
+    if (!root || !BoxCtor) return {};
+    const next: Record<string, any> = {};
+    for (const [key, config] of Object.entries({
+      edgeLayer: { fill: 'transparent' },
+      nodeLayer: { fill: 'transparent' },
+      overlayLayer: { fill: 'transparent', hittable: false, hitChildren: false },
+    })) {
+      if (layers[key]) continue;
+      next[key] = new BoxCtor(config);
+      root.add(next[key]);
+    }
+    return next;
+  }),
   createCellText: vi.fn((drawContext: any, _layer: any, cell: any) => ({
     kind: "meta-text",
     text: cell?.text ?? "",
@@ -188,7 +226,7 @@ vi.mock("../../graph/graph-viewer-render", () => ({
   tableRuntimeOps: {},
 }));
 
-vi.mock("./graph-render-kernel", () => ({
+const renderKernelMocks = vi.hoisted(() => ({
   renderGraphEdges: vi.fn((_args: any) => []),
   renderGraphNode: vi.fn(
     ({ node, drawContext, registerMetaClickTarget }: any) => {

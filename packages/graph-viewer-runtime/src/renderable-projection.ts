@@ -1,9 +1,6 @@
 // Responsibility: calculate the desired Leafer scene from immutable graph facts and viewport input.
-import type { GraphEdge, GraphNode } from "../../graph/graph-viewer-render";
-import {
-  doesBoxIntersectBounds,
-  type ViewportBounds,
-} from "./graph-viewport-geometry";
+import type { GraphEdge, GraphNode } from './types';
+import { doesBoxIntersectBounds, type ViewportBounds } from './viewport-geometry';
 
 export type GraphModel = {
   revision: number;

@@ -1,4 +1,4 @@
-import type { GraphCell, GraphCellKind } from '../../../graph/graph-viewer-render';
+import type { GraphCell, GraphCellKind } from '@treease/graph-viewer-runtime';
 import type { CellBoxEntry, LeaferBox, ScrollableBox } from '../model';
 
 export function toGraphClickTarget(kind: GraphCellKind): 'key' | 'value' | 'node' {

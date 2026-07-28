@@ -3,7 +3,7 @@ import type { PathSeg } from '../../../store/tree-path';
 import { getClientProbeCoordFromBoxLike, getClientRectFromBoxLike, getWorldRectFromBoxLike } from '../rendering';
 import type { GraphRuntimeProbeTarget } from './index';
 import type { LeaferAppLike, LeaferBox, GraphViewerClickTarget } from '../model';
-import type { GraphCell, GraphCellKind, GraphNode } from '../../../graph/graph-viewer-render';
+import type { GraphCell, GraphCellKind, GraphNode } from '@treease/graph-viewer-runtime';
 
 type ProbeController = {
   listRootClickTargets: () => GraphViewerClickTarget[];

@@ -11,12 +11,7 @@
     "skipLibCheck": true,
     "baseUrl": ".",
     "paths": {
-      "@core-wasm/*": ["../../packages/core/wasm/*"],
-      "@treease-web/lib/settings/ui-settings": ["src/sidepanel/web-graph-viewer.types.d.ts"],
-      "@treease-web/lib/components/graph-viewer/graph-render-kernel": ["src/sidepanel/web-graph-viewer.types.d.ts"],
-      "@treease-web/lib/components/graph-viewer/graph-pointer-controller": ["src/sidepanel/web-graph-viewer.types.d.ts"],
-      "@treease-web/lib/graph/graph-viewer-render": ["src/sidepanel/web-graph-viewer.types.d.ts"],
-      "@treease-web/*": ["../web/src/*"]
+      "@core-wasm/*": ["../../packages/core/wasm/*"]
     }
   },
   "include": ["src/**/*.ts", "test/**/*.ts", "vite.config.ts"]

@@ -16,7 +16,18 @@ const renderKernelMocks = vi.hoisted(() => ({
   })),
 }));
 
-vi.mock('./graph-render-kernel', () => renderKernelMocks);
+vi.mock('@treease/graph-viewer-runtime', async (importOriginal) => ({
+  ...(await importOriginal()),
+  ...renderKernelMocks,
+  getZoomScale: vi.fn((layer: { scaleX?: number; scaleY?: number }) => ({
+    scaleX: layer.scaleX ?? 1,
+    scaleY: layer.scaleY ?? 1,
+  })),
+  clampPanOffsetToGraphBounds: vi.fn((viewport: { offsetX: number; offsetY: number }) => ({
+    x: viewport.offsetX,
+    y: viewport.offsetY,
+  })),
+}));
 
 import { destroySubgraphWorkspaceRuntime, renderSubgraphWorkspaceGraph } from './graph-subgraph-workspace';
 

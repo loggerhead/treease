@@ -1,4 +1,10 @@
-import type { LeaferAppLike, LeaferBox } from './model';
+type LeaferAppLike = {
+  updateClientBounds?: () => void;
+  getClientPointByWorld?: (point: { x: number; y: number }) => { x?: number; y?: number } | null;
+};
+type LeaferBox = {
+  x?: number; y?: number; width?: number; height?: number; parent?: LeaferBox | null;
+};
 
 export type GraphGeometryRect = {
   left: number;

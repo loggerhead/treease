@@ -1,4 +1,5 @@
-import type { LeaferAppLike, LeaferBox } from './model';
+type LeaferAppLike = { view?: { parentElement?: Element | null } | null; getClientPointByWorld?: (point: { x: number; y: number }) => { x?: number; y?: number } | null };
+type LeaferBox = { getWorldPointByBox?: (point: { x: number; y: number }) => { x?: number; y?: number } | null };
 
 export type LeaferEventTarget = {
   on?: (event: string, callback: (event?: unknown) => void) => void;
@@ -164,9 +165,9 @@ export function createGraphPointerController(options: CreateGraphPointerControll
     const worldUnitX = targetBox.getWorldPointByBox({ x: 1, y: 0 });
     const worldUnitY = targetBox.getWorldPointByBox({ x: 0, y: 1 });
     if (!worldOrigin || !worldUnitX || !worldUnitY) return null;
-    const clientOrigin = activeApp.getClientPointByWorld(worldOrigin);
-    const clientUnitX = activeApp.getClientPointByWorld(worldUnitX);
-    const clientUnitY = activeApp.getClientPointByWorld(worldUnitY);
+    const clientOrigin = activeApp.getClientPointByWorld({ x: Number(worldOrigin.x), y: Number(worldOrigin.y) });
+    const clientUnitX = activeApp.getClientPointByWorld({ x: Number(worldUnitX.x), y: Number(worldUnitX.y) });
+    const clientUnitY = activeApp.getClientPointByWorld({ x: Number(worldUnitY.x), y: Number(worldUnitY.y) });
     if (!clientOrigin || !clientUnitX || !clientUnitY) return null;
     const scaleX = Number(clientUnitX.x) - Number(clientOrigin.x);
     const scaleY = Number(clientUnitY.y) - Number(clientOrigin.y);

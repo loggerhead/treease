@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createLeaferVirtualList } from './leafer-virtual-list';
+import { createLeaferVirtualList } from '@treease/graph-viewer-runtime';
 
 class MockBox {
   x: number;

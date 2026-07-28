@@ -1,4 +1,4 @@
-import type { GraphCell, ValueType } from '../../../graph/graph-viewer-render';
+import type { GraphCell, ValueType } from '@treease/graph-viewer-runtime';
 import type { PathSeg } from '../../../store/tree-path';
 import type { SubgraphWorkspaceGraphData } from '../graph-subgraph-workspace-types';
 

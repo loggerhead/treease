@@ -1,6 +1,5 @@
 // Responsibility: GraphViewer viewport geometry helpers for center, zoom scale, bounds, intersection, and applyZoom.
-import type { App as LeaferApp, Box } from 'leafer-ui';
-import type { GraphBoxArgs, GraphNode } from '../../graph/graph-viewer-render';
+import type { GraphBoxArgs, GraphNode } from './types';
 
 export type LeaferZoomLayer = {
   x?: number;
@@ -21,10 +20,10 @@ export type GraphWorldBounds = ViewportBounds;
 export const GRAPH_PAN_CONSTRAINT_PADDING = 500;
 
 export type ViewportState = {
-  leafer: LeaferApp | null;
+  leafer: { zoomLayer?: LeaferZoomLayer; resize?: (size: { width: number; height: number }) => void } | null;
   container: HTMLDivElement | null;
-  edgeLayer: Box | null;
-  nodeLayer: Box | null;
+  edgeLayer: unknown | null;
+  nodeLayer: unknown | null;
   lastAutoOffset: { x: number; y: number } | null;
 };
 
@@ -83,7 +82,7 @@ export function clampPanOffsetToGraphBounds(
   };
 }
 
-export function getViewportBounds(container: HTMLElement | null, leafer: (LeaferApp & { zoomLayer?: LeaferZoomLayer }) | null): ViewportBounds | null {
+export function getViewportBounds(container: HTMLElement | null, leafer: { zoomLayer?: LeaferZoomLayer } | null): ViewportBounds | null {
   if (!container || !leafer?.zoomLayer) return null;
   const rect = container.getBoundingClientRect();
   const layer = leafer.zoomLayer;
@@ -142,7 +141,7 @@ export function updateSize(state: ViewportState): void {
   if (!leafer || !container) return;
   const { width, height } = container.getBoundingClientRect();
   if (width > 0 && height > 0) {
-    leafer.resize({ width, height });
+    leafer.resize?.({ width, height });
   }
 }
 

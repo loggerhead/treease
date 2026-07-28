@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { GRAPH_PAN_CONSTRAINT_PADDING, clampPanOffsetToGraphBounds } from './graph-viewport-geometry';
+import { GRAPH_PAN_CONSTRAINT_PADDING, clampPanOffsetToGraphBounds } from '@treease/graph-viewer-runtime';
 
 describe('clampPanOffsetToGraphBounds', () => {
   it('clamps drag offsets to graph bounds plus padding when content exceeds viewport', () => {

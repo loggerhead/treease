@@ -1,12 +1,12 @@
 import { resolveGraphCellDisplayText } from './literal-display';
-import { resolveSemanticTypeColor } from '../semantic-type-color';
+import { resolveSemanticTypeColor } from './semantic-type-color';
 import {
   createTableRuntime,
   describeTableRuntime,
   destroyTableRuntime,
   patchTableContent,
   patchTableStructure,
-} from '../components/graph-viewer/runtime/table-runtime';
+} from './table/runtime';
 import type {
   DrawContext,
   GraphBoxArgs,
@@ -17,7 +17,7 @@ import type {
   GraphTable,
   TableRowBinding,
   TableRowRenderEntry,
-} from './graph-viewer-types';
+} from './types';
 
 export type {
   DrawContext,
@@ -34,7 +34,7 @@ export type {
   TableRowRenderEntry,
   TableRuntime,
   ValueType,
-} from './graph-viewer-types';
+} from './types';
 
 type NodeBoxOptions = {
   stroke?: boolean;

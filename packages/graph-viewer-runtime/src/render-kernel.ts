@@ -1,5 +1,5 @@
 // Responsibility: GraphViewer scene-rendering kernel for node/edge drawing, edge filtering, and render-config application.
-import type { GraphViewerConfig } from "../../settings/ui-settings";
+import type { GraphViewerRenderConfig } from "./config";
 import {
   createCellText,
   drawSimpleNode,
@@ -7,7 +7,7 @@ import {
   type DrawContext,
   type GraphEdge,
   type GraphNode,
-} from "../../graph/graph-viewer-render";
+} from "./render";
 
 type PenLike = {
   setStyle: (style: { stroke: string; strokeWidth: number }) => void;
@@ -36,7 +36,7 @@ type RenderGraphEdgesInput = {
   edges: GraphEdge[];
   layer: LayerLike | null;
   PenCtor: PenCtorLike | null;
-  renderConfig: GraphViewerConfig;
+  renderConfig: GraphViewerRenderConfig;
   edgeRenderByKey?: Map<string, PenLike>;
 };
 
@@ -80,7 +80,8 @@ export type RenderGraphNodeResult = {
 
 export function renderGraphEdges(input: RenderGraphEdgesInput): GraphEdge[] {
   if (!input.layer || !input.PenCtor) return [];
-  if (!input.edgeRenderByKey) input.layer.removeAll(true);
+  const { layer, PenCtor } = input;
+  if (!input.edgeRenderByKey) layer.removeAll(true);
   const renderedEdges: GraphEdge[] = [];
   const desiredKeys = new Set<string>();
   input.edges.forEach((edge) => {
@@ -89,11 +90,11 @@ export function renderGraphEdges(input: RenderGraphEdgesInput): GraphEdge[] {
     renderedEdges.push(edge);
     if (input.edgeRenderByKey?.has(key)) return;
     const curve = edge.bezierArgs;
-    const pen = new input.PenCtor();
+    const pen = new PenCtor();
     pen.setStyle({ stroke: input.renderConfig.colors.edge, strokeWidth: 1 });
     pen.moveTo(curve.fromX, curve.fromY);
     pen.bezierCurveTo(curve.c1x, curve.c1y, curve.c2x, curve.c2y, curve.toX, curve.toY);
-    input.layer.add(pen);
+    layer.add(pen);
     input.edgeRenderByKey?.set(key, pen);
   });
   if (input.edgeRenderByKey) {

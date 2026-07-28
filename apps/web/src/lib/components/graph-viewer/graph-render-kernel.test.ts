@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import { renderGraphEdges } from "./graph-render-kernel";
-import type { GraphEdge, GraphNode } from "../../graph/graph-viewer-render";
+import { renderGraphEdges } from '@treease/graph-viewer-runtime';
+import type { GraphEdge, GraphNode } from '@treease/graph-viewer-runtime';
 
 class MockPen {
   public style: Record<string, unknown> | null = null;

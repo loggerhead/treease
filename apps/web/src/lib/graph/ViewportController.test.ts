@@ -10,8 +10,8 @@ import {
   isPointInBounds,
   updateSize,
   type ViewportState,
-} from '../components/graph-viewer/graph-viewport-geometry';
-import type { ViewportBounds } from '../components/graph-viewer/graph-viewport-geometry';
+} from '@treease/graph-viewer-runtime';
+import type { ViewportBounds } from '@treease/graph-viewer-runtime';
 
 describe('ViewportController', () => {
   describe('getViewportCenter', () => {

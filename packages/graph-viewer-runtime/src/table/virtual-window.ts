@@ -1,4 +1,4 @@
-import type { GraphRow, TableRowRenderEntry } from '../../../graph/graph-viewer-types';
+import type { GraphRow, TableRowRenderEntry } from '../types';
 
 export type TableVisibleRange = {
   start: number;

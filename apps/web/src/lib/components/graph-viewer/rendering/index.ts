@@ -3,12 +3,12 @@ export type { GraphRenderGuard } from '../graph-render-session';
 export { createGraphSceneController } from '../graph-scene';
 export type { GraphSceneViewData } from '../graph-scene-runtime';
 export { createGraphViewerRenderEffects } from '../graph-viewer-render-effects';
-export { getZoomScale } from '../graph-viewport-geometry';
+export { getZoomScale } from '@treease/graph-viewer-runtime';
 export {
   getClientProbeCoordFromBoxLike,
   getClientRectFromBoxLike,
   getWorldRectFromBoxLike,
-} from '../graph-geometry';
+} from '@treease/graph-viewer-runtime';
 export {
   getCellEntry,
   registerCellBox,

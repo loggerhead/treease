@@ -1,15 +1,27 @@
-// Responsibility: host the same Leafer graph rendering kernel used by Treease Web.
-// The extension deliberately owns only the shell and local Core document job; node,
-// table and edge drawing stay in the Web GraphViewer implementation.
-import { graphViewerConfig } from '@treease-web/lib/settings/ui-settings';
-import { renderGraphEdges, renderGraphNode } from '@treease-web/lib/components/graph-viewer/graph-render-kernel';
-import { createGraphPointerController } from '@treease-web/lib/components/graph-viewer/graph-pointer-controller';
-import type { GraphCell, GraphCellKind } from '@treease-web/lib/graph/graph-viewer-render';
-import type { GraphData } from '../shared/types';
-import { resolveWorkspacePath } from './workspace-path';
+import { defaultGraphViewerRenderConfig, type GraphViewerRenderConfig } from './config';
+import { renderGraphEdges, renderGraphNode } from './render-kernel';
+import { createGraphPointerController } from './pointer-controller';
+import type { GraphCell, GraphCellKind, GraphEdge, GraphNode } from './types';
+import { loadGraphViewerRuntime, type LoadedGraphRuntime } from './runtime-loader';
+import { createGraphViewportController } from './viewport-controller';
 
-type Path = GraphData['nodes'][number]['path'];
-type SelectPath = (path: Path, options: { openWorkspace: boolean; workspacePath?: Path }) => void;
+export type GraphData = { nodes: GraphNode[]; edges: GraphEdge[] };
+export type GraphActivation = { path: GraphCell['path']; nodeKind?: GraphNode['kind']; target: 'cell' | 'node' };
+export type GraphHighlightTarget = { renderHandle: number } | null;
+export type RawGraphDelta = unknown;
+export type GraphViewerInteraction = {
+  onActivate?: (event: GraphActivation) => void;
+  onRuntimeReady?: (runtime: GraphRuntimeHandle) => void;
+  onError?: (error: unknown) => void;
+};
+export type GraphRuntimeHandle = { app: unknown; modules: unknown };
+export type GraphViewerRuntimeOptions = {
+  host: HTMLElement;
+  config?: GraphViewerRenderConfig;
+  interaction?: GraphViewerInteraction;
+  /** Hosts own delta normalization and freshness; runtime only applies the resulting graph. */
+  reduceDelta?: (current: GraphData, delta: RawGraphDelta) => GraphData;
+};
 
 type LeaferModules = {
   App: new (config: Record<string, unknown>) => any;
@@ -21,11 +33,8 @@ type LeaferModules = {
   MoveEvent?: { BEFORE_MOVE?: string; MOVE?: string };
 };
 
-/**
- * A read-only GraphViewer surface for the extension. Its rendering functions and
- * visual configuration are imported from apps/web, rather than reimplemented.
- */
-export class ExtensionGraphViewer {
+/** Framework-neutral Leafer graph surface; hosts supply only interaction policy. */
+export class GraphViewerRuntime {
   private app: any | null = null;
   private edgeLayer: any | null = null;
   private nodeLayer: any | null = null;
@@ -36,15 +45,21 @@ export class ExtensionGraphViewer {
   private workspaceProbeTarget: any | null = null;
   private graph: GraphData | null = null;
   private lastTargetActivationAt = 0;
-  private resizeObserver: ResizeObserver | null = null;
+  private loadedRuntime: LoadedGraphRuntime | null = null;
+  private viewportController: ReturnType<typeof createGraphViewportController> | null = null;
   private disposed = false;
 
-  constructor(private readonly host: HTMLElement, private readonly onSelectPath: SelectPath) {
-    host.addEventListener('click', this.handleCanvasClick, true);
-    host.addEventListener('pointerdown', this.handleCanvasClick, true);
+  constructor(private readonly options: GraphViewerRuntimeOptions) {
+    this.host = options.host;
+    this.config = options.config ?? defaultGraphViewerRenderConfig;
+    this.host.addEventListener('click', this.handleCanvasClick, true);
+    this.host.addEventListener('pointerdown', this.handleCanvasClick, true);
   }
 
-  async render(graph: GraphData): Promise<void> {
+  private readonly host: HTMLElement;
+  private readonly config: GraphViewerRenderConfig;
+
+  async replaceGraph(graph: GraphData): Promise<void> {
     await this.ensureRuntime();
     if (this.disposed || !this.modules || !this.app || !this.nodeLayer || !this.edgeLayer) return;
 
@@ -64,9 +79,9 @@ export class ExtensionGraphViewer {
     });
     const drawContext = {
       nodeLayer: this.nodeLayer,
-      styleConfig: graphViewerConfig,
+      styleConfig: this.config,
       languageIdValue: 'json',
-      fontSize: graphViewerConfig.layout.baseFontSize,
+      fontSize: this.config.layout.baseFontSize,
       BoxCtor: Box,
       TextCtor: Text,
       PenCtor: Pen,
@@ -80,8 +95,7 @@ export class ExtensionGraphViewer {
         pointerController.bindPointerClick(target, () => {
           this.lastTargetActivationAt = Date.now();
           this.highlight(target.parent ?? target);
-          const workspacePath = resolveWorkspacePath(this.graph, cell.path as Path);
-          this.onSelectPath(cell.path as Path, { openWorkspace: workspacePath !== null, workspacePath: workspacePath ?? undefined });
+          this.options.interaction?.onActivate?.({ path: cell.path, nodeKind, target: 'cell' });
         });
         return '';
       },
@@ -95,7 +109,7 @@ export class ExtensionGraphViewer {
       edges: graph.edges,
       layer: this.edgeLayer,
       PenCtor: Pen,
-      renderConfig: graphViewerConfig,
+      renderConfig: this.config,
     });
     for (const node of graph.nodes) {
       const result = renderGraphNode({
@@ -105,8 +119,7 @@ export class ExtensionGraphViewer {
           pointerController.bindPointerClick(target, () => {
             this.lastTargetActivationAt = Date.now();
             this.highlight(target.parent ?? target);
-            const workspacePath = resolveWorkspacePath(this.graph, cell.path as Path);
-            this.onSelectPath(cell.path as Path, { openWorkspace: workspacePath !== null, workspacePath: workspacePath ?? undefined });
+            this.options.interaction?.onActivate?.({ path: cell.path, nodeKind: node.kind, target: 'cell' });
           });
         },
       });
@@ -118,63 +131,77 @@ export class ExtensionGraphViewer {
     this.publishWorkspaceProbe();
   }
 
+  async applyDelta(delta: RawGraphDelta): Promise<void> {
+    if (!this.graph) {
+      const error = new Error('Cannot apply a graph delta before replaceGraph().');
+      this.options.interaction?.onError?.(error);
+      throw error;
+    }
+    if (!this.options.reduceDelta) {
+      const error = new Error('GraphViewerRuntime requires a host delta reducer for applyDelta().');
+      this.options.interaction?.onError?.(error);
+      throw error;
+    }
+    try {
+      await this.replaceGraph(this.options.reduceDelta(this.graph, delta));
+    } catch (error) {
+      this.options.interaction?.onError?.(error);
+      throw error;
+    }
+  }
+
   destroy(): void {
     this.disposed = true;
-    this.resizeObserver?.disconnect();
-    this.resizeObserver = null;
     this.tableRuntimes.forEach((runtime) => runtime.destroy?.());
     this.tableRuntimes = [];
     this.host.removeEventListener('click', this.handleCanvasClick, true);
     this.host.removeEventListener('pointerdown', this.handleCanvasClick, true);
     this.app?.view?.removeEventListener?.('click', this.handleCanvasClick, true);
     this.app?.view?.removeEventListener?.('pointerdown', this.handleCanvasClick, true);
-    this.app?.destroy?.();
+    this.loadedRuntime?.destroy();
+    this.loadedRuntime = null;
     this.app = null;
+    this.viewportController = null;
     this.edgeLayer = null;
     this.nodeLayer = null;
   }
 
   private async ensureRuntime(): Promise<void> {
     if (this.app || this.disposed) return;
-    // Viewport supplies the exact pan/zoom model GraphViewer uses in Treease Web.
-    await import('@leafer-in/viewport');
-    const module = await import('leafer-ui') as unknown as LeaferModules;
+    const loaded = await loadGraphViewerRuntime({ host: this.host, preferApp: false });
     if (this.disposed) return;
-    this.modules = module;
-    // Web's GraphRuntimeHost supports both App and Leafer. A Side Panel needs one
-    // viewport root (not App's multi-canvas wrapper), so select Leafer explicitly.
-    this.app = new module.Leafer({
-      view: this.host,
-      type: 'viewport',
-      move: { drag: false, holdSpaceKey: true, holdRightKey: true, scroll: true },
-      zoom: { disabled: false },
-      wheel: { zoomMode: false },
-      multiTouch: { disabled: false },
+    this.loadedRuntime = loaded;
+    this.modules = loaded.modules as LeaferModules;
+    this.app = loaded.app;
+    this.viewportController = createGraphViewportController({
+      getContainer: () => this.host as HTMLDivElement,
+      getLeafer: () => this.app,
+      getSuppressGraphPointerUntil: () => 0,
+      getMoveEventName: () => this.modules?.MoveEvent?.BEFORE_MOVE ?? this.modules?.MoveEvent?.MOVE,
+      getZoomEventName: () => undefined,
+      bindPointerClick: () => {},
+      updateViewportOverlays: () => {},
+      getLastAutoOffset: () => null,
+      setLastAutoOffset: () => {},
+      getPanConstraintBounds: () => this.graph ? graphBounds(this.graph) : null,
     });
     const root = this.app.zoomLayer ?? this.app;
-    this.edgeLayer = new module.Box({ fill: 'transparent', hittable: false, hitChildren: false });
-    this.nodeLayer = new module.Box({ fill: 'transparent' });
+    this.edgeLayer = new this.modules!.Box({ fill: 'transparent', hittable: false, hitChildren: false });
+    this.nodeLayer = new this.modules!.Box({ fill: 'transparent' });
     root.add(this.edgeLayer);
     root.add(this.nodeLayer);
     this.app.view?.addEventListener?.('click', this.handleCanvasClick, true);
     this.app.view?.addEventListener?.('pointerdown', this.handleCanvasClick, true);
-    this.resize();
-    this.resizeObserver = new ResizeObserver(() => this.resize());
-    this.resizeObserver.observe(this.host);
+    this.options.interaction?.onRuntimeReady?.({ app: this.app, modules: this.modules });
   }
 
-  private resize(): void {
-    const bounds = this.host.getBoundingClientRect();
-    if (bounds.width > 0 && bounds.height > 0) this.app?.resize?.({ width: bounds.width, height: bounds.height });
-  }
-
-  private fitToGraph(graph: GraphData): void {
+  fitToGraph(graph = this.graph): void {
     const zoomLayer = this.app?.zoomLayer;
-    if (!zoomLayer || graph.nodes.length === 0) return;
+    if (!zoomLayer || !graph || graph.nodes.length === 0) return;
     const left = Math.min(...graph.nodes.map((node) => node.boxArgs.x));
     const top = Math.min(...graph.nodes.map((node) => node.boxArgs.y));
-    zoomLayer.x = graphViewerConfig.layout.canvasPadding - left;
-    zoomLayer.y = graphViewerConfig.layout.canvasPadding - top;
+    zoomLayer.x = this.config.layout.canvasPadding - left;
+    zoomLayer.y = this.config.layout.canvasPadding - top;
   }
 
   private requestRender(): void {
@@ -182,15 +209,32 @@ export class ExtensionGraphViewer {
     this.app?.forceRender?.();
   }
 
-  private highlight(target: any): void {
+  zoomIn(): void { this.zoomBy(1.2); }
+
+  zoomOut(): void { this.zoomBy(1 / 1.2); }
+
+  centerOnNode(renderHandle: number): boolean {
+    const node = this.graph?.nodes.find((candidate) => candidate.renderHandle === renderHandle);
+    if (!node || !this.viewportController) return false;
+    this.viewportController.centerOnNode(node);
+    return true;
+  }
+
+  highlight(target: GraphHighlightTarget | any): void {
     for (const previous of this.highlightedTargets) {
       previous.selected = false;
       previous.selectedStyle = undefined;
     }
-    this.highlightedTargets = [target];
-    target.selectedStyle = { stroke: '#84a300', strokeWidth: 2, fill: '#f8ffe1' };
-    target.selected = true;
+    const renderTarget = typeof target?.renderHandle === 'number' ? this.nodeBoxes.get(target.renderHandle) : target;
+    if (!renderTarget) return;
+    this.highlightedTargets = [renderTarget];
+    renderTarget.selectedStyle = { stroke: '#84a300', strokeWidth: 2, fill: '#f8ffe1' };
+    renderTarget.selected = true;
     this.requestRender();
+  }
+
+  private zoomBy(factor: number): void {
+    this.viewportController?.applyZoom(factor);
   }
 
   private handleCanvasClick = (event: Event): void => {
@@ -208,7 +252,7 @@ export class ExtensionGraphViewer {
       if (!node) return;
       const nodeBox = this.nodeBoxes.get(node.renderHandle);
       if (nodeBox) this.highlight(nodeBox);
-      this.onSelectPath(node.path as Path, { openWorkspace: node.kind === 'object' || node.kind === 'table', workspacePath: node.path as Path });
+      this.options.interaction?.onActivate?.({ path: node.path, nodeKind: node.kind, target: 'node' });
     }, 0);
   };
 
@@ -220,4 +264,18 @@ export class ExtensionGraphViewer {
     if (!client || !Number.isFinite(client.x) || !Number.isFinite(client.y) || bounds.width <= 0 || bounds.height <= 0) return;
     this.host.dataset.treeaseWorkspaceProbe = JSON.stringify({ x: Number(client.x) - bounds.left, y: Number(client.y) - bounds.top });
   }
+}
+
+function graphBounds(graph: GraphData): { left: number; top: number; right: number; bottom: number } | null {
+  if (!graph.nodes.length) return null;
+  return graph.nodes.reduce((bounds, node) => ({
+    left: Math.min(bounds.left, node.boxArgs.x),
+    top: Math.min(bounds.top, node.boxArgs.y),
+    right: Math.max(bounds.right, node.boxArgs.x + node.boxArgs.width),
+    bottom: Math.max(bounds.bottom, node.boxArgs.y + node.boxArgs.height),
+  }), { left: Infinity, top: Infinity, right: -Infinity, bottom: -Infinity });
+}
+
+export function createGraphViewerRuntime(options: GraphViewerRuntimeOptions): GraphViewerRuntime {
+  return new GraphViewerRuntime(options);
 }

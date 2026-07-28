@@ -1,26 +1,24 @@
-import { SemType } from '@core-wasm/index';
-
 export const semanticTypeColorKeys = ['map', 'key', 'seq', 'str', 'int', 'float', 'boolean', 'nil'] as const;
 
 export type SemanticTypeColorKey = (typeof semanticTypeColorKeys)[number];
 export type SemanticTypeColorPalette = Record<SemanticTypeColorKey, string>;
 
 /** Core SemType is the only semantic classification used for value text. */
-export function semanticTypeToColorKey(semType: SemType | number | null | undefined): SemanticTypeColorKey {
+export function semanticTypeToColorKey(semType: number | null | undefined): SemanticTypeColorKey {
   switch (semType) {
-    case SemType.MAP:
+    case 0:
       return 'map';
-    case SemType.SEQ:
+    case 1:
       return 'seq';
-    case SemType.INT:
+    case 3:
       return 'int';
-    case SemType.FLOAT:
+    case 4:
       return 'float';
-    case SemType.BOOLEAN:
+    case 5:
       return 'boolean';
-    case SemType.NIL:
+    case 6:
       return 'nil';
-    case SemType.STR:
+    case 2:
     default:
       return 'str';
   }
@@ -28,7 +26,7 @@ export function semanticTypeToColorKey(semType: SemType | number | null | undefi
 
 export function resolveSemanticTypeColor(
   colors: SemanticTypeColorPalette,
-  semType: SemType | number | null | undefined,
+  semType: number | null | undefined,
 ): string {
   return colors[semanticTypeToColorKey(semType)];
 }

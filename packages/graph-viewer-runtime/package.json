@@ -1,0 +1,16 @@
+{
+  "name": "@treease/graph-viewer-runtime",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "exports": { ".": "./src/index.ts" },
+  "dependencies": {
+    "@leafer-in/viewport": "^2.0.0",
+    "leafer-ui": "^2.0.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.10"
+  },
+  "scripts": { "check": "tsc --noEmit", "test": "vitest run" }
+}

@@ -1,7 +1,7 @@
 import { PathSegTag } from '@core-wasm/index';
 
 import type { PathSeg } from '../../../store/tree-path';
-import type { GraphCell } from '../../../graph/graph-viewer-render';
+import type { GraphCell } from '@treease/graph-viewer-runtime';
 
 export function buildPathSegFromCell(cell: GraphCell | undefined, rowIndex: number): PathSeg | null {
   const raw = String(cell?.text ?? '').trim();

@@ -18,21 +18,22 @@ import {
   type GraphEdge,
   type GraphNode,
   type TableRuntime,
-} from "../../graph/graph-viewer-render";
-import type { InternalTableRuntime } from "./runtime/table-runtime";
+  ensureGraphViewerLayers,
+} from '@treease/graph-viewer-runtime';
+import type { InternalTableRuntime } from '@treease/graph-viewer-runtime';
 import {
   createGraphDirtyRegion,
   type GraphDirtyRegionRect,
-} from "./graph-dirty-region";
-import { renderGraphEdges, renderGraphNode } from "./graph-render-kernel";
+} from '@treease/graph-viewer-runtime';
+import { renderGraphEdges, renderGraphNode } from '@treease/graph-viewer-runtime';
 import {
   computeProjection,
   createGraphModel,
   type GraphModel,
   type GraphProjection,
   type MaterializationIntent,
-} from "./graph-renderable-projection";
-import { getViewportBounds } from "./graph-viewport-geometry";
+} from '@treease/graph-viewer-runtime';
+import { getViewportBounds } from '@treease/graph-viewer-runtime';
 import type {
   NormalizedGraphDelta,
   RawGraphDelta,
@@ -461,44 +462,11 @@ export function createGraphSceneRuntime(deps: GraphSceneRuntimeDeps) {
   }
 
   function ensureLayers(): void {
-    const BoxCtor = deps.getBoxCtor();
-    if (!BoxCtor) return;
-    const root = deps.getRenderRoot();
-    if (!root) return;
-    const layers = deps.getLayers();
-    const nextLayers: Partial<GraphSceneLayers> = {};
-    if (!layers.edgeLayer) {
-      nextLayers.edgeLayer = new BoxCtor({
-        x: 0,
-        y: 0,
-        width: 0,
-        height: 0,
-        fill: "transparent",
-      });
-      root.add(nextLayers.edgeLayer);
-    }
-    if (!layers.nodeLayer) {
-      nextLayers.nodeLayer = new BoxCtor({
-        x: 0,
-        y: 0,
-        width: 0,
-        height: 0,
-        fill: "transparent",
-      });
-      root.add(nextLayers.nodeLayer);
-    }
-    if (!layers.overlayLayer) {
-      nextLayers.overlayLayer = new BoxCtor({
-        x: 0,
-        y: 0,
-        width: 0,
-        height: 0,
-        fill: "transparent",
-        hittable: false,
-        hitChildren: false,
-      });
-      root.add(nextLayers.overlayLayer);
-    }
+    const nextLayers = ensureGraphViewerLayers({
+      root: deps.getRenderRoot(),
+      BoxCtor: deps.getBoxCtor(),
+      layers: deps.getLayers(),
+    });
     if (Object.keys(nextLayers).length > 0) {
       deps.setLayers(nextLayers);
     }

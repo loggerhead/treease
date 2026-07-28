@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { buildPathKey } from '../../graph/graph-viewer-path';
-import type { GraphCell } from '../../graph/graph-viewer-render';
+import type { GraphCell } from '@treease/graph-viewer-runtime';
 import { getCellEntry, resolveCellPath, upsertCellEntry } from './graph-anchor-index';
 import type { CellBoxEntry } from './model';
 

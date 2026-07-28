@@ -4,7 +4,7 @@ import type { SupportedEditorLanguageId } from '../../../monaco/language-support
 import type { GraphViewerConfig } from '../../../settings/ui-settings';
 import { queryNodePreview, queryPathValue } from '../../../services/SnapshotProjectionService';
 import { buildPathKey } from '../../../graph/graph-viewer-path';
-import type { GraphCell, GraphEdge, GraphNode } from '../../../graph/graph-viewer-render';
+import type { GraphCell, GraphEdge, GraphNode } from '@treease/graph-viewer-runtime';
 import { getClampedPaneSize } from '../../ui/split-layout';
 import { createViewRuntimeOperation, type ViewRuntimeOperation } from '../../../guards/view-runtime-operation';
 import type { PathSeg } from '../../../store/tree-path';

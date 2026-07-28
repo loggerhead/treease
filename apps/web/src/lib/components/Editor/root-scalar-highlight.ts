@@ -1,5 +1,5 @@
 import type { EditorAnalysisLike } from './editor-analysis-apply';
-import { semanticTypeToColorKey } from '../../semantic-type-color';
+import { semanticTypeToColorKey } from '@treease/graph-viewer-runtime';
 
 export type RootScalarHighlightKind = 'str' | 'int' | 'float' | 'boolean' | 'nil';
 

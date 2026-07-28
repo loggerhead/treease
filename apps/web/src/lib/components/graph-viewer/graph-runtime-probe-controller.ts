@@ -1,6 +1,6 @@
 import type { GraphHighlightTarget } from '../../store/graph-selection-store';
-import type { GraphCell, GraphCellKind, GraphNode } from '../../graph/graph-viewer-render';
-import { resolveGraphCellDisplayText } from '../../graph/literal-display';
+import type { GraphCell, GraphCellKind, GraphNode } from '@treease/graph-viewer-runtime';
+import { resolveGraphCellDisplayText } from '@treease/graph-viewer-runtime';
 import { getCellEntry, getHighlightTarget, getScrollContext } from './graph-anchor-index';
 import type { GraphViewerClickTarget, GraphViewerClickTargetStore, LeaferAppLike, LeaferBox } from './model';
 import type {

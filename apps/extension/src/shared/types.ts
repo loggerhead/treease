@@ -39,7 +39,7 @@ export type PanelState =
   | { status: 'graph_error'; message: string; document: ReadyDocument };
 
 /** Canonical graph projection facts emitted by Treease Core and normalized by Web. */
-import type { GraphEdge, GraphNode } from '@treease-web/lib/graph/graph-viewer-render';
+import type { GraphEdge, GraphNode } from '@treease/graph-viewer-runtime';
 
 // Keep the full normalized Web GraphViewer shape. Reducing this to a display-only
 // DTO was what caused the extension to fall back to its own, incompatible SVG.

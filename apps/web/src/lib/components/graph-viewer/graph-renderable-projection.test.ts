@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   computeProjection,
   createGraphModel,
-} from "./graph-renderable-projection";
-import type { GraphEdge, GraphNode } from "../../graph/graph-viewer-render";
+} from '@treease/graph-viewer-runtime';
+import type { GraphEdge, GraphNode } from '@treease/graph-viewer-runtime';
 
 function node(renderHandle: number, x: number, y = 0): GraphNode {
   return {

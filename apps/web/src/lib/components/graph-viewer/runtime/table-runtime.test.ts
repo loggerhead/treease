@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createTableRuntime, patchTableContent } from './table-runtime';
-import type { DrawContext, GraphCell, GraphNode, GraphRow } from '../../../graph/graph-viewer-types';
+import { createTableRuntime, patchTableContent } from '@treease/graph-viewer-runtime';
+import type { DrawContext, GraphCell, GraphNode, GraphRow } from '@treease/graph-viewer-runtime';
 
 class MockBox {
   x = 0;

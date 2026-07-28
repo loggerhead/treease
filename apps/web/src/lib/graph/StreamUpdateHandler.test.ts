@@ -7,7 +7,7 @@ import {
    replaceStreamState,
    streamStateToArrays,
  } from './StreamUpdateHandler';
-import type { GraphNode, GraphEdge } from './graph-viewer-render';
+import type { GraphNode, GraphEdge } from '@treease/graph-viewer-runtime';
 
 function makeNode(renderHandle: number): GraphNode {
   return {

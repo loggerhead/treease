@@ -12,6 +12,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@treease/graph-viewer-runtime": "workspace:*",
     "@leafer-in/viewport": "^2.0.0",
     "leafer-ui": "^2.0.0"
   },

@@ -1,6 +1,5 @@
-import type { SemType } from '@core-wasm/index';
-
 export type ValueType = 'string' | 'number' | 'boolean' | 'null' | 'object' | 'array';
+export type GraphSemanticType = number;
 
 export type GraphBoxArgs = {
   x: number;
@@ -25,7 +24,7 @@ export type GraphCellKind = 'meta' | 'key' | 'value' | 'header';
 
 export type GraphCell = {
   /** Unmodified Core semantic classification; rendering must not infer this from valueType. */
-  semType?: SemType;
+  semType?: GraphSemanticType;
   text: string;
   value: string;
   isMissing?: boolean;

@@ -1,7 +1,7 @@
 // Responsibility: edit GraphViewer cell values, including inline editor create/commit/cancel and WASM applyValueEdit calls.
 import type { DocumentTextEdit } from '@core-wasm/index';
 import type { SupportedEditorLanguageId } from '../../monaco/language-support';
-import type { GraphCell, GraphCellKind } from '../../graph/graph-viewer-render';
+import type { GraphCell, GraphCellKind } from '@treease/graph-viewer-runtime';
 import type { EditorIO } from '../../store/document-session-store';
 import type { GraphEditReplaceFallbackReason } from '../../store/editor-store';
 import type { PathSeg } from '../../store/tree-path';
@@ -39,7 +39,7 @@ type PlannedGraphValueEditResult =
       mode: 'snapshotNotReady';
     };
 
-type GraphValueEditControllerDeps = {
+export type GraphValueEditControllerDeps = {
   getCurrentData: () => unknown;
   getSourceText: () => string;
   getDocumentKey: () => string;

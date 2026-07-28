@@ -3,7 +3,7 @@
 import { type BuilderConfig, type EventBatch, type SnapshotId, type TreeNode } from '@core-wasm/index';
 import { selectGraphStreamChunkSize } from '../../graph-stream/chunk-size-policy';
 import type { GraphViewerConfig } from '../../settings/ui-settings';
-import type { GraphEdge, GraphNode } from '../../graph/graph-viewer-render';
+import type { GraphEdge, GraphNode } from '@treease/graph-viewer-runtime';
 import type { JsonBlockSelection } from '../../store/full-edit-ui-store';
 import type {
   DocumentAnalysisResult,

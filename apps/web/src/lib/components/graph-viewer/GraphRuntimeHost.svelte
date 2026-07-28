@@ -2,6 +2,7 @@
   import { onDestroy, onMount } from 'svelte';
   import { createViewRuntimeOperation, type ViewRuntimeOperation } from '../../guards/view-runtime-operation';
   import { getSharedWasmWorkerClient } from '../../wasm/wasm-worker-singleton';
+  import { loadGraphViewerRuntime, type LoadedGraphRuntime } from '@treease/graph-viewer-runtime';
   import type {
     App as LeaferApp,
     Box,
@@ -55,21 +56,20 @@
     destroy: () => void;
   };
   export let registerViewportEvents: (target: unknown) => void;
-  export let bindGraphEditorLifecycle: (editor: unknown) => void;
+  export let onRuntimeReady: (runtime: { editor: unknown | null }) => void;
   export let updateSize: () => void;
   export let scheduleMeasure: () => void;
   export let minimapWidth = 220;
   export let minimapHeight = 150;
 
   let graphRuntimeToken = 0;
-  let resizeObserver: ResizeObserver | null = null;
+  let loadedRuntime: LoadedGraphRuntime | null = null;
   let runtimeOperation: ViewRuntimeOperation | null = null;
 
   function cleanupRuntime() {
-    resizeObserver?.disconnect();
-    resizeObserver = null;
     minimapRuntimeController.destroy();
-    leafer?.destroy();
+    loadedRuntime?.destroy();
+    loadedRuntime = null;
     leafer = null;
     LeaferCtor = undefined;
     PlainLeaferCtor = undefined;
@@ -98,19 +98,20 @@
       execute: async ({ step }) => {
         scheduleMeasure();
         void getSharedWasmWorkerClient().catch(() => {});
-        const runtimeModules = await step(async () => {
-          await import('@leafer-in/viewport');
-          await import('@leafer-in/editor');
-          await import('@leafer-in/state');
-          await import('@leafer-in/text-editor');
-          await import('@leafer-in/export');
-          return import('leafer-ui');
-        });
         const runtimeContainer = container;
         if (!runtimeContainer) return false;
-        const mod = runtimeModules;
+        const loaded = await step(() => loadGraphViewerRuntime({
+          host: runtimeContainer,
+          preferApp: true,
+          preload: async () => {
+            await Promise.all([import('@leafer-in/editor'), import('@leafer-in/state'), import('@leafer-in/text-editor'), import('@leafer-in/export')]);
+          },
+          leaferOptions: { editor: { visible: true, hittable: true, hover: false, moveable: false, resizeable: false, rotateable: false, skewable: false, flipable: false } },
+        }));
+        const mod = loaded.modules;
         await step(async () => {
           cleanupRuntime();
+          loadedRuntime = loaded;
           LeaferCtor = (mod.App ?? mod.Leafer) as typeof LeaferApp | typeof Leafer;
           PlainLeaferCtor = mod.Leafer as typeof Leafer | undefined;
           BoxCtor = mod.Box;
@@ -123,27 +124,9 @@
           PointerEventCtor = mod.PointerEvent;
           if (!LeaferCtor || !BoxCtor || !TextCtor || !PenCtor) return;
 
-          leafer = new LeaferCtor({
-            view: runtimeContainer,
-            type: 'viewport',
-            editor: {
-              visible: true,
-              hittable: true,
-              hover: false,
-              moveable: false,
-              resizeable: false,
-              rotateable: false,
-              skewable: false,
-              flipable: false,
-            },
-            move: { drag: false, holdSpaceKey: true, holdRightKey: true, scroll: true },
-            zoom: { disabled: false },
-            wheel: { zoomMode: false },
-            multiTouch: { disabled: false },
-          });
+          leafer = loaded.app as LeaferAppOrLeafer;
           registerViewportEvents(leafer);
-          const editor = (leafer as { editor?: unknown } | null)?.editor ?? null;
-          bindGraphEditorLifecycle(editor);
+          onRuntimeReady({ editor: (leafer as { editor?: unknown } | null)?.editor ?? null });
           minimapRuntimeController.attach({
             app: leafer,
             PlainLeaferCtor,
@@ -162,13 +145,11 @@
             },
           });
 
-          updateSize();
-          resizeObserver = new ResizeObserver(() => {
+          loaded.setResizeHandler(() => {
             updateSize();
             minimapRuntimeController.updateLayout();
             minimapRuntimeController.updateViewport();
           });
-          resizeObserver.observe(runtimeContainer);
         });
         return true;
       },

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createGraphDirtyRegion } from './graph-dirty-region';
+import { createGraphDirtyRegion } from '@treease/graph-viewer-runtime';
 
 describe('graph-dirty-region', () => {
   it('unions marked rects and flushes once', () => {

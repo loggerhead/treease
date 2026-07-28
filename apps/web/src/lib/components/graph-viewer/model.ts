@@ -1,5 +1,5 @@
 import type { Box, Text } from 'leafer-ui';
-import type { GraphCell, GraphCellKind, GraphNode } from '../../graph/graph-viewer-render';
+import type { GraphCell, GraphCellKind, GraphNode } from '@treease/graph-viewer-runtime';
 import type { PathSeg } from '../../store/tree-path';
 
 export type LeaferInteractiveTarget = {

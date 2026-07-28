@@ -1,5 +1,5 @@
 import { buildPathKey } from '../../../graph/graph-viewer-path';
-import type { GraphCell, GraphCellKind, GraphNode } from '../../../graph/graph-viewer-render';
+import type { GraphCell, GraphCellKind, GraphNode } from '@treease/graph-viewer-runtime';
 import type { PathSeg } from '../../../store/tree-path';
 import {
   getCellEntry,

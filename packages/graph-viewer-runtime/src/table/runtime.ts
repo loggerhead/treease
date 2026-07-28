@@ -1,5 +1,5 @@
-import { createLeaferVirtualList, type LeaferVirtualListHandle } from '../../../leafer-virtual-list';
-import { computeTableRenderCount, type TableVisibleRange } from './table-virtual-window';
+import { createLeaferVirtualList, type LeaferVirtualListHandle } from '../virtual-list';
+import { computeTableRenderCount, type TableVisibleRange } from './virtual-window';
 import type {
   DrawContext,
   GraphNode,
@@ -7,7 +7,7 @@ import type {
   GraphTable,
   TableRowRenderEntry,
   TableRuntime,
-} from '../../../graph/graph-viewer-types';
+} from '../types';
 
 type TableRuntimeMetrics = {
   headerHeight: number;
@@ -157,7 +157,7 @@ function measureTableRuntime(ctx: DrawContext, node: GraphNode): TableRuntimeMet
   const innerHeight = Math.max(0, node.boxArgs.height - innerOffset * 2);
   const rowOffsetY = Math.max(0, rowStartY - innerOffset);
   const availableViewportHeight = Math.max(0, node.boxArgs.height - (innerOffset + rowOffsetY));
-  const protocolViewportHeight = table.viewHeight > 0 ? Math.min(table.viewHeight, availableViewportHeight) : availableViewportHeight;
+  const protocolViewportHeight = (table.viewHeight ?? 0) > 0 ? Math.min(table.viewHeight ?? 0, availableViewportHeight) : availableViewportHeight;
   const viewportHeight = Math.max(0, Math.min(measuredRowContentHeight || protocolViewportHeight, protocolViewportHeight));
   const contentHeight = Math.max(measuredRowContentHeight, viewportHeight);
   const overscan = Math.max(0, ctx.styleConfig.layout.tableWindowOverscan ?? 0);

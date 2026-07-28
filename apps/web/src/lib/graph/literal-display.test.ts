@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { formatScalarLiteral, formatStructuredPreview, resolveGraphCellDisplayText } from './literal-display';
+import { formatScalarLiteral, formatStructuredPreview, resolveGraphCellDisplayText } from '@treease/graph-viewer-runtime';
 
 describe('literal-display', () => {
   describe('formatScalarLiteral', () => {

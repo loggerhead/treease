@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { FixedSizeVirtualList } from './virtual-list-core';
+import { FixedSizeVirtualList } from '@treease/graph-viewer-runtime';
 
 describe('FixedSizeVirtualList', () => {
   it('computes the visible range with overscan', () => {

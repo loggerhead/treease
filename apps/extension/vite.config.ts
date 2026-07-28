@@ -5,16 +5,11 @@ import { defineConfig } from 'vitest/config';
 
 const appDir = path.dirname(fileURLToPath(import.meta.url));
 const coreWasmDir = path.resolve(appDir, '../../packages/core/wasm');
-const webSrcDir = path.resolve(appDir, '../web/src');
 
 export default defineConfig({
   resolve: {
     alias: [
       { find: /^@core-wasm(\/.*)?$/, replacement: `${coreWasmDir}$1` },
-      // The extension consumes the same graph-stream protocol and delta reducer as
-      // the Web viewer. Keep this as an explicit boundary until these modules move
-      // to a workspace package; do not fork their Core projection semantics here.
-      { find: /^@treease-web(\/.*)?$/, replacement: `${webSrcDir}$1` },
     ],
   },
   build: {

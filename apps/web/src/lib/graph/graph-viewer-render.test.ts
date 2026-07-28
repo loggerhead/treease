@@ -9,7 +9,7 @@ import {
   tableRuntimeOps,
   type DrawContext,
   type GraphNode,
-} from './graph-viewer-render';
+} from '@treease/graph-viewer-runtime';
 
 class MockBox {
   x: number;

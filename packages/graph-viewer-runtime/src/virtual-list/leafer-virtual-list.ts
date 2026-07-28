@@ -33,8 +33,9 @@ function fallbackClientPoint(event: unknown): LeaferVirtualListPoint | null {
   if (Number.isFinite(candidate.clientX) && Number.isFinite(candidate.clientY)) {
     return { x: Number(candidate.clientX), y: Number(candidate.clientY) };
   }
-  if (Number.isFinite(candidate.origin?.x) && Number.isFinite(candidate.origin?.y)) {
-    return { x: Number(candidate.origin.x), y: Number(candidate.origin.y) };
+  const origin = candidate.origin;
+  if (origin && Number.isFinite(origin.x) && Number.isFinite(origin.y)) {
+    return { x: Number(origin.x), y: Number(origin.y) };
   }
   if (Number.isFinite(candidate.x) && Number.isFinite(candidate.y)) {
     return { x: Number(candidate.x), y: Number(candidate.y) };

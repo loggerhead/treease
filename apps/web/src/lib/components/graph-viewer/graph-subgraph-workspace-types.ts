@@ -1,5 +1,5 @@
 // Responsibility: define subgraph-workspace graph data types.
-import type { GraphEdge, GraphNode } from '../../graph/graph-viewer-render';
+import type { GraphEdge, GraphNode } from '@treease/graph-viewer-runtime';
 import type { PathSeg } from '../../store/tree-path';
 
 export type SubgraphWorkspaceGraphData = {

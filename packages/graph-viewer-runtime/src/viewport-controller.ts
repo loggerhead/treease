@@ -1,7 +1,6 @@
 // Responsibility: control GraphViewer viewport interactions, including mouse/touch pan and zoom, centerOnNode, event binding, and state adaptation.
-import type { GraphNode } from "../../graph/graph-viewer-render";
-import type { LeaferAppLike, LeaferBox } from "./model";
-import type { LeaferEventTarget } from "./graph-pointer-controller";
+import type { GraphNode } from './types';
+import type { LeaferEventTarget } from './pointer-controller';
 import {
   GRAPH_PAN_CONSTRAINT_PADDING,
   clampPanOffsetToGraphBounds,
@@ -9,9 +8,17 @@ import {
   getZoomScale,
   type GraphWorldBounds,
   type LeaferZoomLayer,
-} from "./graph-viewport-geometry";
+} from './viewport-geometry';
 
-export type { LeaferZoomLayer } from "./graph-viewport-geometry";
+export type { LeaferZoomLayer } from './viewport-geometry';
+
+type LeaferAppLike = {
+  zoomLayer?: unknown;
+  resize?: (options: { width: number; height: number }) => void;
+  update?: () => void;
+  getClientPointByWorld?: (point: { x: number; y: number }) => { x?: number; y?: number } | null;
+};
+type LeaferBox = { width?: number; height?: number };
 
 type GraphViewportRequest = {
   x: number;

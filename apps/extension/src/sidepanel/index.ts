@@ -1,5 +1,6 @@
 import './styles.css';
-import { ExtensionGraphViewer } from './graph-viewer';
+import { GraphViewerRuntime, defaultGraphViewerRenderConfig } from '@treease/graph-viewer-runtime';
+import { resolveWorkspacePath } from './workspace-path';
 import type { ExtensionMessage } from '../shared/messages';
 import type { ExtensionSettings, GraphData, PanelState } from '../shared/types';
 
@@ -11,8 +12,8 @@ let settings: ExtensionSettings | null = null;
 let selectedPath = '$';
 let graphRequestId = 0;
 let graphData: GraphData | null = null;
-let graphViewer: ExtensionGraphViewer | null = null;
-let subgraphViewer: ExtensionGraphViewer | null = null;
+let graphViewer: GraphViewerRuntime | null = null;
+let subgraphViewer: GraphViewerRuntime | null = null;
 let graphDocumentExpiry = 0;
 const graphWorker = new Worker(new URL('./graph.worker.ts', import.meta.url), { type: 'module' });
 
@@ -95,11 +96,12 @@ function renderCurrentGraph(): void {
   const host = document.querySelector<HTMLElement>('#graph');
   if (!host || !graphData) return;
   graphViewer?.destroy();
-  graphViewer = new ExtensionGraphViewer(host, (pathValue, options) => {
-    selectGraphPath(pathValue);
-    if (options.openWorkspace && options.workspacePath) showSubgraphWorkspace(pathValue, options.workspacePath);
-  });
-  void graphViewer.render(graphData).catch((error: unknown) => {
+  graphViewer = new GraphViewerRuntime({ host, config: defaultGraphViewerRenderConfig, interaction: { onActivate: ({ path, nodeKind }) => {
+    selectGraphPath(path);
+    const workspacePath = resolveWorkspacePath(graphData, path);
+    if ((nodeKind === 'object' || nodeKind === 'table') && workspacePath) showSubgraphWorkspace(path, workspacePath);
+  } } });
+  void graphViewer.replaceGraph(graphData).catch((error: unknown) => {
     if (state.status !== 'ready') return;
     state = { status: 'graph_error', message: error instanceof Error ? error.message : String(error), document: state.document };
     render();
@@ -182,8 +184,8 @@ function showSubgraphWorkspace(selectedCellPath: GraphData['nodes'][number]['pat
   const graph = buildSubgraph(workspacePath);
   const canvas = document.querySelector<HTMLElement>('#subgraph-canvas');
   if (!graph || !canvas) return;
-  subgraphViewer = new ExtensionGraphViewer(canvas, (nestedPath) => selectGraphPath(nestedPath));
-  void subgraphViewer.render(graph);
+  subgraphViewer = new GraphViewerRuntime({ host: canvas, config: defaultGraphViewerRenderConfig, interaction: { onActivate: ({ path }) => selectGraphPath(path) } });
+  void subgraphViewer.replaceGraph(graph);
 }
 
 function selectGraphPath(pathValue: GraphData['nodes'][number]['path']): void {

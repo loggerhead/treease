@@ -2,7 +2,7 @@ import type { GraphViewerConfig } from "../../settings/ui-settings";
 import type { SupportedEditorLanguageId } from "../../monaco/language-support";
 import type { SnapshotId } from "@core-wasm/index";
 import { buildPathKey } from "../../graph/graph-viewer-path";
-import type { GraphCell, GraphNode } from "../../graph/graph-viewer-render";
+import type { GraphCell, GraphNode } from '@treease/graph-viewer-runtime';
 import { isPathSegIndex, type PathSeg } from "../../store/tree-path";
 import type { GraphHighlightTarget } from "../../store/graph-selection-store";
 import { resolveTreePathFromTextResult } from "../../services/TreePathService";
