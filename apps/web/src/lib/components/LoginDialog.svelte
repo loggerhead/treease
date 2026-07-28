@@ -3,22 +3,19 @@
   import { toast } from 'svelte-sonner';
   import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog';
   import { Button } from './ui/button';
-  import { sendEmailOtp, signInWithProvider, verifyEmailOtp } from '../auth/supabase-auth';
+  import { sendEmailSignInLink, signInWithProvider } from '../auth/supabase-auth';
   import { workspaceHost } from '../workspace-host';
 
   export let open = false;
-  export let onAuthenticated: () => void = () => {};
 
   let email = '';
-  let otp = '';
-  let otpSent = false;
+  let emailLinkSent = false;
   let busy = false;
   let error = '';
 
   $: if (!open) {
     email = '';
-    otp = '';
-    otpSent = false;
+    emailLinkSent = false;
     busy = false;
     error = '';
   }
@@ -43,35 +40,11 @@
     busy = true;
     error = '';
     try {
-      await sendEmailOtp(normalizedEmail);
-      otpSent = true;
-      toast.success('A verification code was sent to your email.');
+      await sendEmailSignInLink(normalizedEmail);
+      emailLinkSent = true;
+      toast.success('A sign-in link was sent to your email.');
     } catch (cause) {
-      error = cause instanceof Error ? cause.message : 'Unable to send the verification code.';
-    } finally {
-      busy = false;
-    }
-  }
-
-  async function handleOtpSubmit() {
-    const normalizedEmail = email.trim();
-    const normalizedOtp = otp.trim();
-    if (normalizedOtp.length < 6) {
-      error = 'Enter the verification code from your email.';
-      return;
-    }
-    busy = true;
-    error = '';
-    try {
-      const session = await verifyEmailOtp(normalizedEmail, normalizedOtp);
-      if (session?.refresh_token && (await workspaceHost).surface === 'desktop') {
-        await (await workspaceHost).storeRefreshToken(session.refresh_token);
-      }
-      open = false;
-      onAuthenticated();
-      toast.success('You are now logged in.');
-    } catch (cause) {
-      error = cause instanceof Error ? cause.message : 'The verification code is invalid.';
+      error = cause instanceof Error ? cause.message : 'Unable to send the sign-in link.';
     } finally {
       busy = false;
     }
@@ -124,8 +97,8 @@
         <span class="h-px flex-1 bg-[#e2e8f0]"></span><span>OR</span><span class="h-px flex-1 bg-[#e2e8f0]"></span>
       </div>
 
-      <div class="hidden">
-        {#if !otpSent}
+      <div>
+        {#if !emailLinkSent}
           <label class="flex flex-col gap-2 text-[13px] font-medium text-[#61738f]" for="login-email">
           Email address
           <div class="flex h-10 items-center gap-3 rounded-[6px] border border-[#e2e8f0] px-3 focus-within:border-[var(--accent)] focus-within:ring-2 focus-within:ring-[var(--accent)]/15">
@@ -133,21 +106,15 @@
             <input id="login-email" bind:value={email} type="email" autocomplete="email" placeholder="you@example.com" aria-describedby={error ? 'login-error' : undefined} aria-invalid={Boolean(error)} class="min-w-0 flex-1 bg-transparent text-[15px] text-[#071126] outline-none placeholder:text-[#9aa9bd]" on:keydown={(event) => event.key === 'Enter' && handleEmailSubmit()} />
           </div>
           </label>
-          <Button class="h-10 w-full rounded-[6px] text-[14px] font-medium" style="background-color: #2563eb; color: #ffffff" disabled={busy} data-testid="login-email-button" on:click={handleEmailSubmit}>
+          <Button class="mt-2 h-10 w-full rounded-[6px] text-[14px] font-medium" style="background-color: #2563eb; color: #ffffff" disabled={busy} data-testid="login-email-button" on:click={handleEmailSubmit}>
             {#if busy}<LoaderCircle size={16} class="mr-2 animate-spin" />{/if}
             Continue with email
           </Button>
         {:else}
-          <label class="flex flex-col gap-2 text-[13px] font-medium text-[#61738f]" for="login-otp">
-            Verification code sent to {email}
-            <input id="login-otp" bind:value={otp} type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="8" placeholder="Enter 6-digit code" aria-describedby={error ? 'login-error' : undefined} aria-invalid={Boolean(error)} class="h-12 rounded-[11px] border border-[#dce5f0] px-4 text-[17px] font-medium tabular-nums tracking-[0.12em] text-[#071126] outline-none placeholder:text-[15px] placeholder:font-normal placeholder:tracking-normal placeholder:text-[#9aa9bd] focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent)]/15" on:keydown={(event) => event.key === 'Enter' && handleOtpSubmit()} />
-          </label>
-          <div class="flex gap-3">
-            <Button variant="outline" class="h-11 flex-1 rounded-[11px]" on:click={() => (otpSent = false)}>Change email</Button>
-            <Button class="h-11 flex-1 rounded-[11px]" style="background-color: #2563eb; color: #ffffff" disabled={busy} data-testid="login-verify-button" on:click={handleOtpSubmit}>
-              {#if busy}<LoaderCircle size={16} class="mr-2 animate-spin" />{/if}Verify code
-            </Button>
+          <div class="rounded-[9px] border border-[#dce5f0] bg-[#f8fafc] px-3 py-3 text-[13px] leading-5 text-[#475569]" role="status">
+            We sent a one-time sign-in link to <span class="font-medium text-[#071126]">{email}</span>. Open it in this browser to continue.
           </div>
+          <Button variant="outline" class="mt-2 h-11 w-full rounded-[11px]" on:click={() => (emailLinkSent = false)}>Use a different email</Button>
         {/if}
       </div>
 

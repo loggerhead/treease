@@ -80,7 +80,7 @@ export async function clearAuthSession(): Promise<void> {
   if (error) throw error;
 }
 
-export async function sendEmailOtp(email: string): Promise<void> {
+export async function sendEmailSignInLink(email: string): Promise<void> {
   const supabase = getSupabaseClient();
   const { error } = await supabase.auth.signInWithOtp({
     email,
@@ -90,16 +90,6 @@ export async function sendEmailOtp(email: string): Promise<void> {
     },
   });
   if (error) throw error;
-}
-
-export async function verifyEmailOtp(email: string, token: string): Promise<Session | null> {
-  const { data, error } = await getSupabaseClient().auth.verifyOtp({
-    email,
-    token,
-    type: 'email',
-  });
-  if (error) throw error;
-  return data.session;
 }
 
 export async function exchangeAuthCode(code: string): Promise<Session | null> {
