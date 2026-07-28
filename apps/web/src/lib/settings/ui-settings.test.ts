@@ -3,6 +3,7 @@ import { TOKEN_TYPES, TOKEN_TYPE_THEME_KEY, TREE_NODE_TOKEN_TYPES } from '@core-
 import {
   mergeSettings,
   buildEditorTheme,
+  buildEditorThemeSignature,
   defaultSettings,
   sanitizeSettingsDocument,
   settingsJsonSchema,
@@ -89,6 +90,24 @@ describe('ui-settings', () => {
   });
 
   describe('buildEditorTheme', () => {
+    it('changes only when theme-affecting settings change', () => {
+      const initial = buildEditorThemeSignature(defaultSettings);
+      const layoutOnly = mergeSettings(defaultSettings, {
+        formatting: { indent: 4 },
+        parser: { enableNest: true },
+      } as Partial<Settings>);
+      const changedPalette = mergeSettings(defaultSettings, {
+        editor: { semanticTypeColors: { str: '#ff0000' } },
+      } as any);
+      const changedUiColor = mergeSettings(defaultSettings, {
+        editor: { uiColors: { 'editor.background': '#000000' } },
+      } as any);
+
+      expect(buildEditorThemeSignature(layoutOnly)).toBe(initial);
+      expect(buildEditorThemeSignature(changedPalette)).not.toBe(initial);
+      expect(buildEditorThemeSignature(changedUiColor)).not.toBe(initial);
+    });
+
     it('returns theme with base, rules, and colors', () => {
       const theme = buildEditorTheme(defaultSettings);
       expect(theme.base).toBe('vs');

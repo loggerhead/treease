@@ -1,4 +1,4 @@
-import { applyEditorTheme } from '../../settings/ui-settings';
+import { applyEditorTheme, buildEditorThemeSignature } from '../../settings/ui-settings';
 import {
   getSharedMonacoShell,
   getSharedMonacoLanguageServices,
@@ -20,6 +20,7 @@ type CreateEditorRuntimeControllerOptions = {
 
 export function createEditorRuntimeController(options: CreateEditorRuntimeControllerOptions) {
   let shell: MonacoShell | null = null;
+  let lastAppliedThemeSignature = '';
 
   /**
    * Phase 1: Initialize Monaco editor shell (no WASM needed).
@@ -47,7 +48,11 @@ export function createEditorRuntimeController(options: CreateEditorRuntimeContro
 
   function applyTheme(monaco: typeof import('monaco-editor')): void {
     const themeName = options.getThemeName();
-    applyEditorTheme(monaco, themeName, options.getSettings());
+    const settings = options.getSettings();
+    const signature = buildEditorThemeSignature(settings);
+    if (signature === lastAppliedThemeSignature) return;
+    lastAppliedThemeSignature = signature;
+    applyEditorTheme(monaco, themeName, settings);
   }
 
   function scheduleWorkerWarmup(): void {

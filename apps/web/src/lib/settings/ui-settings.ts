@@ -167,6 +167,14 @@ export function buildEditorTheme(settings: Settings) {
   };
 }
 
+/** Identifies the settings that can change Monaco's rendered theme. */
+export function buildEditorThemeSignature(settings: Settings): string {
+  return JSON.stringify({
+    semanticTypeColors: settings.editor.semanticTypeColors,
+    uiColors: settings.editor.uiColors,
+  });
+}
+
 /** Apply the one shared semantic palette to every Monaco surface. */
 export function applyEditorTheme(
   monaco: typeof import('monaco-editor'),

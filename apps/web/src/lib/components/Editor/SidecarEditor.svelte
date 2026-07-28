@@ -10,7 +10,7 @@
   import { attachMonacoTestHook } from '../../monaco/test-hook';
   import type { DiffPlan } from '../../graph/diff-plan';
   import { settings } from '../../settings/settings-store';
-  import { applyEditorTheme } from '../../settings/ui-settings';
+  import { applyEditorTheme, buildEditorThemeSignature } from '../../settings/ui-settings';
   import { callSharedWasmWorker, getSharedWasmWorkerClient } from '../../wasm/wasm-worker-singleton';
   import type { DocumentAnalysisResult } from '../../../shared/worker-protocol/protocol';
   import { getActiveTempModelSnapshot } from '../../store/graph-selection-store';
@@ -79,12 +79,17 @@
   let refreshSemanticTokensForLanguage: (languageId?: string) => void = () => {};
   let clearSemanticTokensForDocument: (documentKey?: string) => void = () => {};
   let semanticTokenTypes: readonly string[] = [];
+  let lastAppliedThemeSignature = '';
   $: sidecarTab = $editorWorkspace.tabsById[tabId] ?? null;
   $: if (model && rootSemType != null) {
     primeProjectedRootSemanticTokens();
   }
   $: if (monaco) {
-    applyEditorTheme(monaco, themeName, $settings);
+    const signature = buildEditorThemeSignature($settings);
+    if (signature !== lastAppliedThemeSignature) {
+      lastAppliedThemeSignature = signature;
+      applyEditorTheme(monaco, themeName, $settings);
+    }
   }
 
   const fullEditSink = createWorkspaceTabFullEditSink(tabId);
