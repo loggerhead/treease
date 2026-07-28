@@ -1,0 +1,21 @@
+{
+  "manifest_version": 3,
+  "name": "Treease",
+  "description": "Visualize JSON clicked on a web page in Treease's local Side Panel.",
+  "version": "0.1.0",
+  "minimum_chrome_version": "116",
+  "permissions": ["sidePanel", "storage"],
+  "host_permissions": ["<all_urls>"],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'"
+  },
+  "background": { "service_worker": "background.js", "type": "module" },
+  "icons": { "16": "treease-logo.png", "32": "treease-logo.png", "48": "treease-logo.png", "128": "treease-logo.png" },
+  "content_scripts": [{
+    "matches": ["<all_urls>"],
+    "js": ["content.js"],
+    "run_at": "document_idle"
+  }],
+  "side_panel": { "default_path": "sidepanel.html" },
+  "action": { "default_title": "Open Treease", "default_icon": "treease-logo.png" }
+}

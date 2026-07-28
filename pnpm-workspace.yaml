@@ -2,6 +2,7 @@ packages:
   - 'apps/web'
   - 'apps/desktop'
   - 'apps/cli'
+  - 'apps/extension'
   - 'packages/*'
 allowBuilds:
   edgedriver: true

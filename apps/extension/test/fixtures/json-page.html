@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+  <head><meta charset="utf-8"><title>Treease Extension Fixture</title></head>
+  <body>
+    <pre id="pre-json">{"account":{"name":"Ada","roles":["admin","reader"]}}</pre>
+    <code id="code-json">```json
+{"enabled":true}
+```</code>
+    <textarea id="textarea-json">{"region":"apac"}</textarea>
+    <pre id="invalid-json">{'not':'json'}</pre>
+    <pre id="large-json"></pre>
+    <input id="password-json" type="password" value='{"never":"read"}'>
+    <button id="insert-json" type="button">Insert JSON</button>
+    <script>
+      document.querySelector('#large-json').textContent = 'x'.repeat(1024 * 1024 + 1);
+      document.querySelector('#insert-json').addEventListener('click', () => {
+        const pre = document.createElement('pre');
+        pre.id = 'dynamic-json';
+        pre.textContent = '{"dynamic":true}';
+        document.body.append(pre);
+      });
+    </script>
+  </body>
+</html>

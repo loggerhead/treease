@@ -28,6 +28,7 @@ import { getSupabaseClient, getSupabaseConfiguration } from '../auth/supabase-au
 import { workspaceHost } from '../workspace-host';
 import { parseShareResource, type ShareResource } from '../share/share-resource';
 import { isUsageCoolingDown, markUsageRequestSucceeded, noteUsageRateLimit } from '../billing/usage-rate-limit';
+import { getUsageClientId } from '../billing/client-id';
 
 export type {
   AccountSummary,
@@ -153,11 +154,14 @@ export async function suggestYq(input: {
   treePathSet?: string[];
 }): Promise<{ expression: string }> {
   const token = await getAccessToken();
-  if (!token) throw new Error('Sign in to request an AI suggestion.');
+  const clientId = await getUsageClientId();
 
-  const response = await fetch(`${apiOrigin}/v1/ai/suggest-yq`, {
+  const response = await fetch(`${apiOrigin}/v1/ai/suggest-yq?clientId=${encodeURIComponent(clientId)}`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+    headers: {
+      'content-type': 'application/json',
+      ...(token ? { authorization: `Bearer ${token}` } : {}),
+    },
     body: JSON.stringify(input),
   });
   if (!response.ok) throw await readError(response);

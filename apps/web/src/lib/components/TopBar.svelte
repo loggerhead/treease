@@ -2,7 +2,7 @@
   import { onMount } from 'svelte'
   import { cubicOut } from 'svelte/easing'
   import { fly } from 'svelte/transition'
-  import { Plus, X, FileInput, FileOutput, BookOpen, MessageCircle, Share2, ArrowRight } from 'lucide-svelte'
+  import { Plus, X, Upload, Download, BookOpen, MessageCircle, Share2, ArrowRight } from 'lucide-svelte'
   import { trackEvent } from '../analytics/ga4'
   import { languageId as languageIdStore } from '../store/document-session-store'
   import AccountMenu from './AccountMenu.svelte'
@@ -128,10 +128,10 @@
   </a>
   <ButtonGroup.Root variant="segmented-outline" class="min-w-0">
     <IconButton aria-label="Import" title="Import" data-testid="topbar-import-button" on:click={toggleImportPanel}>
-      <FileInput size={12} />
+      <Upload size={13} />
     </IconButton>
     <IconButton aria-label="Export" title="Export" data-testid="topbar-export-button" on:click={toggleExportPanel}>
-      <FileOutput size={12} />
+      <Download size={13} />
     </IconButton>
   </ButtonGroup.Root>
   <div class="min-w-0">

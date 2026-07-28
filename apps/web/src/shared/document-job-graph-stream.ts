@@ -1,6 +1,7 @@
 import type { DocumentProjectionDelta, EventBatch } from '@core-wasm/index';
 import type { RawGraphDelta } from './worker-protocol/protocol';
 import { isRawGraphDelta } from './worker-protocol/graph-delta-normalize';
+export { projectionToRawGraphDelta } from './graph-projection-state';
 
 /**
  * Convert a DocumentProjectionDelta (from a streaming DocumentJob) to a
@@ -8,7 +9,7 @@ import { isRawGraphDelta } from './worker-protocol/graph-delta-normalize';
  *
  * Handles the clear-only, graphData-only, and combined cases.
  */
-export function projectionToRawGraphDelta(
+function legacyProjectionToRawGraphDelta(
   projection: DocumentProjectionDelta | null,
 ): RawGraphDelta | null {
   const graphData = projection?.graphData ?? null;
@@ -66,7 +67,7 @@ export async function processGraphBatchEvents(
         }
         if (event.type === 'analysisDelta') continue;
         if (event.type !== 'projectionDelta') continue;
-        const delta = projectionToRawGraphDelta({
+        const delta = legacyProjectionToRawGraphDelta({
             clear: event.clear,
             graphData: event.graphData ?? null,
         });

@@ -1,0 +1,27 @@
+{
+  "name": "treease-extension",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "build": "vite build",
+    "dev": "vite build --watch",
+    "check": "tsc --noEmit",
+    "test": "vitest run",
+    "test:integration": "pnpm build && playwright test -c playwright.config.ts",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@leafer-in/viewport": "^2.0.0",
+    "leafer-ui": "^2.0.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.53.1",
+    "@types/chrome": "^0.1.23",
+    "@types/node": "^24.10.9",
+    "jsdom": "^29.0.0",
+    "typescript": "^5.9.3",
+    "vite": "^8.0.0",
+    "vitest": "^4.1.10"
+  }
+}
