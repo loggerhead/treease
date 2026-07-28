@@ -1,9 +1,11 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import { Github, LoaderCircle, Mail } from 'lucide-svelte';
   import { toast } from 'svelte-sonner';
   import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog';
   import { Button } from './ui/button';
   import { sendEmailSignInLink, signInWithProvider } from '../auth/supabase-auth';
+  import { authUser, observeAuthUser } from '../auth/auth-user-store';
   import { workspaceHost } from '../workspace-host';
 
   export let open = false;
@@ -13,11 +15,19 @@
   let busy = false;
   let error = '';
 
+  onMount(() => observeAuthUser());
+
   $: if (!open) {
     email = '';
     emailLinkSent = false;
     busy = false;
     error = '';
+  }
+
+  // A Magic Link can complete in another tab. The shared auth observer receives
+  // that session update and dismisses the pending dialog in this tab.
+  $: if (open && $authUser) {
+    open = false;
   }
 
   async function handleProvider(provider: 'google' | 'github') {
