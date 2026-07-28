@@ -24,7 +24,7 @@ export default defineConfig({
   workers: '50%',
   reporter: 'dot',
   use: {
-    baseURL: 'http://127.0.0.1:4173',
+    baseURL: 'http://localhost:8080',
     trace: 'off',
   },
   projects: [
@@ -35,7 +35,7 @@ export default defineConfig({
   ],
   webServer: {
     command: 'pnpm serve:e2e',
-    url: 'http://127.0.0.1:4173',
+    url: 'http://localhost:8080',
     reuseExistingServer: true,
     timeout: CI ? 120_000 : 10_000,
   },

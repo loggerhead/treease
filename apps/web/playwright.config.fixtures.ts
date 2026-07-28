@@ -14,7 +14,7 @@ export default defineConfig({
   workers: 1,
   reporter: 'list',
   use: {
-    baseURL: 'http://127.0.0.1:4173',
+    baseURL: 'http://localhost:4173',
     trace: 'retain-on-failure',
   },
   projects: [
@@ -24,8 +24,8 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: 'pnpm dev:vite -- --host 127.0.0.1 --port 4173',
-    url: 'http://127.0.0.1:4173',
+    command: 'pnpm dev:vite -- --host localhost --port 4173',
+    url: 'http://localhost:4173',
     reuseExistingServer: true,
     timeout: 10_000,
   },

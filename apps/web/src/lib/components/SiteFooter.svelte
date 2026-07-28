@@ -11,7 +11,10 @@
 </script>
 
 <footer class="site-footer" aria-label="Site footer">
-  <span class="site-footer__brand">© 2026 Treease</span>
+  <div class="site-footer__identity">
+    <span class="site-footer__brand">© 2026 Treease</span>
+    <a class="site-footer__support" href="mailto:support@treease.com">support@treease.com</a>
+  </div>
   <nav class="site-footer__links" aria-label="Site resources">
     {#each links as item}
       <a
@@ -35,7 +38,10 @@
 <style>
   .site-footer__links { display: inline-flex; align-items: center; flex-wrap: wrap; max-width: 100%; gap: 18px; min-width: 0; }
   .site-footer { display: flex; align-items: center; justify-content: space-between; width: 100%; box-sizing: border-box; gap: 18px; margin-top: 34px; padding: 12px 0 0; border-top: 1px solid var(--line); color: var(--muted-soft, #718196); font-size: 13px; }
+  .site-footer__identity { display: inline-flex; align-items: center; gap: 18px; }
   .site-footer__links a { color: inherit; font-weight: 600; text-decoration: none; transition: color 160ms ease; }
+  .site-footer__support { color: inherit; font-weight: 600; text-decoration: none; transition: color 160ms ease; }
+  .site-footer__support:hover { color: var(--accent-strong); }
   .site-footer__links a:hover { color: var(--accent-strong); }
   .site-footer__social-link { display: inline-grid; width: 18px; height: 18px; place-items: center; }
   .site-footer__social-link svg { width: 15px; height: 15px; fill: currentColor; }

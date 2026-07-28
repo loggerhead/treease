@@ -1,5 +1,17 @@
 import { expect, test as base, type ConsoleMessage, type Page, type TestInfo } from '@playwright/test';
 
+const usageSummary = {
+  tier: 'free',
+  periodKey: '2026-07',
+  limits: {
+    bidirectionalEditDocumentsMonthly: { kind: 'limited', limit: 10 },
+    largeFileProcessingRunsMonthly: { kind: 'limited', limit: 10 },
+    aiProcessingMonthly: { kind: 'limited', limit: 10 },
+    shareMaxAgeDays: 7,
+  },
+  usage: {},
+};
+
 function formatMessageLocation(message: ConsoleMessage): string {
   const location = message.location();
   if (!location.url) return '';
@@ -39,6 +51,9 @@ function filterAllowedBrowserErrors(testInfo: TestInfo, errors: string[]): strin
 
 export const test = base.extend<{ _browserErrorCheck: void }>({
   _browserErrorCheck: [async ({ page }, use, testInfo) => {
+    await page.route('**/v1/usage?**', async (route) => {
+      await route.fulfill({ contentType: 'application/json', body: JSON.stringify(usageSummary) });
+    });
     const browserErrors: string[] = [];
     const onPageError = (error: Error | unknown) => {
       browserErrors.push(`[pageerror] ${collectPageError(error)}`);

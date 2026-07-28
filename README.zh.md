@@ -103,8 +103,8 @@ bash tests/acceptance/run.sh
 先启动 Web 开发服务，再把 `TREEASE_WEB_URL` 指向本地 `/editor`：
 
 ```bash
-pnpm --dir apps/web dev --host 127.0.0.1 --port 5173
-TREEASE_WEB_URL=http://127.0.0.1:5173/editor \
+pnpm --dir apps/web dev --host localhost.treease.com --port 5173
+TREEASE_WEB_URL=http://localhost.treease.com:5173/editor \
   cargo run --manifest-path apps/cli/Cargo.toml -- web '.' path/to/file.json
 ```
 

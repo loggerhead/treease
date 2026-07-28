@@ -141,7 +141,7 @@ fn web_server_graph_url_reuses_remote_editor_and_local_source() {
     let server =
         web_server::WebServer::bind_for_test(test_web_server_state()).expect("server should bind");
     let editor_url = server.editor_url();
-    assert!(editor_url.starts_with("https://treease.com/editor?textUrl=http%3A%2F%2F127.0.0.1%3A"));
+    assert!(editor_url.starts_with("https://treease.com/editor?textUrl=http%3A%2F%2Flocalhost.treease.com%3A"));
     assert!(editor_url.contains("%2Fcli%2Fsource%3Ftoken%3Dtest-token"));
     assert!(editor_url.ends_with("&lang=json&ui=editor%2Cviewer"));
 }

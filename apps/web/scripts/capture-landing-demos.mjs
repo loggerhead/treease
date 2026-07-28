@@ -5,7 +5,7 @@ import { join, resolve } from "node:path";
 import { chromium, expect } from "@playwright/test";
 import { fromScriptsDir } from "./project-paths.mjs";
 
-const BASE_URL = process.env.TREEASE_LANDING_CAPTURE_BASE_URL ?? "http://127.0.0.1:4173";
+const BASE_URL = process.env.TREEASE_LANDING_CAPTURE_BASE_URL ?? "http://localhost:4173";
 const OUTPUT_DIR = fromScriptsDir(import.meta.url, "../static/landing");
 const VIEWPORT = { width: 1200, height: 860 };
 const EXAMPLE_JSON_PATH = fromScriptsDir(import.meta.url, "../../../example/simple.json");

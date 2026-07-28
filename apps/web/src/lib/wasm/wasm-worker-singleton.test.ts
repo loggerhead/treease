@@ -339,7 +339,7 @@ describe('wasm-worker-singleton', () => {
     const { worker, state } = createMockWorker();
     setWorkerFactory(() => worker);
 
-    await getWasmWorkerClient('http://127.0.0.1:4173/wasm/core.wasm');
+    await getWasmWorkerClient('http://localhost:4173/wasm/core.wasm');
 
     const initPost = state.posts.find((item) => item.type === 'init');
     expect(initPost?.payload.wasmBytes).toBeInstanceOf(ArrayBuffer);

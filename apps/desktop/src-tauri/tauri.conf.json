@@ -5,14 +5,14 @@
   "identifier": "com.treease.desktop",
   "build": {
     "beforeDevCommand": "pnpm icons:generate && pnpm --dir ../web dev:desktop",
-    "devUrl": "http://127.0.0.1:1420",
+    "devUrl": "http://localhost.treease.com:1420",
     "beforeBuildCommand": "pnpm icons:generate && pnpm --dir ../web build:desktop",
     "frontendDist": "../dist"
   },
   "app": {
     "security": {
       "capabilities": ["default"],
-      "csp": "default-src 'self'; script-src 'self'; connect-src 'self' http://127.0.0.1:1420 https://api.treease.com https://*.supabase.co; img-src 'self' data: blob: https:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; worker-src 'self' blob:; frame-src 'none'; object-src 'none'; base-uri 'none'"
+      "csp": "default-src 'self'; script-src 'self'; connect-src 'self' http://localhost.treease.com:1420 https://api.treease.com https://*.supabase.co; img-src 'self' data: blob: https:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; worker-src 'self' blob:; frame-src 'none'; object-src 'none'; base-uri 'none'"
     },
     "windows": [
       {

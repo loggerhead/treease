@@ -38,9 +38,9 @@ test('renders Graphs for a highlighted GitHub-style cell and a 128 KB raw JSON d
     response.setHeader('content-type', 'text/html');
     response.end(request.url === '/highlighted' ? highlightedFixture : fixture);
   });
-  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  await new Promise<void>((resolve) => server.listen(0, 'localhost.treease.com', resolve));
   const port = (server.address() as { port: number }).port;
-  const origin = `http://127.0.0.1:${port}`;
+  const origin = `http://localhost.treease.com:${port}`;
   const profileDir = test.info().outputPath('chrome-profile');
   const context = await chromium.launchPersistentContext(profileDir, {
     headless: false,

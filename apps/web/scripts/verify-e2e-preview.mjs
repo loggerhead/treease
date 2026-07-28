@@ -10,12 +10,12 @@ console.log(execFileSync("pnpm", ["exec", "vp", "--version"], { encoding: "utf8"
 function startPreview(port, explicitOutDir) {
   const args = ["exec", "vp", "preview"];
   if (explicitOutDir) args.push("--outDir", buildDir);
-  args.push("--host", "127.0.0.1", "--port", String(port), "--strictPort");
+  args.push("--host", "localhost", "--port", String(port), "--strictPort");
   return spawn("pnpm", args, { detached: true, stdio: "inherit" });
 }
 
 async function waitForPreview(port) {
-  const url = `http://127.0.0.1:${port}/`;
+  const url = `http://localhost:${port}/`;
   for (let attempt = 0; attempt < 30; attempt += 1) {
     try {
       await fetch(url);
@@ -32,7 +32,7 @@ async function inspectPreview(port, label) {
   await waitForPreview(port);
   const responses = new Map();
   for (const route of routes) {
-    const response = await fetch(`http://127.0.0.1:${port}${route}`);
+    const response = await fetch(`http://localhost:${port}${route}`);
     const body = await response.text();
     responses.set(route, { status: response.status, body });
     console.log(`${label} ${route}: ${response.status}`);

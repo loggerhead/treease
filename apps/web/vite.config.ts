@@ -31,7 +31,7 @@ const previewRouteFallback: Plugin = {
   name: 'treease-preview-route-fallback',
   configurePreviewServer(server) {
     server.middlewares.use((request, _response, next) => {
-      const url = new URL(request.url ?? '/', 'http://127.0.0.1');
+      const url = new URL(request.url ?? '/', 'http://localhost');
       const fallback = {
         '/': '/index.html',
         '/editor': '/200.html',

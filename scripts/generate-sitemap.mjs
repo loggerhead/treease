@@ -52,9 +52,8 @@ function toXmlUrl(url) {
 const routeUrls = await findPageRoutes(routesRoot);
 const tutorialUrls = (await findTutorialSlugs()).map((slug) => `/tutorial/${slug}`);
 const changelogUrls = (await findChangelogSlugs()).map((slug) => `/changelog/${slug}`);
-const urls = [...new Set([...routeUrls, ...tutorialUrls, ...changelogUrls])].sort((left, right) =>
-  left.localeCompare(right),
-);
+// Code-unit ordering is stable across Node, ICU, and host locale versions.
+const urls = [...new Set([...routeUrls, ...tutorialUrls, ...changelogUrls])].sort();
 const sitemap = [
   '<?xml version="1.0" encoding="UTF-8"?>',
   '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',

@@ -18,7 +18,7 @@
     "sitemap:generate": "node ./scripts/generate-sitemap.mjs",
     "dev": "node ./scripts/wasm-dev.mjs",
     "dev:vite": "WASM_VERSION=$(node ./scripts/wasm-version.mjs) vp dev",
-    "dev:desktop:vite": "TREEASE_WORKSPACE_SURFACE=desktop WASM_VERSION=$(node ./scripts/wasm-version.mjs) vp dev --host 127.0.0.1 --port 1420",
+    "dev:desktop:vite": "TREEASE_WORKSPACE_SURFACE=desktop WASM_VERSION=$(node ./scripts/wasm-version.mjs) vp dev --host localhost --port 1420",
     "dev:desktop": "pnpm wasm:sync && pnpm dev:desktop:vite",
     "dev:wasm": "pnpm wasm:sync && pnpm dev:vite",
     "build": "pnpm sitemap:generate && pnpm wasm:bindgen:check && pnpm wasm:sync && WASM_VERSION=$(node ./scripts/wasm-version.mjs) node ./scripts/with-build-lock.mjs vp build",
@@ -56,7 +56,7 @@
     "test:e2e:a11y:runtime": "playwright test --config playwright.config.runtime.ts",
     "test:e2e:cloudflare": "pnpm build && playwright test --config playwright.config.cloudflare.ts",
     "verify:e2e-preview": "node ./scripts/verify-e2e-preview.mjs",
-    "serve:e2e": "vp preview --outDir \"$PWD/build\" --host 127.0.0.1 --port 4173 --strictPort",
+    "serve:e2e": "vp preview --outDir \"$PWD/build\" --host localhost --port 8080 --strictPort",
     "wasm:setup:rust": "rustup target add wasm32-unknown-unknown"
   },
   "devDependencies": {

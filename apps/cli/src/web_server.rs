@@ -9,7 +9,7 @@ use super::{CliError, errors};
 
 include!(concat!(env!("OUT_DIR"), "/treease_web_config.rs"));
 
-const LOCALHOST: &str = "127.0.0.1:0";
+const LOCALHOST: &str = "localhost.treease.com";
 const MAX_REQUEST_BYTES: usize = 16 * 1024;
 const REQUEST_IO_TIMEOUT: Duration = Duration::from_secs(5);
 
@@ -38,6 +38,7 @@ pub(super) enum WebServerSource {
 pub(super) struct WebServer {
     listener: TcpListener,
     local_addr: SocketAddr,
+    public_addr: String,
     state: WebServerState,
 }
 
@@ -51,7 +52,7 @@ impl WebServer {
     }
 
     pub(super) fn editor_url(&self) -> String {
-        let api_url = format!("http://{}", self.local_addr);
+        let api_url = format!("http://{}", self.public_addr);
         let source_url = format!("{}/cli/source?token={}", api_url, self.state.token);
         format!(
             "{}?textUrl={}&lang={}&ui=editor%2Cviewer",
@@ -100,14 +101,16 @@ impl WebServer {
     }
 
     fn bind_with_state(state: WebServerState) -> Result<Self, CliError> {
-        let listener =
-            TcpListener::bind(LOCALHOST).map_err(|error| CliError::WebServer(error.to_string()))?;
+        let listener = TcpListener::bind((LOCALHOST, 0))
+            .map_err(|error| CliError::WebServer(error.to_string()))?;
         let local_addr = listener
             .local_addr()
             .map_err(|error| CliError::WebServer(error.to_string()))?;
+        let public_addr = format!("{LOCALHOST}:{}", local_addr.port());
         Ok(Self {
             listener,
             local_addr,
+            public_addr,
             state,
         })
     }

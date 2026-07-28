@@ -276,13 +276,13 @@ async function benchmarkChunkSize({ chunkSize, wasmVersion, selectedCases }) {
   const server = await startViteServer({ chunkSize, wasmVersion, port });
   const browser = await chromium.launch({ headless: true });
   try {
-    await warmupBrowser(browser, `http://127.0.0.1:${port}`);
+    await warmupBrowser(browser, `http://localhost:${port}`);
     const cases = [];
     for (const fixture of selectedCases) {
       const sourceText = await readFile(path.resolve(repoRoot, fixture.repoPath), 'utf8');
       console.log(`  [case] ${fixture.bucket} ${fixture.language} ${fixture.fileName}`);
       cases.push(
-        await benchmarkCase(browser, `http://127.0.0.1:${port}`, {
+        await benchmarkCase(browser, `http://localhost:${port}`, {
           ...fixture,
           sourceText,
         }),
@@ -299,7 +299,7 @@ async function benchmarkChunkSize({ chunkSize, wasmVersion, selectedCases }) {
 }
 
 async function startViteServer({ chunkSize, wasmVersion, port }) {
-  const child = spawn('pnpm', ['exec', 'vite', '--host', '127.0.0.1', '--port', String(port), '--strictPort'], {
+  const child = spawn('pnpm', ['exec', 'vite', '--host', 'localhost', '--port', String(port), '--strictPort'], {
     cwd: webDir,
     env: {
       ...process.env,
@@ -321,7 +321,7 @@ async function startViteServer({ chunkSize, wasmVersion, port }) {
     process.stderr.write(String(chunk));
   });
 
-  await waitForHttpReady(`http://127.0.0.1:${port}/editor`, child, { stdout, stderr }, 60_000);
+  await waitForHttpReady(`http://localhost:${port}/editor`, child, { stdout, stderr }, 60_000);
   return { child };
 }
 
