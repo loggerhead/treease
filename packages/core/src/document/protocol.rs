@@ -1,13 +1,16 @@
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "wasm")]
 use tsify::Tsify;
 
 use crate::tree::incremental_edit::DocumentTextEdit;
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize, Tsify)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(Tsify))]
 #[serde(transparent)]
 pub struct SnapshotId(pub u64);
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, Tsify)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(Tsify))]
 #[serde(rename_all = "camelCase")]
 pub enum CommitMode {
     #[default]
@@ -15,7 +18,8 @@ pub enum CommitMode {
     DiagnosticsOnly,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, Tsify)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(Tsify))]
 #[serde(rename_all = "camelCase")]
 pub enum DocumentJobKind {
     #[default]
@@ -25,7 +29,8 @@ pub enum DocumentJobKind {
 
 // ── Input / Output plans ────────────────────────────────────────────────
 
-#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize, Tsify)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(Tsify))]
 #[serde(rename_all = "camelCase")]
 pub enum DocumentInputPlan {
     #[default]
@@ -34,7 +39,8 @@ pub enum DocumentInputPlan {
     ByteStream,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, Tsify)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(Tsify))]
 #[serde(rename_all = "camelCase")]
 pub struct OutputPlan {
     pub analysis: bool,
@@ -43,7 +49,8 @@ pub struct OutputPlan {
 
 // ── Document job ────────────────────────────────────────────────────────
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Tsify)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(Tsify))]
 #[serde(rename_all = "camelCase")]
 pub struct DocumentParserSettings {
     pub enable_nest: bool,
@@ -59,7 +66,8 @@ impl Default for DocumentParserSettings {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Tsify)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(Tsify))]
 #[serde(rename_all = "camelCase")]
 pub struct DocumentFormattingSettings {
     pub indent: i32,
@@ -85,14 +93,16 @@ impl Default for DocumentFormattingSettings {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, Tsify)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(Tsify))]
 #[serde(rename_all = "camelCase")]
 pub struct DocumentJobSettings {
     pub parser: DocumentParserSettings,
     pub formatting: DocumentFormattingSettings,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize, Tsify)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(Tsify))]
 #[serde(rename_all = "camelCase")]
 pub struct DocumentJobSpec {
     pub kind: DocumentJobKind,
@@ -103,13 +113,14 @@ pub struct DocumentJobSpec {
     pub settings: DocumentJobSettings,
     pub output: OutputPlan,
     pub base_snapshot_id: Option<SnapshotId>,
-    #[tsify(type = "any[]")]
+    #[cfg_attr(feature = "wasm", tsify(type = "any[]"))]
     pub edits: Vec<DocumentTextEdit>,
 }
 
 // ── Graph delta types (serde-wasm-bindgen wire format) ──────────────────
 
-#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize, Tsify)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(Tsify))]
 #[serde(rename_all = "camelCase")]
 pub struct GraphPathSeg {
     pub tag: i32,
@@ -117,7 +128,8 @@ pub struct GraphPathSeg {
     pub index: i32,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, Tsify)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(Tsify))]
 #[serde(rename_all = "camelCase")]
 pub enum GraphValueEditPlanMode {
     #[default]
@@ -125,7 +137,8 @@ pub enum GraphValueEditPlanMode {
     Replace,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, Tsify)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(Tsify))]
 #[serde(rename_all = "camelCase")]
 pub enum GraphValueEditFallbackReason {
     #[default]
@@ -139,7 +152,8 @@ pub enum GraphValueEditFallbackReason {
     UnsafeEdit,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Tsify)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(Tsify))]
 #[serde(rename_all = "camelCase")]
 pub struct GraphValueEditRequest {
     pub document_key: String,
@@ -147,11 +161,12 @@ pub struct GraphValueEditRequest {
     pub language: String,
     pub path: Vec<GraphPathSeg>,
     pub prefer_key: bool,
-    #[tsify(type = "any")]
+    #[cfg_attr(feature = "wasm", tsify(type = "any"))]
     pub value: serde_json::Value,
 }
 
-#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize, Tsify)]
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(Tsify))]
 #[serde(rename_all = "camelCase")]
 pub struct GraphValueEditPlan {
     pub mode: GraphValueEditPlanMode,
@@ -159,7 +174,8 @@ pub struct GraphValueEditPlan {
     pub reason: Option<GraphValueEditFallbackReason>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, Tsify)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(Tsify))]
 #[serde(rename_all = "camelCase")]
 pub struct GraphBoxArgs {
     pub x: i32,
@@ -169,7 +185,8 @@ pub struct GraphBoxArgs {
     pub corner_radius: i32,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize, Tsify)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(Tsify))]
 #[serde(rename_all = "camelCase")]
 pub struct GraphTextArgs {
     pub x: i32,
@@ -182,7 +199,8 @@ pub struct GraphTextArgs {
     pub editable: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize, Tsify)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(Tsify))]
 #[serde(rename_all = "camelCase")]
 pub struct GraphCellData {
     pub sem_type: u32,
@@ -195,7 +213,8 @@ pub struct GraphCellData {
     pub text_args: GraphTextArgs,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize, Tsify)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(Tsify))]
 #[serde(rename_all = "camelCase")]
 pub struct GraphRowData {
     pub index: i32,
@@ -204,7 +223,8 @@ pub struct GraphRowData {
     pub cells: Vec<GraphCellData>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize, Tsify)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(Tsify))]
 #[serde(rename_all = "camelCase")]
 pub struct GraphTableData {
     pub columns: Vec<GraphCellData>,
@@ -233,7 +253,8 @@ pub struct GraphTableData {
 ///   Table mutations are communicated exclusively via
 ///   [`GraphDelta::table_patches`] (see [`TablePatch`] variants).
 ///   Consumers MUST NOT rely on `table` being present on incremental nodes.
-#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize, Tsify)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(Tsify))]
 #[serde(rename_all = "camelCase")]
 pub struct GraphNodeData {
     pub render_handle: u32,
@@ -252,7 +273,8 @@ pub struct GraphNodeData {
     pub table: Option<GraphTableData>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, Tsify)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(Tsify))]
 #[serde(rename_all = "camelCase")]
 pub struct GraphBezierArgsData {
     pub from_x: i32,
@@ -265,7 +287,8 @@ pub struct GraphBezierArgsData {
     pub to_y: i32,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize, Tsify)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(Tsify))]
 #[serde(rename_all = "camelCase")]
 pub struct GraphEdgeData {
     pub from_render_handle: u32,
@@ -286,14 +309,16 @@ pub struct GraphEdgeData {
     pub bezier_to_x: i32,
     pub bezier_to_y: i32,
 }
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, Tsify)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(Tsify))]
 #[serde(rename_all = "camelCase")]
 pub struct GraphEdgeRemoved {
     pub from: u32,
     pub to: u32,
 }
 
-#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize, Tsify)]
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(Tsify))]
 #[serde(rename_all = "camelCase")]
 pub struct GraphDelta {
     pub nodes_added: Vec<GraphNodeData>,
@@ -320,7 +345,8 @@ pub struct GraphDelta {
 // ── Table / Layout patch types (streaming extension) ─────────────────────
 
 /// Incremental table mutation emitted during streaming graph projection.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Tsify)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(Tsify))]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum TablePatch {
     /// A new table node is created with its initial columns.
@@ -361,7 +387,8 @@ pub enum TablePatch {
 }
 
 /// A single cell mutation within a table.
-#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize, Tsify)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(Tsify))]
 #[serde(rename_all = "camelCase")]
 pub struct TableCellPatchData {
     pub row_index: u32,
@@ -370,7 +397,8 @@ pub struct TableCellPatchData {
 }
 
 /// Incremental layout hint emitted during streaming graph projection.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Tsify)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(Tsify))]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum LayoutPatch {
     /// A single node's bounding box has been updated.
@@ -392,7 +420,8 @@ pub enum LayoutPatch {
 }
 // ── Analysis payloads ───────────────────────────────────────────────────
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, Tsify)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(Tsify))]
 #[serde(rename_all = "camelCase")]
 pub struct DocumentDiagnostic {
     pub start_line_number: u32,
@@ -402,14 +431,16 @@ pub struct DocumentDiagnostic {
     pub kind: u32,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize, Tsify)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(Tsify))]
 #[serde(rename_all = "camelCase")]
 pub struct SemanticTokensPayload {
     pub data: Vec<u32>,
     pub version: u32,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize, Tsify)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(Tsify))]
 #[serde(rename_all = "camelCase")]
 pub struct DocumentTreeNode {
     pub kind: i32,
@@ -419,7 +450,8 @@ pub struct DocumentTreeNode {
     pub children: Vec<DocumentTreeNode>,
 }
 
-#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize, Tsify)]
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(Tsify))]
 #[serde(rename_all = "camelCase")]
 pub struct DocumentAnalysisPayload {
     pub tree: Option<DocumentTreeNode>,
@@ -433,7 +465,8 @@ pub struct DocumentAnalysisPayload {
     pub language: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize, Tsify)]
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(Tsify))]
 #[serde(rename_all = "camelCase")]
 pub struct SnapshotReady {
     #[serde(rename = "snapshotId")]
@@ -444,7 +477,8 @@ pub struct SnapshotReady {
     pub source_text: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize, Tsify)]
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(Tsify))]
 #[serde(rename_all = "camelCase")]
 pub struct ParseFailed {
     #[serde(rename = "snapshotId")]
@@ -453,7 +487,8 @@ pub struct ParseFailed {
 }
 
 /// A request to build a hover subgraph projection on an existing snapshot.
-#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize, Tsify)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(Tsify))]
 #[serde(rename_all = "camelCase")]
 pub struct ProjectionRequest {
     pub snapshot_id: SnapshotId,
@@ -462,7 +497,8 @@ pub struct ProjectionRequest {
 
 // ── Projection ──────────────────────────────────────────────────────────
 
-#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize, Tsify)]
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(Tsify))]
 #[serde(rename_all = "camelCase")]
 pub struct ProjectionDelta {
     pub clear: bool,
@@ -480,7 +516,8 @@ pub struct ProjectionDelta {
 
 // ── Advance / events ────────────────────────────────────────────────────
 
-#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize, Tsify)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(Tsify))]
 #[serde(rename_all = "camelCase")]
 pub enum AdvanceInput {
     #[default]
@@ -490,7 +527,8 @@ pub enum AdvanceInput {
     Close,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Tsify)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(Tsify))]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum DocumentEvent {
     Progress {
@@ -528,7 +566,8 @@ pub enum DocumentEvent {
     },
 }
 
-#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize, Tsify)]
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(Tsify))]
 #[serde(rename_all = "camelCase")]
 pub struct EventBatch {
     #[serde(rename = "requestSeq")]
@@ -537,7 +576,8 @@ pub struct EventBatch {
     pub terminal: Option<JobTerminal>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Tsify)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(Tsify))]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum JobTerminal {
     Completed,
@@ -548,7 +588,8 @@ pub enum JobTerminal {
 
 // ── Snapshot query API ──────────────────────────────────────────────────
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Tsify)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(Tsify))]
 #[serde(rename_all = "camelCase")]
 pub struct DocumentAnchor {
     pub snapshot_id: SnapshotId,
@@ -557,7 +598,8 @@ pub struct DocumentAnchor {
     pub span_end: u32,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, Tsify)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(Tsify))]
 #[serde(rename_all = "camelCase")]
 pub enum QueryKind {
     #[default]
@@ -571,7 +613,8 @@ pub enum QueryKind {
     SearchIndex,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, Tsify)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(Tsify))]
 #[serde(rename_all = "camelCase")]
 pub enum QueryTargetKind {
     Key,
@@ -580,7 +623,8 @@ pub enum QueryTargetKind {
     Node,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize, Tsify)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(Tsify))]
 #[serde(rename_all = "camelCase")]
 pub struct SnapshotQuery {
     pub snapshot_id: SnapshotId,
@@ -590,7 +634,8 @@ pub struct SnapshotQuery {
     pub target: Option<QueryTargetKind>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize, Tsify)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(Tsify))]
 #[serde(rename_all = "camelCase")]
 pub struct DocumentSearchItem {
     pub path: String,
@@ -604,7 +649,8 @@ pub struct DocumentSearchItem {
     pub target: QueryTargetKind,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize, Tsify)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(Tsify))]
 #[serde(rename_all = "camelCase")]
 pub struct QueryResult {
     pub anchors: Vec<DocumentAnchor>,
@@ -620,7 +666,8 @@ pub struct QueryResult {
     pub search_items: Vec<DocumentSearchItem>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize, Tsify)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(Tsify))]
 #[serde(rename_all = "camelCase")]
 pub struct DocumentNodePreview {
     pub kind: i32,
@@ -633,7 +680,8 @@ pub struct DocumentNodePreview {
     pub is_scalar: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize, Tsify)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(Tsify))]
 #[serde(rename_all = "camelCase")]
 pub struct DocumentPathValue {
     #[serde(rename = "valueType")]
@@ -645,7 +693,8 @@ pub struct DocumentPathValue {
     pub display_text: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Tsify)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(Tsify))]
 #[serde(tag = "status", rename_all = "camelCase")]
 pub enum SnapshotReadResult<T> {
     Ready { data: T },

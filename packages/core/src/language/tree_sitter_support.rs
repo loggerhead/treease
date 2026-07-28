@@ -5,12 +5,12 @@ use tree_sitter::StreamingIterator;
 
 use super::lang_spec::{LangSpec, lang_from_name};
 
-#[cfg(target_arch = "wasm32")]
+#[cfg(all(target_arch = "wasm32", feature = "wasm"))]
 pub(crate) fn ensure_tree_sitter_runtime() {
     crate::wasm::allocator::install_tree_sitter_allocator();
 }
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(not(all(target_arch = "wasm32", feature = "wasm")))]
 pub(crate) fn ensure_tree_sitter_runtime() {}
 // ---------------------------------------------------------------------------
 // Span / summary types

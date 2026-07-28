@@ -2,7 +2,7 @@ use crate::analysis::LineIndex;
 use crate::formats::DecodedDocument;
 use crate::wasm_types::AnalysisSharedArtifacts;
 
-use super::{semantic_tokens_shared, value_json_shared};
+use crate::{semantic_tokens_shared, value_json_shared};
 fn build_lightweight_analysis_shared(
     language: &str,
     source: &str,
@@ -32,15 +32,13 @@ fn diagnostics_for_decoded_source(language: &str, source: &str) -> Vec<u32> {
     if tree_sitter_ok {
         Vec::new()
     } else {
-        crate::wasm::semantic_tokens_shared::encode_error_spans_raw(&[
-            crate::wasm::semantic_tokens_shared::ErrorSpan {
-                start_row: 0,
-                start_col: 0,
-                end_row: 0,
-                end_col: source.len() as u32,
-                kind: 1,
-            },
-        ])
+        semantic_tokens_shared::encode_error_spans_raw(&[semantic_tokens_shared::ErrorSpan {
+            start_row: 0,
+            start_col: 0,
+            end_row: 0,
+            end_col: source.len() as u32,
+            kind: 1,
+        }])
     }
 }
 pub fn build_analysis_shared(

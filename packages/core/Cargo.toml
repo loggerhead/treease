@@ -1,6 +1,6 @@
 [package]
 name = "treease-core"
-version = "1.2.0"
+version = "1.2.1"
 edition = "2024"
 description = "Core parsing, evaluation, formatting, and graph runtime for Treease"
 license-file = "LICENSE"
@@ -16,13 +16,17 @@ categories = ["parser-implementations", "parsing"]
 path = "src/lib.rs"
 crate-type = ["cdylib", "rlib"]
 
+[features]
+default = ["wasm"]
+wasm = ["dep:serde-wasm-bindgen", "dep:tsify", "dep:wasm-bindgen"]
+
 [dependencies]
 regex = { version = "1", default-features = false, features = ["std"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-tsify = "0.4.5"
-wasm-bindgen = "0.2.121"
-serde-wasm-bindgen = "0.6"
+tsify = { version = "0.4.5", optional = true }
+wasm-bindgen = { version = "0.2.121", optional = true }
+serde-wasm-bindgen = { version = "0.6", optional = true }
 tree-sitter = "0.26.9"
 tree-sitter-language = "0.1.7"
 tree-sitter-javascript = { package = "treease-ts-javascript", version = "0.25.1" }
@@ -61,6 +65,7 @@ test = false
 name = "export_document_protocol"
 path = "src/tools/export_document_protocol.rs"
 test = false
+required-features = ["wasm"]
 
 [[bin]]
 name = "sync_examples"

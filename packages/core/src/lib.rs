@@ -3,6 +3,8 @@ pub mod compare;
 pub mod context;
 pub mod core;
 pub mod document;
+#[path = "wasm/document_analysis_shared.rs"]
+pub mod document_analysis_shared;
 pub mod errors;
 pub mod evaluator;
 pub mod expression_pipeline;
@@ -14,11 +16,17 @@ pub mod layout;
 pub mod operators;
 pub mod parser;
 pub mod registry;
+#[path = "wasm/semantic_tokens_shared.rs"]
+pub mod semantic_tokens_shared;
 pub mod stream;
 #[cfg(test)]
 pub mod test_timing;
 pub mod tree;
+#[path = "wasm/value_json_shared.rs"]
+pub mod value_json_shared;
+#[cfg(feature = "wasm")]
 pub mod wasm;
+#[cfg(feature = "wasm")]
 pub mod wasm_document;
 pub mod wasm_types;
 
@@ -144,10 +152,10 @@ pub mod internal {
     }
 
     pub mod wasm {
+        pub use crate::document_analysis_shared;
         pub use crate::language::lang_spec as languages;
-        pub use crate::wasm::document_analysis_shared;
-        pub use crate::wasm::semantic_tokens_shared;
-        pub use crate::wasm::value_json_shared;
+        pub use crate::semantic_tokens_shared;
+        pub use crate::value_json_shared;
     }
 
     pub use crate::compare;

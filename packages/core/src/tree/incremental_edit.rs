@@ -4,9 +4,11 @@ use crate::tree::{NodeId, TreeNodeKind, TreeStore};
 
 use serde::{Deserialize, Serialize};
 use tree_sitter::Point;
+#[cfg(feature = "wasm")]
 use tsify::Tsify;
 
-#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize, Tsify)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(Tsify))]
 #[serde(rename_all = "camelCase")]
 pub struct DocumentTextEdit {
     pub start_byte: u32,

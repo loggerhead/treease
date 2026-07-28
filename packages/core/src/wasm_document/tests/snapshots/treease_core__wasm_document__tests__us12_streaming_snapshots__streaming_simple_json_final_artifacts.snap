@@ -251,7 +251,7 @@ tree:
         - kind: 2
           semType: 2
           tag: "!!str"
-          value: "https://treease.com/icon.png"
+          value: "https://assets.treease.com/treease-logo.png"
           children: []
         - kind: 2
           semType: 2
@@ -1396,8 +1396,8 @@ graph:
                 - tag: 0
                   key: img
                   index: 0
-              text: "https://treease.com/icon.png"
-              value: "https://treease.com/icon.png"
+              text: "https://assets.treease.com/treease-logo.png"
+              value: "https://assets.treease.com/treease-logo.png"
               format_text: ""
               box_args:
                 x: 90
@@ -1410,7 +1410,7 @@ graph:
                 y: 0
                 width: 460
                 height: 18
-                text: "https://treease.com/icon.png"
+                text: "https://assets.treease.com/treease-logo.png"
                 textAlign: 0
                 textVerticalAlign: 1
                 editable: true

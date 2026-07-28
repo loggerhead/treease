@@ -1,8 +1,10 @@
 use crate::language::lang_spec::{StreamKind, lang_from_name};
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "wasm")]
 use tsify::Tsify;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Tsify)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(Tsify))]
 #[repr(u8)]
 pub enum PathSegTag {
     Key,
@@ -234,7 +236,8 @@ pub enum TreeKind {
     Unknown = 4,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Tsify)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(Tsify))]
 #[repr(i32)]
 pub enum SemType {
     Map = 0,
@@ -247,7 +250,8 @@ pub enum SemType {
     Unknown = 255,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Tsify)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(Tsify))]
 #[repr(i32)]
 pub enum GraphKind {
     Scalar = 0,

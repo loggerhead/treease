@@ -287,9 +287,9 @@ fn collect_streaming_error_spans(language_name: &str, source: &str) -> Vec<Error
 }
 
 pub fn error_spans_to_diagnostics_raw(spans: &[ErrorSpan]) -> Vec<u32> {
-    let shared: Vec<crate::wasm::semantic_tokens_shared::ErrorSpan> = spans
+    let shared: Vec<crate::semantic_tokens_shared::ErrorSpan> = spans
         .iter()
-        .map(|s| crate::wasm::semantic_tokens_shared::ErrorSpan {
+        .map(|s| crate::semantic_tokens_shared::ErrorSpan {
             start_row: s.start_row,
             start_col: s.start_col,
             end_row: s.end_row,
@@ -297,7 +297,7 @@ pub fn error_spans_to_diagnostics_raw(spans: &[ErrorSpan]) -> Vec<u32> {
             kind: s.kind,
         })
         .collect();
-    crate::wasm::semantic_tokens_shared::encode_error_spans_raw(&shared)
+    crate::semantic_tokens_shared::encode_error_spans_raw(&shared)
 }
 
 /// Store a [`TransientDocumentAnalysis`] into the [`TreeStore`], writing back

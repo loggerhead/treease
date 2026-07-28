@@ -871,7 +871,7 @@ fn classify_number_token(token_type: u32, literal: &str) -> u32 {
 }
 
 fn encode_delta_tokens(source: &str, spans: &[TokenSpan]) -> Vec<u32> {
-    crate::wasm::semantic_tokens_shared::encode_token_spans_to_u32(spans, source)
+    crate::semantic_tokens_shared::encode_token_spans_to_u32(spans, source)
 }
 
 fn source_bound_cache_key(cache_key: &str, source: &str) -> String {

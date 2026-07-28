@@ -6,15 +6,15 @@ use crate::graph::graph_projection_service;
 use crate::language::SemType;
 use crate::tree::{NodeId, TreeNodeKind, TreeStore};
 use crate::wasm_types::CommonFormatOptions;
-use wasm_bindgen::prelude::*;
 
 pub(crate) mod allocator;
+#[cfg(feature = "wasm")]
 pub mod compat_exports;
 pub(crate) mod decoders;
-pub mod document_analysis_shared;
 pub(crate) mod runtime;
-pub mod semantic_tokens_shared;
-pub mod value_json_shared;
+pub use crate::document_analysis_shared;
+pub use crate::semantic_tokens_shared;
+pub use crate::value_json_shared;
 
 use self::decoders::{
     convert_output_options, decode_document_for_stream_session, ensure_formats, normalize_language,
@@ -67,7 +67,7 @@ thread_local! {
 
 // ── Initialization ────────────────────────────────────────────────────────
 
-#[wasm_bindgen]
+#[cfg_attr(feature = "wasm", wasm_bindgen::prelude::wasm_bindgen)]
 pub fn init_wasm() {
     allocator::install_tree_sitter_allocator();
     runtime::REGISTRY_OWNER.with(|owner| {
