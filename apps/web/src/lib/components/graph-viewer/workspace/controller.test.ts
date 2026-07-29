@@ -69,7 +69,7 @@ function createController(overrides: Record<string, unknown> = {}) {
     clearActiveGraphSelection: vi.fn(),
     emitReveal: vi.fn(),
     handleError: vi.fn(),
-    applyGraphEdit: vi.fn(async () => true),
+    applyStructuredValueEdit: vi.fn(async () => true),
     waitForCommittedDocument: vi.fn(async () => true),
     markSubgraphRequested: vi.fn(),
     markSubgraphMaterialized: vi.fn(),
@@ -147,8 +147,8 @@ describe('Subgraph Workspace Module', () => {
   it('keeps only the latest queued Content Pane draft', async () => {
     mocks.queryPathValue.mockResolvedValueOnce(readyPathValue('number'));
     const commit = deferred<boolean>();
-    const applyGraphEdit = vi.fn((_cell: unknown, _kind: unknown, _raw: string) => commit.promise);
-    const { controller } = createController({ applyGraphEdit });
+    const applyStructuredValueEdit = vi.fn((_intent: unknown) => commit.promise);
+    const { controller } = createController({ applyStructuredValueEdit });
     await controller.openPath(keyPath('count'), -1);
     const pane = controller.getChain()[0]!;
 
@@ -159,16 +159,16 @@ describe('Subgraph Workspace Module', () => {
     commit.resolve(true);
     await Promise.all([first, second, third]);
 
-    expect(applyGraphEdit.mock.calls.map((call) => call[2])).toEqual(['2', '4']);
+    expect(applyStructuredValueEdit.mock.calls.map((call) => (call[0] as { raw: string }).raw)).toEqual(['2', '4']);
   });
 
   it('does not plan the latest queued draft until the prior Commit Transaction is terminal', async () => {
     mocks.queryPathValue.mockResolvedValueOnce(readyPathValue('number'));
     const commit = deferred<boolean>();
     const terminal = deferred<boolean>();
-    const applyGraphEdit = vi.fn((_cell: unknown, _kind: unknown, _raw: string) => commit.promise);
+    const applyStructuredValueEdit = vi.fn((_intent: unknown) => commit.promise);
     const waitForCommittedDocument = vi.fn(() => terminal.promise);
-    const { controller } = createController({ applyGraphEdit, waitForCommittedDocument });
+    const { controller } = createController({ applyStructuredValueEdit, waitForCommittedDocument });
     await controller.openPath(keyPath('count'), -1);
     const pane = controller.getChain()[0]!;
 
@@ -177,11 +177,26 @@ describe('Subgraph Workspace Module', () => {
     const second = controller.commitValueEdit(pane, '3');
     commit.resolve(true);
     await Promise.resolve();
-    expect(applyGraphEdit).toHaveBeenCalledTimes(1);
+    expect(applyStructuredValueEdit).toHaveBeenCalledTimes(1);
     terminal.resolve(true);
     await Promise.all([first, second]);
 
-    expect(applyGraphEdit.mock.calls.map((call) => call[2])).toEqual(['2', '3']);
+    expect(applyStructuredValueEdit.mock.calls.map((call) => (call[0] as { raw: string }).raw)).toEqual(['2', '3']);
+  });
+
+  it('preserves a string pane literal and the projection snapshot in its structured intent', async () => {
+    mocks.queryPathValue.mockResolvedValueOnce(readyPathValue('string', '"6837"'));
+    const applyStructuredValueEdit = vi.fn(async () => true);
+    const { controller } = createController({ applyStructuredValueEdit });
+    await controller.openPath(keyPath('duration'), -1);
+
+    await controller.commitValueEdit(controller.getChain()[0]!, '"42"');
+
+    expect(applyStructuredValueEdit).toHaveBeenCalledWith(expect.objectContaining({
+      raw: '"42"',
+      valueType: 'string',
+      snapshotId: 'snapshot-workspace',
+    }));
   });
 
   it('releases pane runtimes and transient state on reset and dispose', async () => {

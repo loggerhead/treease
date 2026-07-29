@@ -9,6 +9,8 @@ export type SubgraphWorkspaceContentState = {
   valueType: ValueType;
   /** Exact Core SemType for this scalar content pane; never a Web value-type guess. */
   rootSemType: number | null;
+  /** Snapshot used to read this scalar; reuse it when planning its edit. */
+  snapshotId: number | null;
 };
 
 export type SubgraphWorkspacePaneState = {

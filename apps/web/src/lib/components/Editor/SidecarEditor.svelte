@@ -47,6 +47,11 @@
   export let onContentChange: (text: string) => void = () => {};
   export let onEditorBlur: (text: string) => void = () => {};
 
+  // A detached sidecar is the Subgraph Content Pane: it owns a Monaco draft,
+  // but its path is part of the primary document. Its writes must therefore
+  // return through the graph planner instead of creating a second document.
+  const isPrimaryDocumentDraft = () => !attachToPane;
+
   const themeName = 'tree-sitter-light';
   const editorOptions = {
     ...createTreeaseMonacoEditorOptions(themeName),
@@ -80,6 +85,8 @@
   let clearSemanticTokensForDocument: (documentKey?: string) => void = () => {};
   let semanticTokenTypes: readonly string[] = [];
   let lastAppliedThemeSignature = '';
+  let detachedDraftText = sourceText ?? '';
+  let detachedDraftRevision = 0;
   $: sidecarTab = $editorWorkspace.tabsById[tabId] ?? null;
   $: if (model && rootSemType != null) {
     primeProjectedRootSemanticTokens();
@@ -131,6 +138,7 @@
   });
 
   function sidecarDocumentKey(): string {
+    if (isPrimaryDocumentDraft()) return `subgraph-draft:${tabId}`;
     return getWorkspaceTab(tabId)?.documentKey ?? `sidecar:${tabId}:0`;
   }
 
@@ -143,6 +151,10 @@
     if (!model || rootSemType == null) return;
     const tokens = buildRootScalarSemanticTokens(model.getValue(), rootSemType, semanticTokenTypes);
     if (!tokens) return;
+    if (isPrimaryDocumentDraft()) {
+      (model as Monaco.editor.ITextModel & { __treeaseRootSemanticTokenType?: number }).__treeaseRootSemanticTokenType =
+        new Uint32Array(tokens)[3];
+    }
     const modelDocumentKey = (model as Monaco.editor.ITextModel & { __treeaseDocumentKey?: string }).__treeaseDocumentKey;
     primeSemanticTokensForDocument(documentKey ?? modelDocumentKey ?? sidecarDocumentKey(), tokens);
   }
@@ -155,14 +167,17 @@
   }
 
   function currentTempModel() {
+    if (isPrimaryDocumentDraft()) return getActiveTempModelSnapshot();
     return getWorkspaceTab(tabId)?.tempModel ?? getActiveTempModelSnapshot();
   }
 
   function updateSidecarTempModel(updater: (current: any) => any): void {
+    if (isPrimaryDocumentDraft()) return;
     updateWorkspaceTab(tabId, { tempModel: updater(currentTempModel()) });
   }
 
   function ensureWorkspaceSidecarTab(sourceText: string): void {
+    if (isPrimaryDocumentDraft()) return;
     if (attachToPane) {
       ensureSidecarWorkspaceTab({
         id: tabId,
@@ -179,10 +194,15 @@
   }
 
   function setWorkspaceSidecarLanguage(languageId: SupportedEditorLanguageId): void {
+    if (isPrimaryDocumentDraft()) return;
     updateWorkspaceTab(tabId, { languageId });
   }
 
   function commitSidecarEditorState(): number {
+    if (isPrimaryDocumentDraft()) {
+      detachedDraftRevision += 1;
+      return detachedDraftRevision;
+    }
     const current = getWorkspaceTab(tabId);
     const revision = (current?.revision ?? 0) + 1;
     updateWorkspaceTab(tabId, {
@@ -244,6 +264,10 @@
     value: string,
     options: { clearSnapshot: boolean | undefined } = { clearSnapshot: undefined },
   ): void {
+    if (isPrimaryDocumentDraft()) {
+      detachedDraftText = value;
+      return;
+    }
     const documentKey = sidecarDocumentKey();
     const shouldClearSnapshot = options.clearSnapshot ?? true;
     updateWorkspaceTab(tabId, {
@@ -255,9 +279,10 @@
         scratchText: value,
       },
     });
-    if (shouldClearSnapshot) {
+    if (shouldClearSnapshot && !isPrimaryDocumentDraft()) {
       clearWorkspaceSnapshotBinding(documentKey);
     }
+    if (isPrimaryDocumentDraft()) return;
     clearSemanticTokensForDocument(documentKey);
     refreshSemanticTokensForLanguage(activeLanguage);
   }
@@ -361,7 +386,7 @@
 
   async function ensureEditor(): Promise<void> {
     if (editor || !container) return;
-    const existingText = getWorkspaceTab(tabId)?.sourceText ?? '';
+    const existingText = isPrimaryDocumentDraft() ? sourceText ?? detachedDraftText : getWorkspaceTab(tabId)?.sourceText ?? '';
     ensureWorkspaceSidecarTab(existingText);
     void getSharedWasmWorkerClient().catch(() => {});
     const token = ++runtimeToken;
@@ -385,9 +410,9 @@
     ensureDocumentColorProvider(activeLanguage);
 
     const tab = getWorkspaceTab(tabId);
-    externalSync.reset(tab?.sourceText ?? '');
+    externalSync.reset(isPrimaryDocumentDraft() ? existingText : tab?.sourceText ?? '');
     const uri = monaco.Uri.parse(`inmemory://sidecar/${tabId}`);
-    model = monaco.editor.createModel(tab?.sourceText ?? '', activeLanguage, uri);
+    model = monaco.editor.createModel(isPrimaryDocumentDraft() ? existingText : tab?.sourceText ?? '', activeLanguage, uri);
     syncLastModelSnapshot();
     setModelDocumentKey(model, tab?.documentKey ?? sidecarDocumentKey());
     primeProjectedRootSemanticTokens();
@@ -425,13 +450,25 @@
       lastModelText = nextText;
       if (wholeDocumentReplacement) {
         updateSidecarSourceText(nextText, { clearSnapshot: true });
-        void runFullEditForCurrentText('whole-document-replacement', nextText, requestLanguage);
+        if (isPrimaryDocumentDraft()) {
+          primeProjectedRootSemanticTokens();
+          refreshSemanticTokensForLanguage(activeLanguage);
+        }
+        if (!isPrimaryDocumentDraft()) {
+          void runFullEditForCurrentText('whole-document-replacement', nextText, requestLanguage);
+        } else {
+          commitSidecarEditorState();
+        }
         onContentChange(nextText);
         return;
       }
       updateSidecarSourceText(nextText, { clearSnapshot: false });
+      if (isPrimaryDocumentDraft()) {
+        primeProjectedRootSemanticTokens();
+        refreshSemanticTokensForLanguage(activeLanguage);
+      }
       const isFlush = (event as unknown as { isFlush?: boolean }).isFlush ?? false;
-      if (documentKey && changes.length > 0 && !isFlush) {
+      if (!isPrimaryDocumentDraft() && documentKey && changes.length > 0 && !isFlush) {
         const documentTextEdits = monacoChangesToDocumentTextEdits(
           new TextEncoder().encode(previousText),
           new TextEncoder().encode(nextText),
@@ -474,9 +511,10 @@
           },
           applyGraphAnalysis: applySidecarGraphAnalysis,
         });
-      } else {
+      } else if (!isPrimaryDocumentDraft()) {
         commitSidecarEditorState();
       }
+      if (isPrimaryDocumentDraft()) commitSidecarEditorState();
       onContentChange(nextText);
     });
     editor.onDidScrollChange((event) => {
@@ -579,6 +617,7 @@
     text = model?.getValue() ?? sidecarTab?.sourceText ?? '',
     nextLanguage: SupportedEditorLanguageId = activeLanguage,
   ): Promise<void> {
+    if (isPrimaryDocumentDraft()) return;
     if (!text.trim()) return;
     const preserveSubmittedJsonString = shouldPreserveSubmittedJsonString(text, nextLanguage);
     await fullEditController.startFullEditSession({
@@ -633,7 +672,7 @@
     setModelLanguage(activeLanguage);
   }
 
-  $: if (model && sidecarTab && !suppressChange && sidecarTab.sourceText !== model.getValue()) {
+  $: if (model && !isPrimaryDocumentDraft() && sidecarTab && !suppressChange && sidecarTab.sourceText !== model.getValue()) {
     if (externalSync.shouldApplyExternalText(sidecarTab.sourceText, model.getValue())) {
       setModelValueSilently(model, sidecarTab.sourceText, () => {
         syncLastModelSnapshot();
@@ -642,7 +681,7 @@
     }
   }
 
-  $: if (sourceText != null && sidecarTab && sidecarTab.sourceText !== sourceText && !suppressChange) {
+  $: if (sourceText != null && (isPrimaryDocumentDraft() ? detachedDraftText : sidecarTab?.sourceText) !== sourceText && !suppressChange) {
     void syncExternalSourceText(sourceText, activeLanguage);
   }
 

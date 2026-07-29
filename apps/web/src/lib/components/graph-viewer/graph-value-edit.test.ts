@@ -227,6 +227,57 @@ describe('graph-value-edit', () => {
     );
   });
 
+  it('plans a structured content-pane intent without constructing or resolving a graph cell', async () => {
+    const canonicalNode = scalarNode('42');
+    mocked.callSharedWasmWorker.mockImplementation(async (type: string) => {
+      if (type === 'parseValueForPath') return canonicalNode;
+      if (type === 'planGraphValueEdit') {
+        return {
+          mode: 'edits',
+          edits: [{ startByte: 0, oldEndByte: 0, newEndByte: 0, startRow: 0, startColumn: 0, oldEndRow: 0, oldEndColumn: 0, text: '42' }],
+          text: '{"duration":"42"}',
+          tree: canonicalNode,
+          value: '42',
+        };
+      }
+      throw new Error(`unexpected worker call: ${type}`);
+    });
+    const applyTextEdits = vi.fn(() => true);
+    const model = { getVersionId: () => 1 };
+    const controller = createGraphValueEditController({
+      getCurrentData: () => ({ duration: '6837' }),
+      getSourceText: () => '{"duration":"6837"}',
+      getDocumentKey: () => 'doc-key',
+      getLanguageId: () => 'json',
+      getEnableNest: () => true,
+      getEditorIO: () => ({ context: 'editor', getModel: () => model as any, applyTextEdits } as any),
+      getEditorRevision: () => 3,
+      getActiveSnapshotId: () => 42,
+      resolveTreePathByPosition: vi.fn(async () => []),
+      nextTreeStateToken: () => 5,
+      publishTreeState: vi.fn(() => true),
+      emitEditorMutation: vi.fn(),
+      updateActiveTempModel: vi.fn(),
+      dispatchGraphEditEvent: vi.fn(),
+      handleError: vi.fn(),
+    });
+
+    await expect(controller.applyStructuredValueEdit({
+      path: [toWasmPathSeg({ tag: 0, key: 'duration', index: 0 })],
+      kind: 'value',
+      raw: '42',
+      valueType: 'string',
+      text: '6837',
+    })).resolves.toBe(true);
+
+    expect(mocked.resolveCellPath).not.toHaveBeenCalled();
+    expect(applyTextEdits).toHaveBeenCalledTimes(1);
+    expect(mocked.callSharedWasmWorker).toHaveBeenCalledWith(
+      'planGraphValueEdit',
+      expect.objectContaining({ path: [expect.objectContaining({ key: 'duration' })], snapshotId: 42 }),
+    );
+  });
+
   it('keeps empty-string edits semantic when the rendered placeholder is double quotes', async () => {
     const canonicalNode = scalarNode('');
     mocked.callSharedWasmWorker.mockImplementation(async (type: string, payload: any) => {

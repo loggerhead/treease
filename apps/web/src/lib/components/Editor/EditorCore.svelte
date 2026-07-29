@@ -116,6 +116,7 @@
   let diffBlankZoneIds: string[] = [];
   let suppressGraphHighlightSync = 0;
   let suppressTreePathUpdate = 0;
+  let preserveSemanticTokensForGraphEdit = 0;
   let unfocusedExternalRevealSelection = false;
   let wholeDocumentReplacementToken = 0;
   let formattingOptionsValue;
@@ -134,7 +135,7 @@
   let editorRuntimePhase = 'Loading editor runtime...';
   let editorRuntimeToken = 0;
   const LARGE_TEXT_EDIT_USAGE_THRESHOLD_BYTES = 256 * 1024;
-  type EditorUsageRunner = <T>(source: string, execute: () => Promise<T>) => Promise<T>;
+  type EditorUsageRunner = (source: string, execute: () => Promise<unknown>) => Promise<unknown>;
   let lastEditorRuntimeStateSignature = '';
   let jsonBlockSelectionValue: JsonBlockSelection | null = null;
   let editorRuntimeOverlay = resolveEditorRuntimeOverlay({
@@ -618,8 +619,12 @@
       }
       const previousDocumentKey = getDocumentKey();
       if (previousDocumentKey) jsonBlockSelection.set(null);
-      if (previousDocumentKey) {
+      const preserveSemanticTokens = preserveSemanticTokensForGraphEdit > 0;
+      if (preserveSemanticTokens) preserveSemanticTokensForGraphEdit -= 1;
+      if (previousDocumentKey && !preserveSemanticTokens) {
         clearDocumentSemanticState(previousDocumentKey);
+      } else if (previousDocumentKey) {
+        refreshSemanticTokensForLanguage(languageIdValue);
       }
       const shouldSkipWholeDocumentAutoGuess = suppressNextWholeDocumentAutoGuess;
       suppressNextWholeDocumentAutoGuess = false;
@@ -990,7 +995,9 @@
         forceMoveMarkers: true,
       };
     });
+    preserveSemanticTokensForGraphEdit += 1;
     const applied = editor.executeEdits('graph-value-edit', operations);
+    if (!applied) preserveSemanticTokensForGraphEdit = Math.max(0, preserveSemanticTokensForGraphEdit - 1);
     return applied;
   }
 

@@ -8,6 +8,7 @@ import type { GraphCell, GraphEdge, GraphNode } from '@treease/graph-viewer-runt
 import { getClampedPaneSize } from '../../ui/split-layout';
 import { createViewRuntimeOperation, type ViewRuntimeOperation } from '../../../guards/view-runtime-operation';
 import type { PathSeg } from '../../../store/tree-path';
+import type { StructuredValueEditIntent } from '../graph-value-edit';
 import type { LeaferAppLike, LeaferBox, LeaferEditor, LeaferText, SubgraphWorkspaceRuntime } from '../model';
 import {
   createSubgraphWorkspaceGraphCache,
@@ -29,21 +30,6 @@ import type {
 const SUBGRAPH_WORKSPACE_MIN_HEIGHT = 100;
 const SUBGRAPH_WORKSPACE_MAX_HEIGHT_FRACTION = 0.75;
 const MAX_VISIBLE_PANES = 3;
-
-type GraphValueEditCell = GraphCell & {
-  editable?: boolean;
-  boxArgs: { x: number; y: number; width: number; height: number; cornerRadius: number };
-  textArgs: {
-    x: number;
-    y: number;
-    width: number;
-    height: number;
-    text: string;
-    textAlign: 'left' | 'center' | 'right';
-    verticalAlign: 'top' | 'middle' | 'bottom';
-    editable: boolean;
-  };
-};
 
 export type SubgraphWorkspaceProjectionInput = {
   documentKey: string;
@@ -87,7 +73,7 @@ export type SubgraphWorkspaceControllerDeps = {
     error: unknown,
     context: { component: string; operation: string; metadata?: Record<string, unknown> },
   ) => void;
-  applyGraphEdit: (cell: GraphValueEditCell, kind: 'key' | 'value', raw: string) => Promise<boolean>;
+  applyStructuredValueEdit: (intent: StructuredValueEditIntent) => Promise<boolean>;
   waitForCommittedDocument: (documentKey: string, afterRevision: number) => Promise<boolean>;
   markSubgraphRequested: (payload: { requestId: number; pathKey: string; sourceRevision: number }) => void;
   markSubgraphMaterialized: (payload: {
@@ -244,6 +230,7 @@ export function createSubgraphWorkspaceController(deps: SubgraphWorkspaceControl
       sourceText: pathValue.data.displayText,
       valueType,
       rootSemType: nodePreview.status === 'ready' ? (nodePreview.data?.semType ?? null) : null,
+      snapshotId,
     };
   }
 
@@ -460,38 +447,17 @@ export function createSubgraphWorkspaceController(deps: SubgraphWorkspaceControl
     }
     pendingEditKeys.add(pane.pathKey);
     try {
-      let nextDraft = nextText;
-      if (pane.content.valueType === 'string') {
-        try {
-          const parsed = JSON.parse(nextDraft);
-          if (typeof parsed === 'string') nextDraft = parsed;
-        } catch {
-          nextDraft = nextText;
-        }
-      }
       const revisionBeforeCommit = deps.getRevision();
-      const applied = await deps.applyGraphEdit(
-        {
-          text: pane.content.sourceText,
-          value: pane.content.sourceText,
-          valueType: pane.content.valueType,
-          path: pane.path,
-          editable: !deps.getReadonly(),
-          boxArgs: { x: 0, y: 0, width: 0, height: 0, cornerRadius: 0 },
-          textArgs: {
-            x: 0,
-            y: 0,
-            width: 0,
-            height: 0,
-            text: pane.content.sourceText,
-            textAlign: 'left',
-            verticalAlign: 'top',
-            editable: !deps.getReadonly(),
-          },
-        },
-        'value',
-        nextDraft,
-      );
+      const applied = await deps.applyStructuredValueEdit({
+        path: pane.path,
+        text: pane.content.sourceText,
+        valueType: pane.content.valueType,
+        snapshotId: pane.content.snapshotId,
+        kind: 'value',
+        // Content Monaco edits source literals. Preserve quotes/escapes so the
+        // shared parser receives the exact syntax the user entered.
+        raw: nextText,
+      });
       if (!applied) {
         queuedEditMap.delete(pane.pathKey);
         return;
