@@ -32,6 +32,7 @@ export const usageSummarySchema = z.object({
   periodKey: z.string().regex(/^\d{4}-\d{2}$/),
   limits: usageLimitsSchema,
   usage: z.record(z.string(), z.number().nonnegative()),
+  requestId: z.string().min(1).optional(),
 }).strict();
 export type UsageSummary = z.infer<typeof usageSummarySchema>;
 
@@ -59,6 +60,7 @@ export const currentSubscriptionSchema = z.object({
   createdAt: z.string().datetime({ offset: true }),
   updatedAt: z.string().datetime({ offset: true }),
   billingManagementAvailable: z.boolean(),
+  requestId: z.string().min(1).optional(),
 }).strict().transform((value): CurrentSubscription => ({
   ...value,
   billingCadence: value.billingCadence ?? null,
@@ -73,6 +75,7 @@ export const accountSummarySchema = z.object({
   }).strict(),
   subscription: currentSubscriptionSchema,
   usage: usageSummarySchema,
+  requestId: z.string().min(1).optional(),
 }).strict();
 export type AccountSummary = z.infer<typeof accountSummarySchema>;
 
@@ -95,16 +98,18 @@ export type BillingPlanPrice = z.infer<typeof billingPlanPriceSchema>;
 export const billingCheckoutLinkSchema = z.object({
   priceId: billingPriceIdSchema,
   url: z.url(),
+  requestId: z.string().min(1).optional(),
 }).strict();
 export type BillingCheckoutLink = z.infer<typeof billingCheckoutLinkSchema>;
 
-export const billingPortalLinkSchema = z.object({ url: z.url() }).strict();
+export const billingPortalLinkSchema = z.object({ url: z.url(), requestId: z.string().min(1).optional() }).strict();
 export type BillingPortalLink = z.infer<typeof billingPortalLinkSchema>;
 
 export const billingPricingPrewarmResponseSchema = z.object({
   plans: z.array(billingPlanPriceSchema),
   checkouts: z.array(billingCheckoutLinkSchema).nullable(),
   subscription: z.union([currentSubscriptionSchema, z.null()]),
+  requestId: z.string().min(1).optional(),
 }).strict();
 export type BillingPricingPrewarm = z.infer<typeof billingPricingPrewarmResponseSchema>;
 
@@ -113,12 +118,14 @@ export const shareLinkSchema = z.object({
   shareUrl: z.url(),
   expiresAt: z.string().datetime({ offset: true }),
   createdAt: z.string().datetime({ offset: true }),
+  requestId: z.string().min(1).optional(),
 }).strict();
 export type ShareLink = z.infer<typeof shareLinkSchema>;
 
 export const publicShareResponseSchema = z.object({
   resourceType: z.enum(['compare', 'text_snapshot']),
   resourcePayload: z.unknown(),
+  requestId: z.string().min(1).optional(),
 }).strict();
 export type PublicShareResponse = z.infer<typeof publicShareResponseSchema>;
 
@@ -162,7 +169,7 @@ export const suggestYqSchema = z.object({
   path: ['editorTextSnapshot'],
 });
 
-export const suggestYqResponseSchema = z.object({ expression: z.string().min(1) }).strict();
+export const suggestYqResponseSchema = z.object({ expression: z.string().min(1), requestId: z.string().min(1).optional() }).strict();
 
 export const structGenerationSchema = z.object({
   sourceJson: z.string().min(2).max(1_000_000),
@@ -172,6 +179,7 @@ export const structGenerationSchema = z.object({
 export const structGenerationResponseSchema = z.object({
   language: structLanguageSchema,
   code: z.string(),
+  requestId: z.string().min(1).optional(),
 }).strict();
 
 export const createShareSchema = z.object({
@@ -187,7 +195,7 @@ export const recordedUsageSchema = z.object({
 }).strict();
 export const clientQuerySchema = z.object({ clientId: z.string().min(1).max(512).optional() });
 export const claimSchema = z.object({ clientId: z.string().min(1).max(512) }).strict();
-export const claimUsageResponseSchema = z.object({ claimed: z.number().int().nonnegative() }).strict();
+export const claimUsageResponseSchema = z.object({ claimed: z.number().int().nonnegative(), requestId: z.string().min(1).optional() }).strict();
 
 export const feedbackSubmissionSchema = z.object({
   category: z.enum(['bug', 'feature', 'question']),
@@ -203,6 +211,7 @@ export const feedbackSubmissionSchema = z.object({
 export const feedbackResponseSchema = z.object({
   id: z.string().min(1),
   issueUrl: z.url().nullable(),
+  requestId: z.string().min(1).optional(),
 }).strict();
 
 export type SuggestYqInput = z.infer<typeof suggestYqSchema>;
