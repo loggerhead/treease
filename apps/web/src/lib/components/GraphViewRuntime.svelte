@@ -27,7 +27,6 @@
   import { type MinimapViewData } from '../leafer-minimap';
   import { GraphRuntimeHost, GraphRuntimeLoading } from './graph-viewer/runtime';
   import GraphStreamProgressOverlay from './graph-viewer/GraphStreamProgressOverlay.svelte';
-  import GraphEntitlementOverlay from './graph-viewer/GraphEntitlementOverlay.svelte';
   import SidecarEditor from './Editor/SidecarEditor.svelte';
   import { splitLayoutDrag } from './ui/split-layout';
   import {
@@ -142,6 +141,7 @@
   export let enableRevealSync = true;
   export let synchronizedRuntimeLoading = false;
   export let readonly = false;
+  export let onEntitlementBlocked: (block: UsageBlock) => void = () => {};
 
   const MINIMAP_WIDTH = 220;
   const MINIMAP_HEIGHT = 150;
@@ -161,13 +161,11 @@
   let graphRuntimeReady = false;
   let showRuntimeLoading = true;
   let renderRuntimeReady = false;
-  let entitlementOverlay: UsageBlock | null = null;
   const graphReadinessWaiters = new Set<{
     resolve: (ready: boolean) => void;
     timeout: ReturnType<typeof setTimeout>;
   }>();
   let documentKeyValue = '';
-  let lastEntitlementDocumentKey = '';
   let languageIdValue: SupportedEditorLanguageId = editorLanguageFallback;
   let editorRevisionValue = 0;
   let graphRenderGuard: GraphRenderGuard | null = null;
@@ -510,9 +508,7 @@
       metadata: { surface: 'graph_cell' },
       surface: 'graph_edit',
       execute,
-      onBlocked: (block) => {
-        entitlementOverlay = block;
-      },
+      onBlocked: onEntitlementBlocked,
     }),
     handleError,
   });
@@ -1069,12 +1065,7 @@
   }
 
   export function showEntitlementOverlay(block: UsageBlock): void {
-    entitlementOverlay = block;
-  }
-
-  async function refreshEntitlementOverlay(): Promise<void> {
-    const block = await refreshUsageGate(entitlementOverlay?.capability);
-    entitlementOverlay = block;
+    onEntitlementBlocked(block);
   }
 
   onMount(() => {
@@ -1116,11 +1107,6 @@
     graphAppliedRevision: $graphAppliedRevision,
     lastAutoOffset,
   });
-
-  $: if (documentKeyValue !== lastEntitlementDocumentKey) {
-    lastEntitlementDocumentKey = documentKeyValue;
-    entitlementOverlay = null;
-  }
 
   $: {
     graphRuntimeReady;
@@ -1265,9 +1251,6 @@
       <GraphRuntimeLoading />
     {/if}
     <GraphStreamProgressOverlay state={streamProgressState} />
-    {#if entitlementOverlay}
-      <GraphEntitlementOverlay block={entitlementOverlay} onRefresh={refreshEntitlementOverlay} />
-    {/if}
     {#if errorMessage}
       <div
         data-testid="graph-error-message"

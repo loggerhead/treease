@@ -100,16 +100,16 @@
     "@leafer-in/text-editor": "^2.0.1",
     "@leafer-in/view": "^2.0.1",
     "@leafer-in/viewport": "^2.0.0",
+    "@number-flow/svelte": "^0.4.2",
     "@supabase/supabase-js": "^2.57.4",
-    "@treease/api-contracts": "workspace:*",
-    "@treease/graph-viewer-runtime": "workspace:*",
     "@tanstack/svelte-virtual": "^3.0.0",
     "@tauri-apps/api": "^2.11.1",
     "@tauri-apps/plugin-deep-link": "^2.4.9",
     "@tauri-apps/plugin-updater": "^2.10.1",
+    "@treease/api-contracts": "workspace:*",
+    "@treease/graph-viewer-runtime": "workspace:*",
     "@treease/share-protocol": "workspace:*",
     "fuzzysort": "^3.1.0",
-    "zod": "^4.1.11",
     "html-to-image": "^1.11.13",
     "idb": "^8.0.3",
     "leafer-ui": "^2.0.0",
@@ -117,6 +117,7 @@
     "lucide-svelte": "^0.471.0",
     "monaco-editor": "^0.55.1",
     "svelte-sonner": "^0.3.0",
-    "svelte-splitpanes": "^8.0.12"
+    "svelte-splitpanes": "^8.0.12",
+    "zod": "^4.1.11"
   }
 }

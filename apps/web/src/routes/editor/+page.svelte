@@ -14,9 +14,8 @@
   import StructGenerationInput from '../../lib/components/StructGenerationInput.svelte';
   import LoginDialog from '../../lib/components/LoginDialog.svelte';
   import AiInput from '../../lib/components/AiInput.svelte';
-  import PricingPlanGrid, { type PricingUsageNotice } from '../../lib/components/PricingPlanGrid.svelte';
+  import type { PricingUsageNotice } from '../../lib/components/PricingPlanGrid.svelte';
   import YqExpressionInput from '../../lib/components/YqExpressionInput.svelte';
-  import { Dialog, DialogContent } from '../../lib/components/ui/dialog';
   import { settings, settingsStore } from '../../lib/settings/settings-store';
   import { DEFAULT_EDITOR_SPLIT_RATIO } from '../../lib/settings/editor-layout-state';
   import {
@@ -147,10 +146,10 @@
   let aiSuccess = '';
   let aiQuotaExhausted = false;
   let aiUpgradeBusy = false;
-  let pricingOpen = false;
+  type PricingPlanGridComponent = typeof import('../../lib/components/PricingPlanGrid.svelte').default;
+  let pricingPlanGridComponent: PricingPlanGridComponent | null = null;
+  let pricingPlanGridLoad: Promise<PricingPlanGridComponent> | null = null;
   let aiUsageNotice: PricingUsageNotice | null = null;
-  const aiPricingPlanIds = ['pro-monthly', 'pro-yearly'];
-  const aiPricingDialogMaxWidth = aiPricingPlanIds.length === 1 ? '620px' : aiPricingPlanIds.length === 2 ? '1040px' : '1440px';
   let yqInputOpen = false;
   let yqExpression = '';
   let yqBusy = false;
@@ -740,6 +739,23 @@
     aiUsageNotice = null;
   }
 
+  async function ensurePricingPlanGrid(): Promise<PricingPlanGridComponent> {
+    if (pricingPlanGridComponent) return pricingPlanGridComponent;
+    pricingPlanGridLoad ??= import('../../lib/components/PricingPlanGrid.svelte').then((module) => module.default);
+    pricingPlanGridComponent = await pricingPlanGridLoad;
+    return pricingPlanGridComponent;
+  }
+
+  async function openPricingOverlay(): Promise<void> {
+    if (!aiUsageNotice) await refreshAiUsageNotice();
+    await ensurePricingPlanGrid();
+    viewerRef?.showPricingOverlay(aiUsageNotice);
+  }
+
+  function handleEntitlementBlocked(): void {
+    void ensurePricingPlanGrid();
+  }
+
   function handleCloseAiInput() {
     if (aiBusy) return;
     aiInputOpen = false;
@@ -786,8 +802,10 @@
       if (error instanceof TreeaseServerError && error.code === 'quota_exhausted') {
         aiQuotaExhausted = true;
         aiError = error.message;
-        pricingOpen = true;
-        void refreshAiUsageNotice();
+        void (async () => {
+          await refreshAiUsageNotice();
+          await openPricingOverlay();
+        })();
       } else {
         aiError = error instanceof Error ? error.message : 'Unable to generate a yq expression.';
       }
@@ -1395,7 +1413,7 @@
                 aiQuotaExhausted = false;
               }}
               onSubmit={handleSubmitAi}
-              onUpgrade={() => { pricingOpen = true; }}
+              onUpgrade={() => void openPricingOverlay()}
               onClose={handleCloseAiInput}
             />
           {:else if yqInputOpen}
@@ -1514,6 +1532,12 @@
             onTextScroll={handleViewerScroll}
             onApplyDiff={handleApplyDiff}
             onSwap={handleSwapEditors}
+            {pricingPlanGridComponent}
+            pricingUsageNotice={null}
+            onPricingSelectPlan={(priceId) => void handleAiQuotaUpgrade(priceId)}
+            pricingActionDisabled={() => aiUpgradeBusy}
+            pricingActionLabel={(plan) => aiUpgradeBusy ? 'Opening checkout…' : plan.ctaLabel}
+            onEntitlementBlocked={handleEntitlementBlocked}
           />
         </section>
       {/if}
@@ -1609,21 +1633,3 @@
 <SettingsDialog bind:open={settingsOpen} />
 <ShareDialog bind:open={shareOpen} createResource={createShareResource} />
 <LoginDialog bind:open={loginOpen} />
-<Dialog bind:open={pricingOpen}>
-  <DialogContent aria-labelledby="ai-pricing-title" class="max-h-[90vh] border-[#dce5f0] bg-[#f7faff] p-6" style={`width: min(${aiPricingDialogMaxWidth}, calc(100vw - 2rem)); max-width: none; overflow-y: auto; scrollbar-gutter: stable;`}>
-    <PricingPlanGrid
-      compact
-      title="Usage limit reached"
-      titleId="ai-pricing-title"
-      titleNoWrap
-      descriptionNoWrap
-      showKicker={false}
-      description="Your last action used the final monthly run. Upgrade to continue."
-      visiblePlanIds={aiPricingPlanIds}
-      usageNotice={aiUsageNotice}
-      actionDisabled={() => aiUpgradeBusy}
-      actionLabel={(plan) => aiUpgradeBusy ? 'Opening checkout…' : plan.ctaLabel}
-      onSelectPlan={(priceId) => void handleAiQuotaUpgrade(priceId)}
-    />
-  </DialogContent>
-</Dialog>

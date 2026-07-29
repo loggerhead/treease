@@ -19,6 +19,7 @@
   export let enableRevealSync = true;
   export let synchronizedRuntimeLoading = false;
   export let readonly = false;
+  export let onEntitlementBlocked: (block: UsageBlock) => void = () => {};
 
   const dispatch = createEventDispatcher<{ reveal: unknown; 'runtime-state': RuntimeStateEventDetail }>();
   let runtime: GraphViewRuntime | null = null;
@@ -68,6 +69,7 @@
   {enableRevealSync}
   {synchronizedRuntimeLoading}
   {readonly}
+  {onEntitlementBlocked}
   on:reveal={(event) => dispatch('reveal', event.detail)}
   on:runtime-state={(event) => dispatch('runtime-state', event.detail)}
 />

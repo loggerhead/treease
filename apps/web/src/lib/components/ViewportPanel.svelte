@@ -37,6 +37,11 @@
   import { escapeHtml } from '../preview/utils'
   import { trackEvent } from '../analytics/ga4'
   import type { UsageBlock } from '../billing/entitlement-gate'
+  import EntitlementOverlay from './EntitlementOverlay.svelte'
+  import type { PricingUsageNotice } from './PricingPlanGrid.svelte'
+  import type { BillingPriceId, PricingPlan } from '$lib/config/pricing'
+
+  type PricingPlanGridComponent = typeof import('./PricingPlanGrid.svelte').default
 
   export let viewMode: 'graph' | 'text' = 'graph'
   export let onRevealError: (line: number, column: number) => void = () => {}
@@ -50,6 +55,12 @@
   export let synchronizedRuntimeLoading = false
   export let graphOnly = false
   export let readonlyGraph = false
+  export let pricingPlanGridComponent: PricingPlanGridComponent | null = null
+  export let pricingUsageNotice: PricingUsageNotice | null = null
+  export let onPricingSelectPlan: (priceId: BillingPriceId) => void = () => {}
+  export let pricingActionDisabled: (plan: PricingPlan) => boolean = () => false
+  export let pricingActionLabel: (plan: PricingPlan) => string = (plan) => plan.ctaLabel
+  export let onEntitlementBlocked: (block: UsageBlock) => void = () => {}
 
   type DiffResponse = {
     mode: 'tree' | 'text'
@@ -72,8 +83,17 @@
   let graphViewer: any = null
   let graphSearchInput: GraphSearchInput | null = null
   let effectiveViewMode: 'graph' | 'text' = 'graph'
+  let entitlementOverlay: UsageBlock | null = null
+  let pricingOverlayVisible = false
+  let entitlementDocumentKey = ''
   $: visibleGraphDiagnostics = $jsonBlockSelection ? [] : ($activeTempModel?.diagnostics ?? []).slice(0, 2)
   $: effectiveViewMode = graphOnly ? 'graph' : viewMode
+  $: if ($documentKeyStore !== entitlementDocumentKey) {
+    entitlementDocumentKey = $documentKeyStore
+    entitlementOverlay = null
+    pricingOverlayVisible = false
+    pricingUsageNotice = null
+  }
 
   function sanitizeContextText(text: string) {
     const MAX_LINE_LEN = 100;
@@ -336,7 +356,19 @@
   }
 
   export function showEntitlementOverlay(block: UsageBlock): void {
-    graphViewer?.showEntitlementOverlay?.(block)
+    entitlementOverlay = block
+    pricingOverlayVisible = true
+    onEntitlementBlocked(block)
+  }
+
+  export function showPricingOverlay(usageNotice: PricingUsageNotice | null): void {
+    entitlementOverlay = null
+    pricingOverlayVisible = true
+    pricingUsageNotice = usageNotice
+  }
+
+  function handleEntitlementBlocked(block: UsageBlock): void {
+    showEntitlementOverlay(block)
   }
 
   export function getSubgraphWorkspacePaths(): PathSeg[][] {
@@ -539,8 +571,19 @@
       {enableRevealSync}
       {synchronizedRuntimeLoading}
       readonly={readonlyGraph}
+      onEntitlementBlocked={handleEntitlementBlocked}
       on:reveal={handleGraphReveal}
       on:runtime-state={handleGraphViewerRuntimeState}
     />
   </div>
+  {#if pricingOverlayVisible}
+    <EntitlementOverlay
+      block={entitlementOverlay}
+      {pricingPlanGridComponent}
+      usageNotice={pricingUsageNotice}
+      onSelectPlan={onPricingSelectPlan}
+      actionDisabled={pricingActionDisabled}
+      actionLabel={pricingActionLabel}
+    />
+  {/if}
 </div>

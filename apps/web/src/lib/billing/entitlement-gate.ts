@@ -12,6 +12,7 @@ type GateSurface = 'graph_edit' | 'file_import';
 
 export type UsageBlock = {
   capability: RecordedUsageCapability;
+  used: number;
   limit: number;
   tier: UsageSummary['tier'];
 };
@@ -41,7 +42,7 @@ export function usageBlockFor(
   if (!summary) return null;
   const limit = limitFor(summary, capability);
   if (limit.kind !== 'limited' || (summary.usage[capability] ?? 0) < limit.limit) return null;
-  return { capability, limit: limit.limit, tier: summary.tier };
+  return { capability, used: summary.usage[capability] ?? 0, limit: limit.limit, tier: summary.tier };
 }
 
 function featureFor(capability: RecordedUsageCapability): string {

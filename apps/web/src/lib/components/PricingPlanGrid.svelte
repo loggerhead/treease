@@ -8,6 +8,7 @@
 </script>
 
 <script lang="ts">
+  import NumberFlow from '@number-flow/svelte';
   import {
     fixedYearlySavingsPercent,
     pricingConfig,
@@ -18,6 +19,7 @@
 
   export let showIntro = true;
   export let showKicker = true;
+  export let showPlanHeading = true;
   export let compact = false;
   export let title = pricingConfig.title;
   export let titleId = 'pricing-title';
@@ -31,9 +33,29 @@
   export let actionDisabled: ((plan: PricingPlan) => boolean) | undefined = undefined;
   export let actionTooltip: ((plan: PricingPlan) => string | null) | undefined = undefined;
 
+  let visiblePlans: PricingPlan[] = [];
+  let billingPlans: PricingPlan[] = [];
+  let displayedPlans: PricingPlan[] = [];
+  let hasBillingTabs = false;
+  let selectedBillingPriceId: BillingPriceId = 'monthly';
+
   $: visiblePlans = visiblePlanIds
     ? pricingConfig.plans.filter((plan) => visiblePlanIds!.includes(plan.id))
     : pricingConfig.plans;
+  $: billingPlans = visiblePlans.filter((plan) => plan.billingPriceId);
+  $: hasBillingTabs = billingPlans.some((plan) => plan.billingPriceId === 'monthly') && billingPlans.some((plan) => plan.billingPriceId === 'yearly');
+  $: if (hasBillingTabs && !billingPlans.some((plan) => plan.billingPriceId === selectedBillingPriceId)) {
+    selectedBillingPriceId = billingPlans[0]?.billingPriceId ?? 'monthly';
+  }
+  $: displayedPlans = hasBillingTabs
+    ? visiblePlans.filter((plan) => !plan.billingPriceId || plan.billingPriceId === selectedBillingPriceId)
+    : visiblePlans;
+
+  function parsePlanPrice(price: string | undefined): number | null {
+    if (!price) return null;
+    const amount = Number(price.replace(/[^\d.-]/g, ''));
+    return Number.isFinite(amount) ? amount : null;
+  }
 
   function splitFeatureLabel(feature: PricingFeature): [string, string | null, string] {
     if (!feature.emphasis) return [feature.label, null, ''];
@@ -61,23 +83,56 @@
     </div>
   {/if}
 
+  {#if hasBillingTabs}
+    <div class="pricing-plan-grid__billing-tabs" role="tablist" aria-label="Billing cycle">
+      <button
+        type="button"
+        class:pricing-plan-grid__billing-tab--active={selectedBillingPriceId === 'monthly'}
+        role="tab"
+        aria-selected={selectedBillingPriceId === 'monthly'}
+        on:click={() => (selectedBillingPriceId = 'monthly')}
+      >
+        Monthly
+      </button>
+      <button
+        type="button"
+        class:pricing-plan-grid__billing-tab--active={selectedBillingPriceId === 'yearly'}
+        role="tab"
+        aria-selected={selectedBillingPriceId === 'yearly'}
+        on:click={() => (selectedBillingPriceId = 'yearly')}
+      >
+        Yearly <span>Save {fixedYearlySavingsPercent ?? '-'}%</span>
+      </button>
+    </div>
+  {/if}
+
   <div
-    class:pricing-plan-grid__cards--two={visiblePlans.length === 2}
-    class:pricing-plan-grid__cards--one={visiblePlans.length === 1}
+    class:pricing-plan-grid__cards--two={displayedPlans.length === 2}
+    class:pricing-plan-grid__cards--one={displayedPlans.length === 1}
     class="pricing-plan-grid__cards"
   >
-    {#each visiblePlans as plan}
-      <article class:pricing-plan-card--featured={plan.featured} class:pricing-plan-card--free={plan.id === 'free'} class="pricing-plan-card">
-        {#if plan.billingPriceId === 'yearly'}
-          <p class="pricing-plan-card__eyebrow">SAVE {fixedYearlySavingsPercent ?? '-'}%</p>
-        {:else if plan.eyebrow}
-          <p class="pricing-plan-card__eyebrow">{plan.eyebrow}</p>
+    {#each displayedPlans as plan}
+      {@const priceAmount = parsePlanPrice(plan.price)}
+      <article class:pricing-plan-card--featured={plan.featured && displayedPlans.length > 1} class:pricing-plan-card--free={plan.id === 'free'} class:pricing-plan-card--without-heading={!showPlanHeading} class="pricing-plan-card">
+        {#if showPlanHeading}
+          {#if plan.billingPriceId === 'yearly'}
+            <p class="pricing-plan-card__eyebrow">SAVE {fixedYearlySavingsPercent ?? '-'}%</p>
+          {:else if plan.eyebrow}
+            <p class="pricing-plan-card__eyebrow">{plan.eyebrow}</p>
+          {/if}
         {/if}
-        <div>
-          <h3>{plan.name}</h3>
-          <p class="pricing-plan-card__description">{plan.description}</p>
+        {#if showPlanHeading}<h3>{plan.name}</h3>{/if}
+        <div class="pricing-plan-card__price">
+          <strong aria-label={plan.price ?? ''}>
+            {#if priceAmount !== null}
+              <NumberFlow value={priceAmount} format={{ style: 'currency', currency: 'USD', minimumFractionDigits: 2 }} />
+            {:else}
+              {plan.price}
+            {/if}
+          </strong>
+          <span>{plan.cadence}</span>
         </div>
-        <div class="pricing-plan-card__price"><strong>{plan.price}</strong><span>{plan.cadence}</span></div>
+        <p class="pricing-plan-card__description">{plan.description}</p>
         {#if plan.billingPriceId}
           {@const label = actionLabel?.(plan) ?? plan.ctaLabel}
           {@const tooltip = actionTooltip?.(plan)}
@@ -110,15 +165,21 @@
   .pricing-plan-grid__usage-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; color: #64748b; }
   .pricing-plan-grid__usage-row strong { color: #0f172a; font-size: 14px; }
   .pricing-plan-grid__usage-cycle { color: #9a3412; font-size: 12px; }
+  .pricing-plan-grid__billing-tabs { display: inline-flex; width: fit-content; padding: 4px; border: 1px solid var(--line, #dce5f0); border-radius: 999px; background: #f3f6fb; }
+  .pricing-plan-grid__billing-tabs button { min-width: 112px; border: 0; border-radius: 999px; padding: 9px 16px; color: var(--muted, #536273); background: transparent; cursor: pointer; font-size: 13px; font-weight: 750; }
+  .pricing-plan-grid__billing-tabs button:hover { color: var(--ink, #10192a); }
+  .pricing-plan-grid__billing-tab--active { color: var(--ink, #10192a) !important; background: #fff !important; box-shadow: 0 2px 8px rgba(16,25,42,.08); }
+  .pricing-plan-grid__billing-tabs span { margin-left: 4px; color: var(--accent-strong, #1745b5); font-size: 11px; }
   .pricing-plan-grid__cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; align-items: stretch; }
   .pricing-plan-grid__cards--two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .pricing-plan-grid__cards--one { grid-template-columns: minmax(0, 1fr); }
   .pricing-plan-card { display: flex; min-width: 0; flex-direction: column; gap: 22px; padding: 30px 26px 26px; border: 1px solid var(--line, #dce5f0); border-radius: 24px; color: var(--ink, #10192a); background: rgba(255,255,255,.8); box-shadow: var(--shadow, 0 12px 30px rgba(16,25,42,.08)); }
   .pricing-plan-card--featured { border-color: rgba(45,99,226,.42); color: #f8fbff; background: radial-gradient(circle at 100% 0%, rgba(93,143,255,.24), transparent 34%), linear-gradient(180deg, #1a315f, #102044); box-shadow: 0 28px 60px rgba(24,61,135,.22); transform: translateY(-10px); }
   h3 { margin: 0; font-size: 28px; }
-  .pricing-plan-card__description { min-height: 50px; margin: 10px 0 0; color: var(--muted, #536273); font-size: 14px; line-height: 1.6; }
+  .pricing-plan-card__description { min-width: 0; margin: -10px 0 0; overflow: hidden; color: var(--muted, #536273); font-size: 14px; line-height: 1.4; text-overflow: ellipsis; white-space: nowrap; }
   .pricing-plan-card--featured .pricing-plan-card__description { color: rgba(226,232,240,.8); }
   .pricing-plan-card__price { display: flex; align-items: baseline; gap: 6px; padding: 16px 0; border-top: 1px solid var(--line, #dce5f0); border-bottom: 1px solid var(--line, #dce5f0); }
+  .pricing-plan-card--without-heading .pricing-plan-card__price { padding-top: 0; border-top: 0; }
   .pricing-plan-card--featured .pricing-plan-card__price { border-color: rgba(191,219,254,.2); }
   .pricing-plan-card__price strong { font-family: var(--font-display, inherit); font-size: clamp(2.2rem, 4vw, 3rem); letter-spacing: -.06em; }
   .pricing-plan-card__price span { color: var(--muted-soft, #8290a3); font-size: 14px; }
