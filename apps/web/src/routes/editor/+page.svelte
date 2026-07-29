@@ -532,6 +532,27 @@
     }
   }
 
+  async function runEditorFullEditUsage<T>(
+    source: string,
+    execute: () => Promise<T>,
+    reason = '',
+  ): Promise<T> {
+    // File imports already reserve large-file usage in handleImportFileStream.
+    if (reason === 'import-file' || reason === 'drop-file') return execute();
+    const byteLength = new TextEncoder().encode(source).byteLength;
+    const capability = byteLength >= LARGE_FILE_PROCESSING_THRESHOLD_BYTES
+      ? 'large_file_processing'
+      : 'bidirectional_edit';
+    return runPostpaidCapability({
+      capability,
+      idempotencyKey: crypto.randomUUID(),
+      metadata: { byteLength, surface: 'editor_full_edit' },
+      surface: 'graph_edit',
+      execute,
+      onBlocked: (block) => viewerRef?.showEntitlementOverlay(block),
+    });
+  }
+
   async function handleRequestImportFile(payload: { sourceFormat: string; targetFormat: string; accept: string[] }) {
     try {
       const file = await (await workspaceHost).openFile({ accept: payload.accept });
@@ -1353,6 +1374,7 @@
               bind:activeTabId
               enableRevealSync={syncScrollEnabled}
               {synchronizedRuntimeLoading}
+              runBidirectionalEdit={runEditorFullEditUsage}
               on:reveal={handleEditorReveal}
               on:runtime-state={handleEditorRuntimeEvent}
               onScroll={handleEditorScroll}
@@ -1577,6 +1599,7 @@
       bind:activeTabId
       enableRevealSync={syncScrollEnabled}
       {synchronizedRuntimeLoading}
+      runBidirectionalEdit={runEditorFullEditUsage}
       on:reveal={handleEditorReveal}
       on:runtime-state={handleEditorRuntimeEvent}
       onScroll={handleEditorScroll}

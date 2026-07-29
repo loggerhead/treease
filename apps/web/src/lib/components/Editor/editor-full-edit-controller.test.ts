@@ -1042,7 +1042,7 @@ describe('editor-full-edit-controller', () => {
     await controller.importStream(file as any, 'csv' as any, 'import-file');
 
     expect(runBidirectionalEdit).toHaveBeenCalledTimes(1);
-    expect(runBidirectionalEdit).toHaveBeenCalledWith(csvText, expect.any(Function));
+    expect(runBidirectionalEdit).toHaveBeenCalledWith(csvText, expect.any(Function), 'import-file');
   });
 
   it('handles graph rebuild errors from startDocumentJobForGraph', async () => {
@@ -1080,6 +1080,6 @@ describe('editor-full-edit-controller', () => {
     });
 
     expect(runBidirectionalEdit).toHaveBeenCalledTimes(1);
-    expect(runBidirectionalEdit).toHaveBeenCalledWith('{ "full": true }', expect.any(Function));
+    expect(runBidirectionalEdit).toHaveBeenCalledWith('{ "full": true }', expect.any(Function), 'whole-document-replacement');
   });
 });

@@ -93,4 +93,15 @@ describe('commitEditorTabTextChange', () => {
       expect.objectContaining({ diagnostics: [{ message: 'Syntax error' }] }),
     );
   });
+
+  it('wraps a large text commit in the usage callback', async () => {
+    const runUsage = vi.fn(async (_source: string, execute: () => Promise<unknown>) => execute());
+    const options = createOptions({ runUsage });
+    vi.mocked(commitApplyEdits).mockResolvedValueOnce({ status: 'snapshotReady', snapshotId: 11 } as any);
+
+    commitEditorTabTextChange(options);
+
+    expect(runUsage).toHaveBeenCalledWith(options.nextText, expect.any(Function));
+    await vi.waitFor(() => expect(commitApplyEdits).toHaveBeenCalledTimes(1));
+  });
 });

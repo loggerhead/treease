@@ -53,6 +53,20 @@ treease examples search "filter array"
 treease doctor --format json
 ```
 
+### Homebrew
+
+On macOS, install the CLI or Desktop App from the Treease tap:
+
+```bash
+brew tap loggerhead/treease
+brew install treease
+brew install --cask treease
+```
+
+Release automation updates `loggerhead/homebrew-treease` after the crates.io
+or GitHub release completes. Store a token that can dispatch workflows in the
+tap as the `HOMEBREW_TAP_TOKEN` GitHub Actions secret.
+
 ## Web CLI Configuration
 
 `treease web` opens the hosted `/editor` page and keeps the input data in a short-lived localhost service. Set `TREEASE_WEB_URL` when using a self-hosted Web deployment; it should point to that deployment's `/editor` route.

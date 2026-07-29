@@ -13,6 +13,13 @@ Install the latest published CLI with Cargo:
 cargo install treease-cli
 ```
 
+On macOS, install the CLI from the Treease Homebrew tap:
+
+```bash
+brew tap loggerhead/treease
+brew install treease
+```
+
 Check the installed version and the complete generated help with:
 
 ```bash

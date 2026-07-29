@@ -18,6 +18,19 @@ version = "${coreVersion}"
     'utf8'
   );
   await writeFile(
+    path.join(rootDir, 'apps', 'desktop', 'src-tauri', 'Cargo.toml'),
+    `[package]
+name = "treease-desktop"
+version = "0.8.9"
+`,
+    'utf8'
+  );
+  await writeFile(
+    path.join(rootDir, 'apps', 'desktop', 'src-tauri', 'tauri.conf.json'),
+    JSON.stringify({ version: '0.8.9' }) + '\n',
+    'utf8'
+  );
+  await writeFile(
     path.join(rootDir, 'apps', 'cli', 'Cargo.toml'),
     `[package]
 name = "treease-cli"
@@ -36,11 +49,13 @@ async function makeFixture(overrides = {}) {
   const coreDir = path.join(rootDir, 'packages', 'core');
   const cliDir = path.join(rootDir, 'apps', 'cli');
   const webDir = path.join(rootDir, 'apps', 'web');
+  const desktopDir = path.join(rootDir, 'apps', 'desktop', 'src-tauri');
   await import('node:fs/promises').then(({ mkdir }) =>
     Promise.all([
       mkdir(coreDir, { recursive: true }),
       mkdir(cliDir, { recursive: true }),
       mkdir(webDir, { recursive: true }),
+      mkdir(desktopDir, { recursive: true }),
     ])
   );
   await writeManifests(rootDir, {
@@ -67,7 +82,24 @@ test('loadReleaseMetadata returns normalized release information', async () => {
     webVersion: '1.2.3',
     coreReleaseTag: 'v1.2.3',
     cliReleaseTag: 'cli-v2.3.4',
+    desktopVersion: '0.8.9',
+    desktopReleaseTag: 'desktop-v0.8.9',
   });
+});
+
+test('loadReleaseMetadata rejects desktop manifest/config version drift', async () => {
+  const fixtureRoot = await makeFixture();
+  await writeFile(
+    path.join(fixtureRoot, 'apps', 'desktop', 'src-tauri', 'tauri.conf.json'),
+    JSON.stringify({ version: '9.9.9' }) + '\n',
+    'utf8'
+  );
+  const { loadReleaseMetadata } = await import(moduleUrl);
+
+  assert.throws(
+    () => loadReleaseMetadata(fixtureRoot),
+    /tauri\.conf\.json version 9\.9\.9 does not match apps\/desktop\/src-tauri\/Cargo\.toml version 0\.8\.9/
+  );
 });
 
 test('loadReleaseMetadata rejects cli/core version drift', async () => {

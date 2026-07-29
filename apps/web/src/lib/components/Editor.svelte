@@ -12,6 +12,7 @@
   export let onScroll: (payload: { scrollTop: number; scrollLeft: number }) => void = () => {};
   export let enableRevealSync = true;
   export let synchronizedRuntimeLoading = false;
+  export let runBidirectionalEdit: <T>(source: string, execute: () => Promise<T>, reason?: string) => Promise<T> = async (_source, execute) => execute();
 
   const dispatch = createEventDispatcher<{ reveal: unknown; 'runtime-state': RuntimeStateEventDetail }>();
 
@@ -168,6 +169,7 @@
   bind:activeTabId
   {enableRevealSync}
   {synchronizedRuntimeLoading}
+  {runBidirectionalEdit}
   {onScroll}
   on:reveal={handleReveal}
   on:runtime-state={handleRuntimeState}

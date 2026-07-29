@@ -20,6 +20,10 @@ export function loadCoreReleaseMetadata(rootDir = defaultRootDir) {
 export function loadReleaseMetadata(rootDir = defaultRootDir) {
   const cliManifestPath = path.resolve(rootDir, 'apps', 'cli', 'Cargo.toml');
   const cliManifest = readFileSync(cliManifestPath, 'utf8');
+  const desktopManifestPath = path.resolve(rootDir, 'apps', 'desktop', 'src-tauri', 'Cargo.toml');
+  const desktopConfigPath = path.resolve(rootDir, 'apps', 'desktop', 'src-tauri', 'tauri.conf.json');
+  const desktopManifest = readFileSync(desktopManifestPath, 'utf8');
+  const desktopConfig = JSON.parse(readFileSync(desktopConfigPath, 'utf8'));
   const { coreName, coreVersion } = loadCoreReleaseMetadata(rootDir);
   const webVersion = readPackageVersion(rootDir);
 
@@ -32,6 +36,13 @@ export function loadReleaseMetadata(rootDir = defaultRootDir) {
   const cliName = readTomlString(cliManifest, 'package', 'name', cliManifestPath);
   const cliVersion = readTomlString(cliManifest, 'package', 'version', cliManifestPath);
   const cliCoreDependencyVersion = readInlineDependencyVersion(cliManifest, 'treease-core', cliManifestPath);
+  const desktopVersion = readTomlString(desktopManifest, 'package', 'version', desktopManifestPath);
+
+  if (desktopConfig.version !== desktopVersion) {
+    throw new Error(
+      `apps/desktop/src-tauri/tauri.conf.json version ${desktopConfig.version} does not match apps/desktop/src-tauri/Cargo.toml version ${desktopVersion}`
+    );
+  }
 
   if (cliCoreDependencyVersion !== coreVersion) {
     throw new Error(
@@ -47,6 +58,8 @@ export function loadReleaseMetadata(rootDir = defaultRootDir) {
     webVersion,
     coreReleaseTag: `v${coreVersion}`,
     cliReleaseTag: `cli-v${cliVersion}`,
+    desktopVersion,
+    desktopReleaseTag: `desktop-v${desktopVersion}`,
   };
 }
 

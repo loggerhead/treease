@@ -3,6 +3,92 @@
 This file is generated from `docs/**/*.md` and `docs/**/*.mdx` headings to help agents navigate the documentation tree.
 Do not edit it by hand; run `pnpm docs:map:gen`.
 
+## chrome-extension-json-graph-prd.md
+
+- Route: /chrome-extension-json-graph-prd
+- Headings:
+  - H1: Treease Chrome 扩展：点击 JSON 后在侧边栏展示 Graph
+  - H2: 1. 文档信息
+  - H2: 2. 一句话定义
+  - H2: 3. 背景与问题
+  - H2: 4. 产品目标
+  - H3: 4.1 MVP 目标
+  - H3: 4.2 非目标
+  - H2: 5. 核心用户流程
+  - H2: 6. 用户故事
+  - H3: US-01：点击 JSON 查看 Graph
+  - H3: US-02：保持网页上下文
+  - H3: US-03：本地处理敏感数据
+  - H3: US-04：控制监听范围
+  - H2: 7. 功能需求
+  - H3: 7.1 点击监听
+  - H3: 7.2 DOM 提取策略
+  - H3: 7.3 JSON 检测
+  - H3: 7.4 Side Panel
+  - H3: 7.5 自动打开策略
+  - H2: 8. 权限设计
+  - H3: 8.1 初始权限建议
+  - H3: 8.2 权限与审核解释
+  - H2: 9. 隐私与数据处理
+  - H3: 9.1 数据生命周期
+  - H3: 9.2 默认行为
+  - H3: 9.3 必须准备的合规材料
+  - H2: 10. 技术架构
+  - H2: 11. 失败和边界场景
+  - H2: 12. 性能要求
+  - H2: 13. MVP 验收标准
+  - H3: P0
+  - H3: P1
+  - H3: P2
+  - H2: 14. 成功指标
+  - H2: 15. 主要风险与对策
+  - H3: 风险一：自动打开 Side Panel 不稳定
+  - H3: 风险二：&lt;allurls&gt; 引发用户和审核担忧
+  - H3: 风险三：误读取敏感页面内容
+  - H3: 风险四：点击监听造成性能影响
+  - H3: 风险五：Treease Web 与扩展 Graph 代码重复
+  - H2: 16. 发布与审核策略
+  - H2: 17. 开放问题
+  - H2: 18. 参考资料
+
+## code-preview-share-plan.md
+
+- Route: /code-preview-share-plan
+- Headings:
+  - H1: 结构体生成代码预览与分享链接实施方案
+  - H2: 1. 目标
+  - H2: 2. 当前问题
+  - H2: 3. 设计决策
+  - H3: 3.1 增加独立的右侧模式
+  - H3: 3.2 右侧编辑器按模式分离
+  - H3: 3.3 生成后的交互
+  - H2: 4. 分享协议设计
+  - H3: 4.1 版本策略
+  - H3: 4.2 语言协议
+  - H3: 4.3 布局约束
+  - H3: 4.4 交互状态恢复
+  - H2: 5. Web API 与组件边界
+  - H3: 5.1 ViewportPanel 对外 API
+  - H3: 5.2 ReadonlyCodePreviewEditor
+  - H3: 5.3 语言加载
+  - H2: 6. 分享创建与恢复改动
+  - H3: 6.1 创建分享
+  - H3: 6.2 恢复分享
+  - H2: 7. Server 与存储影响
+  - H2: 8. 实施顺序
+  - H3: 阶段一：协议
+  - H3: 阶段二：只读编辑器
+  - H3: 阶段三：生成流程
+  - H3: 阶段四：分享创建与恢复
+  - H3: 阶段五：清理与文档
+  - H2: 9. 测试要求
+  - H3: 协议测试
+  - H3: Web 单元测试
+  - H3: 手工验收
+  - H2: 10. 验证命令
+  - H2: 11. 完成标准
+  - H2: 12. 相关代码与契约
+
 ## contracts/api-boundary.md
 
 - Route: /contracts/api-boundary
@@ -255,56 +341,6 @@ Do not edit it by hand; run `pnpm docs:map:gen`.
   - H2: Operators
   - H2: Formats
 
-## geo-checklist.md
-
-- Route: /geo-checklist
-- Headings:
-  - H1: Treease GEO 提升 Checklist
-  - H2: 1. 先统一目标：GEO 不是“操纵 AI 推荐”
-  - H2: 2. 证据等级与使用方式
-  - H2: 3. P0：测量和基线
-  - H3: 3.1 建立固定 Prompt Set
-  - H3: 3.2 指标定义
-  - H3: 3.3 Treease 当前基线
-  - H2: 4. P0：抓取、索引和生成式搜索访问
-  - H3: 4.1 页面访问
-  - H3: 4.2 robots 与 OpenAI crawler
-  - H3: 4.3 可选的机器可读入口
-  - H2: 5. P0：实体、信任和事实一致性
-  - H3: 5.1 Treease 实体卡
-  - H3: 5.2 跨站一致性
-  - H3: 5.3 证据而不是口号
-  - H2: 6. P0：让页面成为“可引用单元”
-  - H3: 6.1 页面模板
-  - H3: 6.2 Treease 教程页
-  - H3: 6.3 结构化数据
-  - H2: 7. P1：主题集群与站内关系图
-  - H2: 8. P1：社区与第三方分发
-  - H3: 8.1 Reddit
-  - H3: 8.2 Hacker News
-  - H3: 8.3 知乎
-  - H3: 8.4 小红书
-  - H3: 8.5 掘金
-  - H3: 8.6 V2EX
-  - H2: 9. P1：官方 AI 生态给出的可执行启示
-  - H3: OpenAI
-  - H3: Anthropic
-  - H3: Meta AI
-  - H3: xAI / Grok
-  - H3: Google Research / DeepMind
-  - H2: 10. P1：Treease 90 天执行清单
-  - H3: 第 1～2 周：让所有事实可被读取
-  - H3: 第 3～6 周：提高引用价值
-  - H3: 第 7～10 周：建立第三方验证
-  - H3: 第 11～12 周：复测并做小步迭代
-  - H2: 11. 每周运营检查表
-  - H2: 12. 明确不做的事情
-  - H2: 13. 研究来源审计
-  - H3: 用户指定社区
-  - H3: 用户指定官方博客与研究站点
-  - H3: 补充来源
-  - H2: 14. 验收标准
-
 ## graph-stream-benchmark.md
 
 - Route: /graph-stream-benchmark
@@ -321,6 +357,61 @@ Do not edit it by hand; run `pnpm docs:map:gen`.
   - H2: Current Runtime Chunk-Size Policy
   - H2: Risk Markers
   - H2: Remaining Boundaries
+
+## primary-document-commit-transaction-plan.md
+
+- Route: /primary-document-commit-transaction-plan
+- Headings:
+  - H1: 主文档单一 Commit Transaction 技术方案
+  - H2: 1. 决策摘要
+  - H2: 2. 回归 case 说明
+  - H2: 3. 范围与非目标
+  - H3: 3.1 范围
+  - H3: 3.2 非目标
+  - H2: 4. 现状中需要删除的多权威
+  - H2: 5. 职责与依赖方向
+  - H2: 6. 核心数据模型
+  - H3: 6.1 Editor Write Receipt
+  - H3: 6.2 Terminal Baseline
+  - H3: 6.3 Commit Transaction
+  - H3: 6.4 Terminal Outcome Binding
+  - H2: 7. Commit Transaction 串行状态机
+  - H3: 7.1 为什么增量输入关闭 close-time format
+  - H3: 7.2 Pending delta 的增量合并
+  - H2: 8. 各入口的数据流
+  - H3: 8.1 Editor 连续输入
+  - H3: 8.2 Graph / Subgraph Graph Pane
+  - H3: 8.3 Planner replace
+  - H3: 8.4 Whole replace / import
+  - H3: 8.5 Subgraph Content Pane Pending Commit
+  - H2: 9. Terminal Outcome 到 View Runtime
+  - H3: 9.1 Workspace landing 顺序
+  - H3: 9.2 主图
+  - H3: 9.3 Subgraph Workspace
+  - H2: 10. Freshness、冲突与错误
+  - H3: 10.1 三层校验
+  - H3: 10.2 Terminal 状态
+  - H2: 11. 性能预算
+  - H3: 11.1 单值 Editor / Graph 编辑
+  - H3: 11.2 连续输入
+  - H3: 11.3 Whole replace / import
+  - H2: 12. 模块改造
+  - H3: 12.1 Commit Transaction
+  - H3: 12.2 EditorCore
+  - H3: 12.3 Graph edit
+  - H3: 12.4 Subgraph Workspace
+  - H3: 12.5 Graph rendering
+  - H2: 13. 迁移顺序
+  - H3: Phase 1：先建立可观测的单一 outcome
+  - H3: Phase 2：删除 Graph 第二个 job
+  - H3: Phase 3：统一 Editor 写入和 transaction lane
+  - H3: Phase 4：结构化 intent 与 Pending Commit
+  - H3: Phase 5：删除旧抽象和兼容分支
+  - H2: 14. 验收与证明
+  - H3: 14.1 必过 E2E
+  - H3: 14.2 单元测试
+  - H3: 14.3 性能回归
+  - H2: 15. 完成定义
 
 ## references/supported-syntax-and-operators.md
 
@@ -382,5 +473,6 @@ Do not edit it by hand; run `pnpm docs:map:gen`.
   - H3: US-13 See Progress While Processing Large Files
   - H3: US-14 Process Structured Input on the Command Line
   - H3: US-15 Continue the Current Journey After Login
+  - H3: US-16 Transform Structured Data with AI Assistance
   - H2: Product Boundaries
   - H2: Maintenance Rules

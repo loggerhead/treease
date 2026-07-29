@@ -16,6 +16,7 @@ type CommitEditorTabTextChangeOptions = {
   settings: DocumentJobSettings;
   builderConfig: BuilderConfig;
   commitRevision: () => number;
+  runUsage?: <T>(source: string, execute: () => Promise<T>) => Promise<T>;
   isFresh: (state: { revision: number }) => boolean;
   applyCommittedSourceText?: (sourceText: string) => void;
   applyGraphAnalysis: (
@@ -46,7 +47,7 @@ export function commitEditorTabTextChange(options: CommitEditorTabTextChangeOpti
     }),
   );
 
-  void runEditorCommitTransaction({
+  const commit = () => runEditorCommitTransaction({
     documentKey: options.requestDocumentKey,
     language: options.requestLanguage,
     revision,
@@ -74,5 +75,6 @@ export function commitEditorTabTextChange(options: CommitEditorTabTextChangeOpti
         ),
     },
   });
+  void (options.runUsage ? options.runUsage(options.nextText, commit) : commit());
   return revision;
 }

@@ -140,7 +140,7 @@ type CreateEditorFullEditControllerOptions = {
     analysis: DocumentAnalysisResult | null,
   ) => Promise<void>;
   triggerGraphSync: (position: Monaco.IPosition) => void;
-  runBidirectionalEdit?: <T>(source: string, execute: () => Promise<T>) => Promise<T>;
+  runBidirectionalEdit?: <T>(source: string, execute: () => Promise<T>, reason: FullEditReason) => Promise<T>;
 };
 
 export function createEditorFullEditController(options: CreateEditorFullEditControllerOptions) {
@@ -157,7 +157,7 @@ export function createEditorFullEditController(options: CreateEditorFullEditCont
 
   function runMeteredFullEdit<T>(reason: FullEditReason, source: string, execute: () => Promise<T>): Promise<T> {
     if (!meteredFullEditReasons.has(reason) || !options.runBidirectionalEdit) return execute();
-    return options.runBidirectionalEdit(source, execute);
+    return options.runBidirectionalEdit(source, execute, reason);
   }
 
   const defaultFormattingOptions = {

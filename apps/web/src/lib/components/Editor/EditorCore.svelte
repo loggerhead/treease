@@ -82,6 +82,7 @@
   export let onScroll: (payload: { scrollTop: number; scrollLeft: number }) => void = () => {};
   export let enableRevealSync = true;
   export let synchronizedRuntimeLoading = false;
+  export let runBidirectionalEdit: <T>(source: string, execute: () => Promise<T>, reason?: string) => Promise<T> = async (_source, execute) => execute();
 
   type QueuedWholeDocumentReplacement = {
     text: string;
@@ -132,6 +133,8 @@
   let editorRuntimeError = false;
   let editorRuntimePhase = 'Loading editor runtime...';
   let editorRuntimeToken = 0;
+  const LARGE_TEXT_EDIT_USAGE_THRESHOLD_BYTES = 256 * 1024;
+  type EditorUsageRunner = <T>(source: string, execute: () => Promise<T>) => Promise<T>;
   let lastEditorRuntimeStateSignature = '';
   let jsonBlockSelectionValue: JsonBlockSelection | null = null;
   let editorRuntimeOverlay = resolveEditorRuntimeOverlay({
@@ -154,6 +157,18 @@
     lastModelLength = text.length;
     lastModelText = text;
     return text;
+  }
+
+  function changesCoverWholeDocument(changes: MonacoTextChange[], previousLength: number): boolean {
+    if (!changes.length) return false;
+    const ordered = [...changes].sort((left, right) => left.rangeOffset - right.rangeOffset);
+    if (ordered[0].rangeOffset !== 0) return false;
+    let coveredEnd = 0;
+    for (const change of ordered) {
+      if (change.rangeOffset > coveredEnd) return false;
+      coveredEnd = Math.max(coveredEnd, change.rangeOffset + change.rangeLength);
+    }
+    return coveredEnd >= previousLength;
   }
 
   function setLanguageIdWithoutExample(nextLanguage: SupportedEditorLanguageId): void {
@@ -346,6 +361,7 @@
       if (!position) return;
       void editorAnalysisController.updateTreePath(position, { syncGraphHighlight: true });
     },
+    runBidirectionalEdit,
   });
 
   const editorFormatController = createEditorFormatController({
@@ -607,10 +623,9 @@
       }
       const shouldSkipWholeDocumentAutoGuess = suppressNextWholeDocumentAutoGuess;
       suppressNextWholeDocumentAutoGuess = false;
-      const wholeDocumentReplacement =
-        changes.length === 1 && changes[0].rangeOffset === 0 && changes[0].rangeLength === previousLength
-          ? changes[0]
-          : null;
+      const wholeDocumentReplacement = changesCoverWholeDocument(changes, previousLength)
+        ? { ...changes[0], rangeOffset: 0, rangeLength: previousLength, text: nextText }
+        : null;
       lastModelLength = nextText.length;
       lastModelText = nextText;
       const shouldRotateDocumentKey = Boolean(wholeDocumentReplacement);
@@ -713,7 +728,20 @@
           changes,
         );
         markActiveTabUserInput(true);
-        commitActiveTabEdits(activeModel, languageIdValue, documentKeyValue, nextText, documentTextEdits);
+        const insertedByteLength = changes.reduce(
+          (total, change) => total + new TextEncoder().encode(change.text ?? '').byteLength,
+          0,
+        );
+        commitActiveTabEdits(
+          activeModel,
+          languageIdValue,
+          documentKeyValue,
+          nextText,
+          documentTextEdits,
+          insertedByteLength >= LARGE_TEXT_EDIT_USAGE_THRESHOLD_BYTES
+            ? (source, execute) => runBidirectionalEdit(source, execute, 'whole-document-replacement')
+            : undefined,
+        );
       } else {
         commitEditorState();
       }
@@ -803,6 +831,7 @@
     requestDocumentKey: string,
     nextText: string,
     documentTextEdits: DocumentTextEdit[],
+    runUsage: EditorUsageRunner | undefined = undefined,
   ): number {
     return commitEditorTabTextChange({
       requestModel,
@@ -810,6 +839,7 @@
       requestDocumentKey,
       nextText,
       documentTextEdits,
+      runUsage,
       baseSnapshotId: resolveCommitBaseSnapshotId(requestDocumentKey),
       commitRevision: commitEditorState,
       settings: buildDocumentJobSettings({

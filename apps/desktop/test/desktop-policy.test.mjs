@@ -36,6 +36,7 @@ test('desktop release stays isolated from unified releases and uploads updater m
   assert.match(releaseWorkflow, /TAURI_SIGNING_PRIVATE_KEY/);
   assert.match(releaseWorkflow, /uploadUpdaterJson: true/);
   assert.match(releaseWorkflow, /uploadUpdaterSignatures: true/);
+  assert.match(releaseWorkflow, /releaseDraft: false/);
   assert.match(releaseWorkflow, /windows-latest/);
   assert.match(releaseWorkflow, /macos-latest/);
   assert.doesNotMatch(releaseWorkflow, /tags:\s*\["v\*"\]/);
