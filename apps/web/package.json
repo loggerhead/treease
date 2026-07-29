@@ -101,6 +101,8 @@
     "@leafer-in/view": "^2.0.1",
     "@leafer-in/viewport": "^2.0.0",
     "@number-flow/svelte": "^0.4.2",
+    "@sentry/browser": "10.68.0",
+    "@sentry/vite-plugin": "5.4.0",
     "@supabase/supabase-js": "^2.57.4",
     "@tanstack/svelte-virtual": "^3.0.0",
     "@tauri-apps/api": "^2.11.1",

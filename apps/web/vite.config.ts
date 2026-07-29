@@ -7,6 +7,8 @@ import { defineConfig } from 'vite-plus';
 import { sveltekit } from '@sveltejs/kit/vite';
 import tailwindcss from '@tailwindcss/vite';
 import { analyzer } from 'vite-bundle-analyzer';
+import { sentryVitePlugin } from '@sentry/vite-plugin';
+import packageJson from './package.json' with { type: 'json' };
 
 const configDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(configDir, '../..');
@@ -79,11 +81,22 @@ const buildDefines = {
 export default defineConfig(({ mode }) => {
   // Vite loads .env after evaluating this config; load it explicitly before injecting browser constants.
   const env = loadEnv(mode, configDir, '');
+  const sentryRelease = `treease-web@${packageJson.version}`;
+  const sentryBuildPlugin = process.env.SENTRY_AUTH_TOKEN && process.env.SENTRY_ORG && process.env.SENTRY_PROJECT
+    ? sentryVitePlugin({
+        authToken: process.env.SENTRY_AUTH_TOKEN,
+        org: process.env.SENTRY_ORG,
+        project: process.env.SENTRY_PROJECT,
+        release: { name: sentryRelease, inject: true },
+        sourcemaps: { filesToDeleteAfterUpload: ['**/*.map'] },
+      })
+    : null;
 
   return {
     plugins: [
       sveltekit(),
       tailwindcss(),
+      ...(sentryBuildPlugin ? [sentryBuildPlugin] : []),
       previewRouteFallback,
       ...(bundleAnalyzeEnabled
         ? [
@@ -103,6 +116,7 @@ export default defineConfig(({ mode }) => {
       'import.meta.env.SUPABASE_URL': JSON.stringify(env.SUPABASE_URL ?? ''),
       'import.meta.env.SUPABASE_ANON_KEY': JSON.stringify(env.SUPABASE_ANON_KEY ?? ''),
       'import.meta.env.PUBLIC_API_ORIGIN': JSON.stringify(env.PUBLIC_API_ORIGIN ?? ''),
+      'import.meta.env.PUBLIC_SENTRY_DSN': JSON.stringify(env.PUBLIC_SENTRY_DSN ?? ''),
       'import.meta.env.GA_MEASUREMENT_ID': JSON.stringify(env.GA_MEASUREMENT_ID ?? ''),
       'import.meta.env.GA_CONSENT_REQUIRED': JSON.stringify(env.GA_CONSENT_REQUIRED ?? '0'),
       'import.meta.env.PUBLIC_PRICING_MONTHLY_PRICE': JSON.stringify(env.PUBLIC_PRICING_MONTHLY_PRICE ?? ''),
@@ -112,11 +126,9 @@ export default defineConfig(({ mode }) => {
       // Explicit opt-in for production runtime branches while retaining Vite's dev module server.
       'import.meta.env.SIMULATE_PROD': JSON.stringify(process.env.simulate_prod === '1'),
     },
-    build: bundleAnalyzeEnabled
-      ? {
-          sourcemap: 'hidden',
-        }
-      : undefined,
+    build: {
+      sourcemap: 'hidden',
+    },
     assetsInclude: ['**/*.ttf'],
     resolve: {
       alias: [

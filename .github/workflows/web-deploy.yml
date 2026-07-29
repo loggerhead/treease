@@ -48,6 +48,10 @@ jobs:
           GA_CONSENT_REQUIRED: ${{ secrets.GA_CONSENT_REQUIRED }}
           PUBLIC_PRICING_MONTHLY_PRICE: ${{ secrets.PUBLIC_PRICING_MONTHLY_PRICE }}
           PUBLIC_PRICING_YEARLY_PRICE: ${{ secrets.PUBLIC_PRICING_YEARLY_PRICE }}
+          PUBLIC_SENTRY_DSN: ${{ secrets.PUBLIC_SENTRY_DSN }}
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
+          SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
         run: pnpm build
 
       - name: Sync public R2 assets
