@@ -1,6 +1,6 @@
 {
   "name": "@treease/api-contracts",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "description": "Public HTTP request and response contracts for Treease",
   "repository": "https://github.com/loggerhead/treease",
   "type": "module",
@@ -9,7 +9,7 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "@treease/share-protocol": "workspace:*",
+    "@treease/share-protocol": "0.2.0",
     "zod": "^4.1.11"
   }
 }

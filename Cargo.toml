@@ -1,0 +1,14 @@
+[workspace]
+members = [
+    "apps/cli",
+    "apps/desktop/src-tauri",
+    "packages/core",
+]
+resolver = "3"
+
+[profile.release]
+opt-level = "z"
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = true

@@ -22,6 +22,7 @@ docs/dev-loop/registry.yaml
 packages/core/target*
 apps/cli/target
 apps/desktop/**/target
+target
 apps/desktop/src-tauri/gen/
 apps/desktop/src-tauri/icons/
 apps/web/benchmarks/graph-stream-baseline.json
