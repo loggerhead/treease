@@ -142,6 +142,7 @@ export const errorResponseSchema = z.object({
   error: z.string().optional(),
   message: z.string().optional(),
   details: z.unknown().optional(),
+  requestId: z.string().optional(),
 }).strict();
 
 export const createCheckoutLinkSchema = z.object({

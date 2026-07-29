@@ -2,6 +2,7 @@
   import { browser } from '$app/environment';
   import { assetUrl, r2Assets } from '$lib/assets';
   import HomeHeroDemoDeck from '$lib/components/HomeHeroDemoDeck.svelte';
+  import PricingPlanGrid from '$lib/components/PricingPlanGrid.svelte';
   import SiteFooter from '$lib/components/SiteFooter.svelte';
   import SiteHeader from '$lib/components/SiteHeader.svelte';
   import LoginDialog from '$lib/components/LoginDialog.svelte';
@@ -13,10 +14,8 @@
   } from '$lib/billing/checkout-flow';
   import { authReady, authUser } from '$lib/auth/auth-user-store';
   import {
-    fixedYearlySavingsPercent,
     pricingConfig,
     type BillingPriceId,
-    type PricingFeature,
   } from '$lib/config/pricing';
   import { homeHeaderNavItems } from '$lib/navigation/home-header-nav';
   import { trackEvent, trackSeoConversion } from '$lib/analytics/ga4';
@@ -44,7 +43,6 @@
   let scheduledPlanChange: BillingPriceId | null = null;
   let planChangeDialogOpen = false;
   let pendingPlanChange: { priceId: BillingPriceId; plan: typeof pricingConfig.plans[number] } | null = null;
-  const yearlySavings = fixedYearlySavingsPercent;
   import { serializeJsonLd, siteOrigin, socialLinks } from '$lib/seo/site-seo';
   const pageTitle = 'Treease: JSON, YAML & Structured Text Viewer with Graphs';
   const pageDescription =
@@ -67,19 +65,6 @@
 
   function checkoutReturnUrl() {
     return { successUrl: new URL('/editor', window.location.origin).toString() };
-  }
-
-  function splitFeatureLabel(feature: PricingFeature): [string, string | null, string] {
-    if (!feature.emphasis) return [feature.label, null, ''];
-
-    const index = feature.label.indexOf(feature.emphasis);
-    if (index === -1) return [feature.label, null, ''];
-
-    return [
-      feature.label.slice(0, index),
-      feature.emphasis,
-      feature.label.slice(index + feature.emphasis.length),
-    ];
   }
 
   function startPricingPrewarm(): void {
@@ -603,64 +588,13 @@
         </div>
       </section>
 
-      <section class="pricing-section" id="pricing" aria-labelledby="pricing-title">
-        <div class="section-copy pricing-intro">
-          <p class="section-kicker">Pricing</p>
-          <h2 id="pricing-title">{pricingConfig.title}</h2>
-          <p>{pricingConfig.description}</p>
-        </div>
-
-        <div class="pricing-grid">
-          {#each pricingConfig.plans as plan}
-            <article
-              class:pricing-card--featured={plan.featured}
-              class:pricing-card--free={plan.id === 'free'}
-              class="pricing-card"
-            >
-              {#if plan.billingPriceId === 'yearly'}
-                <p class="pricing-card__eyebrow" aria-live="polite" aria-atomic="true">
-                  SAVE {#if yearlySavings === null}<span class="pricing-card__loading-dash" aria-hidden="true">-</span><span class="sr-only">Loading annual saving</span>{:else}{yearlySavings}{/if}%
-                </p>
-              {:else if plan.eyebrow}
-                <p class="pricing-card__eyebrow">{plan.eyebrow}</p>
-              {/if}
-              <div class="pricing-card__heading">
-                <h3>{plan.name}</h3>
-                <p class="pricing-card__description">{plan.description}</p>
-              </div>
-              <div class="pricing-card__price">
-                <strong>{plan.price}</strong>
-                <span>{plan.cadence}</span>
-              </div>
-              {#if plan.billingPriceId}
-                {@const actionLabel = planActionLabel(plan, currentSubscription, subscriptionLookupState, planChangeBusy, scheduledPlanChange)}
-                {@const actionTooltip = planActionTooltip(plan, currentSubscription, subscriptionLookupState, scheduledPlanChange)}
-                <span
-                  class="pricing-card__cta-wrap"
-                  class:pricing-card__cta-wrap--tooltip={actionTooltip !== null}
-                  data-tooltip={actionTooltip ?? undefined}
-                >
-                  <button
-                    type="button"
-                    class="pricing-card__cta"
-                    disabled={checkoutBusy || planChangeBusy !== null || scheduledPlanChange === plan.billingPriceId || (subscriptionLookupState === 'ready' && currentSubscription?.billingCadence === plan.billingPriceId && currentPlanIsPaid() && !billingNeedsManagement())}
-                    on:click={() => handlePlanAction(plan.billingPriceId!)}
-                  >{actionLabel}</button>
-                </span>
-              {:else}
-                <a class="pricing-card__cta" href={plan.ctaHref}>{plan.ctaLabel}</a>
-              {/if}
-              <ul class="pricing-card__features">
-                {#each plan.features as feature}
-                  {@const [prefix, emphasis, suffix] = splitFeatureLabel(feature)}
-                  <li class:pricing-card__feature--without-check={feature.showCheck === false}>
-                    {prefix}{#if emphasis}<mark class="pricing-card__feature-emphasis">{emphasis}</mark>{/if}{suffix}
-                  </li>
-                {/each}
-              </ul>
-            </article>
-          {/each}
-        </div>
+      <section id="pricing">
+        <PricingPlanGrid
+          actionLabel={(plan) => planActionLabel(plan, currentSubscription, subscriptionLookupState, planChangeBusy, scheduledPlanChange)}
+          actionTooltip={(plan) => planActionTooltip(plan, currentSubscription, subscriptionLookupState, scheduledPlanChange)}
+          actionDisabled={(plan) => checkoutBusy || planChangeBusy !== null || scheduledPlanChange === plan.billingPriceId || (subscriptionLookupState === 'ready' && currentSubscription?.billingCadence === plan.billingPriceId && currentPlanIsPaid() && !billingNeedsManagement())}
+          onSelectPlan={(priceId) => void handlePlanAction(priceId)}
+        />
         {#if planChangeNotice}
           <p class="pricing-change-notice" role="status">{planChangeNotice}</p>
         {/if}
@@ -1019,20 +953,9 @@
     max-width: 58ch;
   }
 
-  .section-kicker,
-  .pricing-card__eyebrow {
-    margin: 0;
-    color: var(--accent-strong);
-    font-size: 12px;
-    font-weight: 800;
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
-  }
-
   .value-strip,
   .capabilities-section,
   .workflow-story,
-  .pricing-section,
   .faq-section,
   .cta-section {
     padding-top: 6px;
@@ -1281,145 +1204,6 @@
     background: linear-gradient(180deg, #ffffff 0%, #f2f6fd 100%);
   }
 
-  .pricing-section {
-    display: grid;
-    gap: 30px;
-  }
-
-  .pricing-intro {
-    max-width: 56ch;
-  }
-
-  .pricing-grid {
-    display: grid;
-    align-items: stretch;
-    gap: 18px;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-
-  .pricing-card {
-    position: relative;
-    display: flex;
-    flex-direction: column;
-    gap: 22px;
-    min-width: 0;
-    padding: 30px 26px 26px;
-    border: 1px solid var(--line);
-    border-radius: 24px;
-    background: rgba(255, 255, 255, 0.8);
-    box-shadow: var(--shadow);
-  }
-
-  .pricing-card--featured {
-    border-color: rgba(45, 99, 226, 0.42);
-    background:
-      radial-gradient(circle at 100% 0%, rgba(93, 143, 255, 0.24), transparent 34%),
-      linear-gradient(180deg, #1a315f 0%, #102044 100%);
-    color: #f8fbff;
-    box-shadow: 0 28px 60px rgba(24, 61, 135, 0.22);
-    transform: translateY(-10px);
-  }
-
-  .pricing-card--featured .pricing-card__eyebrow {
-    color: #a9c6ff;
-  }
-
-  .pricing-card__heading {
-    display: grid;
-    gap: 10px;
-  }
-
-  .pricing-card__heading h3 {
-    font-size: 28px;
-  }
-
-  .pricing-card__description {
-    min-height: 50px;
-    margin: 0;
-    color: var(--muted);
-    font-size: 14px;
-    line-height: 1.6;
-  }
-
-  .pricing-card--featured .pricing-card__description {
-    color: rgba(226, 232, 240, 0.8);
-  }
-
-  .pricing-card__price {
-    display: flex;
-    align-items: baseline;
-    gap: 6px;
-    padding: 16px 0;
-    border-top: 1px solid var(--line);
-    border-bottom: 1px solid var(--line);
-  }
-
-  .pricing-card--featured .pricing-card__price {
-    border-color: rgba(191, 219, 254, 0.2);
-  }
-
-  .pricing-card__price strong {
-    font-family: var(--font-display);
-    font-size: clamp(2.2rem, 4vw, 3rem);
-    letter-spacing: -0.06em;
-  }
-
-  .pricing-card__price span {
-    color: var(--muted-soft);
-    font-size: 14px;
-  }
-
-  .pricing-card--featured .pricing-card__price span {
-    color: #abc0e3;
-  }
-
-  .pricing-card__cta {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-height: 46px;
-    border: 1px solid rgba(45, 99, 226, 0.3);
-    border-radius: 999px;
-    color: var(--accent-strong);
-    background: rgba(255, 255, 255, 0.76);
-    cursor: pointer;
-    font-size: 14px;
-    font-weight: 800;
-    text-decoration: none;
-    box-shadow: 0 4px 0 rgba(45, 99, 226, 0.08);
-    transition: transform 180ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 180ms ease,
-      background-color 180ms ease, border-color 180ms ease;
-  }
-
-  .pricing-card__cta:not(:disabled):hover {
-    transform: translateY(-4px) scale(1.02);
-    background: #ffffff;
-    border-color: rgba(45, 99, 226, 0.62);
-    box-shadow: 0 12px 22px rgba(45, 99, 226, 0.2), 0 3px 0 rgba(45, 99, 226, 0.14);
-  }
-
-  .pricing-card__cta:disabled {
-    cursor: default;
-    opacity: 0.72;
-    transform: none;
-    color: var(--muted-soft);
-    background: #e8edf5;
-    border-color: #d6dfef;
-    box-shadow: none;
-  }
-
-  .pricing-card--featured .pricing-card__cta {
-    border-color: transparent;
-    color: #173b8e;
-    background: #dbeafe;
-  }
-
-  .pricing-card--featured .pricing-card__cta:disabled {
-    color: var(--muted-soft);
-    background: #e8edf5;
-    border-color: #d6dfef;
-  }
-
   .pricing-change-notice {
     margin: 18px auto 0;
     max-width: 720px;
@@ -1427,46 +1211,6 @@
     font-size: 14px;
     line-height: 1.6;
     text-align: center;
-  }
-
-  .pricing-card__cta-wrap {
-    position: relative;
-    display: flex;
-    width: 100%;
-  }
-
-  .pricing-card__cta-wrap .pricing-card__cta {
-    width: 100%;
-  }
-
-  .pricing-card__cta-wrap--tooltip::after {
-    position: absolute;
-    z-index: 3;
-    right: 0;
-    bottom: calc(100% + 10px);
-    left: 0;
-    padding: 9px 12px;
-    border: 1px solid rgba(45, 99, 226, 0.25);
-    border-radius: 10px;
-    color: #eaf2ff;
-    background: #142a53;
-    box-shadow: 0 10px 24px rgba(15, 32, 68, 0.2);
-    content: attr(data-tooltip);
-    font-size: 12px;
-    font-weight: 600;
-    line-height: 1.45;
-    opacity: 0;
-    pointer-events: none;
-    text-align: center;
-    transform: translateY(4px);
-    transition: opacity 150ms ease, transform 150ms ease;
-  }
-
-  .pricing-card__cta-wrap--tooltip:hover::after,
-  .pricing-card__cta-wrap--tooltip:focus-visible::after,
-  .pricing-card__cta-wrap--tooltip:focus-within::after {
-    opacity: 1;
-    transform: translateY(0);
   }
 
   :global(.plan-change-dialog) {
@@ -1562,60 +1306,6 @@
     opacity: 0.65;
   }
 
-  .pricing-card__features {
-    display: grid;
-    gap: 13px;
-    margin: 0;
-    padding: 0;
-    list-style: none;
-  }
-
-  .pricing-card__features li {
-    position: relative;
-    padding-left: 24px;
-    color: var(--muted);
-    font-size: 14px;
-    line-height: 1.45;
-  }
-
-  .pricing-card__features li::before {
-    content: '✓';
-    position: absolute;
-    left: 0;
-    color: var(--accent-strong);
-    font-weight: 900;
-  }
-
-  .pricing-card__features .pricing-card__feature--without-check::before {
-    content: none;
-  }
-
-  .pricing-card__feature-emphasis {
-    padding: 1px 3px;
-    border-radius: 3px;
-    color: var(--accent-strong);
-    background: rgba(45, 99, 226, 0.12);
-    font-weight: 700;
-  }
-
-  .pricing-card--free .pricing-card__feature-emphasis {
-    color: inherit;
-    font-weight: inherit;
-  }
-
-  .pricing-card--featured .pricing-card__features li {
-    color: rgba(226, 232, 240, 0.88);
-  }
-
-  .pricing-card--featured .pricing-card__features li::before {
-    color: #93c5fd;
-  }
-
-  .pricing-card--featured .pricing-card__feature-emphasis {
-    color: #dbeafe;
-    background: rgba(147, 197, 253, 0.18);
-  }
-
   .faq-list {
     display: grid;
     gap: 0;
@@ -1695,7 +1385,6 @@
 
   .primary-cta:focus-visible,
   .secondary-cta:focus-visible,
-  .pricing-card__cta:focus-visible,
   .faq-item summary:focus-visible {
     outline: 2px solid var(--accent-strong);
     outline-offset: 3px;
@@ -1705,8 +1394,7 @@
     .hero,
     .value-strip,
     .capability-grid,
-    .workflow-story__grid,
-    .pricing-grid {
+    .workflow-story__grid {
       grid-template-columns: 1fr;
     }
 
@@ -1753,9 +1441,6 @@
       border-top: 1px solid rgba(45, 99, 226, 0.2);
     }
 
-    .pricing-card--featured {
-      transform: none;
-    }
   }
 
   @media (max-width: 860px) {
@@ -1777,9 +1462,6 @@
       grid-template-columns: 1fr;
     }
 
-    .pricing-card__description {
-      min-height: 0;
-    }
   }
 
   @media (max-width: 640px) {
@@ -1868,7 +1550,6 @@
     }
 
     .value-point,
-    .pricing-card:not(.pricing-card--featured),
     .capability-card--hero,
     .capability-card--soft,
     .capability-card--surface,

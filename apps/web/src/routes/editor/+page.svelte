@@ -14,7 +14,9 @@
   import StructGenerationInput from '../../lib/components/StructGenerationInput.svelte';
   import LoginDialog from '../../lib/components/LoginDialog.svelte';
   import AiInput from '../../lib/components/AiInput.svelte';
+  import PricingPlanGrid, { type PricingUsageNotice } from '../../lib/components/PricingPlanGrid.svelte';
   import YqExpressionInput from '../../lib/components/YqExpressionInput.svelte';
+  import { Dialog, DialogContent } from '../../lib/components/ui/dialog';
   import { settings, settingsStore } from '../../lib/settings/settings-store';
   import { DEFAULT_EDITOR_SPLIT_RATIO } from '../../lib/settings/editor-layout-state';
   import {
@@ -29,7 +31,7 @@
     graphAppliedRevision,
   } from '../../lib/store/document-session-store';
   import { toast } from 'svelte-sonner';
-  import { fetchUrlPresetSource } from './fetch-url-preset-source';
+  import { fetchUrlPresetSource, type UrlPresetSource } from './fetch-url-preset-source';
   import { readImportSourceSample, resolveImportSourceFormat } from '../../lib/import/resolve-import-source';
   import { callSharedWasmWorker, getSharedWasmWorkerClient } from '../../lib/wasm/wasm-worker-singleton';
   import { getDefaultWasmURL } from '../../lib/wasm/wasm-worker-singleton';
@@ -78,18 +80,27 @@
   import * as ButtonGroup from '../../lib/components/ui/button-group';
   import { IconButton } from '../../lib/components/ui/button';
   import { trackEvent } from '../../lib/analytics/ga4';
+  import { startBillingCheckout } from '../../lib/billing/checkout-flow';
+  import { getUsageClientId } from '../../lib/billing/client-id';
   import { runPostpaidCapability } from '../../lib/billing/entitlement-gate';
   import { workspaceHost } from '../../lib/workspace-host';
   import { exchangeAuthCode, signOut } from '../../lib/auth/supabase-auth';
   import { editorWorkspace, getWorkspaceState, updateWorkspaceTab } from '../../lib/store/workspace-store';
   import { isWorkspaceTabDirty, type EditorWorkspaceTabSummary } from '../../lib/store/editor-workspace';
   import { clearCompareState, compareState } from '../../lib/store/compare-state';
-  import { generateStruct, getPublicShare, suggestYq, type StructLanguage } from '../../lib/services/treease-server';
+  import {
+    generateStruct,
+    getUsageSummary,
+    getPublicShare,
+    suggestYq,
+    TreeaseServerError,
+    type StructLanguage,
+  } from '../../lib/services/treease-server';
   import { createShareResource as createResourceFromState, type ShareInteraction, type SharePathSegment, type ShareResource } from '../../lib/share/share-resource';
   import { restoreShareResource } from '../../lib/share/share-restore';
   import type { WorkspaceCommand, WorkspaceSession } from '../../lib/workspace-host';
 
-  const LARGE_FILE_PROCESSING_THRESHOLD_BYTES = 500 * 1024;
+  const LARGE_FILE_PROCESSING_THRESHOLD_BYTES = 256 * 1024;
 
   let editorRef: Editor | null = null;
   let topBarRef: TopBar | null = null;
@@ -134,6 +145,12 @@
   let aiBusy = false;
   let aiError = '';
   let aiSuccess = '';
+  let aiQuotaExhausted = false;
+  let aiUpgradeBusy = false;
+  let pricingOpen = false;
+  let aiUsageNotice: PricingUsageNotice | null = null;
+  const aiPricingPlanIds = ['pro-monthly', 'pro-yearly'];
+  const aiPricingDialogMaxWidth = aiPricingPlanIds.length === 1 ? '620px' : aiPricingPlanIds.length === 2 ? '1040px' : '1440px';
   let yqInputOpen = false;
   let yqExpression = '';
   let yqBusy = false;
@@ -220,6 +237,17 @@
     return nextText;
   }
 
+  async function fetchUrlPresetSourceOrReport(rawUrl: string): Promise<UrlPresetSource | null> {
+    try {
+      return await fetchUrlPresetSource(rawUrl);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error('[editor] failed to apply url preset', { error: message });
+      toast.error(`Editor URL preset failed: ${message}`);
+      return null;
+    }
+  }
+
   async function applyEditorUrlPreset(nextPreset: ResolvedEditorUrlPreset): Promise<void> {
     applyUrlPresetUi(nextPreset);
     setUrlPresetBridgeState(nextPreset);
@@ -237,7 +265,8 @@
     let presetText = nextPreset.text.present ? nextPreset.text.value : null;
     let presetTextLanguage = nextPreset.language;
     if (presetText === null && nextPreset.textUrl.effective) {
-      const resolved = await fetchUrlPresetSource(nextPreset.textUrl.value);
+      const resolved = await fetchUrlPresetSourceOrReport(nextPreset.textUrl.value);
+      if (!resolved) return;
       presetText = resolved.text;
       presetTextLanguage = presetTextLanguage ?? resolved.inferredLanguage;
     }
@@ -255,7 +284,8 @@
       const nextLanguage = nextPreset.language ?? (editorRef?.getActiveLanguage() ?? $languageIdStore);
       await viewerRef?.showTextPreview(nextPreset.rightText.value, nextLanguage);
     } else if (nextPreset.rightTextUrl.effective) {
-      const resolved = await fetchUrlPresetSource(nextPreset.rightTextUrl.value);
+      const resolved = await fetchUrlPresetSourceOrReport(nextPreset.rightTextUrl.value);
+      if (!resolved) return;
       const nextLanguage = nextPreset.language ?? resolved.inferredLanguage ?? (editorRef?.getActiveLanguage() ?? $languageIdStore);
       await viewerRef?.showTextPreview(resolved.text, nextLanguage);
     }
@@ -685,6 +715,8 @@
     aiInputOpen = true;
     aiError = '';
     aiSuccess = '';
+    aiQuotaExhausted = false;
+    aiUsageNotice = null;
   }
 
   function handleCloseAiInput() {
@@ -692,6 +724,7 @@
     aiInputOpen = false;
     aiError = '';
     aiSuccess = '';
+    aiQuotaExhausted = false;
   }
 
   async function handleSubmitAi(instruction: string) {
@@ -700,6 +733,7 @@
     aiBusy = true;
     aiError = '';
     aiSuccess = '';
+    aiQuotaExhausted = false;
     if (!sourceText.trim()) {
       aiError = 'The active document is empty.';
       aiBusy = false;
@@ -728,9 +762,44 @@
       await showViewerTextPreviewForRevision(result.result, result.previewLanguage, $editorRevision);
       aiSuccess = suggestion.expression;
     } catch (error) {
-      aiError = error instanceof Error ? error.message : 'Unable to generate a yq expression.';
+      if (error instanceof TreeaseServerError && error.code === 'quota_exhausted') {
+        aiQuotaExhausted = true;
+        aiError = error.message;
+        pricingOpen = true;
+        void refreshAiUsageNotice();
+      } else {
+        aiError = error instanceof Error ? error.message : 'Unable to generate a yq expression.';
+      }
     } finally {
       aiBusy = false;
+    }
+  }
+
+  async function refreshAiUsageNotice(): Promise<void> {
+    try {
+      const summary = await getUsageSummary(await getUsageClientId());
+      const limit = summary.limits.aiProcessingMonthly;
+      if (limit.kind !== 'limited') return;
+      aiUsageNotice = {
+        capability: 'AI processing',
+        used: summary.usage.ai_suggestion ?? 0,
+        limit: limit.limit,
+        periodLabel: 'this month',
+      };
+    } catch {
+      // The quota response still explains the block if a follow-up usage read fails.
+    }
+  }
+
+  async function handleAiQuotaUpgrade(priceId: 'monthly' | 'yearly' = 'monthly'): Promise<void> {
+    if (aiUpgradeBusy) return;
+    aiUpgradeBusy = true;
+    try {
+      const outcome = await startBillingCheckout(priceId, { successUrl: window.location.href });
+      if (outcome.status === 'login-required') loginOpen = true;
+      if (outcome.status === 'failed') toast.error(outcome.message);
+    } finally {
+      aiUpgradeBusy = false;
     }
   }
 
@@ -1295,12 +1364,16 @@
               busy={aiBusy}
               error={aiError}
               success={aiSuccess}
+              quotaExhausted={aiQuotaExhausted}
+              upgradeBusy={aiUpgradeBusy}
               onChange={(value) => {
                 aiInstruction = value;
                 aiError = '';
                 aiSuccess = '';
+                aiQuotaExhausted = false;
               }}
               onSubmit={handleSubmitAi}
+              onUpgrade={() => { pricingOpen = true; }}
               onClose={handleCloseAiInput}
             />
           {:else if yqInputOpen}
@@ -1513,3 +1586,21 @@
 <SettingsDialog bind:open={settingsOpen} />
 <ShareDialog bind:open={shareOpen} createResource={createShareResource} />
 <LoginDialog bind:open={loginOpen} />
+<Dialog bind:open={pricingOpen}>
+  <DialogContent aria-labelledby="ai-pricing-title" class="max-h-[90vh] border-[#dce5f0] bg-[#f7faff] p-6" style={`width: min(${aiPricingDialogMaxWidth}, calc(100vw - 2rem)); max-width: none; overflow-y: auto; scrollbar-gutter: stable;`}>
+    <PricingPlanGrid
+      compact
+      title="Usage limit reached"
+      titleId="ai-pricing-title"
+      titleNoWrap
+      descriptionNoWrap
+      showKicker={false}
+      description="Your last action used the final monthly run. Upgrade to continue."
+      visiblePlanIds={aiPricingPlanIds}
+      usageNotice={aiUsageNotice}
+      actionDisabled={() => aiUpgradeBusy}
+      actionLabel={(plan) => aiUpgradeBusy ? 'Opening checkout…' : plan.ctaLabel}
+      onSelectPlan={(priceId) => void handleAiQuotaUpgrade(priceId)}
+    />
+  </DialogContent>
+</Dialog>

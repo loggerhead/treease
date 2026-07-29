@@ -89,7 +89,7 @@ async function getAccessToken(): Promise<string | null> {
   return data.session?.access_token ?? null;
 }
 
-async function readError(response: Response): Promise<TreeaseServerError> {
+export async function readError(response: Response): Promise<TreeaseServerError> {
   let message = `Treease server request failed (${response.status})`;
   let code: string | null = null;
   let details: Record<string, unknown> | null = null;

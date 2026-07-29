@@ -7,8 +7,11 @@
   export let busy = false
   export let error = ''
   export let success = ''
+  export let quotaExhausted = false
+  export let upgradeBusy = false
   export let onChange: (value: string) => void = () => {}
   export let onSubmit: (value: string) => void | Promise<void> = () => {}
+  export let onUpgrade: () => void | Promise<void> = () => {}
   export let onClose: () => void = () => {}
 
   let input: HTMLTextAreaElement | null = null
@@ -47,13 +50,30 @@
 
 <div class="border-t border-[var(--border-strong)] bg-[var(--panel-bg-alt)] px-2 py-1.5" data-testid="ai-input-panel">
   {#if error}
-    <p
-      class="mb-1 text-[12px] text-[var(--danger-text,#dc2626)]"
-      data-testid="ai-input-error"
-      role="alert"
-      aria-live="assertive"
-      aria-atomic="true"
-    >{error}</p>
+    <div class="mb-1 flex items-center justify-between gap-2" role="alert" aria-live="assertive" aria-atomic="true">
+      <p class="text-[12px] text-[var(--danger-text,#dc2626)]" data-testid="ai-input-error">{error}</p>
+      {#if quotaExhausted}
+        <button
+          type="button"
+          class="shrink-0 rounded-[6px] bg-[var(--accent)] px-2 py-1 text-[11px] font-semibold text-white transition-colors hover:brightness-95 disabled:cursor-wait disabled:opacity-60"
+          data-testid="ai-quota-upgrade-button"
+          disabled={upgradeBusy}
+          on:click={onUpgrade}
+        >{upgradeBusy ? 'Opening checkout…' : 'Upgrade for more AI'}</button>
+      {/if}
+    </div>
+  {/if}
+  {#if busy}
+    <p class="mb-1 flex items-center gap-1.5 pl-1 text-[11px] text-[var(--text-muted)]" role="status" aria-live="polite">
+      <LoaderCircle size={11} strokeWidth={1.9} class="animate-spin text-[#4779c9]" />
+      Processing your request…
+    </p>
+  {:else if success}
+    <p class="mb-1 flex min-w-0 items-center gap-1.5 pl-1 text-[11px] text-[var(--text-muted)]" role="status" aria-live="polite">
+      <Sparkles size={11} strokeWidth={1.9} class="shrink-0 text-[#4779c9]" />
+      <span class="shrink-0">Executed</span>
+      <code class="truncate rounded bg-[#edf3ff] px-1 py-px font-mono text-[#3b68ae]">{success}</code>
+    </p>
   {/if}
   <form class="flex items-end gap-1.5" on:submit|preventDefault={handleSubmit}>
     <div class="flex min-h-[30px] min-w-0 flex-1 items-end gap-2 overflow-hidden rounded-[8px] border border-[#c8d7f5] bg-[linear-gradient(110deg,#f8fbff,#fffdf7)] px-2.5 shadow-[0_1px_2px_rgba(37,99,235,0.04)] focus-within:border-[#8bb3f3] focus-within:shadow-[0_0_0_2px_rgba(96,165,250,0.12)]">
@@ -87,16 +107,4 @@
       <X size={12} />
     </IconButton>
   </form>
-  {#if busy}
-    <p class="mt-1 flex items-center gap-1.5 pl-1 text-[11px] text-[var(--text-muted)]" role="status" aria-live="polite">
-      <LoaderCircle size={11} strokeWidth={1.9} class="animate-spin text-[#4779c9]" />
-      Processing your request…
-    </p>
-  {:else if success}
-    <p class="mt-1 flex min-w-0 items-center gap-1.5 pl-1 text-[11px] text-[var(--text-muted)]" role="status" aria-live="polite">
-      <Sparkles size={11} strokeWidth={1.9} class="shrink-0 text-[#4779c9]" />
-      <span class="shrink-0">Executed</span>
-      <code class="truncate rounded bg-[#edf3ff] px-1 py-px font-mono text-[#3b68ae]">{success}</code>
-    </p>
-  {/if}
 </div>
