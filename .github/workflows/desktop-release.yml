@@ -74,7 +74,9 @@ jobs:
       - name: Use Bash Zig wrapper on Windows
         if: matrix.runner == 'windows-latest'
         shell: pwsh
-        run: Add-Content $env:GITHUB_ENV "CC_wasm32_unknown_unknown=cmd /c $env:GITHUB_WORKSPACE/scripts/zig-wasm32-cc.cmd"
+        run: |
+          Add-Content $env:GITHUB_ENV "CC_wasm32_unknown_unknown=cmd /c $env:GITHUB_WORKSPACE/scripts/zig-wasm32-cc.cmd"
+          Add-Content $env:GITHUB_ENV "AR_wasm32_unknown_unknown=cmd /c $env:GITHUB_WORKSPACE/scripts/wasm32-ar.cmd"
       - uses: swatinem/rust-cache@v2
         with:
           workspaces: apps/desktop/src-tauri -> target
