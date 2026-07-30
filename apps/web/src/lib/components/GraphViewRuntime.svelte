@@ -514,6 +514,7 @@
   });
   const hasActiveEdit = graphEditAdapter.hasActiveEdit;
   const applyGraphEdit = graphEditAdapter.applyGraphEdit;
+  const applyStructuredValueEdit = graphEditAdapter.applyStructuredValueEdit;
   const bindGraphEditorLifecycle = graphEditAdapter.bindRuntimeEditor;
   resetActiveEditState = graphEditAdapter.resetActiveEditState;
   const onRuntimeReady = ({ editor }: { editor: unknown | null }) => bindGraphEditorLifecycle(editor);
@@ -536,7 +537,7 @@
     },
     emitReveal: (path, target) => emitReveal(path, target, 'click'),
     handleError,
-    applyGraphEdit,
+    applyStructuredValueEdit,
     waitForCommittedDocument,
     markSubgraphRequested,
     markSubgraphMaterialized,

@@ -11,6 +11,7 @@ export function createWebGraphEditAdapter(deps: GraphValueEditControllerDeps) {
   const controller = createGraphValueEditController(deps);
   return {
     applyGraphEdit: controller.applyGraphEdit,
+    applyStructuredValueEdit: controller.applyStructuredValueEdit,
     bindRuntimeEditor: controller.bindGraphEditorLifecycle,
     hasActiveEdit: controller.hasActiveEdit,
     resetActiveEditState: controller.resetActiveEditState,

@@ -158,6 +158,17 @@ export function attachMonacoTestHook(editor: TestHookEditor, hookId: string, tok
       );
       const candidates = spans.filter((span) => (span.textContent ?? '').includes(tokenText));
       const target = candidates.sort((a, b) => (a.textContent ?? '').length - (b.textContent ?? '').length)[0];
+      if (!target && lineNumber == null && model) {
+        for (let index = 1; index <= modelLineCount; index += 1) {
+          const lineText = normalizeMonacoText(model.getLineContent(index));
+          const tokenOffset = lineText.indexOf(tokenText);
+          if (tokenOffset < 0) continue;
+          // The requested token can be outside Monaco's virtualized viewport.
+          // Reveal it so the next polling frame inspects the actual rendered span.
+          editor.revealPositionInCenter?.({ lineNumber: index, column: tokenOffset + 1 });
+          return null;
+        }
+      }
       return readTokenColor(target ?? null, line);
     },
     getRenderedTokenColorAtPosition: (lineNumber: number, column: number, tokenText?: string) => {

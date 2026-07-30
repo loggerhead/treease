@@ -18,7 +18,11 @@ import { trackEvent } from '../../analytics/ga4';
 const INNER_EDITOR_BEFORE_OPEN = 'innerEditor.before_open';
 const INNER_EDITOR_CLOSE = 'innerEditor.close';
 
-type GraphEditEventType = 'graph-edit-open' | 'graph-edit-commit' | 'graph-edit-replace-fallback';
+type GraphEditEventType =
+  | 'graph-edit-open'
+  | 'graph-edit-commit'
+  | 'graph-edit-replace-fallback'
+  | 'graph-edit-result';
 
 type PlannedGraphValueEditResult =
   | {
@@ -38,6 +42,17 @@ type PlannedGraphValueEditResult =
   | {
       mode: 'snapshotNotReady';
     };
+
+/** A value edit expressed independently of a Leafer graph cell. */
+export type StructuredValueEditIntent = {
+  path: PathSeg[];
+  kind: 'key' | 'value';
+  raw: string;
+  valueType?: string;
+  text?: string;
+  /** Snapshot that produced the editable projection, when the caller owns one. */
+  snapshotId?: number | null;
+};
 
 export type GraphValueEditControllerDeps = {
   getCurrentData: () => unknown;
@@ -77,8 +92,6 @@ export type GraphValueEditControllerDeps = {
     context: { component: string; operation: string; metadata?: Record<string, unknown> },
   ) => void;
 };
-
-
 
 export function createGraphValueEditController(deps: GraphValueEditControllerDeps) {
   type ActiveEditState = {
@@ -145,19 +158,11 @@ export function createGraphValueEditController(deps: GraphValueEditControllerDep
     }
   }
 
-  async function applyGraphEdit(
-    editCell: GraphCell,
-    editKind: 'key' | 'value',
-    raw: string,
-    _editTargetOverride: LeaferText | null = null,
-  ): Promise<boolean> {
+  async function applyStructuredValueEdit(intent: StructuredValueEditIntent): Promise<boolean> {
     if (isReadonly()) {
       return false;
     }
-    if (!editCell) {
-      return false;
-    }
-    if (editCell.isMissing) {
+    if (!intent.path.length) {
       return false;
     }
     const editorIO = deps.getEditorIO();
@@ -182,20 +187,14 @@ export function createGraphValueEditController(deps: GraphValueEditControllerDep
     if (!freshness.isCurrent()) {
       return false;
     }
-    const editPath = await freshness.step(() =>
-      resolveCellPath(editCell, deps.resolveTreePathByPosition, editCell.path ?? []),
-    );
-    if (!editPath?.length) {
-      return false;
-    }
     if (!editorIO || editorIO.context !== 'editor') {
       return false;
     }
     deps.dispatchGraphEditEvent('graph-edit-commit', {
-      path: editPath,
-      kind: editKind,
-      text: raw,
-      valueType: editCell?.valueType,
+      path: intent.path,
+      kind: intent.kind,
+      text: intent.raw,
+      valueType: intent.valueType,
     });
     const parseGraphValue = async ({
       language,
@@ -212,7 +211,7 @@ export function createGraphValueEditController(deps: GraphValueEditControllerDep
     }): Promise<TreeNode> => {
       try {
         const normalizedRawEdit =
-          !preferKey && editCell?.valueType === 'string' && editCell?.text === '' && rawEdit === '""' ? '' : rawEdit;
+          !preferKey && intent.valueType === 'string' && intent.text === '' && rawEdit === '""' ? '' : rawEdit;
         return await callSharedWasmWorker<TreeNode>('parseValueForPath', {
           language,
           documentKey: deps.getDocumentKey(),
@@ -231,50 +230,54 @@ export function createGraphValueEditController(deps: GraphValueEditControllerDep
         throw error;
       }
     };
-    const preferKey = editKind === 'key';
+    const preferKey = intent.kind === 'key';
     const canonicalNextValueNode = await freshness.step(() =>
       parseGraphValue({
         language: deps.getLanguageId(),
-        path: editPath,
-        rawEdit: raw,
+        path: intent.path,
+        rawEdit: intent.raw,
         preferKey,
         nest: deps.getEnableNest(),
       }),
     );
     if (!canonicalNextValueNode) {
+      deps.dispatchGraphEditEvent('graph-edit-result', { applied: false, reason: 'parse-or-stale', path: intent.path });
       return false;
     }
     const planned = await freshness.step(() =>
       callSharedWasmWorker<PlannedGraphValueEditResult>('planGraphValueEdit', {
         documentKey: deps.getDocumentKey(),
-        snapshotId: deps.getActiveSnapshotId(),
+        snapshotId: intent.snapshotId ?? deps.getActiveSnapshotId(),
         language: deps.getLanguageId(),
         text: deps.getSourceText(),
-        path: editPath,
+        path: intent.path,
         preferKey,
         value: canonicalNextValueNode,
         nest: deps.getEnableNest(),
+        verifyText: intent.snapshotId != null,
       }),
     );
     if (!planned) {
+      deps.dispatchGraphEditEvent('graph-edit-result', { applied: false, reason: 'plan-or-stale', path: intent.path });
       return false;
     }
-    deps.updateActiveTempModel((current) => clearGraphSelectionAfterEdit(current, editPath));
+    deps.updateActiveTempModel((current) => clearGraphSelectionAfterEdit(current, intent.path));
     if (planned.mode === 'snapshotNotReady') {
+      deps.dispatchGraphEditEvent('graph-edit-result', { applied: false, reason: 'snapshot-not-ready', path: intent.path });
       return false;
     }
     const apply = async (): Promise<boolean> => {
       if (planned.mode === 'replace') {
         const graphEditFallback = {
           reason: planned.reason,
-          path: editPath,
-          kind: editKind,
+          path: intent.path,
+          kind: intent.kind,
         };
         deps.dispatchGraphEditEvent('graph-edit-replace-fallback', {
           ...graphEditFallback,
           documentKey: deps.getDocumentKey(),
           language: deps.getLanguageId(),
-          snapshotId: deps.getActiveSnapshotId(),
+          snapshotId: intent.snapshotId ?? deps.getActiveSnapshotId(),
         });
         deps.emitEditorMutation({
           type: 'replaceSourceText',
@@ -295,12 +298,59 @@ export function createGraphValueEditController(deps: GraphValueEditControllerDep
       const applied = deps.runBidirectionalEdit
         ? await deps.runBidirectionalEdit(deps.getDocumentKey(), apply)
         : await apply();
-      if (applied) trackEvent('graph_edit', { edit_type: editKind, result: 'success' });
+      deps.dispatchGraphEditEvent('graph-edit-result', {
+        applied,
+        reason: applied ? 'applied' : 'write-not-applied',
+        path: intent.path,
+      });
+      if (applied) trackEvent('graph_edit', { edit_type: intent.kind, result: 'success' });
       return applied;
     } catch (error) {
-      if (error instanceof GraphEditNotAppliedError) return false;
+      if (error instanceof GraphEditNotAppliedError) {
+        deps.dispatchGraphEditEvent('graph-edit-result', { applied: false, reason: 'write-not-applied', path: intent.path });
+        return false;
+      }
       throw error;
     }
+  }
+
+  async function applyGraphEdit(
+    editCell: GraphCell,
+    editKind: 'key' | 'value',
+    raw: string,
+    _editTargetOverride: LeaferText | null = null,
+  ): Promise<boolean> {
+    if (isReadonly() || !editCell || editCell.isMissing) return false;
+    const editorIO = deps.getEditorIO();
+    const getCurrentFreshnessContext = () => {
+      const currentEditorIO = deps.getEditorIO();
+      return {
+        documentKey: deps.getDocumentKey(),
+        revision: deps.getEditorRevision(),
+        languageId: deps.getLanguageId(),
+        model: currentEditorIO?.context === 'editor' ? currentEditorIO.getModel() : null,
+      };
+    };
+    const freshness = createFreshnessScope(
+      {
+        documentKey: deps.getDocumentKey(),
+        revision: deps.getEditorRevision(),
+        languageId: deps.getLanguageId(),
+        model: editorIO?.context === 'editor' ? editorIO.getModel() : null,
+      },
+      getCurrentFreshnessContext,
+    );
+    const path = await freshness.step(() =>
+      resolveCellPath(editCell, deps.resolveTreePathByPosition, editCell.path ?? []),
+    );
+    if (!path?.length) return false;
+    return applyStructuredValueEdit({
+      path,
+      kind: editKind,
+      raw,
+      valueType: editCell.valueType,
+      text: editCell.text,
+    });
   }
 
   async function commitTextEdit(editor?: LeaferEditor | null): Promise<void> {
@@ -370,6 +420,7 @@ export function createGraphValueEditController(deps: GraphValueEditControllerDep
 
   return {
     applyGraphEdit,
+    applyStructuredValueEdit,
     bindGraphEditorLifecycle,
     commitTextEdit,
     getActiveEditCellPath,

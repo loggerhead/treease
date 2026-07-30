@@ -642,6 +642,7 @@ export async function installGraphEditEventCapture(page: Page) {
     };
     document.addEventListener('graph-edit-open', pushEvent('open'));
     document.addEventListener('graph-edit-commit', pushEvent('commit'));
+    document.addEventListener('graph-edit-result', pushEvent('result'));
     document.addEventListener('graph-edit-probes', pushEvent('probes'));
     state.__graphEditCaptureInstalled = true;
   });

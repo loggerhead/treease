@@ -74,7 +74,7 @@ export function clearCanvasHintOverlay(canvasHintText: Text | null): Text | null
 
 export function dispatchGraphEditEvent(
   container: HTMLDivElement | null | undefined,
-  type: 'graph-edit-open' | 'graph-edit-commit' | 'graph-edit-replace-fallback' | 'graph-edit-probes',
+  type: 'graph-edit-open' | 'graph-edit-commit' | 'graph-edit-replace-fallback' | 'graph-edit-result' | 'graph-edit-probes',
   detail: unknown,
 ): void {
   if (!container) return;

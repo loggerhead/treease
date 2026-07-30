@@ -17,6 +17,7 @@ const makeModel = (text: string, options: { getVersionId?: () => number } = {}) 
     uri: { toString: () => 'file://test' },
     getVersionId: options.getVersionId ?? (() => 1),
     getLineCount: () => lines.length,
+    getLineContent: (lineNumber: number) => lines[lineNumber - 1] ?? '',
     getLineMaxColumn: (lineNumber: number) => (lines[lineNumber - 1]?.length ?? 0) + 1,
   };
 };
@@ -78,6 +79,24 @@ describe('monaco-setup', () => {
     const res = await provider.provideDocumentSemanticTokens(makeModel('{"a":1}'), null, { isCancellationRequested: true });
     expect(res.data).toBeInstanceOf(Uint32Array);
     expect(res.data.length).toBe(0);
+  });
+
+  it('derives detached scalar draft tokens from its projected root SemType', async () => {
+    const ensure = createSemanticTokensRegistrar({
+      monaco: monaco as any,
+      callWasmWorker,
+      tokenTypes: ['str'],
+    });
+    ensure('json');
+    const provider = monaco.languages.registerDocumentSemanticTokensProvider.mock.calls.at(-1)?.[1];
+    const model = makeModel('"draft"') as ReturnType<typeof makeModel> & {
+      __treeaseRootSemanticTokenType?: number;
+    };
+    model.__treeaseRootSemanticTokenType = 0;
+
+    const result = await provider.provideDocumentSemanticTokens(model, null, { isCancellationRequested: false });
+
+    expect(result.data).toEqual(new Uint32Array([0, 0, 7, 0, 0]));
   });
 
   it('returns empty semantic tokens when tokens are not primed', async () => {

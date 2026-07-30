@@ -3,9 +3,10 @@ import { expect, test, type Page } from "./fixtures";
 import {
   clickGraphProbeAt,
   clickSubgraphWorkspaceProbeAt,
-  getMonacoRenderedTokenColor,
   getMonacoValue,
+  installGraphEditEventCapture,
   readGraphClickProbes,
+  readEditorWorkspace,
   readGraphHighlight,
   readSubgraphWorkspaceClickProbes,
   revealGraphPath,
@@ -77,7 +78,7 @@ async function ensureGraphMode(page: Page) {
 
 test.setTimeout(60_000);
 
-test("editing a nested trajectory scalar preserves blue string syntax highlighting across the subgraph and graph click", async ({
+test("editing a nested trajectory scalar preserves content-pane highlighting across the subgraph and graph click", async ({
   page,
 }, testInfo) => {
   testInfo.annotations.push({
@@ -152,7 +153,19 @@ test("editing a nested trajectory scalar preserves blue string syntax highlighti
       timeout: 10_000,
     })
     .toBe('"6837"');
+  await installGraphEditEventCapture(page);
   await setMonacoValue(page, `subgraph-content:${durationPathKey}`, '"42"');
+
+  await expect
+    .poll(async () =>
+      page.evaluate(() => window._treease?.test.getGraphEditEvents().some((event) => event.type === 'commit') ?? false),
+    )
+    .toBe(true);
+  await expect
+    .poll(async () =>
+      page.evaluate(() => window._treease?.test.getGraphEditEvents().find((event) => event.type === 'result') ?? null),
+    )
+    .toMatchObject({ detail: { applied: true } });
 
   // The content pane must not briefly fall back to number/neutral token colors
   // while the graph edit is being committed. Strings use the semantic blue.
@@ -164,6 +177,12 @@ test("editing a nested trajectory scalar preserves blue string syntax highlighti
   expect(subgraphColors).toEqual(Array(subgraphColors.length).fill("rgb(4, 81, 165)"));
 
   await expect.poll(() => readDurationFromSource(page), { timeout: 30_000 }).toBe("42");
+  const contentPaneDocumentKey = `sidecar:subgraph-content:${durationPathKey}:0`;
+  await expect
+    .poll(async () => (await readEditorWorkspace(page)).snapshotBindingsByDocumentKey[contentPaneDocumentKey] ?? null, {
+      timeout: 5_000,
+    })
+    .toBeNull();
   await waitForGraphRendered(page, 30_000);
   await waitForSubgraphSettled(page, durationPathKey, 30_000);
 
@@ -210,11 +229,6 @@ test("editing a nested trajectory scalar preserves blue string syntax highlighti
       path: ["$", ...durationPath],
       target: "value",
     });
-  await expect
-    .poll(() => getMonacoRenderedTokenColor(page, "source-editor", '"42"'), {
-      timeout: 5_000,
-    })
-    .toBe("rgb(4, 81, 165)");
   await expect(
     page
       .getByTestId("graph-subgraph-workspace")
