@@ -19,7 +19,7 @@ trap cleanup_acceptance EXIT
 source "$SCRIPT_DIR/helpers.sh"
 
 cargo build --locked --manifest-path "$CLI_DIR/Cargo.toml" --bin treease >/dev/null
-TREEASE_TARGET_DIR="${CARGO_TARGET_DIR:-$CLI_DIR/target}"
+TREEASE_TARGET_DIR="${CARGO_TARGET_DIR:-$REPO_ROOT/target}"
 TREEASE_BIN="$TREEASE_TARGET_DIR/debug/treease"
 [[ -x "$TREEASE_BIN" ]] || fail "treease binary not found: $TREEASE_BIN"
 

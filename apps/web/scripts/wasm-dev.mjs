@@ -13,7 +13,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const webDir = path.resolve(here, '..');
 const rootDir = path.resolve(webDir, '..', '..');
 const coreDir = path.resolve(rootDir, 'packages', 'core');
-const rustWasmOut = path.resolve(coreDir, 'target', 'wasm32-unknown-unknown', 'release', 'treease_core.wasm');
+const rustWasmOut = path.resolve(rootDir, 'target', 'wasm32-unknown-unknown', 'release', 'treease_core.wasm');
 const watchDirs = [
   path.resolve(coreDir, 'src'),
   path.resolve(coreDir, 'Cargo.toml'),
