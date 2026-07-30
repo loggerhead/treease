@@ -116,7 +116,6 @@
   let diffBlankZoneIds: string[] = [];
   let suppressGraphHighlightSync = 0;
   let suppressTreePathUpdate = 0;
-  let preserveSemanticTokensForGraphEdit = 0;
   let unfocusedExternalRevealSelection = false;
   let wholeDocumentReplacementToken = 0;
   let formattingOptionsValue;
@@ -619,13 +618,7 @@
       }
       const previousDocumentKey = getDocumentKey();
       if (previousDocumentKey) jsonBlockSelection.set(null);
-      const preserveSemanticTokens = preserveSemanticTokensForGraphEdit > 0;
-      if (preserveSemanticTokens) preserveSemanticTokensForGraphEdit -= 1;
-      if (previousDocumentKey && !preserveSemanticTokens) {
-        clearDocumentSemanticState(previousDocumentKey);
-      } else if (previousDocumentKey) {
-        refreshSemanticTokensForLanguage(languageIdValue);
-      }
+      if (previousDocumentKey) clearDocumentSemanticState(previousDocumentKey);
       const shouldSkipWholeDocumentAutoGuess = suppressNextWholeDocumentAutoGuess;
       suppressNextWholeDocumentAutoGuess = false;
       const wholeDocumentReplacement = changesCoverWholeDocument(changes, previousLength)
@@ -995,10 +988,7 @@
         forceMoveMarkers: true,
       };
     });
-    preserveSemanticTokensForGraphEdit += 1;
-    const applied = editor.executeEdits('graph-value-edit', operations);
-    if (!applied) preserveSemanticTokensForGraphEdit = Math.max(0, preserveSemanticTokensForGraphEdit - 1);
-    return applied;
+    return editor.executeEdits('graph-value-edit', operations);
   }
 
   function resetEditorCursorToStart(): void {

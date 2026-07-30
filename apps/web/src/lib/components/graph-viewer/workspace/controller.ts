@@ -445,6 +445,14 @@ export function createSubgraphWorkspaceController(deps: SubgraphWorkspaceControl
       queuedEditMap.set(pane.pathKey, nextText);
       return;
     }
+    if (pane.content.snapshotId !== deps.getWorkspaceSnapshotId()) {
+      await refreshPanes();
+      const refreshedPane = chain.find((entry) => entry.pathKey === pane.pathKey);
+      if (refreshedPane?.kind === 'content' && refreshedPane.content) {
+        await commitValueEdit(refreshedPane, nextText);
+      }
+      return;
+    }
     pendingEditKeys.add(pane.pathKey);
     try {
       const revisionBeforeCommit = deps.getRevision();

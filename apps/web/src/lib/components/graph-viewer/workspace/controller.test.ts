@@ -199,6 +199,25 @@ describe('Subgraph Workspace Module', () => {
     }));
   });
 
+  it('refreshes an outdated Content Pane before planning its retained draft', async () => {
+    let snapshotId = 'snapshot-one';
+    mocks.queryPathValue.mockResolvedValueOnce(readyPathValue('number', '1')).mockResolvedValueOnce(readyPathValue('number', '2'));
+    const applyStructuredValueEdit = vi.fn(async () => true);
+    const { controller } = createController({
+      getWorkspaceSnapshotId: () => snapshotId as any,
+      applyStructuredValueEdit,
+    });
+    await controller.openPath(keyPath('count'), -1);
+    snapshotId = 'snapshot-two';
+
+    await controller.commitValueEdit(controller.getChain()[0]!, '3');
+
+    expect(applyStructuredValueEdit).toHaveBeenCalledWith(expect.objectContaining({
+      raw: '3',
+      snapshotId: 'snapshot-two',
+    }));
+  });
+
   it('releases pane runtimes and transient state on reset and dispose', async () => {
     mocks.queryPathValue.mockResolvedValueOnce(readyPathValue('object', '{1}'));
     mocks.prepareGraph.mockResolvedValueOnce({ pathKey: 'graph', path: keyPath('graph'), nodes: [], edges: [] });

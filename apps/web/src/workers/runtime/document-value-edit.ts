@@ -23,65 +23,6 @@ function normalizeEditValue(value: unknown) {
   };
 }
 
-function applyPlannedEditsToText(text: string, edits: Array<{ startByte: number; oldEndByte: number; text: string }>): string | null {
-  const encoder = new TextEncoder();
-  const decoder = new TextDecoder();
-  let bytes = encoder.encode(text);
-  const ordered = [...edits].sort((left, right) => right.startByte - left.startByte);
-  for (const edit of ordered) {
-    if (edit.startByte < 0 || edit.oldEndByte < edit.startByte || edit.oldEndByte > bytes.length) return null;
-    const next = new Uint8Array(bytes.length - (edit.oldEndByte - edit.startByte) + encoder.encode(edit.text).length);
-    next.set(bytes.subarray(0, edit.startByte));
-    next.set(encoder.encode(edit.text), edit.startByte);
-    next.set(bytes.subarray(edit.oldEndByte), edit.startByte + encoder.encode(edit.text).length);
-    bytes = next;
-  }
-  return decoder.decode(bytes);
-}
-
-function positionForOffset(text: string, offset: number): { row: number; column: number } {
-  const prefix = text.slice(0, offset);
-  const lastNewline = prefix.lastIndexOf('\n');
-  return {
-    row: (prefix.match(/\n/g) ?? []).length,
-    column: new TextEncoder().encode(prefix.slice(lastNewline + 1)).length,
-  };
-}
-
-function createCanonicalTextEdit(before: string, after: string) {
-  let prefixEnd = 0;
-  const sharedLength = Math.min(before.length, after.length);
-  while (prefixEnd < sharedLength && before[prefixEnd] === after[prefixEnd]) prefixEnd += 1;
-  let beforeSuffixStart = before.length;
-  let afterSuffixStart = after.length;
-  while (
-    beforeSuffixStart > prefixEnd &&
-    afterSuffixStart > prefixEnd &&
-    before[beforeSuffixStart - 1] === after[afterSuffixStart - 1]
-  ) {
-    beforeSuffixStart -= 1;
-    afterSuffixStart -= 1;
-  }
-  const encoder = new TextEncoder();
-  const startByte = encoder.encode(before.slice(0, prefixEnd)).length;
-  const oldEndByte = encoder.encode(before.slice(0, beforeSuffixStart)).length;
-  const newEndByte = encoder.encode(after.slice(0, afterSuffixStart)).length;
-  const start = positionForOffset(before, prefixEnd);
-  const oldEnd = positionForOffset(before, beforeSuffixStart);
-  const newEnd = positionForOffset(after, afterSuffixStart);
-  return {
-    startByte,
-    oldEndByte,
-    newEndByte,
-    startRow: start.row,
-    startColumn: start.column,
-    oldEndRow: oldEnd.row,
-    oldEndColumn: oldEnd.column,
-    newEndRow: newEnd.row,
-    newEndColumn: newEnd.column,
-    text: after.slice(prefixEnd, afterSuffixStart),
-  };
-}
 async function createCanonicalReplaceResult(
   language: string,
   text: string,
@@ -152,24 +93,6 @@ export async function handlePlanGraphValueEdit(
       value: plainValue,
     });
     if (planned.status === 'ready' && planned.data.mode === 'edits' && planned.data.edits.length > 0) {
-      if (message.verifyText) {
-        const canonical = await applyValueEditCanonicalText(
-          message.language,
-          message.text,
-          normalizedPath as any,
-          message.preferKey,
-          plainValue,
-        );
-        if (applyPlannedEditsToText(message.text, planned.data.edits) !== canonical.text) {
-          return {
-            mode: 'edits',
-            edits: [createCanonicalTextEdit(message.text, canonical.text)],
-            text: canonical.text,
-            tree: canonical.tree,
-            value: canonical.value,
-          } satisfies PlanGraphValueEditResponse;
-        }
-      }
       return {
         mode: 'edits',
         edits: planned.data.edits,

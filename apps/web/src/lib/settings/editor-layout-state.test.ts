@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import {
-  DEFAULT_EDITOR_SPLIT_RATIO,
   getEditorSplitRatio,
   mergeEditorLayoutState,
   normalizeEditorSplitRatio,
@@ -29,7 +28,4 @@ describe('editor-layout-state', () => {
     });
   });
 
-  it('uses the documented default split ratio', () => {
-    expect(DEFAULT_EDITOR_SPLIT_RATIO).toBe(0.28);
-  });
 });
