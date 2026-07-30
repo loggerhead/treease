@@ -5,6 +5,7 @@ packages:
   - 'apps/extension'
   - 'packages/*'
 allowBuilds:
+  '@sentry/cli': true
   edgedriver: true
   esbuild: true
   geckodriver: true

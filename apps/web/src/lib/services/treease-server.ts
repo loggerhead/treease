@@ -29,6 +29,7 @@ import { workspaceHost } from '../workspace-host';
 import { parseShareResource, type ShareResource } from '../share/share-resource';
 import { isUsageCoolingDown, markUsageRequestSucceeded, noteUsageRateLimit } from '../billing/usage-rate-limit';
 import { getUsageClientId } from '../billing/client-id';
+import { captureFrontendException } from '../observability/sentry';
 
 export type {
   AccountSummary,
@@ -51,6 +52,7 @@ export class TreeaseServerError extends Error {
     readonly code: string | null,
     readonly details: Record<string, unknown> | null,
     readonly retryAfterMs?: number,
+    readonly requestId?: string,
   ) {
     super(message);
     this.name = 'TreeaseServerError';
@@ -93,11 +95,13 @@ export async function readError(response: Response): Promise<TreeaseServerError>
   let message = `Treease server request failed (${response.status})`;
   let code: string | null = null;
   let details: Record<string, unknown> | null = null;
+  let requestId = response.headers.get('x-request-id') ?? undefined;
   try {
     const parsed = errorResponseSchema.safeParse(await response.json());
     if (parsed.success) {
       message = parsed.data.message || parsed.data.error || message;
       code = parsed.data.error ?? null;
+      requestId = parsed.data.requestId ?? requestId;
       details = parsed.data.details && typeof parsed.data.details === 'object' && !Array.isArray(parsed.data.details)
         ? parsed.data.details as Record<string, unknown>
         : null;
@@ -105,7 +109,16 @@ export async function readError(response: Response): Promise<TreeaseServerError>
   } catch {
     // Keep the HTTP status when the server does not return JSON.
   }
-  return new TreeaseServerError(message, response.status, code, details, retryAfterMs(response));
+  const error = new TreeaseServerError(message, response.status, code, details, retryAfterMs(response), requestId);
+  if (response.status >= 500) {
+    captureFrontendException(error, {
+      route: response.url ? new URL(response.url).pathname : typeof window !== 'undefined' ? window.location.pathname : undefined,
+      requestId,
+      status: response.status,
+      code,
+    });
+  }
+  return error;
 }
 
 async function readJsonResponse<T>(response: Response, schema: ZodType<T>): Promise<T> {
@@ -115,7 +128,21 @@ async function readJsonResponse<T>(response: Response, schema: ZodType<T>): Prom
   } catch {
     // Treat invalid JSON and invalid schema output as the same protocol failure.
   }
-  throw new TreeaseServerError('Treease server returned an invalid response.', response.status, 'invalid_server_response', null);
+  const error = new TreeaseServerError(
+    'Treease server returned an invalid response.',
+    response.status,
+    'invalid_server_response',
+    null,
+    undefined,
+    response.headers.get('x-request-id') ?? undefined,
+  );
+  captureFrontendException(error, {
+    route: response.url ? new URL(response.url).pathname : typeof window !== 'undefined' ? window.location.pathname : undefined,
+    requestId: error.requestId,
+    status: response.status,
+    code: error.code,
+  });
+  throw error;
 }
 
 function throwIfUsageCoolingDown(): void {
