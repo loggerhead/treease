@@ -96,15 +96,8 @@ export function rebaseSubgraphWorkspacePath(basePath: PathSeg[], path: PathSeg[]
   return pathKey === basePathKey || pathKey.startsWith(`${basePathKey}|`) ? path : [...basePath, ...path];
 }
 
-export function formatSubgraphWorkspacePath(path: PathSeg[], renderConfig: GraphViewerConfig): string {
-  const full = buildMetaPathText(path);
-  if (!path.length) return full;
-  const truncation = renderConfig.truncation;
-  if (path.length < truncation.metaPathMinSegments) return full;
-  if (full.length < truncation.metaPathMinChars) return full;
-  const keepTail = Math.max(1, truncation.metaPathKeepTailSegments);
-  const tail = path.slice(-keepTail);
-  return `...${buildMetaPathText(tail)}`;
+export function formatSubgraphWorkspacePath(path: PathSeg[]): string {
+  return buildMetaPathText(path);
 }
 
 export function shouldIgnoreSubgraphOpenCell(cell: GraphCell | null | undefined): boolean {

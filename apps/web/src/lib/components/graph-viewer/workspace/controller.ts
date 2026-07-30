@@ -226,7 +226,7 @@ export function createSubgraphWorkspaceController(deps: SubgraphWorkspaceControl
     if (!shouldOpenSubgraphWorkspaceContent(pathValue.data)) return null;
     return {
       tabId: `subgraph-content:${buildPathKey(path)}`,
-      tabName: formatSubgraphWorkspacePath(path, deps.getRenderConfig()),
+      tabName: formatSubgraphWorkspacePath(path),
       sourceText: pathValue.data.displayText,
       valueType,
       rootSemType: nodePreview.status === 'ready' ? (nodePreview.data?.semType ?? null) : null,
@@ -237,7 +237,7 @@ export function createSubgraphWorkspaceController(deps: SubgraphWorkspaceControl
   async function preparePane(path: PathSeg[]): Promise<SubgraphWorkspacePaneState | null> {
     const pathKey = buildPathKey(path);
     if (!pathKey) return null;
-    const title = formatSubgraphWorkspacePath(path, deps.getRenderConfig());
+    const title = formatSubgraphWorkspacePath(path);
     const content = await buildContentState(path);
     if (content) {
       return {
@@ -399,7 +399,7 @@ export function createSubgraphWorkspaceController(deps: SubgraphWorkspaceControl
         requestId: nextRequestId,
         path,
         pathKey,
-        title: formatSubgraphWorkspacePath(path, deps.getRenderConfig()),
+        title: formatSubgraphWorkspacePath(path),
         kind: 'graph',
         graph: null,
         content: null,

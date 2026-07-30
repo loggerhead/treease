@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  formatSubgraphWorkspacePath,
   normalizeWorkspaceGraphEdgeRows,
   rebaseSubgraphWorkspacePath,
   shouldOpenSubgraphWorkspaceContent,
@@ -127,6 +128,21 @@ function keySeg(key: string): PathSeg {
 function indexSeg(index: number): PathSeg {
   return { tag: PathSegTag.INDEX, key: '' as any, index } as PathSeg;
 }
+
+describe('formatSubgraphWorkspacePath', () => {
+  it('keeps the full path so the pane header can use its available width', () => {
+    expect(
+      formatSubgraphWorkspacePath([
+        keySeg('agent_steps'),
+        indexSeg(0),
+        keySeg('steps'),
+        indexSeg(6),
+        keySeg('basic_info'),
+        keySeg('duration'),
+      ]),
+    ).toBe('agent_steps[0].steps[6].basic_info.duration');
+  });
+});
 
 describe('rebaseSubgraphWorkspacePath', () => {
   it('rebases relative workspace cell paths onto the workspace root path', () => {

@@ -16,7 +16,7 @@ type CommitEditorTabTextChangeOptions = {
   settings: DocumentJobSettings;
   builderConfig: BuilderConfig;
   commitRevision: () => number;
-  runUsage?: <T>(source: string, execute: () => Promise<T>) => Promise<T>;
+  runUsage?: (source: string, execute: () => Promise<unknown>) => Promise<unknown>;
   isFresh: (state: { revision: number }) => boolean;
   applyCommittedSourceText?: (sourceText: string) => void;
   applyGraphAnalysis: (
