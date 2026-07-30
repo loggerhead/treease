@@ -87,6 +87,15 @@ test("editing a nested trajectory scalar preserves content-pane highlighting acr
   });
   await page.goto("/editor");
   await waitForEditorReady(page);
+  await page.evaluate(async () => {
+    const treease = window._treease;
+    if (!treease) throw new Error("window._treease is unavailable");
+    const current = treease.settings.getState().settings;
+    await treease.settings.save({
+      ...current,
+      parser: { ...current.parser, enableNest: false },
+    });
+  });
   await ensureGraphMode(page);
   await setEditorContent(page, {
     sourceText: trajectoryFixture,
