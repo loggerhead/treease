@@ -9,7 +9,7 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "@treease/share-protocol": "0.2.0",
+    "@treease/share-protocol": "workspace:*",
     "zod": "^4.1.11"
   }
 }

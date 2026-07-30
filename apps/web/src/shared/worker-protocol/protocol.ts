@@ -181,8 +181,6 @@ export type WorkerRequest =
       preferKey: boolean;
       value: any;
       nest: boolean;
-      /** Verify snapshot offsets against the caller's source before applying them. */
-      verifyText?: boolean;
     }
   | {
       id: number;

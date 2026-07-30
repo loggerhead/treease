@@ -278,6 +278,41 @@ describe('graph-value-edit', () => {
     );
   });
 
+  it('rejects a content-pane intent once its projection snapshot is stale', async () => {
+    const dispatchGraphEditEvent = vi.fn();
+    const controller = createGraphValueEditController({
+      getCurrentData: () => ({ duration: '6837' }),
+      getSourceText: () => '{"duration":"6837"}',
+      getDocumentKey: () => 'doc-key',
+      getLanguageId: () => 'json',
+      getEnableNest: () => true,
+      getEditorIO: () => ({ context: 'editor', getModel: () => ({ getVersionId: () => 1 }) as any, applyTextEdits: vi.fn() } as any),
+      getEditorRevision: () => 3,
+      getActiveSnapshotId: () => 43,
+      resolveTreePathByPosition: vi.fn(async () => []),
+      nextTreeStateToken: () => 5,
+      publishTreeState: vi.fn(() => true),
+      emitEditorMutation: vi.fn(),
+      updateActiveTempModel: vi.fn(),
+      dispatchGraphEditEvent,
+      handleError: vi.fn(),
+    });
+
+    await expect(controller.applyStructuredValueEdit({
+      path: [toWasmPathSeg({ tag: 0, key: 'duration', index: 0 })],
+      kind: 'value',
+      raw: '42',
+      snapshotId: 42,
+    })).resolves.toBe(false);
+
+    expect(mocked.callSharedWasmWorker).not.toHaveBeenCalled();
+    expect(dispatchGraphEditEvent).toHaveBeenCalledWith('graph-edit-result', {
+      applied: false,
+      reason: 'snapshot-stale',
+      path: [toWasmPathSeg({ tag: 0, key: 'duration', index: 0 })],
+    });
+  });
+
   it('keeps empty-string edits semantic when the rendered placeholder is double quotes', async () => {
     const canonicalNode = scalarNode('');
     mocked.callSharedWasmWorker.mockImplementation(async (type: string, payload: any) => {

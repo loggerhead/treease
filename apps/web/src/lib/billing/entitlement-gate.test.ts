@@ -20,6 +20,7 @@ describe('usage gate', () => {
     expect(usageBlockFor(summary(9), 'bidirectional_edit')).toBeNull();
     expect(usageBlockFor(summary(10), 'bidirectional_edit')).toEqual({
       capability: 'bidirectional_edit',
+      used: 10,
       limit: 10,
       tier: 'free',
     });

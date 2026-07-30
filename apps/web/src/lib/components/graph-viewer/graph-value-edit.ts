@@ -165,6 +165,10 @@ export function createGraphValueEditController(deps: GraphValueEditControllerDep
     if (!intent.path.length) {
       return false;
     }
+    if (intent.snapshotId != null && intent.snapshotId !== deps.getActiveSnapshotId()) {
+      deps.dispatchGraphEditEvent('graph-edit-result', { applied: false, reason: 'snapshot-stale', path: intent.path });
+      return false;
+    }
     const editorIO = deps.getEditorIO();
     const getCurrentFreshnessContext = () => {
       const currentEditorIO = deps.getEditorIO();
@@ -254,7 +258,6 @@ export function createGraphValueEditController(deps: GraphValueEditControllerDep
         preferKey,
         value: canonicalNextValueNode,
         nest: deps.getEnableNest(),
-        verifyText: intent.snapshotId != null,
       }),
     );
     if (!planned) {
