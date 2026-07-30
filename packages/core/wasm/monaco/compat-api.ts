@@ -56,8 +56,9 @@ export async function parseValueForPath(
   _path: PathSeg[],
   rawEdit: string,
   _preferKey: boolean,
-  _options?: ParseOptions,
+  options?: ParseOptions,
 ): Promise<TreeNode> {
+  if (options?.strictSourceLiteral) return parseToTree(language, rawEdit);
   try {
     return await parseToTree(language, rawEdit);
   } catch {

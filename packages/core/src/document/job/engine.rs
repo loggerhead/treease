@@ -2419,6 +2419,7 @@ mod tests {
                 },
             ],
             prefer_key: false,
+            raw_replacement: None,
             value: serde_json::json!(4),
         });
 

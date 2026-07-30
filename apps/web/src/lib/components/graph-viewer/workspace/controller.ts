@@ -1,26 +1,22 @@
-import { tick } from 'svelte';
 import type { SnapshotId } from '@core-wasm/index';
+import type { GraphEdge, GraphNode, ValueType } from '@treease/graph-viewer-runtime';
 import type { SupportedEditorLanguageId } from '../../../monaco/language-support';
 import type { GraphViewerConfig } from '../../../settings/ui-settings';
-import { queryNodePreview, queryPathValue } from '../../../services/SnapshotProjectionService';
+import { queryPathValue } from '../../../services/SnapshotProjectionService';
 import { buildPathKey } from '../../../graph/graph-viewer-path';
-import type { GraphCell, GraphEdge, GraphNode } from '@treease/graph-viewer-runtime';
-import { getClampedPaneSize } from '../../ui/split-layout';
 import { createViewRuntimeOperation, type ViewRuntimeOperation } from '../../../guards/view-runtime-operation';
+import { getClampedPaneSize } from '../../ui/split-layout';
 import type { PathSeg } from '../../../store/tree-path';
 import type { StructuredValueEditIntent } from '../graph-value-edit';
-import type { LeaferAppLike, LeaferBox, LeaferEditor, LeaferText, SubgraphWorkspaceRuntime } from '../model';
 import {
-  createSubgraphWorkspaceGraphCache,
+  buildSubgraphWorkspaceColumnItems,
   buildSubgraphWorkspaceRenderSignature,
-  destroySubgraphWorkspaceRuntime,
+  createSubgraphWorkspaceGraphCache,
   formatSubgraphWorkspacePath,
-  renderSubgraphWorkspaceGraph,
-  shouldIgnoreSubgraphOpenCell,
   shouldOpenSubgraphWorkspaceContent,
 } from '../graph-subgraph-workspace';
 import type {
-  SubgraphWorkspaceActivatePayload,
+  SubgraphWorkspaceColumnItem,
   SubgraphWorkspaceContentState,
   SubgraphWorkspacePaneState,
   SubgraphWorkspaceState,
@@ -29,7 +25,7 @@ import type {
 
 const SUBGRAPH_WORKSPACE_MIN_HEIGHT = 100;
 const SUBGRAPH_WORKSPACE_MAX_HEIGHT_FRACTION = 0.75;
-const MAX_VISIBLE_PANES = 3;
+const ROOT_PATH_KEY = '$';
 
 export type SubgraphWorkspaceProjectionInput = {
   documentKey: string;
@@ -47,24 +43,11 @@ export type SubgraphWorkspaceControllerDeps = {
   getWorkspaceSnapshotId: () => SnapshotId | null;
   getDocumentKey: () => string;
   getLanguageId: () => SupportedEditorLanguageId;
-  /** @deprecated Workspace rendering reads GraphCell.semType. */
-  getValueTypeToSemType?: () => Record<string, string>;
   getRevision: () => number;
   getRenderConfig: () => GraphViewerConfig;
   getEnableNest: () => boolean;
   getReadonly: () => boolean;
   getShellHeight: () => number;
-  getConstructors: () => {
-    LeaferCtor?: new (...args: any[]) => LeaferAppLike;
-    PlainLeaferCtor?: new (...args: any[]) => LeaferAppLike;
-    BoxCtor?: new (...args: any[]) => LeaferBox;
-    TextCtor?: new (...args: any[]) => LeaferText;
-    PenCtor?: new () => {
-      setStyle: (style: Record<string, unknown>) => void;
-      moveTo: (x: number, y: number) => void;
-      bezierCurveTo: (c1x: number, c1y: number, c2x: number, c2y: number, toX: number, toY: number) => void;
-    };
-  };
   inferGraphPaths: (nodes: GraphNode[], edges: GraphEdge[]) => void;
   clearSearchHighlight: () => void;
   clearActiveGraphSelection: () => void;
@@ -82,38 +65,42 @@ export type SubgraphWorkspaceControllerDeps = {
     sourceRevision: number;
     materializedRevision: number;
   }) => void;
-  bindGraphEditorLifecycle: (editor: LeaferEditor | null) => void;
-  bindPointerClick: (target: LeaferBox, handler: (event: unknown) => void | Promise<void>) => void;
-  getMoveEventName: () => string | undefined;
-  bindVerticalScrollGesture: (
-    target: LeaferBox,
-    handler: (gesture: { event: unknown; deltaY: number; moveType?: string; stop: () => void; stopNow: () => void }) => void,
-  ) => (() => void) | void;
-  bindPointerDown: (target: LeaferBox, handler: (event: unknown) => void | Promise<void>) => (() => void) | void;
-  getPointFromEvent: (
-    hostApp: LeaferAppLike | null,
-    target: LeaferBox,
-    event: unknown,
-    space: 'client' | 'box' | 'local' | 'world',
-  ) => { x: number; y: number } | null;
-  resolveInteractiveCellPath: (cell: GraphCell, fallbackPath: PathSeg[]) => Promise<PathSeg[]>;
   onState: (state: SubgraphWorkspaceState) => void;
   onPaneReady?: (pane: SubgraphWorkspacePaneState) => void;
 };
 
-function clonePaneState(pane: SubgraphWorkspacePaneState): SubgraphWorkspacePaneState {
+type PreparedWorkspace = {
+  activePath: PathSeg[];
+  chain: SubgraphWorkspacePaneState[];
+};
+
+function clonePath(path: PathSeg[]): PathSeg[] {
+  return path.map((segment) => ({ ...segment }));
+}
+
+function clonePane(pane: SubgraphWorkspacePaneState): SubgraphWorkspacePaneState {
   return {
     ...pane,
-    path: [...pane.path],
-    graph: pane.graph,
+    path: clonePath(pane.path),
+    items: pane.items.map((item) => ({ ...item, path: clonePath(item.path) })),
     content: pane.content ? { ...pane.content } : null,
   };
 }
 
+export function workspacePathKey(path: PathSeg[]): string {
+  return buildPathKey(path) || ROOT_PATH_KEY;
+}
+
+export function buildWorkspacePathPrefixes(path: PathSeg[]): PathSeg[][] {
+  return Array.from({ length: path.length + 1 }, (_, index) => clonePath(path.slice(0, index)));
+}
+
+function samePath(left: PathSeg[], right: PathSeg[]): boolean {
+  return workspacePathKey(left) === workspacePathKey(right);
+}
+
 export function createSubgraphWorkspaceController(deps: SubgraphWorkspaceControllerDeps) {
-  const runtimeMap = new Map<string, SubgraphWorkspaceRuntime>();
-  const hostMap = new Map<string, HTMLDivElement>();
-  const pendingEditKeys = new Set<string>();
+  const pendingEditTaskMap = new Map<string, Promise<void>>();
   const queuedEditMap = new Map<string, string>();
   const graphCache = createSubgraphWorkspaceGraphCache({
     getActiveSnapshotId: deps.getActiveSnapshotId,
@@ -125,19 +112,43 @@ export function createSubgraphWorkspaceController(deps: SubgraphWorkspaceControl
     inferGraphPaths: deps.inferGraphPaths,
   });
 
+  let open = false;
+  let activePath: PathSeg[] = [];
   let chain: SubgraphWorkspacePaneState[] = [];
-  let visiblePanes: VisibleSubgraphWorkspacePaneState[] = [];
+  let history: PathSeg[][] = [];
+  let historyIndex = -1;
   let heightPx = deps.defaultHeightPx;
   let isDraggingDivider = false;
   let resizeState: { startClientY: number; startHeightPx: number } | null = null;
-  let renderSignature = '';
   let projectionSignature = '';
   let requestId = 0;
-  let disposed = false;
   let projectionEpoch = 0;
-  let openPathOperation: ViewRuntimeOperation | null = null;
+  let disposed = false;
+  let navigationOperation: ViewRuntimeOperation | null = null;
   let refreshOperation: ViewRuntimeOperation | null = null;
-  let renderOperation: ViewRuntimeOperation | null = null;
+
+  function visiblePanes(): VisibleSubgraphWorkspacePaneState[] {
+    return chain.map((pane, absoluteIndex) => ({
+      ...clonePane(pane),
+      visibleIndex: absoluteIndex,
+      absoluteIndex,
+    }));
+  }
+
+  function emitState(): void {
+    const panes = visiblePanes();
+    deps.onState({
+      open,
+      activePath: clonePath(activePath),
+      chain: chain.map(clonePane),
+      visiblePanes: panes,
+      canGoBack: historyIndex > 0,
+      canGoForward: historyIndex >= 0 && historyIndex < history.length - 1,
+      heightPx,
+      isDraggingDivider,
+    });
+    for (const pane of panes) deps.onPaneReady?.(pane);
+  }
 
   function createWorkspaceOperation(): ViewRuntimeOperation {
     const context = () => ({
@@ -149,421 +160,295 @@ export function createSubgraphWorkspaceController(deps: SubgraphWorkspaceControl
     return createViewRuntimeOperation({ captured: context(), getCurrent: context });
   }
 
-  function emitState(): void {
-    deps.onState({
-      chain: chain.map(clonePaneState),
-      visiblePanes: visiblePanes.map((pane) => ({ ...clonePaneState(pane), visibleIndex: pane.visibleIndex, absoluteIndex: pane.absoluteIndex })),
-      heightPx,
-      isDraggingDivider,
-    });
-  }
-
-  function clampHeight(nextHeightPx: number): number {
-    return getClampedPaneSize(
-      nextHeightPx,
-      deps.getShellHeight(),
-      SUBGRAPH_WORKSPACE_MIN_HEIGHT,
-      SUBGRAPH_WORKSPACE_MAX_HEIGHT_FRACTION,
-    );
-  }
-
-  function syncTransientState(nextChain: SubgraphWorkspacePaneState[]): void {
-    const nextKeys = new Set(nextChain.map((pane) => pane.pathKey));
-    for (const pathKey of pendingEditKeys) {
-      if (!nextKeys.has(pathKey)) pendingEditKeys.delete(pathKey);
-    }
-    for (const pathKey of queuedEditMap.keys()) {
-      if (!nextKeys.has(pathKey)) queuedEditMap.delete(pathKey);
-    }
-  }
-
-  function updateVisiblePanes(): void {
-    const start = Math.max(0, chain.length - MAX_VISIBLE_PANES);
-    visiblePanes = chain.slice(start).map((pane, index) => ({
-      ...pane,
-      visibleIndex: index,
-      absoluteIndex: start + index,
-    }));
-  }
-
-  function notifyVisiblePaneReadiness(): void {
-    for (const pane of visiblePanes) {
-      deps.onPaneReady?.(pane);
-    }
-  }
-
-  function disposeRuntimes(exceptPathKeys: string[] = []): void {
-    const preserved = new Set(exceptPathKeys);
-    for (const [pathKey, runtime] of runtimeMap.entries()) {
-      if (preserved.has(pathKey)) continue;
-      destroySubgraphWorkspaceRuntime(runtime);
-      runtimeMap.delete(pathKey);
-    }
-  }
-
-  function setChain(nextChain: SubgraphWorkspacePaneState[]): void {
-    const previousRequestIds = new Map(
-      chain.filter((pane) => typeof pane.requestId === 'number').map((pane) => [pane.pathKey, pane.requestId as number]),
-    );
-    chain = nextChain.map((pane) => ({
-      ...pane,
-      requestId: pane.requestId ?? previousRequestIds.get(pane.pathKey),
-    }));
-    syncTransientState(chain);
-    updateVisiblePanes();
-    disposeRuntimes(chain.map((pane) => pane.pathKey));
-    emitState();
-  }
-
-  async function buildContentState(path: PathSeg[]): Promise<SubgraphWorkspaceContentState | null> {
-    const snapshotId = deps.getWorkspaceSnapshotId();
-    const [pathValue, nodePreview] = await Promise.all([
-      queryPathValue({ documentKey: deps.getDocumentKey(), snapshotId, path }),
-      queryNodePreview({ documentKey: deps.getDocumentKey(), snapshotId, path }),
-    ]);
-    if (pathValue.status !== 'ready' || !pathValue.data) return null;
-    const valueType = pathValue.data.valueType as SubgraphWorkspaceContentState['valueType'];
-    if (!shouldOpenSubgraphWorkspaceContent(pathValue.data)) return null;
+  function loadingPane(path: PathSeg[], nextRequestId: number): SubgraphWorkspacePaneState {
     return {
-      tabId: `subgraph-content:${buildPathKey(path)}`,
-      tabName: formatSubgraphWorkspacePath(path),
-      sourceText: pathValue.data.displayText,
-      valueType,
-      rootSemType: nodePreview.status === 'ready' ? (nodePreview.data?.semType ?? null) : null,
-      snapshotId,
+      requestId: nextRequestId,
+      path: clonePath(path),
+      pathKey: workspacePathKey(path),
+      title: formatSubgraphWorkspacePath(path),
+      kind: 'column',
+      items: [],
+      content: null,
+      status: 'loading',
     };
   }
 
-  async function preparePane(path: PathSeg[]): Promise<SubgraphWorkspacePaneState | null> {
-    const pathKey = buildPathKey(path);
-    if (!pathKey) return null;
-    const title = formatSubgraphWorkspacePath(path);
-    const content = await buildContentState(path);
-    if (content) {
-      return {
-        path,
-        pathKey,
-        title,
-        kind: 'content',
-        graph: null,
-        content,
-        status: 'ready',
-      };
-    }
-    try {
-      const graph = await graphCache.prepareGraph(path);
-      return {
-        path,
-        pathKey,
-        title,
-        kind: 'graph',
-        graph,
-        content: null,
-        status: graph ? 'ready' : 'empty',
-      };
-    } catch (error) {
-      deps.handleError(error, {
-        component: 'GraphViewer',
-        operation: 'buildSubgraphWorkspaceProjection',
-        metadata: { documentKey: deps.getDocumentKey(), language: deps.getLanguageId(), pathKey },
-      });
-      return {
-        path,
-        pathKey,
-        title,
-        kind: 'graph',
-        graph: null,
-        content: null,
-        status: 'error',
-        error: error instanceof Error ? error.message : String(error),
-      };
-    }
+  async function readPath(path: PathSeg[]): Promise<{
+    content: SubgraphWorkspaceContentState;
+    isContent: boolean;
+  } | null> {
+    const snapshotId = deps.getWorkspaceSnapshotId();
+    const pathValue = await queryPathValue({ documentKey: deps.getDocumentKey(), snapshotId, path });
+    if (pathValue.status !== 'ready' || !pathValue.data) return null;
+    const content: SubgraphWorkspaceContentState = {
+      tabId: `subgraph-content:${workspacePathKey(path)}`,
+      tabName: formatSubgraphWorkspacePath(path),
+      sourceText: pathValue.data.sourceText || pathValue.data.displayText,
+      valueType: pathValue.data.valueType as ValueType,
+      semanticTokens: new Uint32Array(pathValue.data.semanticTokens.data).buffer,
+      snapshotId,
+    };
+    return { content, isContent: shouldOpenSubgraphWorkspaceContent(pathValue.data) };
   }
 
-  async function renderPanes(): Promise<void> {
-    if (disposed) return;
-    const visibleSignature = visiblePanes.map((pane) => `${pane.pathKey}:${pane.status}:${pane.absoluteIndex}`).join('|');
-    const constructors = deps.getConstructors();
-    const nextSignature = [
-      visibleSignature,
-      deps.getLanguageId(),
-      deps.getReadonly() ? 'readonly' : 'editable',
-      constructors.LeaferCtor ? 'leafer' : 'no-leafer',
-      constructors.BoxCtor ? 'box' : 'no-box',
-      constructors.TextCtor ? 'text' : 'no-text',
-      constructors.PenCtor ? 'pen' : 'no-pen',
-    ].join('|');
-    if (nextSignature === renderSignature) {
-      notifyVisiblePaneReadiness();
-      return;
-    }
-
-    void renderOperation?.cancel();
-    const pendingRuntimes = new Set<SubgraphWorkspaceRuntime>();
-    const operation = createViewRuntimeOperation({
-      captured: {
-        documentKey: deps.getDocumentKey(),
-        languageId: deps.getLanguageId(),
-        revision: deps.getRevision(),
-        sessionId: `${projectionEpoch}|${visibleSignature}`,
-      },
-      getCurrent: () => ({
-        documentKey: deps.getDocumentKey(),
-        languageId: deps.getLanguageId(),
-        revision: deps.getRevision(),
-        sessionId: `${projectionEpoch}|${visiblePanes.map((pane) => `${pane.pathKey}:${pane.status}:${pane.absoluteIndex}`).join('|')}`,
-      }),
-      onStale: () => {
-        for (const runtime of pendingRuntimes) destroySubgraphWorkspaceRuntime(runtime);
-        pendingRuntimes.clear();
-      },
-    });
-    renderOperation = operation;
-    renderSignature = nextSignature;
-    const activeKeys = visiblePanes.filter((pane) => pane.status === 'ready' && pane.graph).map((pane) => pane.pathKey);
-    await operation.run({
-      execute: async ({ step }) => {
-        disposeRuntimes(activeKeys);
-        for (const pane of visiblePanes) {
-          if (pane.kind === 'content') continue;
-          const mount = hostMap.get(pane.pathKey);
-          if (!mount) continue;
-          if (pane.status !== 'ready' || !pane.graph) {
-            mount.replaceChildren();
-            continue;
-          }
-          const existingRuntime = runtimeMap.get(pane.pathKey) as (SubgraphWorkspaceRuntime & {
-            __graphRef?: typeof pane.graph;
-          }) | undefined;
-          if (existingRuntime && existingRuntime.host === mount && existingRuntime.__graphRef === pane.graph) {
-            continue;
-          }
-          destroySubgraphWorkspaceRuntime(existingRuntime);
-          const runtime = await step(async () => {
-            const created = await renderSubgraphWorkspaceGraph(mount, pane.graph!, {
-              getConstructors: deps.getConstructors,
-              getRenderConfig: deps.getRenderConfig,
-              getLanguageId: deps.getLanguageId,
-              isReadonly: deps.getReadonly,
-              bindGraphEditorLifecycle: deps.bindGraphEditorLifecycle,
-              bindPointerClick: deps.bindPointerClick,
-              getMoveEventName: deps.getMoveEventName,
-              bindVerticalScrollGesture: deps.bindVerticalScrollGesture,
-              bindPointerDown: deps.bindPointerDown,
-              getPointFromEvent: deps.getPointFromEvent,
-              resolveInteractiveCellPath: deps.resolveInteractiveCellPath,
-              onActivateCell: (payload) => handleActivate(payload, pane.absoluteIndex),
-            });
-            if (created) {
-              if (!operation.isCurrent()) {
-                destroySubgraphWorkspaceRuntime(created);
-                return null;
-              }
-              pendingRuntimes.add(created);
-            }
-            return created;
+  async function prepareWorkspace(path: PathSeg[], nextRequestId: number): Promise<PreparedWorkspace> {
+    const nextChain: SubgraphWorkspacePaneState[] = [];
+    const prefixes = buildWorkspacePathPrefixes(path);
+    const reads = await Promise.all(prefixes.map((prefix) => readPath(prefix)));
+    for (let index = 0; index < prefixes.length; index += 1) {
+      const prefix = prefixes[index]!;
+      const read = reads[index];
+      if (!read) return { activePath: prefix.slice(0, -1), chain: nextChain };
+      if (read.isContent) {
+        if (samePath(prefix, path)) {
+          nextChain.push({
+            requestId: nextRequestId,
+            path: clonePath(prefix),
+            pathKey: workspacePathKey(prefix),
+            title: formatSubgraphWorkspacePath(prefix),
+            kind: 'content',
+            items: [],
+            content: read.content,
+            status: 'ready',
           });
-          if (runtime) {
-            pendingRuntimes.delete(runtime);
-            (runtime as SubgraphWorkspaceRuntime & { __graphRef?: typeof pane.graph }).__graphRef = pane.graph;
-            runtimeMap.set(pane.pathKey, runtime);
-          }
         }
-      },
-      land: () => {
-        if (!disposed) notifyVisiblePaneReadiness();
-      },
-    });
+        return { activePath: clonePath(prefix), chain: nextChain };
+      }
+      try {
+        const graph = await graphCache.prepareGraph(prefix);
+        const items = graph ? buildSubgraphWorkspaceColumnItems(graph, prefix) : [];
+        if (!items.length && samePath(prefix, path)) {
+          nextChain.push({
+            requestId: nextRequestId,
+            path: clonePath(prefix),
+            pathKey: workspacePathKey(prefix),
+            title: formatSubgraphWorkspacePath(prefix),
+            kind: 'content',
+            items: [],
+            content: read.content,
+            status: 'ready',
+          });
+          return { activePath: clonePath(prefix), chain: nextChain };
+        }
+        nextChain.push({
+          requestId: nextRequestId,
+          path: clonePath(prefix),
+          pathKey: workspacePathKey(prefix),
+          title: formatSubgraphWorkspacePath(prefix),
+          kind: 'column',
+          items,
+          content: null,
+          status: graph ? 'ready' : 'empty',
+        });
+      } catch (error) {
+        deps.handleError(error, {
+          component: 'GraphViewer',
+          operation: 'buildSubgraphWorkspaceColumn',
+          metadata: {
+            documentKey: deps.getDocumentKey(),
+            language: deps.getLanguageId(),
+            pathKey: workspacePathKey(prefix),
+          },
+        });
+        nextChain.push({
+          requestId: nextRequestId,
+          path: clonePath(prefix),
+          pathKey: workspacePathKey(prefix),
+          title: formatSubgraphWorkspacePath(prefix),
+          kind: 'column',
+          items: [],
+          content: null,
+          status: 'error',
+          error: error instanceof Error ? error.message : String(error),
+        });
+        return { activePath: clonePath(prefix), chain: nextChain };
+      }
+    }
+    const selectedRead = reads.at(-1);
+    const selectedPane = nextChain.at(-1);
+    if (selectedRead?.content && selectedRead.isContent === false && selectedPane?.pathKey === workspacePathKey(path)) {
+      nextChain.push({
+        requestId: nextRequestId,
+        path: clonePath(path),
+        pathKey: workspacePathKey(path),
+        title: formatSubgraphWorkspacePath(path),
+        kind: 'content',
+        items: [],
+        content: selectedRead.content,
+        status: 'ready',
+      });
+    }
+    return { activePath: clonePath(path), chain: nextChain };
   }
 
-  async function openPath(path: PathSeg[], parentAbsoluteIndex: number): Promise<void> {
-    if (disposed) return;
-    const pathKey = buildPathKey(path);
-    if (!pathKey) return;
-    const currentChild = chain[parentAbsoluteIndex + 1] ?? null;
-    if (currentChild?.pathKey === pathKey) return;
+  function recordHistory(path: PathSeg[]): void {
+    if (historyIndex >= 0 && samePath(history[historyIndex] ?? [], path)) return;
+    history = [...history.slice(0, historyIndex + 1), clonePath(path)];
+    historyIndex = history.length - 1;
+  }
 
-    void openPathOperation?.cancel();
+  async function navigate(path: PathSeg[], options: { recordHistory: boolean; reveal: boolean }): Promise<void> {
+    if (disposed) return;
+    // Selection rebinding waits for the current Monaco draft transaction to
+    // become terminal, so a late commit cannot land on a newly selected path.
+    await pendingEditTaskMap.get(workspacePathKey(activePath));
+    if (disposed) return;
+    void navigationOperation?.cancel();
     const operation = createWorkspaceOperation();
-    openPathOperation = operation;
+    navigationOperation = operation;
     const nextRequestId = ++requestId;
+    const requestedPathKey = workspacePathKey(path);
+    open = true;
+    activePath = clonePath(path);
+    chain = [loadingPane(path, nextRequestId)];
+    if (options.recordHistory) recordHistory(path);
     deps.markSubgraphRequested({
       requestId: nextRequestId,
-      pathKey,
+      pathKey: requestedPathKey,
       sourceRevision: deps.getRevision(),
     });
-    const base = parentAbsoluteIndex >= 0 ? chain.slice(0, parentAbsoluteIndex + 1) : [];
-    setChain([
-      ...base,
-      {
-        requestId: nextRequestId,
-        path,
-        pathKey,
-        title: formatSubgraphWorkspacePath(path),
-        kind: 'graph',
-        graph: null,
-        content: null,
-        status: 'loading',
-      },
-    ]);
+    emitState();
     await operation.run({
-      execute: ({ step }) => step(() => preparePane(path)),
-      land: async (pane) => {
-        if (!pane || disposed) return;
-        const latestBase = parentAbsoluteIndex >= 0 ? chain.slice(0, parentAbsoluteIndex + 1) : [];
-        if (latestBase.some((entry, index) => base[index]?.pathKey !== entry.pathKey)) return;
-        const nextPane = { ...pane, requestId: nextRequestId };
+      execute: ({ step }) => step(() => prepareWorkspace(path, nextRequestId)),
+      land: (prepared) => {
+        if (disposed) return;
+        activePath = clonePath(prepared.activePath);
+        chain = prepared.chain;
         deps.markSubgraphMaterialized({
           requestId: nextRequestId,
-          pathKey,
+          pathKey: requestedPathKey,
           sourceRevision: deps.getRevision(),
           materializedRevision: deps.getRevision(),
         });
-        setChain([...latestBase, nextPane]);
-        await operation.step(() => tick());
-        await operation.step(() => renderPanes());
+        if (options.reveal && activePath.length) deps.emitReveal(activePath, 'value', 'click');
+        emitState();
       },
     });
   }
 
-  function closePane(absoluteIndex: number): void {
-    if (absoluteIndex < 0 || absoluteIndex >= chain.length) return;
-    setChain(chain.slice(0, absoluteIndex));
+  async function openPath(path: PathSeg[], _parentAbsoluteIndex = -1): Promise<void> {
+    await navigate(path, { recordHistory: true, reveal: false });
   }
 
-  async function handleActivate(payload: SubgraphWorkspaceActivatePayload, parentAbsoluteIndex: number): Promise<void> {
-    if (shouldIgnoreSubgraphOpenCell(payload.cell)) return;
-    deps.emitReveal(payload.path, payload.target, 'click');
-    await openPath(payload.path, parentAbsoluteIndex);
+  async function selectPath(path: PathSeg[]): Promise<void> {
+    await navigate(path, { recordHistory: true, reveal: true });
+  }
+
+  function selectedItem(): SubgraphWorkspaceColumnItem | null {
+    const parentKey = workspacePathKey(activePath.slice(0, -1));
+    const selectedKey = workspacePathKey(activePath);
+    const parent = chain.find((pane) => pane.kind === 'column' && pane.pathKey === parentKey);
+    return parent?.items.find((item) => item.pathKey === selectedKey) ?? null;
+  }
+
+  async function moveSibling(delta: -1 | 1): Promise<void> {
+    if (!activePath.length) return;
+    const parent = chain.find(
+      (pane) => pane.kind === 'column' && pane.pathKey === workspacePathKey(activePath.slice(0, -1)),
+    );
+    if (!parent?.items.length) return;
+    const index = parent.items.findIndex((item) => item.pathKey === workspacePathKey(activePath));
+    const nextIndex = Math.max(0, Math.min(parent.items.length - 1, (index < 0 ? 0 : index) + delta));
+    const item = parent.items[nextIndex];
+    if (item && item.pathKey !== workspacePathKey(activePath)) await selectPath(item.path);
+  }
+
+  async function enterSelected(): Promise<void> {
+    const selected = selectedItem();
+    const column = chain.find(
+      (pane) => pane.kind === 'column' && pane.pathKey === workspacePathKey(activePath),
+    );
+    if (selected?.isContainer && column?.items[0]) {
+      await selectPath(column.items[0].path);
+      return;
+    }
+    if (!selected && column?.items[0]) await selectPath(column.items[0].path);
+  }
+
+  async function navigateParent(): Promise<void> {
+    if (!activePath.length) return;
+    await selectPath(activePath.slice(0, -1));
+  }
+
+  async function goHistory(delta: -1 | 1): Promise<void> {
+    const nextIndex = historyIndex + delta;
+    const path = history[nextIndex];
+    if (!path || nextIndex < 0 || nextIndex >= history.length) return;
+    historyIndex = nextIndex;
+    await navigate(path, { recordHistory: false, reveal: true });
+  }
+
+  async function runValueEditLoop(pane: SubgraphWorkspacePaneState, initialText: string): Promise<void> {
+    let nextText = initialText;
+    let currentPane = pane;
+    while (nextText !== currentPane.content?.sourceText) {
+      if (currentPane.content?.snapshotId !== deps.getWorkspaceSnapshotId()) {
+        await refresh();
+        const refreshed = chain.find((entry) => entry.kind === 'content' && entry.pathKey === pane.pathKey);
+        if (!refreshed?.content) return;
+        currentPane = refreshed;
+      }
+      const revisionBeforeCommit = deps.getRevision();
+      const applied = await deps.applyStructuredValueEdit({
+        path: currentPane.path,
+        text: currentPane.content!.sourceText,
+        valueType: currentPane.content!.valueType,
+        snapshotId: currentPane.content!.snapshotId,
+        kind: 'value',
+        raw: nextText,
+        preserveSourceFormatting:
+          currentPane.content!.valueType === 'object' || currentPane.content!.valueType === 'array',
+      });
+      if (!applied || !(await deps.waitForCommittedDocument(deps.getDocumentKey(), revisionBeforeCommit))) {
+        queuedEditMap.delete(pane.pathKey);
+        return;
+      }
+      const queuedText = queuedEditMap.get(pane.pathKey);
+      queuedEditMap.delete(pane.pathKey);
+      if (queuedText == null || queuedText === nextText) return;
+      nextText = queuedText;
+      const refreshed = chain.find((entry) => entry.kind === 'content' && entry.pathKey === pane.pathKey);
+      if (refreshed?.content) currentPane = refreshed;
+    }
   }
 
   async function commitValueEdit(pane: SubgraphWorkspacePaneState, draft?: string): Promise<void> {
     if (disposed || deps.getReadonly() || pane.kind !== 'content' || !pane.content) return;
     const nextText = draft ?? pane.content.sourceText;
     if (nextText === pane.content.sourceText) return;
-    if (pendingEditKeys.has(pane.pathKey)) {
+    const pending = pendingEditTaskMap.get(pane.pathKey);
+    if (pending) {
       queuedEditMap.set(pane.pathKey, nextText);
+      await pending;
       return;
     }
-    if (pane.content.snapshotId !== deps.getWorkspaceSnapshotId()) {
-      await refreshPanes();
-      const refreshedPane = chain.find((entry) => entry.pathKey === pane.pathKey);
-      if (refreshedPane?.kind === 'content' && refreshedPane.content) {
-        await commitValueEdit(refreshedPane, nextText);
-      }
-      return;
-    }
-    pendingEditKeys.add(pane.pathKey);
+    const task = runValueEditLoop(pane, nextText);
+    pendingEditTaskMap.set(pane.pathKey, task);
     try {
-      const revisionBeforeCommit = deps.getRevision();
-      const applied = await deps.applyStructuredValueEdit({
-        path: pane.path,
-        text: pane.content.sourceText,
-        valueType: pane.content.valueType,
-        snapshotId: pane.content.snapshotId,
-        kind: 'value',
-        // Content Monaco edits source literals. Preserve quotes/escapes so the
-        // shared parser receives the exact syntax the user entered.
-        raw: nextText,
-      });
-      if (!applied) {
-        queuedEditMap.delete(pane.pathKey);
-        return;
-      }
-      const committed = await deps.waitForCommittedDocument(deps.getDocumentKey(), revisionBeforeCommit);
-      if (!committed) {
-        queuedEditMap.delete(pane.pathKey);
-        return;
-      }
+      await task;
     } finally {
-      pendingEditKeys.delete(pane.pathKey);
+      if (pendingEditTaskMap.get(pane.pathKey) === task) pendingEditTaskMap.delete(pane.pathKey);
     }
-    const queuedText = queuedEditMap.get(pane.pathKey);
-    if (queuedText == null || queuedText === nextText) return;
-    queuedEditMap.delete(pane.pathKey);
-    await commitValueEdit(pane, queuedText);
   }
 
-  function bindHost(pathKey: string, host: HTMLDivElement | null): void {
-    if (disposed) return;
-    if (host) {
-      hostMap.set(pathKey, host);
-    } else {
-      hostMap.delete(pathKey);
-      const runtime = runtimeMap.get(pathKey);
-      destroySubgraphWorkspaceRuntime(runtime);
-      runtimeMap.delete(pathKey);
-    }
-    renderSignature = '';
-    void renderPanes();
-  }
-
-  function hostAction(node: HTMLDivElement, pathKey: string) {
-    let currentPathKey = pathKey;
-    bindHost(currentPathKey, node);
-    return {
-      update(nextPathKey: string) {
-        if (nextPathKey === currentPathKey) return;
-        bindHost(currentPathKey, null);
-        currentPathKey = nextPathKey;
-        bindHost(currentPathKey, node);
-      },
-      destroy() {
-        bindHost(currentPathKey, null);
-      },
-    };
-  }
-
-  function startDividerDrag(clientY: number): void {
-    isDraggingDivider = true;
-    resizeState = {
-      startClientY: clientY,
-      startHeightPx: heightPx,
-    };
-    emitState();
-  }
-
-  function moveDividerDrag(clientY: number): void {
-    if (!resizeState) return;
-    const deltaY = resizeState.startClientY - clientY;
-    heightPx = clampHeight(resizeState.startHeightPx + deltaY);
-    emitState();
-  }
-
-  function endDividerDrag(): void {
-    isDraggingDivider = false;
-    resizeState = null;
-    emitState();
-  }
-
-  function syncHeightToShell(): void {
-    if (!visiblePanes.length) return;
-    const nextHeight = clampHeight(heightPx);
-    if (nextHeight === heightPx) return;
-    heightPx = nextHeight;
-    emitState();
-  }
-
-  async function refreshPanes(): Promise<void> {
-    if (disposed || !chain.length) return;
+  async function refresh(): Promise<void> {
+    if (disposed || !open) return;
     void refreshOperation?.cancel();
     const operation = createWorkspaceOperation();
     refreshOperation = operation;
-    const sourceChain = chain;
+    const path = clonePath(activePath);
+    // Projection refreshes belong to the navigation request that opened this
+    // path; changing the id here would orphan readiness and stale Monaco work.
+    const nextRequestId =
+      chain.find((pane) => pane.pathKey === workspacePathKey(path))?.requestId ??
+      requestId;
     await operation.run({
-      execute: async ({ step }) => {
-        const nextChain: SubgraphWorkspacePaneState[] = [];
-        for (const pane of sourceChain) {
-          const nextPane = await step(() => preparePane(pane.path));
-          if (nextPane) nextChain.push(nextPane);
-        }
-        return nextChain;
-      },
-      land: async (nextChain) => {
+      execute: ({ step }) => step(() => prepareWorkspace(path, nextRequestId)),
+      land: (prepared) => {
         if (disposed) return;
-        setChain(nextChain);
-        await operation.step(() => tick());
-        await operation.step(() => renderPanes());
+        activePath = clonePath(prepared.activePath);
+        chain = prepared.chain;
+        emitState();
       },
     });
   }
@@ -581,58 +466,84 @@ export function createSubgraphWorkspaceController(deps: SubgraphWorkspaceControl
     if (nextSignature === projectionSignature) return;
     projectionSignature = nextSignature;
     projectionEpoch += 1;
-    void openPathOperation?.cancel();
+    void navigationOperation?.cancel();
     void refreshOperation?.cancel();
     graphCache.clear();
-    invalidateRender();
-    await refreshPanes();
+    await refresh();
   }
 
-  function invalidateRender(): void {
-    void renderOperation?.cancel();
-    renderSignature = '';
+  function clampHeight(nextHeightPx: number): number {
+    return getClampedPaneSize(
+      nextHeightPx,
+      deps.getShellHeight(),
+      SUBGRAPH_WORKSPACE_MIN_HEIGHT,
+      SUBGRAPH_WORKSPACE_MAX_HEIGHT_FRACTION,
+    );
+  }
+
+  function startDividerDrag(clientY: number): void {
+    isDraggingDivider = true;
+    resizeState = { startClientY: clientY, startHeightPx: heightPx };
+    emitState();
+  }
+
+  function moveDividerDrag(clientY: number): void {
+    if (!resizeState) return;
+    heightPx = clampHeight(resizeState.startHeightPx + resizeState.startClientY - clientY);
+    emitState();
+  }
+
+  function endDividerDrag(): void {
+    isDraggingDivider = false;
+    resizeState = null;
+    emitState();
+  }
+
+  function syncHeightToShell(): void {
+    if (!open) return;
+    const next = clampHeight(heightPx);
+    if (next === heightPx) return;
+    heightPx = next;
+    emitState();
   }
 
   function reset(): void {
     projectionEpoch += 1;
-    void openPathOperation?.cancel();
+    void navigationOperation?.cancel();
     void refreshOperation?.cancel();
     requestId += 1;
-    void renderOperation?.cancel();
-    renderSignature = '';
+    open = false;
+    activePath = [];
+    chain = [];
+    history = [];
+    historyIndex = -1;
+    pendingEditTaskMap.clear();
+    queuedEditMap.clear();
     deps.clearSearchHighlight();
     deps.clearActiveGraphSelection();
-    setChain([]);
     graphCache.clear();
+    emitState();
   }
 
   function dispose(): void {
     if (disposed) return;
+    reset();
     disposed = true;
-    projectionEpoch += 1;
-    void openPathOperation?.cancel();
-    void refreshOperation?.cancel();
-    requestId += 1;
-    void renderOperation?.cancel();
-    disposeRuntimes();
-    graphCache.clear();
-    hostMap.clear();
-    pendingEditKeys.clear();
-    queuedEditMap.clear();
-    chain = [];
-    visiblePanes = [];
   }
 
   emitState();
 
   return {
     getChain: () => chain,
-    getVisiblePanes: () => visiblePanes,
-    getRuntime: (pathKey: string) => runtimeMap.get(pathKey),
-    hasRuntime: (pathKey: string) => runtimeMap.has(pathKey),
-    hostAction,
+    getActivePath: () => activePath,
+    getVisiblePanes: visiblePanes,
     openPath,
-    closePane,
+    selectPath,
+    moveSibling,
+    enterSelected,
+    navigateParent,
+    goBack: () => goHistory(-1),
+    goForward: () => goHistory(1),
     commitValueEdit,
     syncProjection,
     reset,

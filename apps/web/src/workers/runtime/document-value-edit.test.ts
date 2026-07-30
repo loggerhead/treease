@@ -83,6 +83,7 @@ describe('document-value-edit', () => {
       preferKey: false,
       value: inputTree,
       nest: true,
+      rawReplacement: '{\n  "name": "patched"\n}',
     } as any);
 
     expect(mocked.planGraphValueEdit).toHaveBeenCalledWith({
@@ -92,6 +93,7 @@ describe('document-value-edit', () => {
       path: [{ key: 'name' }],
       preferKey: false,
       value: 'row-0-updated',
+      rawReplacement: '{\n  "name": "patched"\n}',
     });
     expect(result).toEqual({
       mode: 'edits',

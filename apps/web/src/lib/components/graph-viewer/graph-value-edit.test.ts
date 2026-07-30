@@ -268,13 +268,22 @@ describe('graph-value-edit', () => {
       raw: '42',
       valueType: 'string',
       text: '6837',
+      preserveSourceFormatting: true,
     })).resolves.toBe(true);
 
     expect(mocked.resolveCellPath).not.toHaveBeenCalled();
     expect(applyTextEdits).toHaveBeenCalledTimes(1);
     expect(mocked.callSharedWasmWorker).toHaveBeenCalledWith(
+      'parseValueForPath',
+      expect.objectContaining({ rawEdit: '42', strictSourceLiteral: true }),
+    );
+    expect(mocked.callSharedWasmWorker).toHaveBeenCalledWith(
       'planGraphValueEdit',
-      expect.objectContaining({ path: [expect.objectContaining({ key: 'duration' })], snapshotId: 42 }),
+      expect.objectContaining({
+        path: [expect.objectContaining({ key: 'duration' })],
+        snapshotId: 42,
+        rawReplacement: '42',
+      }),
     );
   });
 

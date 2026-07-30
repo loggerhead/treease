@@ -3,7 +3,7 @@
   import { onDestroy, onMount, tick, createEventDispatcher } from 'svelte';
   import { cubicOut } from 'svelte/easing';
   import { fly } from 'svelte/transition';
-  import { X } from 'lucide-svelte';
+  import { ChevronLeft, ChevronRight, X } from 'lucide-svelte';
   import {
     documentKey as documentKeyStore,
     editorIO,
@@ -23,7 +23,12 @@
   import { callSharedWasmWorker } from '../wasm/wasm-worker-singleton';
   import { getWorkspaceSnapshotId } from '../store/workspace-store';
   import { getFullEditDocumentJobSession } from '../graph-stream/full-edit-document-job-session';
-  import { buildReadablePath, type PathSeg } from '../store/tree-path';
+  import {
+    buildReadablePath,
+    isPathSegIndex,
+    pathSegKeyValue,
+    type PathSeg,
+  } from '../store/tree-path';
   import { type MinimapViewData } from '../leafer-minimap';
   import { GraphRuntimeHost, GraphRuntimeLoading } from './graph-viewer/runtime';
   import GraphStreamProgressOverlay from './graph-viewer/GraphStreamProgressOverlay.svelte';
@@ -80,9 +85,10 @@
   } from './graph-viewer/runtime';
   import {
     buildPathSegFromCell,
+    buildWorkspacePathPrefixes,
     createSubgraphWorkspaceController,
-    rebaseSubgraphWorkspacePath,
     shouldResetSubgraphWorkspaceForFullEdit,
+    workspacePathKey,
     type SubgraphWorkspacePaneState,
     type VisibleSubgraphWorkspacePaneState,
   } from './graph-viewer/workspace';
@@ -100,7 +106,7 @@
   import type { EditorIO } from '../store/document-session-store';
   import { handleError } from '../utils/error-handler';
   import { GRAPH_CONFIG } from '../config/constants';
-  import { resolveGraphCellDisplayText } from '@treease/graph-viewer-runtime';
+  import { resolveSemanticTypeColor } from '@treease/graph-viewer-runtime';
   import { type GraphCell, type GraphCellKind, type GraphNode } from '@treease/graph-viewer-runtime';
   import { buildPathKey } from '../graph/graph-viewer-path';
   import { isDocumentRevisionGuardCurrent } from '../guards/document-revision-guard';
@@ -223,8 +229,16 @@
   });
   let subgraphWorkspaceChain: SubgraphWorkspacePaneState[] = [];
   let subgraphWorkspaceVisiblePanes: VisibleSubgraphWorkspacePaneState[] = [];
+  let subgraphWorkspaceOpen = false;
+  let subgraphWorkspaceActivePath: PathSeg[] = [];
+  let subgraphWorkspaceCanGoBack = false;
+  let subgraphWorkspaceCanGoForward = false;
   let subgraphWorkspaceHeightPx = SUBGRAPH_WORKSPACE_DEFAULT_HEIGHT;
   let isDraggingSubgraphWorkspaceDivider = false;
+  let subgraphWorkspaceRoot: HTMLDivElement;
+  let subgraphWorkspaceRail: HTMLDivElement;
+  let subgraphWorkspaceDetailPane: VisibleSubgraphWorkspacePaneState | null = null;
+  let lastSubgraphScrollKey = '';
 
   let graphSceneController: ReturnType<typeof createGraphSceneController>;
   let graphRuntimeProbeController: ReturnType<typeof createGraphRuntimeProbeController>;
@@ -247,8 +261,18 @@
       semanticType: $settings.editor.semanticTypeColors,
     },
   };
-  $: if (subgraphWorkspaceVisiblePanes.length) {
+  $: if (subgraphWorkspaceOpen) {
     subgraphWorkspaceController.syncHeightToShell();
+  }
+  $: {
+    subgraphWorkspaceDetailPane = subgraphWorkspaceVisiblePanes.find((pane) => pane.kind === 'content') ?? null;
+  }
+  $: {
+    const nextScrollKey = `${workspacePathKey(subgraphWorkspaceActivePath)}|${subgraphWorkspaceVisiblePanes.length}`;
+    if (subgraphWorkspaceOpen && nextScrollKey !== lastSubgraphScrollKey) {
+      lastSubgraphScrollKey = nextScrollKey;
+      void scrollSubgraphSelectionIntoView();
+    }
   }
   const fullBuildReasonSet = new Set([
     'import-file',
@@ -438,20 +462,7 @@
   });
   graphRuntimeProbeActions = createGraphRuntimeProbeActions({
     getController: () => graphRuntimeProbeController,
-    getVisiblePanes: () => subgraphWorkspaceVisiblePanes,
-    getWorkspaceRuntime: (pathKey) => subgraphWorkspaceController.getRuntime(pathKey),
-    getWorkspaceRect: () =>
-      (document.querySelector("[data-testid='graph-subgraph-workspace']") as HTMLElement | null)?.getBoundingClientRect() ??
-      null,
-    rebaseWorkspacePath: rebaseSubgraphWorkspacePath,
-    resolveCellText: (entry) =>
-      resolveGraphCellDisplayText(
-        entry.cell?.text,
-        entry.cell?.value,
-        String(entry.cell?.valueType ?? ''),
-        languageIdValue,
-      ),
-    getLanguageId: () => languageIdValue,
+    getWorkspaceRoot: () => subgraphWorkspaceRoot ?? null,
   });
 
   const graphTextLinkageController = createGraphTextLinkageController({
@@ -529,7 +540,6 @@
     getEnableNest: () => $settings.parser.enableNest,
     getReadonly: () => readonly,
     getShellHeight: () => graphViewerShellHeight,
-    getConstructors: () => ({ LeaferCtor, PlainLeaferCtor, BoxCtor, TextCtor, PenCtor }),
     inferGraphPaths: (nodes, edges) => graphSceneController.inferGraphPaths(nodes, edges),
     clearSearchHighlight,
     clearActiveGraphSelection: () => {
@@ -541,17 +551,13 @@
     waitForCommittedDocument,
     markSubgraphRequested,
     markSubgraphMaterialized,
-    bindGraphEditorLifecycle,
-    bindPointerClick: (target, handler) => graphPointerController.bindPointerClick(target, handler),
-    getMoveEventName: () => (MoveEventCtor?.BEFORE_MOVE ?? MoveEventCtor?.MOVE) as string | undefined,
-    bindVerticalScrollGesture: (target, handler) => graphPointerController.bindVerticalScrollGesture(target, handler),
-    bindPointerDown: (target, handler) => graphPointerController.bindPointerDown(target, handler),
-    getPointFromEvent: (hostApp, target, event, space) =>
-      graphPointerController.getPointFromEvent(hostApp, target, event, space),
-    resolveInteractiveCellPath,
     onState: (state) => {
+      subgraphWorkspaceOpen = state.open;
+      subgraphWorkspaceActivePath = state.activePath;
       subgraphWorkspaceChain = state.chain;
       subgraphWorkspaceVisiblePanes = state.visiblePanes;
+      subgraphWorkspaceCanGoBack = state.canGoBack;
+      subgraphWorkspaceCanGoForward = state.canGoForward;
       subgraphWorkspaceHeightPx = state.heightPx;
       isDraggingSubgraphWorkspaceDivider = state.isDraggingDivider;
     },
@@ -633,16 +639,12 @@
 
   function syncSubgraphReadinessForPane(pane: SubgraphWorkspacePaneState | null | undefined): void {
     if (!pane?.pathKey || !pane.requestId) return;
-    const interactiveReady =
-      pane.kind === 'content'
-        ? pane.status === 'ready'
-        : pane.status === 'ready' && subgraphWorkspaceController.hasRuntime(pane.pathKey);
     syncSubgraphInteractionReadiness({
       requestId: pane.requestId,
       pathKey: pane.pathKey,
       sourceRevision: editorRevisionValue,
       interactiveRevision: editorRevisionValue,
-      interactiveReady,
+      interactiveReady: pane.status === 'ready',
     });
   }
 
@@ -946,10 +948,6 @@
     await subgraphWorkspaceController.openPath(path, parentAbsoluteIndex);
   }
 
-  function closeSubgraphWorkspacePane(absoluteIndex: number): void {
-    subgraphWorkspaceController.closePane(absoluteIndex);
-  }
-
   async function commitSubgraphWorkspaceValueEdit(
     pane: SubgraphWorkspacePaneState,
     draft: string | undefined,
@@ -957,7 +955,68 @@
     await subgraphWorkspaceController.commitValueEdit(pane, draft);
   }
 
-  const subgraphWorkspaceHostAction = subgraphWorkspaceController.hostAction;
+  async function selectSubgraphWorkspacePath(path: PathSeg[]): Promise<void> {
+    await subgraphWorkspaceController.selectPath(path);
+  }
+
+  async function scrollSubgraphSelectionIntoView(): Promise<void> {
+    await tick();
+    const selected = subgraphWorkspaceRoot?.querySelector<HTMLElement>('[data-subgraph-selected="true"]');
+    selected?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    const terminalPane = subgraphWorkspaceRail?.lastElementChild as HTMLElement | null;
+    terminalPane?.scrollIntoView({ block: 'nearest', inline: 'center' });
+  }
+
+  function pathSegmentLabel(path: PathSeg[]): string {
+    if (!path.length) return '$';
+    const segment = path.at(-1)!;
+    return isPathSegIndex(segment) ? `[${segment.index}]` : pathSegKeyValue(segment);
+  }
+
+  function isSubgraphWorkspacePathAncestor(path: PathSeg[], activePath: PathSeg[]): boolean {
+    if (!path.length || path.length >= activePath.length) return false;
+    return workspacePathKey(activePath.slice(0, path.length)) === workspacePathKey(path);
+  }
+
+  function isWorkspaceTextEditorTarget(target: EventTarget | null): boolean {
+    return target instanceof Element && Boolean(
+      target.closest('.monaco-editor, textarea, input, [contenteditable="true"]'),
+    );
+  }
+
+  function handleSubgraphWorkspaceKeydown(event: KeyboardEvent): void {
+    if (isWorkspaceTextEditorTarget(event.target)) return;
+    const historyDirection =
+      event.altKey && event.key === 'ArrowLeft' ? -1 :
+      event.altKey && event.key === 'ArrowRight' ? 1 :
+      0;
+    if (historyDirection) {
+      event.preventDefault();
+      void (historyDirection < 0
+        ? subgraphWorkspaceController.goBack()
+        : subgraphWorkspaceController.goForward());
+      return;
+    }
+    if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
+      event.preventDefault();
+      void subgraphWorkspaceController.moveSibling(event.key === 'ArrowUp' ? -1 : 1);
+      return;
+    }
+    if (event.key === 'ArrowRight') {
+      event.preventDefault();
+      void subgraphWorkspaceController.enterSelected();
+      return;
+    }
+    if (event.key === 'ArrowLeft') {
+      event.preventDefault();
+      void subgraphWorkspaceController.navigateParent();
+      return;
+    }
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      subgraphWorkspaceRoot?.focus();
+    }
+  }
 
   function handleSubgraphWorkspaceDividerDragStart(clientY: number) {
     subgraphWorkspaceController.startDividerDrag(clientY);
@@ -985,19 +1044,21 @@
   }
 
   export function getSubgraphWorkspacePaths(): PathSeg[][] {
-    return subgraphWorkspaceController.getChain().map((pane) => pane.path.map((segment) => ({ ...segment })));
+    return subgraphWorkspaceOpen
+      ? [subgraphWorkspaceController.getActivePath().map((segment) => ({ ...segment }))]
+      : [];
   }
 
   export async function restoreSubgraphWorkspacePaths(paths: PathSeg[][]): Promise<boolean> {
     subgraphWorkspaceController.reset();
-    for (let index = 0; index < paths.length; index += 1) {
-      try {
-        await subgraphWorkspaceController.openPath(paths[index]!, index - 1);
-      } catch {
-        return false;
-      }
+    const activePath = paths.at(-1);
+    if (!activePath) return true;
+    try {
+      await subgraphWorkspaceController.openPath(activePath);
+      return true;
+    } catch {
+      return false;
     }
-    return true;
   }
 
   const graphViewerRuntimeApi = {
@@ -1205,7 +1266,7 @@
   bind:this={graphViewerShell}
   bind:clientHeight={graphViewerShellHeight}
   class="graph-viewer-shell"
-  class:graph-viewer-shell--with-workspace={subgraphWorkspaceVisiblePanes.length > 0}
+  class:graph-viewer-shell--with-workspace={subgraphWorkspaceOpen}
   data-testid="graph-viewer-root"
 >
   <div class="graph-viewer-main">
@@ -1263,7 +1324,7 @@
     {/if}
   </div>
 
-  {#if subgraphWorkspaceVisiblePanes.length}
+  {#if subgraphWorkspaceOpen}
     <div
       class={`app-split-divider app-split-divider--horizontal graph-subgraph-workspace__divider ${
         isDraggingSubgraphWorkspaceDivider ? 'app-split-divider--dragging' : ''
@@ -1279,68 +1340,141 @@
     >
     </div>
     <div
+      bind:this={subgraphWorkspaceRoot}
       class="graph-subgraph-workspace"
       data-testid="graph-subgraph-workspace"
       style:height={`${subgraphWorkspaceHeightPx}px`}
+      tabindex="0"
+      role="tree"
+      aria-label="Subgraph column browser"
+      on:keydown={handleSubgraphWorkspaceKeydown}
       transition:fly={{ y: 18, duration: 180, opacity: 0.14, easing: cubicOut }}
     >
-      <div class="graph-subgraph-workspace__track">
-        {#each subgraphWorkspaceVisiblePanes as pane (pane.pathKey)}
-          <section class="graph-subgraph-pane" data-testid="graph-subgraph-pane">
-            <header class="graph-subgraph-pane__header" title={buildReadablePath(pane.path)}>
-              <span class="graph-subgraph-pane__label">{pane.title}</span>
-              <button
-                type="button"
-                class="graph-subgraph-pane__close"
-                aria-label="Close subgraph pane"
-                on:click|stopPropagation={() => closeSubgraphWorkspacePane(pane.absoluteIndex)}
-              >
-                <X size={14} strokeWidth={2} />
-              </button>
-            </header>
-            <div class="graph-subgraph-pane__body">
-              {#if pane.kind === 'content' && pane.status === 'ready' && pane.content}
-                <div class="graph-subgraph-pane__content" data-testid="graph-subgraph-content-pane">
-                  <div class="graph-subgraph-pane__content-editor" data-testid="graph-subgraph-monaco-pane">
-                    <SidecarEditor
-                      tabId={pane.content.tabId}
-                      tabName={pane.content.tabName}
-                      language={languageIdValue}
-                      sourceText={pane.content.sourceText}
-                      rootSemType={pane.content.rootSemType}
-                      runtimeHookId={pane.content.tabId}
-                      containerTestId="graph-subgraph-monaco-editor"
-                      attachToPane={false}
-                      destroyOnUnmount={true}
-                      onScroll={() => {}}
-                      onContentChange={(text) => {
-                        emitReveal(pane.path, 'value', 'click');
-                        void commitSubgraphWorkspaceValueEdit(pane, text);
-                      }}
-                      onEditorBlur={(text) => void commitSubgraphWorkspaceValueEdit(pane, text)}
-                    />
-                  </div>
+      <nav class="graph-subgraph-workspace__pathbar" aria-label="Subgraph path">
+        <div class="graph-subgraph-workspace__history">
+          <button
+            type="button"
+            aria-label="Back in workspace history"
+            disabled={!subgraphWorkspaceCanGoBack}
+            on:click={() => void subgraphWorkspaceController.goBack()}
+          ><ChevronLeft size={15} strokeWidth={2} /></button>
+          <button
+            type="button"
+            aria-label="Forward in workspace history"
+            disabled={!subgraphWorkspaceCanGoForward}
+            on:click={() => void subgraphWorkspaceController.goForward()}
+          ><ChevronRight size={15} strokeWidth={2} /></button>
+        </div>
+        <div class="graph-subgraph-workspace__breadcrumbs">
+          {#each buildWorkspacePathPrefixes(subgraphWorkspaceActivePath) as prefix (workspacePathKey(prefix))}
+            <button
+              type="button"
+              class:active={workspacePathKey(prefix) === workspacePathKey(subgraphWorkspaceActivePath)}
+              title={buildReadablePath(prefix)}
+              on:click={() => void selectSubgraphWorkspacePath(prefix)}
+            >{pathSegmentLabel(prefix)}</button>
+            {#if workspacePathKey(prefix) !== workspacePathKey(subgraphWorkspaceActivePath)}
+              <ChevronRight size={12} strokeWidth={1.8} aria-hidden="true" />
+            {/if}
+          {/each}
+        </div>
+      </nav>
+      <div bind:this={subgraphWorkspaceRail} class="graph-subgraph-workspace__track">
+        {#each subgraphWorkspaceVisiblePanes as pane (`${pane.kind}:${pane.pathKey}`)}
+          {#if pane.kind === 'column'}
+            <section class="graph-subgraph-pane" data-testid="graph-subgraph-pane" data-column-path-key={pane.pathKey}>
+              {#if pane.status === 'ready'}
+                <div class="graph-subgraph-pane__items" role="list" aria-label={`${pane.title} children`}>
+                  {#each pane.items as item (item.pathKey)}
+                    <button
+                      type="button"
+                      class="graph-subgraph-item"
+                      class:index={isPathSegIndex(item.path.at(-1)!)}
+                      class:selected={item.pathKey === workspacePathKey(subgraphWorkspaceActivePath)}
+                      class:path-ancestor={isSubgraphWorkspacePathAncestor(item.path, subgraphWorkspaceActivePath)}
+                      data-subgraph-selected={item.pathKey === workspacePathKey(subgraphWorkspaceActivePath)}
+                      data-subgraph-path-ancestor={isSubgraphWorkspacePathAncestor(item.path, subgraphWorkspaceActivePath)}
+                      data-subgraph-item-path={JSON.stringify(item.path)}
+                      data-subgraph-item-path-key={item.pathKey}
+                      data-subgraph-item-preview={item.preview}
+                      data-subgraph-item-value-type={item.valueType}
+                      data-subgraph-item-index={isPathSegIndex(item.path.at(-1)!)}
+                      aria-pressed={item.pathKey === workspacePathKey(subgraphWorkspaceActivePath)}
+                      on:click={() => void selectSubgraphWorkspacePath(item.path)}
+                    >
+                      {#if isPathSegIndex(item.path.at(-1)!)}
+                        <span
+                          class="graph-subgraph-item__kind"
+                          style:color={resolveSemanticTypeColor(renderConfig.colors.semanticType, item.semType)}
+                        >
+                          <span class="graph-subgraph-item__dot"></span>
+                        </span>
+                      {/if}
+                      <span class="graph-subgraph-item__label">{item.label}</span>
+                      <span
+                        class="graph-subgraph-item__preview"
+                        class:container-preview={item.valueType === 'object' || item.valueType === 'array'}
+                        style:color={item.valueType === 'object' || item.valueType === 'array'
+                          ? undefined
+                          : resolveSemanticTypeColor(renderConfig.colors.semanticType, item.semType)}
+                      >{item.preview}</span>
+                      {#if item.isContainer}
+                        <ChevronRight class="graph-subgraph-item__chevron" size={13} strokeWidth={1.8} />
+                      {/if}
+                    </button>
+                  {/each}
                 </div>
               {:else if pane.status === 'loading'}
-                <div class="graph-subgraph-pane__placeholder">Loading subgraph…</div>
-              {:else if pane.status === 'empty'}
-                <div class="graph-subgraph-pane__placeholder">No subgraph data</div>
+                <div class="graph-subgraph-pane__placeholder">Reading path…</div>
               {:else if pane.status === 'error'}
                 <div class="graph-subgraph-pane__placeholder graph-subgraph-pane__placeholder--error">
-                  {pane.error ?? 'Subgraph render failed'}
+                  {pane.error ?? 'Column projection failed'}
                 </div>
+              {:else}
+                <div class="graph-subgraph-pane__placeholder">No direct children</div>
               {/if}
-              {#if pane.kind === 'graph'}
-                <div
-                  class="graph-subgraph-pane__canvas"
-                  class:hidden={pane.status !== 'ready'}
-                  use:subgraphWorkspaceHostAction={pane.pathKey}
-                ></div>
-              {/if}
-            </div>
-          </section>
+            </section>
+          {/if}
         {/each}
       </div>
+      <button
+        type="button"
+        class="graph-subgraph-workspace__dismiss"
+        aria-label="Close subgraph workspace"
+        on:click={() => subgraphWorkspaceController.reset()}
+      ><X size={15} strokeWidth={2} /></button>
+      {#if subgraphWorkspaceDetailPane?.status === 'ready' && subgraphWorkspaceDetailPane.content}
+        <section
+          class="graph-subgraph-detail"
+          data-testid="graph-subgraph-pane"
+          data-content-path-key={subgraphWorkspaceDetailPane.pathKey}
+        >
+          <div class="graph-subgraph-pane__content" data-testid="graph-subgraph-content-pane">
+            <div class="graph-subgraph-pane__content-editor" data-testid="graph-subgraph-monaco-pane">
+              {#key subgraphWorkspaceDetailPane.content.tabId}
+                <SidecarEditor
+                  tabId={subgraphWorkspaceDetailPane.content.tabId}
+                  tabName={subgraphWorkspaceDetailPane.content.tabName}
+                  language={languageIdValue}
+                  sourceText={subgraphWorkspaceDetailPane.content.sourceText}
+                  projectedSemanticTokens={subgraphWorkspaceDetailPane.content.semanticTokens}
+                  runtimeHookId={subgraphWorkspaceDetailPane.content.tabId}
+                  containerTestId="graph-subgraph-monaco-editor"
+                  attachToPane={false}
+                  destroyOnUnmount={true}
+                  hideLineNumbers={true}
+                  onScroll={() => {}}
+                  onContentChange={(text) => {
+                    emitReveal(subgraphWorkspaceDetailPane!.path, 'value', 'click');
+                    void commitSubgraphWorkspaceValueEdit(subgraphWorkspaceDetailPane!, text);
+                  }}
+                  onEditorBlur={(text) => void commitSubgraphWorkspaceValueEdit(subgraphWorkspaceDetailPane!, text)}
+                />
+              {/key}
+            </div>
+          </div>
+        </section>
+      {/if}
     </div>
   {/if}
 
@@ -1376,15 +1510,24 @@
   }
 
   .graph-subgraph-workspace {
+    position: relative;
+    display: grid;
+    grid-template-rows: 38px minmax(0, 1fr);
     min-height: 0;
     overflow: hidden;
+    outline: none;
     border-top: 1px solid rgba(148, 163, 184, 0.28);
     background:
-      linear-gradient(180deg, rgba(241, 245, 249, 0.96), rgba(236, 242, 247, 0.92) 12px, rgba(244, 247, 251, 0.98) 56px),
-      linear-gradient(90deg, rgba(148, 163, 184, 0.1), rgba(255, 255, 255, 0));
+      linear-gradient(180deg, rgba(245, 248, 252, 0.98), rgba(238, 243, 248, 0.98)),
+      radial-gradient(circle at 14% 0%, rgba(59, 130, 246, 0.08), transparent 32%);
     box-shadow:
       inset 0 1px 0 rgba(255, 255, 255, 0.76),
-      inset 0 10px 20px rgba(148, 163, 184, 0.08),
+      0 -12px 24px rgba(15, 23, 42, 0.08);
+  }
+
+  .graph-subgraph-workspace:focus-visible {
+    box-shadow:
+      inset 0 2px 0 rgba(59, 130, 246, 0.42),
       0 -12px 24px rgba(15, 23, 42, 0.08);
   }
 
@@ -1392,135 +1535,307 @@
     background: transparent;
   }
 
-  .graph-subgraph-workspace__track {
+  .graph-subgraph-workspace__pathbar {
     display: grid;
-    grid-auto-flow: column;
-    grid-auto-columns: minmax(360px, 1fr);
-    gap: 0;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    padding: 0 8px;
+    border-bottom: 1px solid rgba(203, 213, 225, 0.78);
+    background: rgba(255, 255, 255, 0.76);
+    backdrop-filter: blur(12px);
+  }
+
+  .graph-subgraph-workspace__history {
+    display: flex;
+    gap: 2px;
+  }
+
+  .graph-subgraph-workspace__history button,
+  .graph-subgraph-workspace__dismiss {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    border: 0;
+    border-radius: 7px;
+    background: transparent;
+    color: #64748b;
+    cursor: pointer;
+  }
+
+  .graph-subgraph-workspace__dismiss {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    z-index: 6;
+    background: rgba(255, 255, 255, 0.82);
+    box-shadow: 0 2px 8px rgba(15, 23, 42, 0.08);
+  }
+
+  .graph-subgraph-workspace__history button:hover:not(:disabled),
+  .graph-subgraph-workspace__dismiss:hover {
+    color: #1e293b;
+    background: rgba(226, 232, 240, 0.76);
+  }
+
+  .graph-subgraph-workspace__history button:disabled {
+    color: #cbd5e1;
+    cursor: default;
+  }
+
+  .graph-subgraph-workspace__breadcrumbs {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .graph-subgraph-workspace__breadcrumbs::-webkit-scrollbar {
+    display: none;
+  }
+
+  .graph-subgraph-workspace__breadcrumbs button {
+    flex: 0 0 auto;
+    max-width: 180px;
+    overflow: hidden;
+    padding: 4px 6px;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: #64748b;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 11px;
+    line-height: 1.3;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    cursor: pointer;
+  }
+
+  .graph-subgraph-workspace__breadcrumbs button:hover,
+  .graph-subgraph-workspace__breadcrumbs button.active {
+    color: #1e3a5f;
+    background: rgba(219, 234, 254, 0.72);
+  }
+
+  .graph-subgraph-workspace__breadcrumbs :global(svg) {
+    flex: 0 0 auto;
+    color: #a8b3c2;
+  }
+
+  .graph-subgraph-workspace__track {
+    display: flex;
     height: 100%;
+    min-height: 0;
     overflow-x: auto;
     overflow-y: hidden;
+    overscroll-behavior-inline: contain;
+    scrollbar-color: rgba(100, 116, 139, 0.4) transparent;
+    padding-right: 440px;
   }
 
   .graph-subgraph-pane {
     display: grid;
-    min-width: 360px;
+    width: 288px;
+    min-width: 288px;
+    flex: 0 0 288px;
     min-height: 0;
-    grid-template-rows: auto minmax(0, 1fr);
-    border-right: 1px solid rgba(203, 213, 225, 0.72);
-    background: linear-gradient(180deg, rgba(255, 255, 255, 0.86), rgba(247, 250, 252, 0.82));
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.68);
+    grid-template-rows: minmax(0, 1fr);
+    border-right: 1px solid rgba(203, 213, 225, 0.82);
+    background: rgba(250, 252, 255, 0.9);
+  }
+
+  .graph-subgraph-detail {
+    position: absolute;
+    z-index: 4;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    display: grid;
+    width: 440px;
+    min-width: 440px;
+    flex: 0 0 440px;
+    min-height: 0;
+    grid-template-rows: minmax(0, 1fr);
+    border-left: 1px solid rgba(203, 213, 225, 0.92);
+    background: rgba(248, 250, 252, 0.96);
   }
 
   .graph-subgraph-pane__header {
-    display: flex;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
     align-items: center;
-    justify-content: space-between;
     gap: 8px;
     overflow: hidden;
-    padding: 4px 8px 4px 12px;
-    border-bottom: 1px solid rgba(226, 232, 240, 0.9);
-    color: #5f7087;
-    font-size: 11px;
-    line-height: 1.4;
-    background: linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(241, 245, 249, 0.82));
+    min-height: 36px;
+    padding: 0 10px;
+    border-bottom: 1px solid rgba(226, 232, 240, 0.96);
+    background: rgba(255, 255, 255, 0.72);
+  }
+
+  .graph-subgraph-pane__eyebrow {
+    color: #94a3b8;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.11em;
+    text-transform: uppercase;
   }
 
   .graph-subgraph-pane__label {
     min-width: 0;
     overflow: hidden;
+    color: #334155;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 11px;
+    font-weight: 600;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
 
-  .graph-subgraph-pane__close {
+  .graph-subgraph-pane__count,
+  .graph-subgraph-detail__type {
+    color: #94a3b8;
+    font-size: 10px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .graph-subgraph-pane__items {
+    min-height: 0;
+    overflow-y: auto;
+    padding: 5px 6px 10px;
+    scrollbar-color: rgba(100, 116, 139, 0.36) transparent;
+  }
+
+  .graph-subgraph-item {
+    display: grid;
+    grid-template-columns: minmax(132px, 1.25fr) minmax(48px, 0.75fr) auto;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+    min-height: 31px;
+    padding: 5px 7px;
+    border: 1px solid transparent;
+    border-radius: 7px;
+    background: transparent;
+    color: #334155;
+    text-align: left;
+    cursor: default;
+    transition:
+      border-color 110ms ease,
+      background-color 110ms ease,
+      box-shadow 110ms ease;
+  }
+
+  .graph-subgraph-item:hover {
+    background: rgba(226, 232, 240, 0.62);
+  }
+
+  .graph-subgraph-item.selected {
+    border-color: rgba(96, 165, 250, 0.38);
+    background: linear-gradient(90deg, rgba(219, 234, 254, 0.92), rgba(239, 246, 255, 0.82));
+    box-shadow: inset 2px 0 0 #3b82f6;
+  }
+
+  .graph-subgraph-item.path-ancestor:not(.selected) {
+    border-color: rgba(148, 163, 184, 0.22);
+    background: rgba(148, 163, 184, 0.15);
+    box-shadow: inset 2px 0 0 rgba(100, 116, 139, 0.48);
+  }
+
+  .graph-subgraph-item.index {
+    grid-template-columns: 18px minmax(108px, 1.15fr) minmax(48px, 0.75fr) auto;
+  }
+
+  .graph-subgraph-item.index .graph-subgraph-item__dot {
+    background: #5b83c4;
+    opacity: 1;
+  }
+
+  .graph-subgraph-item:focus-visible {
+    outline: 2px solid rgba(59, 130, 246, 0.42);
+    outline-offset: -1px;
+  }
+
+  .graph-subgraph-item__kind {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 20px;
-    height: 20px;
-    flex: 0 0 auto;
-    border: 0;
-    border-radius: 6px;
-    background: transparent;
-    color: #94a3b8;
-    cursor: pointer;
-    transition:
-      background-color 120ms ease,
-      color 120ms ease;
   }
 
-  .graph-subgraph-pane__close:hover {
-    background: rgba(226, 232, 240, 0.9);
-    color: #334155;
+  .graph-subgraph-item__dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 999px;
+    background: currentColor;
+    opacity: 0.72;
   }
 
-  .graph-subgraph-pane__close:focus-visible {
-    outline: 2px solid rgba(59, 130, 246, 0.4);
-    outline-offset: 1px;
-  }
-
-  .graph-subgraph-pane__close :global(svg) {
-    pointer-events: none;
-  }
-
-  .graph-subgraph-pane__body {
-    position: relative;
-    min-height: 0;
+  .graph-subgraph-item__label,
+  .graph-subgraph-item__preview {
+    min-width: 0;
     overflow: hidden;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 11px;
+    line-height: 1.45;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .graph-subgraph-item__label {
+    color: #334155;
+    font-weight: 550;
+  }
+
+  .graph-subgraph-item__preview {
+    text-align: right;
+    opacity: 0.82;
+  }
+
+  .graph-subgraph-item__preview.container-preview {
+    color: #6b7280;
+    opacity: 1;
+  }
+
+  .graph-subgraph-item__chevron {
+    color: #94a3b8;
   }
 
   .graph-subgraph-pane__content {
     display: grid;
     height: 100%;
     min-height: 0;
-    background:
-      radial-gradient(circle at top left, rgba(148, 163, 184, 0.14), transparent 44%),
-      linear-gradient(180deg, rgba(255, 255, 255, 0.95), rgba(243, 247, 250, 0.98));
+    background: linear-gradient(180deg, rgba(248, 250, 252, 0.96), rgba(241, 245, 249, 0.96));
   }
 
   .graph-subgraph-pane__content-editor {
     min-height: 0;
-    padding: 10px 12px 12px;
+    padding: 40px 10px 10px;
   }
 
   .graph-subgraph-pane__content-editor :global([data-testid='graph-subgraph-monaco-editor']) {
     height: 100%;
     border: 1px solid #dbe3ef;
-    border-radius: 12px;
+    border-radius: 9px;
     background: rgba(255, 255, 255, 0.95);
     overflow: hidden;
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.75);
-  }
-
-  .graph-subgraph-pane__canvas {
-    height: 100%;
-    overflow: hidden;
+    box-shadow: none;
   }
 
   .graph-subgraph-pane__placeholder {
     display: grid;
     place-items: center;
-    height: 100%;
+    min-height: 0;
     padding: 16px;
     color: #64748b;
     font-size: 12px;
-    background:
-      radial-gradient(circle at top left, rgba(148, 163, 184, 0.14), transparent 42%),
-      linear-gradient(180deg, rgba(238, 243, 249, 0.9), rgba(250, 252, 255, 0.92));
+    text-align: center;
   }
 
   .graph-subgraph-pane__placeholder--error {
     color: #b91c1c;
-  }
-
-  .graph-subgraph-pane__canvas.hidden {
-    display: none;
-  }
-
-  :global(.graph-subgraph-pane-view) {
-    min-width: 100%;
-    min-height: 100%;
   }
 
 </style>

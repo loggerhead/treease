@@ -158,6 +158,7 @@ export type WorkerRequest =
       rawEdit: string;
       preferKey: boolean;
       nest: boolean;
+      strictSourceLiteral?: boolean;
     }
   | { id: number; type: 'valueToTreeNode'; value: unknown }
   | {
@@ -181,6 +182,7 @@ export type WorkerRequest =
       preferKey: boolean;
       value: any;
       nest: boolean;
+      rawReplacement?: string;
     }
   | {
       id: number;

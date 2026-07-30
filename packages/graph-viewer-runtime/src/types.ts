@@ -27,6 +27,8 @@ export type GraphCell = {
   semType?: GraphSemanticType;
   text: string;
   value: string;
+  /** Core's compact formatted value for structured cells, when provided. */
+  formatText?: string;
   isMissing?: boolean;
   isTableCell?: boolean;
   isHeader?: boolean;

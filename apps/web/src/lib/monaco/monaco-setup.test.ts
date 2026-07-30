@@ -81,24 +81,6 @@ describe('monaco-setup', () => {
     expect(res.data.length).toBe(0);
   });
 
-  it('derives detached scalar draft tokens from its projected root SemType', async () => {
-    const ensure = createSemanticTokensRegistrar({
-      monaco: monaco as any,
-      callWasmWorker,
-      tokenTypes: ['str'],
-    });
-    ensure('json');
-    const provider = monaco.languages.registerDocumentSemanticTokensProvider.mock.calls.at(-1)?.[1];
-    const model = makeModel('"draft"') as ReturnType<typeof makeModel> & {
-      __treeaseRootSemanticTokenType?: number;
-    };
-    model.__treeaseRootSemanticTokenType = 0;
-
-    const result = await provider.provideDocumentSemanticTokens(model, null, { isCancellationRequested: false });
-
-    expect(result.data).toEqual(new Uint32Array([0, 0, 7, 0, 0]));
-  });
-
   it('returns empty semantic tokens when tokens are not primed', async () => {
     const callWasmWorker = vi.fn(async <T,>(_type: string) => {
       return { semanticTokens: new Uint32Array([0, 0, 4, 0, 0]).buffer } as T;

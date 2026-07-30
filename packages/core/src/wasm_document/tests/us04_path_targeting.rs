@@ -122,6 +122,7 @@ fn wasm_document_plan_then_apply_nested_value_edit_matches_web_probe_cases() {
             language: case.language.to_owned(),
             path: case.path,
             prefer_key: false,
+            raw_replacement: None,
             value: scalar_edit_value(case.next_value),
         })
         .expect("planner should execute");
@@ -367,6 +368,7 @@ fn wasm_document_plan_then_apply_large_table_row_hundred_matches_web_table_probe
             language: case.language.to_owned(),
             path: case.path,
             prefer_key: false,
+            raw_replacement: None,
             value: scalar_edit_value(case.next_value),
         })
         .expect("planner should execute");
@@ -459,6 +461,7 @@ fn wasm_document_plan_then_apply_table_cell_value_extends_non_streaming_language
             language: case.language.to_owned(),
             path: case.path,
             prefer_key: false,
+            raw_replacement: None,
             value: scalar_edit_value(case.next_value),
         })
         .expect("planner should execute");
@@ -508,6 +511,7 @@ fn wasm_document_plans_csv_header_key_edit() {
         language: "csv".to_owned(),
         path: vec![index_seg(0), key_seg("Currency Code")],
         prefer_key: true,
+        raw_replacement: None,
         value: scalar_edit_value("Currency Id"),
     })
     .expect("planner should execute");
@@ -593,6 +597,7 @@ fn wasm_document_plan_then_apply_table_without_header_value_matches_round_trip()
             language: case.language.to_owned(),
             path: case.path,
             prefer_key: false,
+            raw_replacement: None,
             value: scalar_edit_value(case.next_value),
         })
         .expect("planner should execute");
@@ -716,6 +721,7 @@ fn wasm_document_plan_repeated_path_cases_cover_object_and_nested_sequences() {
             language: case.language.to_owned(),
             path: case.path,
             prefer_key: false,
+            raw_replacement: None,
             value: scalar_edit_value(case.next_value),
         })
         .expect("planner should execute");

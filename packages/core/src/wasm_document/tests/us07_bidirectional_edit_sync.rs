@@ -204,6 +204,7 @@ fn wasm_document_plan_then_apply_value_edit_matches_web_graph_edit_round_trip() 
             language: case.language.to_owned(),
             path: case.path,
             prefer_key: false,
+            raw_replacement: None,
             value: scalar_edit_value(case.next_value),
         })
         .expect("planner should execute");
@@ -316,6 +317,7 @@ fn wasm_document_plan_then_apply_key_edit_matches_supported_web_round_trip() {
             language: case.language.to_owned(),
             path: case.path,
             prefer_key: true,
+            raw_replacement: None,
             value: scalar_edit_value(case.next_key),
         })
         .expect("planner should execute");
@@ -433,6 +435,7 @@ fn wasm_document_plan_then_apply_mixed_escape_key_edits_match_supported_round_tr
             language: case.language.to_owned(),
             path: case.path,
             prefer_key: true,
+            raw_replacement: None,
             value: scalar_edit_value(case.next_key),
         })
         .expect("planner should execute");
@@ -497,6 +500,7 @@ fn wasm_document_key_edit_supports_csv() {
             language: language.to_owned(),
             path,
             prefer_key: true,
+            raw_replacement: None,
             value: scalar_edit_value("renamedKey"),
         })
         .expect("planner should execute");
@@ -600,6 +604,7 @@ fn wasm_document_plan_graph_value_edit_reports_snapshot_not_ready_without_snapsh
             language: language.to_owned(),
             path,
             prefer_key: false,
+            raw_replacement: None,
             value: scalar_edit_value("next"),
         })
         .expect("planner should return status");
@@ -624,6 +629,7 @@ fn wasm_document_plan_graph_value_edit_rejects_snapshot_from_another_document() 
         language: "json".to_owned(),
         path: vec![key_seg("name")],
         prefer_key: false,
+        raw_replacement: None,
         value: scalar_edit_value("next"),
     })
     .expect("planner should return a snapshot read status");
@@ -691,6 +697,7 @@ fn wasm_document_plan_graph_value_edit_reports_invalid_path_for_missing_node() {
             language: case.language.to_owned(),
             path: case.path,
             prefer_key: false,
+            raw_replacement: None,
             value: scalar_edit_value("new"),
         })
         .expect("planner should execute");
@@ -1055,6 +1062,7 @@ fn wasm_document_plan_then_apply_nested_value_edit_extends_non_streaming_languag
             language: case.language.to_owned(),
             path: case.path,
             prefer_key: false,
+            raw_replacement: None,
             value: scalar_edit_value(case.next_value),
         })
         .expect("planner should execute");
@@ -1151,6 +1159,7 @@ fn wasm_document_plan_then_apply_key_edit_covers_nested_and_quoted_supported_cas
             language: case.language.to_owned(),
             path: case.path,
             prefer_key: true,
+            raw_replacement: None,
             value: scalar_edit_value(case.next_key),
         })
         .expect("planner should execute");
@@ -1234,6 +1243,7 @@ fn wasm_document_plan_graph_value_edit_falls_back_for_subtree_targets() {
             language: case.language.to_owned(),
             path: case.path,
             prefer_key: false,
+            raw_replacement: None,
             value: edit_tree_from_plain(case.next_value),
         })
         .expect("planner should execute");
@@ -1300,6 +1310,7 @@ fn wasm_document_plan_then_apply_json_subtree_edits_match_web_replace_flow() {
             language: "json".to_owned(),
             path: case.path,
             prefer_key: false,
+            raw_replacement: None,
             value: edit_tree_from_plain(case.next_value),
         })
         .expect("planner should execute");
@@ -1318,6 +1329,38 @@ fn wasm_document_plan_then_apply_json_subtree_edits_match_web_replace_flow() {
         assert!(matches!(close_batch.terminal, Some(JobTerminal::Completed)));
         assert_snapshot_source(case.document_key, case.expected_source);
     }
+}
+
+#[test]
+fn wasm_document_subtree_projection_edit_preserves_raw_formatting() {
+    let _guard = lock_test_mutex();
+    reset_test_state();
+    let document_key = "json-subtree-source-projection";
+    let source = "{\n  \"object\": {\n    \"int\": 42,\n    \"bool\": true\n  }\n}";
+    let replacement = "{\n    \"int\": 43,\n    \"bool\": true\n  }";
+    let expected = source.replace("{\n    \"int\": 42,\n    \"bool\": true\n  }", replacement);
+    let (base_snapshot_id, _) = analyze_document_via_job(document_key, "json", &[source]);
+
+    let planned = plan_graph_value_edit_impl(GraphValueEditRequest {
+        document_key: document_key.to_owned(),
+        snapshot_id: base_snapshot_id,
+        language: "json".to_owned(),
+        path: vec![key_seg("object")],
+        prefer_key: false,
+        raw_replacement: Some(replacement.to_owned()),
+        value: edit_tree_from_plain(json!({"int": 43, "bool": true})),
+    })
+    .expect("planner should execute");
+    let plan = match planned {
+        SnapshotReadResult::Ready { data } => data,
+        SnapshotReadResult::SnapshotNotReady => panic!("snapshot should be ready"),
+    };
+    assert_eq!(plan.mode, GraphValueEditPlanMode::Edits);
+
+    let started = start_apply_job(document_key, "json", base_snapshot_id, plan.edits);
+    let close_batch = close(started.job_handle);
+    assert!(matches!(close_batch.terminal, Some(JobTerminal::Completed)));
+    assert_snapshot_source(document_key, &expected);
 }
 
 #[test]
@@ -1386,6 +1429,7 @@ fn wasm_document_plan_then_apply_unicode_value_edits_match_web_round_trip() {
             language: case.language.to_owned(),
             path: case.path,
             prefer_key: false,
+            raw_replacement: None,
             value: scalar_edit_value(case.next_value),
         })
         .expect("planner should execute");
@@ -1482,6 +1526,7 @@ fn wasm_document_plan_then_apply_unicode_key_edits_match_supported_round_trip() 
             language: case.language.to_owned(),
             path: case.path,
             prefer_key: true,
+            raw_replacement: None,
             value: scalar_edit_value(case.next_key),
         })
         .expect("planner should execute");
@@ -2129,6 +2174,7 @@ fn wasm_document_plan_graph_key_edit_reports_snapshot_not_ready_without_snapshot
             language: language.to_owned(),
             path,
             prefer_key: true,
+            raw_replacement: None,
             value: scalar_edit_value("renamedKey"),
         })
         .expect("planner should return status");
@@ -2200,6 +2246,7 @@ fn wasm_document_plan_graph_key_edit_reports_invalid_path_for_missing_node() {
             language: case.language.to_owned(),
             path: case.path,
             prefer_key: true,
+            raw_replacement: None,
             value: scalar_edit_value("renamedKey"),
         })
         .expect("planner should execute");
@@ -2294,6 +2341,7 @@ fn wasm_document_plan_then_apply_table_row_key_edit_matches_supported_round_trip
             language: case.language.to_owned(),
             path: case.path,
             prefer_key: true,
+            raw_replacement: None,
             value: scalar_edit_value(case.next_key),
         })
         .expect("planner should execute");
@@ -2389,6 +2437,7 @@ fn wasm_document_plan_then_apply_escaped_value_edits_match_round_trip() {
             language: case.language.to_owned(),
             path: case.path,
             prefer_key: false,
+            raw_replacement: None,
             value: scalar_edit_value(case.next_value),
         })
         .expect("planner should execute");
@@ -2468,6 +2517,7 @@ fn wasm_document_plan_then_apply_multiline_value_edits_match_round_trip() {
             language: case.language.to_owned(),
             path: case.path,
             prefer_key: false,
+            raw_replacement: None,
             value: scalar_edit_value(case.next_value),
         })
         .expect("planner should execute");
@@ -2511,6 +2561,7 @@ fn wasm_document_plan_yaml_anchor_and_alias_cases_cover_round_trip_and_fallback(
         language: "yaml".to_owned(),
         path: vec![key_seg("First occurrence")],
         prefer_key: false,
+        raw_replacement: None,
         value: scalar_edit_value("Bar"),
     })
     .expect("planner should execute");
@@ -2542,6 +2593,7 @@ fn wasm_document_plan_yaml_anchor_and_alias_cases_cover_round_trip_and_fallback(
         language: "yaml".to_owned(),
         path: vec![key_seg("Second occurrence")],
         prefer_key: false,
+        raw_replacement: None,
         value: scalar_edit_value("Baz"),
     })
     .expect("planner should execute");
@@ -2566,6 +2618,7 @@ fn wasm_document_plan_yaml_anchor_and_alias_cases_cover_round_trip_and_fallback(
         language: "yaml".to_owned(),
         path: vec![key_seg("c")],
         prefer_key: false,
+        raw_replacement: None,
         value: scalar_edit_value("done"),
     })
     .expect("planner should execute");
@@ -2595,6 +2648,7 @@ fn wasm_document_plan_yaml_anchor_and_alias_cases_cover_round_trip_and_fallback(
         language: "yaml".to_owned(),
         path: vec![index_seg(1)],
         prefer_key: false,
+        raw_replacement: None,
         value: scalar_edit_value("beta"),
     })
     .expect("planner should execute");
@@ -2629,6 +2683,7 @@ fn wasm_document_plan_yaml_anchor_and_alias_cases_cover_round_trip_and_fallback(
         language: "yaml".to_owned(),
         path: vec![index_seg(3)],
         prefer_key: false,
+        raw_replacement: None,
         value: scalar_edit_value("echo"),
     })
     .expect("planner should execute");
@@ -2673,6 +2728,7 @@ fn wasm_document_plan_toml_rare_structure_cases_cover_array_table_and_inline_tab
             key_seg("d"),
         ],
         prefer_key: false,
+        raw_replacement: None,
         value: scalar_edit_value("done"),
     })
     .expect("planner should execute");
@@ -2707,6 +2763,7 @@ fn wasm_document_plan_toml_rare_structure_cases_cover_array_table_and_inline_tab
         language: "toml".to_owned(),
         path: vec![key_seg("~  ÿ ퟿ \u{e000} \u{ffff} 𐀀 􏿿")],
         prefer_key: false,
+        raw_replacement: None,
         value: scalar_edit_value("updated basic key"),
     })
     .expect("planner should execute");
@@ -2735,6 +2792,7 @@ fn wasm_document_plan_toml_rare_structure_cases_cover_array_table_and_inline_tab
         language: "toml".to_owned(),
         path: vec![key_seg("tbl_tbl_val"), key_seg("tbl_1"), key_seg("one")],
         prefer_key: false,
+        raw_replacement: None,
         value: scalar_edit_value("2"),
     })
     .expect("planner should execute");
@@ -2766,6 +2824,7 @@ fn wasm_document_plan_toml_rare_structure_cases_cover_array_table_and_inline_tab
         language: "toml".to_owned(),
         path: vec![key_seg("plain_table"), key_seg("with.dot")],
         prefer_key: false,
+        raw_replacement: None,
         value: scalar_edit_value("40"),
     })
     .expect("planner should execute");
@@ -2807,6 +2866,7 @@ fn wasm_document_plan_toml_rare_structure_cases_cover_array_table_and_inline_tab
             key_seg("size"),
         ],
         prefer_key: false,
+        raw_replacement: None,
         value: scalar_edit_value("3"),
     })
     .expect("planner should execute");
@@ -2838,6 +2898,7 @@ fn wasm_document_plan_toml_rare_structure_cases_cover_array_table_and_inline_tab
         language: "toml".to_owned(),
         path: vec![key_seg("\"quoted\""), key_seg("quote")],
         prefer_key: false,
+        raw_replacement: None,
         value: scalar_edit_value("false"),
     })
     .expect("planner should execute");

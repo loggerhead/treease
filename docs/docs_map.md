@@ -248,11 +248,11 @@ Do not edit it by hand; run `pnpm docs:map:gen`.
 
 - Route: /contracts/subgraph-workspace
 - Headings:
-  - H1: Subgraph Workspace Contract
+  - H1: Column Navigator Contract
   - H2: Core Entities
-  - H3: Workspace Chain
-  - H3: Workspace Pane
-  - H3: Graph Pane
+  - H3: Active Path
+  - H3: Workspace Surface
+  - H3: Column
   - H3: Content Pane
   - H3: Workspace Projection
   - H3: Local Draft
@@ -260,14 +260,14 @@ Do not edit it by hand; run `pnpm docs:map:gen`.
   - H2: Core Entity Relationships
   - H2: Subgraph Workspace Constraints
   - H3: Subdomain role
-  - H3: Pane constraints
+  - H3: Column constraints
   - H3: Graph / content routing constraints
   - H3: Projection constraints
   - H3: Editing constraints
   - H3: Lifecycle constraints
   - H2: Data Flow
   - H3: 1. Main-graph click opens the workspace
-  - H3: 2. Drill down in a graph pane
+  - H3: 2. Drill down in a column
   - H3: 3. Edit in a content pane
   - H3: 4. External main-document refresh affects the workspace
   - H3: 5. Consecutive commits on the same path
@@ -358,60 +358,25 @@ Do not edit it by hand; run `pnpm docs:map:gen`.
   - H2: Risk Markers
   - H2: Remaining Boundaries
 
-## primary-document-commit-transaction-plan.md
+## json-hero.md
 
-- Route: /primary-document-commit-transaction-plan
+- Route: /json-hero
 - Headings:
-  - H1: 主文档单一 Commit Transaction 技术方案
-  - H2: 1. 决策摘要
-  - H2: 2. 回归 case 说明
-  - H2: 3. 范围与非目标
-  - H3: 3.1 范围
-  - H3: 3.2 非目标
-  - H2: 4. 现状中需要删除的多权威
-  - H2: 5. 职责与依赖方向
-  - H2: 6. 核心数据模型
-  - H3: 6.1 Editor Write Receipt
-  - H3: 6.2 Terminal Baseline
-  - H3: 6.3 Commit Transaction
-  - H3: 6.4 Terminal Outcome Binding
-  - H2: 7. Commit Transaction 串行状态机
-  - H3: 7.1 为什么增量输入关闭 close-time format
-  - H3: 7.2 Pending delta 的增量合并
-  - H2: 8. 各入口的数据流
-  - H3: 8.1 Editor 连续输入
-  - H3: 8.2 Graph / Subgraph Graph Pane
-  - H3: 8.3 Planner replace
-  - H3: 8.4 Whole replace / import
-  - H3: 8.5 Subgraph Content Pane Pending Commit
-  - H2: 9. Terminal Outcome 到 View Runtime
-  - H3: 9.1 Workspace landing 顺序
-  - H3: 9.2 主图
-  - H3: 9.3 Subgraph Workspace
-  - H2: 10. Freshness、冲突与错误
-  - H3: 10.1 三层校验
-  - H3: 10.2 Terminal 状态
-  - H2: 11. 性能预算
-  - H3: 11.1 单值 Editor / Graph 编辑
-  - H3: 11.2 连续输入
-  - H3: 11.3 Whole replace / import
-  - H2: 12. 模块改造
-  - H3: 12.1 Commit Transaction
-  - H3: 12.2 EditorCore
-  - H3: 12.3 Graph edit
-  - H3: 12.4 Subgraph Workspace
-  - H3: 12.5 Graph rendering
-  - H2: 13. 迁移顺序
-  - H3: Phase 1：先建立可观测的单一 outcome
-  - H3: Phase 2：删除 Graph 第二个 job
-  - H3: Phase 3：统一 Editor 写入和 transaction lane
-  - H3: Phase 4：结构化 intent 与 Pending Commit
-  - H3: Phase 5：删除旧抽象和兼容分支
-  - H2: 14. 验收与证明
-  - H3: 14.1 必过 E2E
-  - H3: 14.2 单元测试
-  - H3: 14.3 性能回归
-  - H2: 15. 完成定义
+  - H1: Column Navigator
+  - H2: Goal
+  - H2: Scope
+  - H2: Core Model: Path-driven Columns
+  - H3: Navigation rules
+  - H2: Default Expansion
+  - H2: Leaf Nodes and Right-side Detail Editor
+  - H2: Scrolling and Layout
+  - H2: Interaction Rules
+  - H3: Keyboard focus boundary
+  - H2: Treease Integration
+  - H2: State Requirements
+  - H2: Acceptance Criteria
+  - H2: Implementation Notes
+  - H2: Verification
 
 ## references/supported-syntax-and-operators.md
 
@@ -463,8 +428,8 @@ Do not edit it by hand; run `pnpm docs:map:gen`.
   - H3: US-03 Organize Text in the Editor
   - H3: US-04 Locate Fields in the Graph and Tree Path
   - H3: US-05 Preview Values by Hovering in the Editor
-  - H3: US-06 Click the Graph to Open a Local Workspace
-  - H3: US-07 Open Nested Subgraph Workspaces in the Graph
+  - H3: US-06 Open the Column Navigator from the Graph
+  - H3: US-07 Navigate Nested Paths in the Column Navigator
   - H3: US-08 Synchronize Changes Between the Graph and Editor
   - H3: US-09 Export to a Target Format
   - H3: US-10 Compare Two Pieces of Content

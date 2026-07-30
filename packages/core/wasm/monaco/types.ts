@@ -31,6 +31,8 @@ export type JsonBlockSpan = {
 
 export type ParseOptions = {
   nest?: boolean;
+  /** Reject non-literal editor text instead of coercing it to a string. */
+  strictSourceLiteral?: boolean;
 };
 
 export type BuilderConfig = {
@@ -174,7 +176,6 @@ export type FormatOptions = {
   nest?: boolean;
   sortKeys?: boolean;
 };
-
 
 
 

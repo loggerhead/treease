@@ -29,7 +29,6 @@
   import { createEditorFullEditController } from './editor-full-edit-controller';
   import { createWorkspaceTabFullEditSink } from './editor-full-edit-sink';
   import { commitEditorTabTextChange } from './editor-tab-edit-commit';
-  import { buildRootScalarSemanticTokens } from './root-scalar-highlight';
   import { createSidecarExternalSync } from './sidecar-external-sync';
   import { createTreeaseMonacoEditorOptions } from './editor-options';
 
@@ -37,12 +36,15 @@
   export let tabName = 'Right Editor';
   export let language: SupportedEditorLanguageId = editorLanguageFallback;
   export let sourceText: string | null = null;
-  /** Exact Core SemType projection for this pane's root scalar. */
-  export let rootSemType: number | null = null;
+  /** Exact semantic-token slice projected from the primary snapshot. */
+  export let projectedSemanticTokens: ArrayBuffer | null = null;
   export let runtimeHookId = 'right-editor';
   export let containerTestId = 'right-text-editor-container';
   export let attachToPane = true;
   export let destroyOnUnmount = false;
+  export let lineNumbersMinChars: number | undefined = undefined;
+  export let compactGutter = false;
+  export let hideLineNumbers = false;
   export let onScroll: (payload: { scrollTop: number; scrollLeft: number }) => void = () => {};
   export let onContentChange: (text: string) => void = () => {};
   export let onEditorBlur: (text: string) => void = () => {};
@@ -83,13 +85,12 @@
   let primeSemanticTokensForDocument: (documentKey: string, semanticTokens: ArrayBuffer) => void = () => {};
   let refreshSemanticTokensForLanguage: (languageId?: string) => void = () => {};
   let clearSemanticTokensForDocument: (documentKey?: string) => void = () => {};
-  let semanticTokenTypes: readonly string[] = [];
   let lastAppliedThemeSignature = '';
   let detachedDraftText = sourceText ?? '';
   let detachedDraftRevision = 0;
   $: sidecarTab = $editorWorkspace.tabsById[tabId] ?? null;
-  $: if (model && rootSemType != null) {
-    primeProjectedRootSemanticTokens();
+  $: if (model && projectedSemanticTokens) {
+    primeProjectedSemanticTokens();
   }
   $: if (monaco) {
     const signature = buildEditorThemeSignature($settings);
@@ -115,7 +116,7 @@
     setActiveTabDocumentKey: (documentKey) => setModelDocumentKey(model, documentKey),
     clearSemanticTokensForDocument: (documentKey) => clearSemanticTokensForDocument(documentKey),
     primeInitialSemanticTokens: (documentKey) => {
-      primeProjectedRootSemanticTokens(documentKey);
+      primeProjectedSemanticTokens(documentKey);
     },
     setEditorValue,
     setEditorValueForFullEdit: setEditorValue,
@@ -147,16 +148,10 @@
     (target as Monaco.editor.ITextModel & { __treeaseDocumentKey?: string }).__treeaseDocumentKey = documentKey;
   }
 
-  function primeProjectedRootSemanticTokens(documentKey: string | undefined = undefined): void {
-    if (!model || rootSemType == null) return;
-    const tokens = buildRootScalarSemanticTokens(model.getValue(), rootSemType, semanticTokenTypes);
-    if (!tokens) return;
-    if (isPrimaryDocumentDraft()) {
-      (model as Monaco.editor.ITextModel & { __treeaseRootSemanticTokenType?: number }).__treeaseRootSemanticTokenType =
-        new Uint32Array(tokens)[3];
-    }
+  function primeProjectedSemanticTokens(documentKey: string | undefined = undefined): void {
+    if (!model || !projectedSemanticTokens) return;
     const modelDocumentKey = (model as Monaco.editor.ITextModel & { __treeaseDocumentKey?: string }).__treeaseDocumentKey;
-    primeSemanticTokensForDocument(documentKey ?? modelDocumentKey ?? sidecarDocumentKey(), tokens);
+    primeSemanticTokensForDocument(documentKey ?? modelDocumentKey ?? sidecarDocumentKey(), projectedSemanticTokens);
   }
 
   function syncLastModelSnapshot(): string {
@@ -221,7 +216,6 @@
   ): Promise<void> {
     if (requestModel !== model) return;
     setModelDocumentKey(requestModel, requestDocumentKey);
-    primeProjectedRootSemanticTokens();
     ensureSemanticTokensProvider(requestLanguage);
     const token = ++sidecarAnalysisSyncToken;
     const freshness = createFreshnessScope(
@@ -257,7 +251,7 @@
       refreshSemanticTokensForLanguage,
     });
     if (!freshness.isCurrent()) return;
-    primeProjectedRootSemanticTokens();
+    primeProjectedSemanticTokens();
   }
 
   function updateSidecarSourceText(
@@ -405,7 +399,6 @@
     primeSemanticTokensForDocument = runtime.primeSemanticTokens;
     refreshSemanticTokensForLanguage = runtime.refreshSemanticTokens;
     clearSemanticTokensForDocument = runtime.clearSemanticTokens;
-    semanticTokenTypes = runtime.semanticTokenTypes;
     ensureSemanticTokensProvider(activeLanguage);
     ensureDocumentColorProvider(activeLanguage);
 
@@ -415,10 +408,15 @@
     model = monaco.editor.createModel(isPrimaryDocumentDraft() ? existingText : tab?.sourceText ?? '', activeLanguage, uri);
     syncLastModelSnapshot();
     setModelDocumentKey(model, tab?.documentKey ?? sidecarDocumentKey());
-    primeProjectedRootSemanticTokens();
+    primeProjectedSemanticTokens();
     editor = monaco.editor.create(container, {
       model,
       ...editorOptions,
+      ...(lineNumbersMinChars == null ? {} : { lineNumbersMinChars }),
+      ...(hideLineNumbers ? { lineNumbers: 'off' as const } : {}),
+      ...(compactGutter
+        ? { glyphMargin: false, folding: false, lineDecorationsWidth: 0, padding: { top: 0, bottom: 0 } }
+        : {}),
     });
     cleanupTestHook = attachMonacoTestHook(editor, runtimeHookId, monaco.editor.tokenize);
     editor.onDidChangeModelContent((event) => {
@@ -451,7 +449,6 @@
       if (wholeDocumentReplacement) {
         updateSidecarSourceText(nextText, { clearSnapshot: true });
         if (isPrimaryDocumentDraft()) {
-          primeProjectedRootSemanticTokens();
           refreshSemanticTokensForLanguage(activeLanguage);
         }
         if (!isPrimaryDocumentDraft()) {
@@ -464,7 +461,6 @@
       }
       updateSidecarSourceText(nextText, { clearSnapshot: false });
       if (isPrimaryDocumentDraft()) {
-        primeProjectedRootSemanticTokens();
         refreshSemanticTokensForLanguage(activeLanguage);
       }
       const isFlush = (event as unknown as { isFlush?: boolean }).isFlush ?? false;

@@ -1,8 +1,7 @@
 import type { GraphHighlightTarget } from '../../../store/graph-selection-store';
 import type { PathSeg } from '../../../store/tree-path';
-import { getClientProbeCoordFromBoxLike, getClientRectFromBoxLike, getWorldRectFromBoxLike } from '../rendering';
 import type { GraphRuntimeProbeTarget } from './index';
-import type { LeaferAppLike, LeaferBox, GraphViewerClickTarget } from '../model';
+import type { LeaferBox, GraphViewerClickTarget } from '../model';
 import type { GraphCell, GraphCellKind, GraphNode } from '@treease/graph-viewer-runtime';
 
 type ProbeController = {
@@ -32,15 +31,7 @@ type ProbeController = {
 
 type ProbeActionDeps = {
   getController: () => ProbeController | null | undefined;
-  getVisiblePanes: () => Array<{ pathKey: string; path: PathSeg[] }>;
-  getWorkspaceRuntime: (pathKey: string) => {
-    app: LeaferAppLike | null;
-    clickTargetsById?: Record<string, GraphViewerClickTarget>;
-  } | null;
-  getWorkspaceRect: () => DOMRect | null;
-  rebaseWorkspacePath: (basePath: PathSeg[], path: PathSeg[]) => PathSeg[];
-  resolveCellText: (entry: GraphViewerClickTarget) => string;
-  getLanguageId: () => string;
+  getWorkspaceRoot: () => HTMLElement | null;
 };
 
 export function createGraphRuntimeProbeActions(deps: ProbeActionDeps) {
@@ -66,41 +57,55 @@ export function createGraphRuntimeProbeActions(deps: ProbeActionDeps) {
     getRuntimeProbeTargets: (scope: 'root' = 'root') =>
       controller()?.getRuntimeProbeTargets(scope) ?? [],
     getSubgraphWorkspaceProbeTargets: (): GraphRuntimeProbeTarget[] => {
-      const workspaceRect = deps.getWorkspaceRect();
-      if (!workspaceRect) return [];
-      return deps.getVisiblePanes().flatMap((pane) => {
-        const runtime = deps.getWorkspaceRuntime(pane.pathKey);
-        if (!runtime) return [];
-        const app = runtime.app as LeaferAppLike | null;
-        return Object.values(runtime.clickTargetsById ?? {}).map((entry) => {
-          const path = deps.rebaseWorkspacePath(pane.path, entry.cell?.path ?? []);
-          const point = getClientProbeCoordFromBoxLike(entry.box, app);
-          return {
-            scope: 'workspace',
-            id: entry.id,
-            target: entry.target,
-            nodeType: String((entry.box as { tag?: string }).tag ?? ''),
-            coord:
-              point && workspaceRect
-                ? {
-                    x: Math.round(point.x - workspaceRect.left),
-                    y: Math.round(point.y - workspaceRect.top),
-                  }
-                : null,
-            rect: getClientRectFromBoxLike(entry.box, app),
-            worldRect: getWorldRectFromBoxLike(entry.box),
-            textColor: typeof (entry.box as { fill?: unknown }).fill === 'string' ? (entry.box as { fill: string }).fill : null,
-            cell: entry.cell
-              ? {
-                  text: deps.resolveCellText(entry),
-                  valueType: String(entry.cell.valueType ?? ''),
-                  isTableCell: !!entry.cell.isTableCell,
-                  isHeader: !!entry.cell.isHeader,
-                  path,
-                }
-              : null,
-          };
-        });
+      const workspace = deps.getWorkspaceRoot();
+      if (!workspace) return [];
+      const workspaceRect = workspace.getBoundingClientRect();
+      return [...workspace.querySelectorAll<HTMLElement>('[data-subgraph-item-path]')].map((element) => {
+        const rect = element.getBoundingClientRect();
+        const valueType = element.dataset.subgraphItemValueType ?? '';
+        const rawPreview = element.dataset.subgraphItemPreview ?? '';
+        let preview = rawPreview;
+        if (valueType === 'string') {
+          try {
+            const parsed = JSON.parse(rawPreview);
+            if (typeof parsed === 'string') preview = parsed;
+          } catch {
+            preview = rawPreview;
+          }
+        }
+        let path: PathSeg[] = [];
+        try {
+          path = JSON.parse(element.dataset.subgraphItemPath ?? '[]') as PathSeg[];
+        } catch {
+          path = [];
+        }
+        return {
+          scope: 'workspace',
+          id: element.dataset.subgraphItemPathKey ?? '',
+          target: 'value',
+          nodeType: element.tagName,
+          coord: {
+            x: Math.round(rect.left + rect.width / 2 - workspaceRect.left),
+            y: Math.round(rect.top + rect.height / 2 - workspaceRect.top),
+          },
+          rect: {
+            x: rect.x,
+            y: rect.y,
+            left: rect.left,
+            top: rect.top,
+            width: rect.width,
+            height: rect.height,
+          },
+          worldRect: null,
+          textColor: getComputedStyle(element).color,
+          cell: {
+            text: preview,
+            valueType,
+            isTableCell: element.dataset.subgraphItemIndex === 'true',
+            isHeader: false,
+            path,
+          },
+        };
       });
     },
     getRuntimeHighlightTarget: () => controller()?.getRuntimeHighlightTarget() ?? null,

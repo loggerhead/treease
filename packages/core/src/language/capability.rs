@@ -305,6 +305,7 @@ mod tests {
                     index: 0,
                 }],
                 prefer_key: false,
+                raw_replacement: None,
                 value: serde_json::json!(2),
             };
             let plan = adapter

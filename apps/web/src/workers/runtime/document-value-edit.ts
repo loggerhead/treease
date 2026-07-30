@@ -52,6 +52,7 @@ export async function handleParseValueForPath(
     message.preferKey,
     {
       nest: message.nest,
+      strictSourceLiteral: message.strictSourceLiteral,
     },
   );
 }
@@ -91,6 +92,7 @@ export async function handlePlanGraphValueEdit(
       path: normalizedPath,
       preferKey: message.preferKey,
       value: plainValue,
+      rawReplacement: message.rawReplacement,
     });
     if (planned.status === 'ready' && planned.data.mode === 'edits' && planned.data.edits.length > 0) {
       return {

@@ -1,30 +1,21 @@
-import { tick } from 'svelte';
 import { serializePath } from '../../../shared/document-anchor-utils';
 import { callSharedWasmWorker } from '../../wasm/wasm-worker-singleton';
 import type { DocumentProjectionDelta, SnapshotId, SnapshotReadResult } from '@core-wasm/index';
 import type { GraphViewerConfig } from '../../settings/ui-settings';
 import type { SupportedEditorLanguageId } from '../../monaco/language-support';
-import { buildReadablePath, isPathSegKey, pathSegKeyValue, type PathSeg } from '../../store/tree-path';
-import type { DrawContext, GraphCell, GraphCellKind, GraphEdge, GraphNode } from '@treease/graph-viewer-runtime';
-import { renderGraphEdges, renderGraphNode } from '@treease/graph-viewer-runtime';
 import {
-  GRAPH_PAN_CONSTRAINT_PADDING,
-  clampPanOffsetToGraphBounds,
-  getZoomScale,
-  type GraphWorldBounds,
-} from '@treease/graph-viewer-runtime';
-import type {
-  LeaferAppLike,
-  LeaferBox,
-  LeaferEditor,
-  LeaferEditorHost,
-  LeaferText,
-  SubgraphWorkspaceRuntime,
-} from './model';
-import { createCellEntryBindings } from './graph-anchor-index';
+  buildReadablePath,
+  isPathSegIndex,
+  isPathSegKey,
+  pathSegKeyValue,
+  type PathSeg,
+} from '../../store/tree-path';
+import type { GraphCell, GraphEdge, GraphNode, ValueType } from '@treease/graph-viewer-runtime';
 import type { SubgraphWorkspaceGraphData } from './graph-subgraph-workspace-types';
 import { isRawGraphDelta } from '../../../shared/worker-protocol/graph-delta-normalize';
 import { normalizeGraphDelta } from '../../../shared/worker-protocol/graph-stream-event-codec';
+import { buildPathKey } from '../../graph/graph-viewer-path';
+import type { SubgraphWorkspaceColumnItem } from './workspace/types';
 
 type GraphCacheEntry = {
   signature: string;
@@ -41,41 +32,6 @@ type GraphCacheDeps = {
   getEnableNest: () => boolean;
   getRenderConfig: () => GraphViewerConfig;
   inferGraphPaths: (nodes: GraphNode[], edges: GraphEdge[]) => void;
-};
-
-type WorkspaceRuntimeDeps = {
-  getConstructors: () => {
-    LeaferCtor?: new (...args: any[]) => LeaferAppLike;
-    PlainLeaferCtor?: new (...args: any[]) => LeaferAppLike;
-    BoxCtor?: new (...args: any[]) => LeaferBox;
-    TextCtor?: new (...args: any[]) => LeaferText;
-    PenCtor?: new () => {
-      setStyle: (style: Record<string, unknown>) => void;
-      moveTo: (x: number, y: number) => void;
-      bezierCurveTo: (c1x: number, c1y: number, c2x: number, c2y: number, toX: number, toY: number) => void;
-    };
-  };
-  getRenderConfig: () => GraphViewerConfig;
-  getLanguageId: () => SupportedEditorLanguageId;
-  /** @deprecated Workspace rendering reads GraphCell.semType. */
-  getValueTypeToSemType?: () => Record<string, string>;
-  isReadonly?: () => boolean;
-  bindGraphEditorLifecycle: (editor: LeaferEditor | null) => void;
-  bindPointerClick: (target: LeaferBox, handler: (event: unknown) => void | Promise<void>) => void;
-  getMoveEventName?: () => string | undefined;
-  bindVerticalScrollGesture?: (
-    target: LeaferBox,
-    handler: (gesture: { event: unknown; deltaY: number; moveType?: string; stop: () => void; stopNow: () => void }) => void,
-  ) => (() => void) | void;
-  bindPointerDown?: (target: LeaferBox, handler: (event: unknown) => void | Promise<void>) => (() => void) | void;
-  getPointFromEvent?: (
-    hostApp: LeaferAppLike | null,
-    target: LeaferBox,
-    event: unknown,
-    space: 'client' | 'box' | 'local' | 'world',
-  ) => { x: number; y: number } | null;
-  resolveInteractiveCellPath: (cell: GraphCell, fallbackPath: PathSeg[]) => Promise<PathSeg[]>;
-  onActivateCell: (payload: { path: PathSeg[]; target: 'key' | 'value' | 'node'; cell: GraphCell }) => void | Promise<void>;
 };
 
 const graphCacheLimit = 24;
@@ -112,9 +68,95 @@ export function shouldOpenSubgraphWorkspaceContent(value: {
   return value.displayText === '{}' || value.displayText === '[]';
 }
 
-function buildWorkspacePathKey(path: PathSeg[]): string {
+export function buildWorkspacePathKey(path: PathSeg[]): string {
   if (!path.length) return '';
   return path.map((segment) => (isPathSegKey(segment) ? `k:${pathSegKeyValue(segment)}` : `i:${segment.index}`)).join('|');
+}
+
+function pathsEqual(left: PathSeg[], right: PathSeg[]): boolean {
+  return buildWorkspacePathKey(left) === buildWorkspacePathKey(right);
+}
+
+function itemLabel(path: PathSeg[]): string {
+  const segment = path.at(-1);
+  if (!segment) return '$';
+  return isPathSegIndex(segment) ? `${segment.index}` : pathSegKeyValue(segment);
+}
+
+function itemPreview(cell: GraphCell, childCount: number): string {
+  // Derive container cardinality from the projected child paths. Core's
+  // display text may be the key (`object`/`preview`) rather than a count.
+  if (cell.valueType === 'object' || cell.valueType === 'array') {
+    const prefix = cell.valueType === 'array' ? '[' : '{';
+    const suffix = cell.valueType === 'array' ? ']' : '}';
+    return childCount === 0 ? `${prefix}${suffix}` : `${prefix}${childCount}${suffix}`;
+  }
+  if (cell.valueType === 'null') return 'null';
+  return cell.value ?? cell.text ?? '';
+}
+
+function collectGraphCells(graph: SubgraphWorkspaceGraphData): GraphCell[] {
+  const cells: GraphCell[] = [];
+  for (const node of graph.nodes) {
+    if (node.meta) cells.push(node.meta);
+    const rows = node.kind === 'table' ? (node.table?.rows ?? []) : node.rows;
+    for (const row of rows) cells.push(...row.cells);
+  }
+  return cells;
+}
+
+/**
+ * A column is a snapshot projection flattened to exactly one path level.
+ * Rebase first because Core may return either projection-relative or absolute cell paths.
+ */
+export function buildSubgraphWorkspaceColumnItems(
+  graph: SubgraphWorkspaceGraphData,
+  containerPath: PathSeg[],
+): SubgraphWorkspaceColumnItem[] {
+  const byPath = new Map<string, SubgraphWorkspaceColumnItem>();
+  const cells = collectGraphCells(graph);
+  const directChildCounts = new Map<string, Set<string>>();
+  for (const cell of cells) {
+    const absolutePath = rebaseSubgraphWorkspacePath(containerPath, cell.path ?? []);
+    if (absolutePath.length <= containerPath.length + 1) continue;
+    const parentPath = absolutePath.slice(0, -1);
+    const parentKey = buildWorkspacePathKey(parentPath);
+    const childKey = buildWorkspacePathKey(absolutePath);
+    const children = directChildCounts.get(parentKey) ?? new Set<string>();
+    children.add(childKey);
+    directChildCounts.set(parentKey, children);
+  }
+  for (const cell of cells) {
+    if (cell.isMissing) continue;
+    const absolutePath = rebaseSubgraphWorkspacePath(containerPath, cell.path ?? []);
+    if (absolutePath.length !== containerPath.length + 1) continue;
+    if (!pathsEqual(absolutePath.slice(0, containerPath.length), containerPath)) continue;
+    const pathKey = buildPathKey(absolutePath);
+    if (!pathKey) continue;
+    const next: SubgraphWorkspaceColumnItem = {
+      path: absolutePath,
+      pathKey,
+      label: itemLabel(absolutePath),
+      preview: itemPreview(cell, directChildCounts.get(pathKey)?.size ?? 0),
+      valueType: cell.valueType as ValueType,
+      semType: cell.semType ?? null,
+      isContainer:
+        (cell.valueType === 'object' || cell.valueType === 'array') && (directChildCounts.get(pathKey)?.size ?? 0) > 0,
+    };
+    const current = byPath.get(pathKey);
+    const hasBetterValuePreview =
+      current != null &&
+      current.preview === current.label &&
+      next.preview !== next.label;
+    const hasSemanticValue =
+      current != null &&
+      current.semType == null &&
+      next.semType != null;
+    if (!current || next.isContainer || hasBetterValuePreview || hasSemanticValue || (!current.preview && next.preview)) {
+      byPath.set(pathKey, next);
+    }
+  }
+  return [...byPath.values()];
 }
 
 export function buildSubgraphWorkspaceRenderSignature(renderConfig: GraphViewerConfig): string {
@@ -287,256 +329,4 @@ export function createSubgraphWorkspaceGraphCache(deps: GraphCacheDeps) {
     },
     prepareGraph,
   };
-}
-
-function createWorkspaceApp(view: HTMLDivElement, deps: WorkspaceRuntimeDeps): LeaferAppLike {
-  const { LeaferCtor, PlainLeaferCtor } = deps.getConstructors();
-  const AppCtor = LeaferCtor ?? PlainLeaferCtor;
-  return new AppCtor!({
-    view,
-    type: 'viewport',
-    editor: {
-      visible: true,
-      hittable: true,
-      hover: false,
-      moveable: false,
-      resizeable: false,
-      rotateable: false,
-      skewable: false,
-      flipable: false,
-    },
-    move: { drag: false, holdSpaceKey: true, holdRightKey: true, scroll: true },
-    zoom: { disabled: false },
-    wheel: { zoomMode: false },
-    multiTouch: { disabled: false },
-  });
-}
-
-function getLeaferContentRoot(target: LeaferAppLike | null): LeaferBox | null {
-  if (!target) return null;
-  const zoomLayer = target.zoomLayer as LeaferBox | undefined;
-  if (zoomLayer) return zoomLayer;
-  return target as unknown as LeaferBox;
-}
-
-export function destroySubgraphWorkspaceRuntime(runtime: SubgraphWorkspaceRuntime | null | undefined): void {
-  if (!runtime) return;
-  runtime.editor?.closeInnerEditor?.(true);
-  runtime.tableRuntimes.forEach((tableRuntime) => tableRuntime.destroy?.());
-  runtime.tableRuntimes = [];
-  runtime.dispose?.();
-  runtime.app.destroy?.();
-  runtime.mount.replaceChildren();
-}
-
-function buildWorkspacePanConstraintBounds(graph: SubgraphWorkspaceGraphData): GraphWorldBounds {
-  return {
-    left: graph.minX,
-    top: graph.minY,
-    right: graph.minX + graph.width,
-    bottom: graph.minY + graph.height,
-  };
-}
-
-function clampWorkspaceViewportPan(app: LeaferAppLike, mount: HTMLDivElement, graph: SubgraphWorkspaceGraphData): void {
-  const layer = app.zoomLayer as LeaferBox | undefined;
-  if (!layer) return;
-  const { scaleX, scaleY } = getZoomScale(layer as never);
-  const clamped = clampPanOffsetToGraphBounds(
-    {
-      viewportWidth: Math.max(1, mount.clientWidth),
-      viewportHeight: Math.max(1, mount.clientHeight),
-      scaleX,
-      scaleY,
-      offsetX: Number(layer.x ?? 0),
-      offsetY: Number(layer.y ?? 0),
-    },
-    buildWorkspacePanConstraintBounds(graph),
-    GRAPH_PAN_CONSTRAINT_PADDING,
-  );
-  layer.x = clamped.x;
-  layer.y = clamped.y;
-}
-
-function resizeWorkspaceViewport(
-  app: LeaferAppLike,
-  mount: HTMLDivElement,
-  graph: SubgraphWorkspaceGraphData,
-  contentWidth: number,
-  contentHeight: number,
-  options?: { resetTransform?: boolean },
-): void {
-  const viewportWidth = Math.max(1, Math.floor(mount.clientWidth));
-  const viewportHeight = Math.max(1, Math.floor(mount.clientHeight));
-  app.resize?.({ width: viewportWidth, height: viewportHeight });
-
-  const rootViewport = getLeaferContentRoot(app) as
-    | (LeaferBox & {
-        x?: number;
-        y?: number;
-        scaleX?: number;
-        scaleY?: number;
-      })
-    | null;
-  if (rootViewport) {
-    if (options?.resetTransform) {
-      rootViewport.scaleX = 1;
-      rootViewport.scaleY = 1;
-      rootViewport.x = contentWidth < viewportWidth ? Math.max(0, (viewportWidth - contentWidth) / 2) : 0;
-      rootViewport.y = contentHeight < viewportHeight ? Math.max(0, (viewportHeight - contentHeight) / 2) : 0;
-      mount.dataset.viewportScale = '1';
-    } else {
-      clampWorkspaceViewportPan(app, mount, graph);
-      if (contentWidth < viewportWidth) {
-        rootViewport.x = Math.max(0, (viewportWidth - contentWidth) / 2);
-      }
-      if (contentHeight < viewportHeight) {
-        rootViewport.y = Math.max(0, (viewportHeight - contentHeight) / 2);
-      }
-    }
-  }
-
-  app.updateClientBounds?.();
-  app.update?.();
-}
-
-export async function renderSubgraphWorkspaceGraph(
-  mount: HTMLDivElement,
-  graph: SubgraphWorkspaceGraphData,
-  deps: WorkspaceRuntimeDeps,
-): Promise<SubgraphWorkspaceRuntime | null> {
-  const { BoxCtor, TextCtor, PenCtor } = deps.getConstructors();
-  if (!BoxCtor || !TextCtor || !PenCtor) return null;
-  const view = document.createElement('div');
-  view.className = 'graph-subgraph-pane-view';
-  view.style.width = '100%';
-  view.style.height = '100%';
-  mount.replaceChildren(view);
-  const app = createWorkspaceApp(view, deps);
-  const root = getLeaferContentRoot(app);
-  if (!root) {
-    app.destroy?.();
-    return null;
-  }
-  const edgeLayer = new BoxCtor({ x: 0, y: 0, width: 0, height: 0, fill: 'transparent' });
-  const nodeLayer = new BoxCtor({ x: 0, y: 0, width: 0, height: 0, fill: 'transparent' });
-  root.add?.(edgeLayer);
-  root.add?.(nodeLayer);
-  const runtime: SubgraphWorkspaceRuntime = {
-    host: mount,
-    mount,
-    view,
-    app,
-    edgeLayer,
-    nodeLayer,
-    pathKey: graph.pathKey,
-    path: graph.path,
-    clickTargetsById: Object.create(null),
-    clickTargetIdByTarget: new WeakMap(),
-    clickBoundTargets: new WeakSet(),
-    cellBoxByPathMap: new Map(),
-    nodeBoxMap: new Map(),
-    tableRuntimes: [],
-    editor: (app as LeaferEditorHost).editor ?? null,
-  };
-  deps.bindGraphEditorLifecycle(runtime.editor);
-  const cellEntryBindings = createCellEntryBindings(runtime.cellBoxByPathMap);
-  let nextClickTargetSeq = 0;
-  const registerWorkspaceProbe = (targetBox: LeaferBox, targetCell: GraphCell, kind: GraphCellKind): string => {
-    const existingId = runtime.clickTargetIdByTarget?.get(targetBox);
-    const id = existingId ?? `${targetBox.tag === 'Text' ? 'text' : 'node'}-${nextClickTargetSeq++}`;
-    runtime.clickTargetIdByTarget?.set(targetBox, id);
-    runtime.clickTargetsById[id] = {
-      id,
-      box: targetBox,
-      cell: targetCell,
-      target: kind === 'key' ? 'key' : kind === 'value' ? 'value' : 'node',
-    };
-    return id;
-  };
-  const bindWorkspaceTarget = (targetBox: LeaferBox, targetCell: GraphCell, kind: GraphCellKind): string => {
-    targetBox.__graphCell = targetCell;
-    targetBox.__graphCellKind = kind;
-    const targetId = registerWorkspaceProbe(targetBox, targetCell, kind);
-    if (runtime.clickBoundTargets?.has(targetBox)) return targetId;
-    runtime.clickBoundTargets?.add(targetBox);
-    deps.bindPointerClick(targetBox, async () => {
-      const cell = targetBox.__graphCell as GraphCell | undefined;
-      const cellKind = (targetBox.__graphCellKind as GraphCellKind | undefined) ?? kind;
-      if (!cell) return;
-      const target = cellKind === 'key' ? 'key' : cellKind === 'value' ? 'value' : 'node';
-      const fallbackPath = cell.path ?? [];
-      const resolvedPath = target === 'node' ? fallbackPath : await deps.resolveInteractiveCellPath(cell, fallbackPath);
-      const path = rebaseSubgraphWorkspacePath(graph.path, resolvedPath);
-      if (!path.length) return;
-      await deps.onActivateCell({ path, target, cell });
-    });
-    return targetId;
-  };
-  const drawContext: DrawContext = {
-    nodeLayer: runtime.nodeLayer,
-    styleConfig: deps.getRenderConfig(),
-    languageIdValue: deps.getLanguageId(),
-    fontSize: deps.getRenderConfig().layout.baseFontSize,
-    BoxCtor,
-    TextCtor,
-    PenCtor,
-    editable: deps.isReadonly?.() ? false : true,
-    registerCellBox: cellEntryBindings.registerCellBox,
-    unregisterCellBox: cellEntryBindings.unregisterCellBox,
-    registerRowBox: cellEntryBindings.registerRowBox,
-    unregisterRowBox: cellEntryBindings.unregisterRowBox,
-    registerClickTarget: (targetBox, targetCell, kind) => bindWorkspaceTarget(targetBox as LeaferBox, targetCell, kind),
-    requestRender: () => runtime.app.update?.(),
-    bindVerticalScrollGesture: deps.bindVerticalScrollGesture,
-    bindPointerDown: deps.bindPointerDown,
-    getPointFromEvent: (hostApp, target, event, space) =>
-      deps.getPointFromEvent?.((hostApp as LeaferAppLike | null) ?? runtime.app, target as LeaferBox, event, space) ?? null,
-  };
-  const padding = 16;
-  const contentWidth = Math.max(1, graph.width + padding * 2);
-  const contentHeight = Math.max(1, graph.height + padding * 2);
-  runtime.edgeLayer.x = padding - graph.minX;
-  runtime.edgeLayer.y = padding - graph.minY;
-  runtime.nodeLayer.x = padding - graph.minX;
-  runtime.nodeLayer.y = padding - graph.minY;
-  graph.nodes.forEach((node) => {
-    const result = renderGraphNode({
-      node,
-      drawContext,
-      showMeta: false,
-      registerMetaClickTarget: (target, targetCell, kind) => {
-        bindWorkspaceTarget(target as LeaferBox, targetCell, kind);
-      },
-    });
-    if (result.nodeBox) runtime.nodeBoxMap.set(node.renderHandle, result.nodeBox);
-    if (result.tableRuntime) runtime.tableRuntimes.push(result.tableRuntime as { destroy: () => void });
-  });
-  renderGraphEdges({
-    nodes: graph.nodes,
-    edges: graph.edges,
-    layer: runtime.edgeLayer,
-    PenCtor,
-    renderConfig: deps.getRenderConfig(),
-  });
-  const resizeObserver =
-    typeof ResizeObserver === 'undefined'
-      ? null
-      : new ResizeObserver(() => {
-          resizeWorkspaceViewport(app, mount, graph, contentWidth, contentHeight);
-        });
-  resizeObserver?.observe(mount);
-  runtime.dispose = () => {
-    resizeObserver?.disconnect();
-  };
-  resizeWorkspaceViewport(app, mount, graph, contentWidth, contentHeight, { resetTransform: true });
-  await tick();
-  const moveEventName = deps.getMoveEventName?.();
-  if (moveEventName && typeof app.on === 'function') {
-    app.on(moveEventName, () => {
-      clampWorkspaceViewportPan(app, mount, graph);
-      app.update?.();
-    });
-  }
-  return runtime;
 }

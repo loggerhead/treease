@@ -62,6 +62,7 @@ export interface GraphValueEditRequest {
     path: GraphPathSeg[];
     preferKey: boolean;
     value: any;
+    rawReplacement?: string | null;
 }
 
 export interface GraphValueEditPlan {
@@ -218,6 +219,7 @@ export interface DocumentPathValue {
     value: string;
     sourceText: string;
     displayText: string;
+    semanticTokens: SemanticTokensPayload;
 }
 
 export interface DocumentSearchItem {

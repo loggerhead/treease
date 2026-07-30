@@ -163,6 +163,9 @@ pub struct GraphValueEditRequest {
     pub prefer_key: bool,
     #[cfg_attr(feature = "wasm", tsify(type = "any"))]
     pub value: serde_json::Value,
+    /// Exact source literal supplied by a snapshot projection editor.
+    #[serde(default)]
+    pub raw_replacement: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
@@ -691,6 +694,8 @@ pub struct DocumentPathValue {
     pub source_text: String,
     #[serde(rename = "displayText")]
     pub display_text: String,
+    /// Semantic-token projection from the same snapshot and source span.
+    pub semantic_tokens: SemanticTokensPayload,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

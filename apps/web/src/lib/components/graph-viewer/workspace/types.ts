@@ -1,16 +1,25 @@
-import type { GraphCell, ValueType } from '@treease/graph-viewer-runtime';
+import type { ValueType } from '@treease/graph-viewer-runtime';
 import type { PathSeg } from '../../../store/tree-path';
-import type { SubgraphWorkspaceGraphData } from '../graph-subgraph-workspace-types';
 
 export type SubgraphWorkspaceContentState = {
   tabId: string;
   tabName: string;
   sourceText: string;
   valueType: ValueType;
-  /** Exact Core SemType for this scalar content pane; never a Web value-type guess. */
-  rootSemType: number | null;
+  /** Main-editor semantic tokens projected from this snapshot's exact source span. */
+  semanticTokens: ArrayBuffer;
   /** Snapshot used to read this scalar; reuse it when planning its edit. */
   snapshotId: number | null;
+};
+
+export type SubgraphWorkspaceColumnItem = {
+  path: PathSeg[];
+  pathKey: string;
+  label: string;
+  preview: string;
+  valueType: ValueType;
+  semType: number | null;
+  isContainer: boolean;
 };
 
 export type SubgraphWorkspacePaneState = {
@@ -18,8 +27,8 @@ export type SubgraphWorkspacePaneState = {
   path: PathSeg[];
   pathKey: string;
   title: string;
-  kind: 'graph' | 'content';
-  graph: SubgraphWorkspaceGraphData | null;
+  kind: 'column' | 'content';
+  items: SubgraphWorkspaceColumnItem[];
   content: SubgraphWorkspaceContentState | null;
   status: 'loading' | 'ready' | 'empty' | 'error';
   error?: string;
@@ -30,15 +39,13 @@ export type VisibleSubgraphWorkspacePaneState = SubgraphWorkspacePaneState & {
   absoluteIndex: number;
 };
 
-export type SubgraphWorkspaceActivatePayload = {
-  path: PathSeg[];
-  target: 'key' | 'value' | 'node';
-  cell: GraphCell;
-};
-
 export type SubgraphWorkspaceState = {
+  open: boolean;
+  activePath: PathSeg[];
   chain: SubgraphWorkspacePaneState[];
   visiblePanes: VisibleSubgraphWorkspacePaneState[];
+  canGoBack: boolean;
+  canGoForward: boolean;
   heightPx: number;
   isDraggingDivider: boolean;
 };

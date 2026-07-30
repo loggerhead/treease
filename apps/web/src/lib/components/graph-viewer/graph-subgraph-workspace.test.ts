@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  buildSubgraphWorkspaceColumnItems,
   formatSubgraphWorkspacePath,
   normalizeWorkspaceGraphEdgeRows,
   rebaseSubgraphWorkspacePath,
@@ -211,5 +212,215 @@ describe('shouldOpenSubgraphWorkspaceContent', () => {
   it('treats empty containers as single-cell content panes', () => {
     expect(shouldOpenSubgraphWorkspaceContent({ valueType: 'object', displayText: '{}' })).toBe(true);
     expect(shouldOpenSubgraphWorkspaceContent({ valueType: 'array', displayText: '[]' })).toBe(true);
+  });
+});
+
+describe('buildSubgraphWorkspaceColumnItems', () => {
+  it('shows child counts for container rows from the projected subtree', () => {
+    const path = [keySeg('preview')];
+    const graph = {
+      path: [],
+      pathKey: '$',
+      nodes: [
+        {
+          renderHandle: 1,
+          kind: 'object',
+          depth: 0,
+          path: [],
+          boxArgs: {} as any,
+          meta: null,
+          rows: [
+            {
+              boxArgs: {} as any,
+              cellBoxArgs: {} as any,
+              cells: [
+                {
+                  text: 'preview',
+                  value: 'preview',
+                  formatText: '{7}',
+                  valueType: 'object',
+                  path,
+                  editable: false,
+                  boxArgs: {} as any,
+                  textArgs: {} as any,
+                },
+              ],
+            },
+          ],
+        },
+      ],
+      edges: [],
+      minX: 0,
+      minY: 0,
+      width: 0,
+      height: 0,
+    } as any;
+
+    expect(buildSubgraphWorkspaceColumnItems(graph, [])).toEqual([
+      expect.objectContaining({ path, preview: '{}', isContainer: false }),
+    ]);
+  });
+
+  it('keeps nil visible and does not make empty containers navigable', () => {
+    const graph = {
+      path: [], pathKey: '$', edges: [], minX: 0, minY: 0, width: 0, height: 0,
+      nodes: [{
+        renderHandle: 1, kind: 'object', depth: 0, path: [], boxArgs: {} as any, meta: null,
+        rows: [{ boxArgs: {} as any, cellBoxArgs: {} as any, cells: [
+          { text: '', value: '', valueType: 'null', path: [keySeg('nil')], editable: false, boxArgs: {} as any, textArgs: {} as any },
+          { text: 'arr0', value: 'arr0', valueType: 'array', path: [keySeg('arr0')], editable: false, boxArgs: {} as any, textArgs: {} as any },
+          { text: 'obj0', value: 'obj0', valueType: 'object', path: [keySeg('obj0')], editable: false, boxArgs: {} as any, textArgs: {} as any },
+        ] }],
+      }],
+    } as any;
+    expect(buildSubgraphWorkspaceColumnItems(graph, [])).toEqual([
+      expect.objectContaining({ label: 'nil', preview: 'null', isContainer: false }),
+      expect.objectContaining({ label: 'arr0', preview: '[]', isContainer: false }),
+      expect.objectContaining({ label: 'obj0', preview: '{}', isContainer: false }),
+    ]);
+  });
+
+  it('projects only direct children and rebases relative paths without duplicating key/value cells', () => {
+    const basePath = [keySeg('user')];
+    const namePath = [...basePath, keySeg('name')];
+    const profilePath = [...basePath, keySeg('profile')];
+    const graph = {
+      path: basePath,
+      pathKey: 'k:user',
+      nodes: [
+        {
+          renderHandle: 1,
+          kind: 'object',
+          depth: 0,
+          path: basePath,
+          boxArgs: { x: 0, y: 0, width: 100, height: 100, cornerRadius: 4 },
+          meta: {
+            text: 'user',
+            value: '{2}',
+            valueType: 'object',
+            path: basePath,
+            editable: false,
+            boxArgs: {} as any,
+            textArgs: {} as any,
+          },
+          rows: [
+            {
+              boxArgs: {} as any,
+              cellBoxArgs: {} as any,
+              cells: [
+                {
+                  text: 'name',
+                  value: 'name',
+                  valueType: 'string',
+                  path: namePath,
+                  editable: true,
+                  boxArgs: {} as any,
+                  textArgs: {} as any,
+                },
+                {
+                  text: '"Alice"',
+                  value: '"Alice"',
+                  valueType: 'string',
+                  semType: 3,
+                  path: namePath,
+                  editable: true,
+                  boxArgs: {} as any,
+                  textArgs: {} as any,
+                },
+              ],
+            },
+            {
+              boxArgs: {} as any,
+              cellBoxArgs: {} as any,
+              cells: [
+                {
+                  text: 'profile',
+                  value: '{1}',
+                  valueType: 'object',
+                  semType: 0,
+                  path: [keySeg('profile')],
+                  editable: true,
+                  boxArgs: {} as any,
+                  textArgs: {} as any,
+                },
+              ],
+            },
+            {
+              boxArgs: {} as any,
+              cellBoxArgs: {} as any,
+              cells: [
+                {
+                  text: 'deep',
+                  value: 'ignored',
+                  valueType: 'string',
+                  path: [...profilePath, keySeg('deep')],
+                  editable: true,
+                  boxArgs: {} as any,
+                  textArgs: {} as any,
+                },
+              ],
+            },
+          ],
+        },
+      ],
+      edges: [],
+      minX: 0,
+      minY: 0,
+      width: 100,
+      height: 100,
+    } as any;
+
+    expect(buildSubgraphWorkspaceColumnItems(graph, basePath)).toEqual([
+      expect.objectContaining({
+        path: namePath,
+        pathKey: 'k:user|k:name',
+        label: 'name',
+        preview: '"Alice"',
+        valueType: 'string',
+        isContainer: false,
+      }),
+      expect.objectContaining({
+        path: profilePath,
+        pathKey: 'k:user|k:profile',
+        label: 'profile',
+        valueType: 'object',
+        isContainer: true,
+      }),
+    ]);
+  });
+
+  it('drops missing placeholder rows so they cannot open another column', () => {
+    const graph = {
+      path: [],
+      pathKey: '',
+      nodes: [{
+        renderHandle: 1,
+        kind: 'object',
+        depth: 0,
+        path: [],
+        boxArgs: {} as any,
+        meta: { path: [], valueType: 'object', boxArgs: {}, textArgs: {} },
+        rows: [{
+          boxArgs: {},
+          cellBoxArgs: {},
+          cells: [{
+            text: 'miss',
+            value: 'miss',
+            valueType: 'object',
+            isMissing: true,
+            path: [keySeg('miss')],
+            boxArgs: {},
+            textArgs: {},
+          }],
+        }],
+      }],
+      edges: [],
+      minX: 0,
+      minY: 0,
+      width: 0,
+      height: 0,
+    } as any;
+
+    expect(buildSubgraphWorkspaceColumnItems(graph, [])).toEqual([]);
   });
 });

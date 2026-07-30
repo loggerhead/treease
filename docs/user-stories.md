@@ -109,9 +109,9 @@ As a user reading data, I want to see previews for images, URLs, dates, colors, 
   - Previews do not interrupt editing or reading.
   - Values unsuitable for preview do not force distracting information onto users.
 
-### US-06 Click the Graph to Open a Local Workspace
+### US-06 Open the Column Navigator from the Graph
 
-As a user reading a complex Graph, I want clicking a particular cell to open a local workspace at the bottom, so I can keep reading, locating, and editing along the same path instead of relying on transient hover previews.
+As a user reading a complex Graph, I want clicking a particular cell to open the Column Navigator at the bottom, so I can keep reading, locating, and editing along the same path instead of relying on transient hover previews.
 
 - User behavior: Click a key, value, index, or row in the Graph.
 - User expectation: Treease preserves the reveal/editor linkage and expands a persistent pane at the bottom; objects and arrays use a graph pane, while scalars use a Monaco content pane.
@@ -123,18 +123,18 @@ As a user reading a complex Graph, I want clicking a particular cell to open a l
   - Value editing in the content pane reuses the existing bidirectional-editing path rather than introducing a second commit semantic.
   - While a user types continuously in a content pane, the workspace does not feed an old external value back and interrupt the current input.
 
-### US-07 Open Nested Subgraph Workspaces in the Graph
+### US-07 Navigate Nested Paths in the Column Navigator
 
-As a user reading deeply nested structures, I want clicking a structured cell in the main graph to open a persistent subgraph workspace at the bottom, and to be able to open the next subgraph from it, so I can keep reading and locating content along a nested path without returning to the entire main graph.
+As a user reading deeply nested structures, I want clicking a structured cell in the main graph to open a persistent Column Navigator at the bottom, and to be able to continue into the next path segment from it, so I can keep reading and locating content along a nested path without returning to the entire main graph.
 
-- User behavior: Click an object or array value cell in the main graph, then click the next structured cell in the opened subgraph pane.
-- User expectation: The bottom workspace expands subgraph panes layer by layer along the current click path; each pane retains the main graph's reading mode, dragging behavior, and default zoom.
+- User behavior: Click an object or array value cell in the main graph, then click the next structured cell in the Column Navigator.
+- User expectation: The bottom Column Navigator expands fixed-width columns along the current active path and keeps the Treease-native reading and editing style.
 - User value: Users can focus on the current nested chain and descend through complex structures without repeatedly zooming around the main graph to find local regions.
 - Expected experience:
-  - Clicking a structured cell in the main graph immediately displays its subgraph pane at the bottom.
-  - Clicking the next structured cell in a subgraph pane expands a new pane on the right. The viewport shows at most three columns at once, preserving the full chain through horizontal scrolling beyond that.
-  - The pane title tells users which path they are viewing without consuming extra path-rail space.
-  - Each pane uses the same graph-canvas interaction as the main graph, keeps the default size, and supports the same dragging, zooming, and panning-boundary constraints.
+  - Clicking a structured cell in the main graph immediately displays the Column Navigator at the bottom.
+  - Clicking the next structured cell creates a new column on the right. The full path remains available through native horizontal scrolling.
+  - The breadcrumb and highlighted ancestor rows tell users which path they are viewing.
+  - Columns use native browser scrolling and do not reuse the graph canvas drag, zoom, or pan model.
   - When users locate a value in a subgraph, the editor remains synchronized to its matching position, keeping the graph-text linkage intact.
   - When users repeatedly edit the same path in a pane, the final save uses the newest input rather than an older intermediate commit.
 

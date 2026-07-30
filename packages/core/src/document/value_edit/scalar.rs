@@ -2,9 +2,9 @@ use crate::tree::{DocumentTextEdit, TreeNode, TreeNodeKind};
 use crate::wasm_types::{PathSeg, PathSpan};
 
 use super::{
-    GraphValueEditContext, GraphValueEditPlanner, edit_value_as_scalar_string,
-    edit_value_to_plain_json, graph_value_edit_edits, graph_value_edit_fallback,
-    request_path_segments, span_to_edit,
+    edit_value_as_scalar_string, edit_value_to_plain_json, graph_value_edit_edits,
+    graph_value_edit_fallback, request_path_segments, span_to_edit, GraphValueEditContext,
+    GraphValueEditPlanner,
 };
 use crate::document::protocol::{GraphValueEditFallbackReason, GraphValueEditPlan};
 
@@ -71,10 +71,11 @@ impl<R: ScalarGraphValueEditRules + Sync> GraphValueEditPlanner for ScalarGraphV
         .and_then(|target_id| ctx.document.store.get(target_id));
         if let Some(target) = target {
             if target.kind != TreeNodeKind::Scalar {
-                if let Some(formatted) = self
-                    .rules
-                    .format_subtree_value(&edit_value_to_plain_json(&ctx.request.value))
-                {
+                let replacement = ctx.request.raw_replacement.clone().or_else(|| {
+                    self.rules
+                        .format_subtree_value(&edit_value_to_plain_json(&ctx.request.value))
+                });
+                if let Some(formatted) = replacement {
                     let span = self.resolve_span(ctx, &path);
                     return span
                         .and_then(|span| span_to_edit(span, formatted))
@@ -95,9 +96,13 @@ impl<R: ScalarGraphValueEditRules + Sync> GraphValueEditPlanner for ScalarGraphV
             return graph_value_edit_fallback(GraphValueEditFallbackReason::UnsupportedEdit);
         }
 
-        let Some(replacement) =
-            self.format_replacement(ctx.request.prefer_key, &ctx.request.value, target)
-        else {
+        let replacement = (!ctx.request.prefer_key)
+            .then(|| ctx.request.raw_replacement.clone())
+            .flatten()
+            .or_else(|| {
+                self.format_replacement(ctx.request.prefer_key, &ctx.request.value, target)
+            });
+        let Some(replacement) = replacement else {
             return graph_value_edit_fallback(GraphValueEditFallbackReason::InvalidReplacement);
         };
 

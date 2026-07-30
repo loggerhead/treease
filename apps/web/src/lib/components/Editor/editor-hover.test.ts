@@ -97,6 +97,7 @@ describe('registerEditorHoverPreview', () => {
         value: '你好',
         sourceText: '"\\u4f60\\u597d"',
         displayText: '"\\u4f60\\u597d"',
+        semanticTokens: { data: [0, 0, 14, 3, 0], version: 1 },
       },
     });
     vi.mocked(generatePreview).mockResolvedValue('<div>Preview</div>');
@@ -233,6 +234,7 @@ describe('registerEditorHoverPreview', () => {
         value: 'hello',
         sourceText: '"hello"',
         displayText: '"hello"',
+        semanticTokens: { data: [0, 0, 7, 3, 0], version: 1 },
       },
     });
     vi.mocked(generatePreview).mockResolvedValue(['<div>A</div>', '<div>B</div>']);

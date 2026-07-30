@@ -44,23 +44,6 @@ function validateSemanticTokensData(
   return true;
 }
 
-function readProjectedRootSemanticTokens(model: Monaco.editor.ITextModel): Uint32Array | null {
-  const tokenType = (model as Monaco.editor.ITextModel & { __treeaseRootSemanticTokenType?: unknown })
-    .__treeaseRootSemanticTokenType;
-  if (typeof tokenType !== 'number' || !Number.isInteger(tokenType) || tokenType < 0) return null;
-
-  const data: number[] = [];
-  let previousLine = 0;
-  for (let lineNumber = 1; lineNumber <= model.getLineCount(); lineNumber += 1) {
-    const text = model.getLineContent(lineNumber);
-    if (!text) continue;
-    const line = lineNumber - 1;
-    data.push(line - previousLine, 0, text.length, tokenType, 0);
-    previousLine = line;
-  }
-  return new Uint32Array(data);
-}
-
 export function ensureLanguageRegistered(
   monaco: MonacoApi,
   languageId: string,
@@ -174,15 +157,6 @@ export function createSemanticTokensRegistrar(options: SemanticTokensRegistrarOp
           const _validate = (data: Uint32Array) =>
             validateSemanticTokensData(data, textModel.getLineCount(), (line) => textModel.getLineMaxColumn(line) - 1);
           const _isCurrentVersion = () => textModel.getVersionId() === requestVersionId;
-          // A detached scalar pane is a projection of the primary snapshot,
-          // not its own Runtime document. Its exact root SemType is supplied
-          // by that projection, so derive its current draft tokens locally.
-          const projectedRootTokens = readProjectedRootSemanticTokens(textModel);
-          if (projectedRootTokens) {
-            if (!_validate(projectedRootTokens)) return { data: new Uint32Array() };
-            return { data: projectedRootTokens };
-          }
-
           const primed = semanticTokensByDocumentKey.get(documentKey);
           if (primed) {
             if (token?.isCancellationRequested) return { data: new Uint32Array() };

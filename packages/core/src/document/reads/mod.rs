@@ -2,7 +2,7 @@ use std::collections::BTreeSet;
 
 use super::protocol::{
     DocumentAnchor, DocumentNodePreview, DocumentPathValue, DocumentSearchItem, ProjectionDelta,
-    QueryKind, QueryResult, QueryTargetKind, SnapshotQuery,
+    QueryKind, QueryResult, QueryTargetKind, SemanticTokensPayload, SnapshotQuery,
 };
 use super::snapshot::{AnalysisBundle, DocumentSnapshot};
 use crate::formats::DecodedDocument;
@@ -11,9 +11,9 @@ use crate::graph::graph_projection_service;
 use crate::language::SemType;
 use crate::tree::tree_store::TreeStore;
 use crate::tree::{
-    NodeId, OwnedPathSeg, ParsedKey, TreeNode, TreeNodeKind, borrowed_tree_path,
-    compute_path_span_for_document, compute_tree_path_segments_for_document,
+    borrowed_tree_path, compute_path_span_for_document, compute_tree_path_segments_for_document,
     format_owned_tree_path, format_tree_path, parse_tree_path, path_seg_index, path_seg_key,
+    NodeId, OwnedPathSeg, ParsedKey, TreeNode, TreeNodeKind,
 };
 
 pub(crate) fn query_snapshot(snapshot: &DocumentSnapshot, query: &SnapshotQuery) -> QueryResult {
@@ -314,6 +314,61 @@ fn source_slice_by_bytes(source: &str, start: u32, end: u32) -> String {
     }
 }
 
+fn utf16_position_at_byte_offset(
+    analysis: &AnalysisBundle,
+    byte_offset: u32,
+) -> Option<(u32, u32)> {
+    let offset = usize::try_from(byte_offset)
+        .ok()?
+        .min(analysis.source.len());
+    let position = analysis.line_index.offset_to_line_column(offset);
+    let line_start = analysis.line_index.line_start(position.line)?;
+    let prefix = analysis.source.get(line_start..offset)?;
+    Some((position.line, prefix.encode_utf16().count() as u32))
+}
+
+fn project_semantic_tokens(analysis: &AnalysisBundle, start_byte: u32, end_byte: u32) -> Vec<u32> {
+    let Some(start) = utf16_position_at_byte_offset(analysis, start_byte) else {
+        return Vec::new();
+    };
+    let Some(end) = utf16_position_at_byte_offset(analysis, end_byte) else {
+        return Vec::new();
+    };
+    let mut line = 0_u32;
+    let mut column = 0_u32;
+    let mut previous = (0_u32, 0_u32);
+    let mut projected = Vec::new();
+
+    for token in analysis.semantic_tokens.chunks_exact(5) {
+        line += token[0];
+        column = if token[0] == 0 {
+            column.saturating_add(token[1])
+        } else {
+            token[1]
+        };
+        let token_start = (line, column);
+        let token_end = (line, column.saturating_add(token[2]));
+        if token_start < start || token_end > end {
+            continue;
+        }
+        let projected_line = line.saturating_sub(start.0);
+        let projected_column = if line == start.0 {
+            column.saturating_sub(start.1)
+        } else {
+            column
+        };
+        let delta_line = projected_line.saturating_sub(previous.0);
+        let delta_start = if delta_line == 0 {
+            projected_column.saturating_sub(previous.1)
+        } else {
+            projected_column
+        };
+        projected.extend([delta_line, delta_start, token[2], token[3], token[4]]);
+        previous = (projected_line, projected_column);
+    }
+    projected
+}
+
 fn path_value_for_path(
     analysis: &AnalysisBundle,
     document: &DecodedDocument,
@@ -333,7 +388,39 @@ fn path_value_for_path(
         value,
         source_text,
         display_text,
+        semantic_tokens: SemanticTokensPayload {
+            data: project_semantic_tokens(analysis, node.start_byte, node.end_byte),
+            version: 1,
+        },
     })
+}
+
+#[cfg(test)]
+mod semantic_token_projection_tests {
+    use super::project_semantic_tokens;
+    use crate::analysis::line_index::LineIndex;
+    use crate::document::snapshot::AnalysisBundle;
+    use crate::language::encode_semantic_tokens;
+
+    #[test]
+    fn projects_nested_tokens_from_the_main_document_with_utf16_offsets() {
+        let source =
+            "{\n  \"前缀\": true,\n  \"object\": {\n    \"int\": 42,\n    \"bool\": true\n  }\n}";
+        let subtree = "{\n    \"int\": 42,\n    \"bool\": true\n  }";
+        let start = source.find(subtree).unwrap();
+        let end = start + subtree.len();
+        let analysis = AnalysisBundle {
+            source: source.to_owned(),
+            semantic_tokens: encode_semantic_tokens("json", source),
+            line_index: LineIndex::build(source),
+            ..Default::default()
+        };
+
+        assert_eq!(
+            project_semantic_tokens(&analysis, start as u32, end as u32),
+            encode_semantic_tokens("json", subtree)
+        );
+    }
 }
 
 fn collect_field_labels(document: &DecodedDocument) -> Vec<String> {

@@ -116,6 +116,7 @@ mod tests {
             language: "json".to_owned(),
             path,
             prefer_key: false,
+            raw_replacement: None,
             value: serde_json::json!("updated"),
         }
     }
@@ -344,6 +345,7 @@ mod tests {
             language: "json".to_owned(),
             path: Vec::new(),
             prefer_key: false,
+            raw_replacement: None,
             value: serde_json::Value::Null,
         };
 

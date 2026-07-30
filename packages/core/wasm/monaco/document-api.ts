@@ -51,6 +51,7 @@ export type PlanGraphValueEditInput = DocumentJobLanguageRef & {
   path: GraphPathSeg[];
   preferKey: boolean;
   value: unknown;
+  rawReplacement?: string;
 };
 
 export type GraphValueEditPlan = {
@@ -177,6 +178,7 @@ export async function planGraphValueEdit(
       path: input.path,
       preferKey: input.preferKey,
       value: input.value,
+      rawReplacement: input.rawReplacement ?? null,
     } as any),
   );
   if (result?.status !== 'ready') return { status: 'snapshotNotReady' };

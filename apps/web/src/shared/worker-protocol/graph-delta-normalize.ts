@@ -162,6 +162,7 @@ export function normalizeRawCell(cell: any) {
   return {
     text: displayText,
     value,
+    formatText: cell.formatText ?? cell.format_text ?? '',
     isMissing: cell.isMissing === true || cell.is_missing === true,
     semType,
     valueType,

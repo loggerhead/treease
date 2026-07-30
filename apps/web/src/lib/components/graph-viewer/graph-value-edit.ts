@@ -52,6 +52,8 @@ export type StructuredValueEditIntent = {
   text?: string;
   /** Snapshot that produced the editable projection, when the caller owns one. */
   snapshotId?: number | null;
+  /** Keep the exact source literal instead of structurally re-encoding it. */
+  preserveSourceFormatting?: boolean;
 };
 
 export type GraphValueEditControllerDeps = {
@@ -206,12 +208,14 @@ export function createGraphValueEditController(deps: GraphValueEditControllerDep
       rawEdit,
       preferKey,
       nest,
+      strictSourceLiteral,
     }: {
       language: string;
       path: PathSeg[];
       rawEdit: string;
       preferKey: boolean;
       nest: boolean;
+      strictSourceLiteral: boolean;
     }): Promise<TreeNode> => {
       try {
         const normalizedRawEdit =
@@ -224,6 +228,7 @@ export function createGraphValueEditController(deps: GraphValueEditControllerDep
           rawEdit: normalizedRawEdit,
           preferKey,
           nest,
+          strictSourceLiteral,
         });
       } catch (error) {
         deps.handleError(error, {
@@ -242,6 +247,7 @@ export function createGraphValueEditController(deps: GraphValueEditControllerDep
         rawEdit: intent.raw,
         preferKey,
         nest: deps.getEnableNest(),
+        strictSourceLiteral: intent.preserveSourceFormatting === true,
       }),
     );
     if (!canonicalNextValueNode) {
@@ -258,6 +264,7 @@ export function createGraphValueEditController(deps: GraphValueEditControllerDep
         preferKey,
         value: canonicalNextValueNode,
         nest: deps.getEnableNest(),
+        rawReplacement: intent.preserveSourceFormatting ? intent.raw : undefined,
       }),
     );
     if (!planned) {

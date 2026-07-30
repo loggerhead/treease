@@ -938,6 +938,7 @@ mod tests {
                 index: 0,
             }],
             prefer_key: false,
+            raw_replacement: None,
             value: serde_json::json!({
                 "kind": 2,
                 "semType": 2,
@@ -1046,6 +1047,7 @@ mod tests {
                 language: case.language.to_owned(),
                 path: case.path,
                 prefer_key: false,
+                raw_replacement: None,
                 value: serde_json::json!("new"),
             });
 
@@ -1162,6 +1164,7 @@ mod tests {
                 index: 0,
             }],
             prefer_key: false,
+            raw_replacement: None,
             value: serde_json::json!("new"),
         });
         assert_eq!(plan.mode, GraphValueEditPlanMode::Edits);
@@ -1202,6 +1205,7 @@ mod tests {
                 },
             ],
             prefer_key: true,
+            raw_replacement: None,
             value: serde_json::json!("full name"),
         });
         assert_eq!(plan.mode, GraphValueEditPlanMode::Edits);
