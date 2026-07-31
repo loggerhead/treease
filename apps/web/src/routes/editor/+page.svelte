@@ -1,5 +1,6 @@
 <!-- Responsibility: assemble Editor/Viewport/TopBar/BottomBar, coordinate cross-component events, and handle DOM interaction. -->
 <script lang="ts">
+  import type { PageData } from './$types';
   import { get } from 'svelte/store';
   import { onMount, tick } from 'svelte';
   import { cubicOut } from 'svelte/easing';
@@ -102,6 +103,8 @@
 
   const LARGE_FILE_PROCESSING_THRESHOLD_BYTES = 256 * 1024;
 
+  export let data: PageData;
+
   let editorRef: Editor | null = null;
   let topBarRef: TopBar | null = null;
   let viewerRef: ViewportPanel | null = null;
@@ -112,14 +115,13 @@
   let showTabDirty = false;
   let activeTabId = '';
   let scrollSyncLock: 'editor' | 'viewer' | null = null;
-  let splitLayoutState = createSplitLayoutState(DEFAULT_EDITOR_SPLIT_RATIO);
+  const serverSplitRatio = data.editorSplitRatio;
+  let splitLayoutState = createSplitLayoutState(serverSplitRatio ?? DEFAULT_EDITOR_SPLIT_RATIO);
   let layoutReady = false;
   let layoutMode = splitLayoutState.layoutMode;
   let splitRatio = splitLayoutState.splitRatio;
   let lastSplitRatio = splitLayoutState.lastSplitRatio;
   let leftPaneWidthPx = 0;
-  let rightPaneWidthPx = 0;
-  let splitterLeftPx = 0;
   let splitterControlLeftPx = 0;
   let leftPaneCollapsed = false;
   let rightPaneCollapsed = false;
@@ -417,6 +419,10 @@
     layoutMode = nextState.layoutMode;
     splitRatio = nextState.splitRatio;
     lastSplitRatio = nextState.lastSplitRatio;
+  }
+
+  function formatPaneWidth(ratio: number): string {
+    return `${(ratio * 100).toFixed(1)}%`;
   }
 
   function updateSplitLayout(mutator: (state: SplitLayoutState) => SplitLayoutState) {
@@ -1017,6 +1023,8 @@
     syncScroll('viewer', 'editor', position, (nextPosition) => editorRef?.setScrollPosition?.(nextPosition));
   }
 
+  let graphRevealToken = 0;
+
   function updateTreeSelection(
     path: PathSeg[],
     options: { target?: GraphHighlightTarget; source?: TreeSelectionSource } | undefined,
@@ -1030,6 +1038,7 @@
         target: options?.target,
         revision: Math.max($editorRevision, $graphAppliedRevision),
         source: options?.source ?? 'graph',
+        revealToken: ++graphRevealToken,
       },
     }));
   }
@@ -1042,7 +1051,7 @@
   function handleGraphReveal(payload: {
     path: PathSeg[];
     target?: 'key' | 'value' | 'node';
-    trigger?: 'click' | 'search';
+    trigger?: 'click' | 'search' | 'breadcrumb';
   }) {
     const path = payload?.path ?? [];
     if (!path.length || !syncScrollEnabled) return;
@@ -1059,7 +1068,9 @@
 
     updateTreeSelection(path, {
       target: payload?.target,
-      source: payload?.trigger === 'search' ? 'search' : 'graph',
+      source: payload?.trigger === 'search' || payload?.trigger === 'breadcrumb'
+        ? payload.trigger
+        : 'graph',
     });
   }
 
@@ -1248,7 +1259,7 @@
   $: visibleLayoutMode = !showEditorPane ? 'right-only' : !showViewerPane ? 'left-only' : layoutMode;
   $: renderLayoutControls = showEditorPane && showViewerPane && visibleLayoutMode !== 'split';
   $: visibleSplitLayoutState = { ...splitLayoutState, layoutMode: visibleLayoutMode };
-  $: ({ leftPaneWidthPx, rightPaneWidthPx, splitterLeftPx, splitterControlLeftPx } = computePaneWidths(
+  $: ({ leftPaneWidthPx, splitterControlLeftPx } = computePaneWidths(
     visibleSplitLayoutState,
     containerWidth,
     splitLayoutConfig,
@@ -1292,8 +1303,10 @@
     void (async () => {
       await settingsStore.load();
       const savedSplitRatio = settingsStore.getEditorSplitRatio();
-      if (savedSplitRatio !== null) {
+      if (serverSplitRatio === null && savedSplitRatio !== null) {
         syncSplitLayoutState(createSplitLayoutState(savedSplitRatio));
+        // IndexedDB is the legacy source only until this bootstrap value reaches the SSR cookie.
+        void settingsStore.saveEditorSplitRatio(savedSplitRatio);
       }
       layoutReady = true;
       await tick();
@@ -1380,15 +1393,15 @@
         onOpenSettings={() => (settingsOpen = true)}
       />
     {/if}
-    <div bind:this={splitLayoutContainer} bind:clientWidth={containerWidth} class="app-split-layout" class:invisible={!layoutReady}>
+    <div bind:this={splitLayoutContainer} bind:clientWidth={containerWidth} class="app-split-layout">
       {#if showEditorPane}
         <section
           class="app-split-pane app-split-pane--left flex flex-col bg-[var(--panel-bg)]"
           class:app-split-pane--collapsed={leftPaneCollapsed}
-          class:app-split-pane--instant={isDraggingSplitter}
+          class:app-split-pane--instant={isDraggingSplitter || !layoutReady}
           data-testid="left-pane"
           aria-hidden={leftPaneCollapsed}
-          style:width={`${leftPaneWidthPx}px`}
+          style:width={formatPaneWidth(visibleLayoutMode === 'right-only' ? 0 : visibleLayoutMode === 'left-only' ? 1 : splitRatio)}
           style:opacity={leftPaneCollapsed ? 0 : 1}
         >
           <div class="min-h-0 flex-1">
@@ -1457,7 +1470,7 @@
           role="separator"
           aria-label="Resize panels"
           aria-orientation="vertical"
-          style:left={`${splitterLeftPx}px`}
+          style:left={formatPaneWidth(splitRatio)}
           use:splitLayoutDrag={{
             onDragStart: ({ clientX }) => handleSplitterDragStart(clientX),
             onDragMove: ({ clientX }) => handleSplitterDragMove(clientX),
@@ -1522,10 +1535,10 @@
           class="app-split-pane app-split-pane--right bg-[var(--panel-bg-alt)]"
           class:app-split-pane--split-right={visibleLayoutMode === 'split'}
           class:app-split-pane--collapsed={rightPaneCollapsed}
-          class:app-split-pane--instant={isDraggingSplitter}
+          class:app-split-pane--instant={isDraggingSplitter || !layoutReady}
           data-testid="right-pane"
           aria-hidden={rightPaneCollapsed}
-          style:width={`${rightPaneWidthPx}px`}
+          style:width={formatPaneWidth(visibleLayoutMode === 'left-only' ? 0 : visibleLayoutMode === 'right-only' ? 1 : 1 - splitRatio)}
           style:opacity={rightPaneCollapsed ? 0 : 1}
         >
           <ViewportPanel
@@ -1581,15 +1594,18 @@
           {/if}
         </div>
       {/if}
+      {#if !layoutReady}
+        <section class="editor-page-loading-skeleton" aria-label="Loading editor layout" aria-busy="true">
+          <div class="editor-page-loading-skeleton__line editor-page-loading-skeleton__line--wide"></div>
+          <div class="editor-page-loading-skeleton__line"></div>
+          <div class="editor-page-loading-skeleton__line editor-page-loading-skeleton__line--short"></div>
+        </section>
+      {/if}
     </div>
     {#if showBottomBar}
       <BottomBar
         editorWidthPx={showEditorPane ? leftPaneWidthPx : 0}
         graphVisible={showViewerPane}
-        {columnNavigatorState}
-        onColumnNavigatorBack={() => viewerRef?.goColumnNavigatorBack?.()}
-        onColumnNavigatorForward={() => viewerRef?.goColumnNavigatorForward?.()}
-        onColumnNavigatorPathSelect={(path) => viewerRef?.selectColumnNavigatorPath?.(path)}
         onFormat={() => editorRef?.formatActive()}
         onMinify={() => editorRef?.minifyActive()}
         onCompact={() => editorRef?.compactActive()}

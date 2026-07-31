@@ -179,8 +179,6 @@ export class GraphViewerRuntime {
       getZoomEventName: () => undefined,
       bindPointerClick: () => {},
       updateViewportOverlays: () => {},
-      getLastAutoOffset: () => null,
-      setLastAutoOffset: () => {},
       getPanConstraintBounds: () => this.graph ? graphBounds(this.graph) : null,
     });
     const root = this.app.zoomLayer ?? this.app;

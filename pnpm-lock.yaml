@@ -270,6 +270,15 @@ importers:
 
   packages/graph-viewer-runtime:
     dependencies:
+      '@leafer-in/animate':
+        specifier: 2.2.7
+        version: 2.2.7(@leafer-in/color@2.2.7(@leafer-in/interface@2.2.7(@leafer-ui/interface@2.2.7)(@leafer/interface@2.2.7))(@leafer-ui/draw@2.2.7)(@leafer-ui/interface@2.2.7))(@leafer-in/interface@2.2.7(@leafer-ui/interface@2.2.7)(@leafer/interface@2.2.7))(@leafer-ui/draw@2.2.7)(@leafer-ui/interface@2.2.7)
+      '@leafer-in/color':
+        specifier: 2.2.7
+        version: 2.2.7(@leafer-in/interface@2.2.7(@leafer-ui/interface@2.2.7)(@leafer/interface@2.2.7))(@leafer-ui/draw@2.2.7)(@leafer-ui/interface@2.2.7)
+      '@leafer-in/view':
+        specifier: 2.2.7
+        version: 2.2.7(@leafer-in/interface@2.2.7(@leafer-ui/interface@2.2.7)(@leafer/interface@2.2.7))(@leafer-ui/draw@2.2.7)(@leafer-ui/interface@2.2.7)
       '@leafer-in/viewport':
         specifier: ^2.2.7
         version: 2.2.7(@leafer-in/interface@2.2.7(@leafer-ui/interface@2.2.7)(@leafer/interface@2.2.7))(@leafer-ui/core@2.2.7)(@leafer-ui/interface@2.2.7)
@@ -1190,6 +1199,21 @@ packages:
 
   '@jridgewell/trace-mapping@0.3.9':
     resolution: {integrity: sha512-3Belt6tdc8bPgAtbcmdtNJlirVoTmEb5e2gC94PnkwEW9jI6CAHUeoG85tjWP5WquqfavoMtMwiG4P926ZKKuQ==}
+
+  '@leafer-in/animate@2.2.7':
+    resolution: {integrity: sha512-ptGoI+CEW0JmIes9js6jhYJ0O+SIIcBqdL7Y8gfFBvG1lap0Sc0nG13INjAh/guPN8LViX83fpE/LElrwa8iXA==}
+    peerDependencies:
+      '@leafer-in/color': ^2.2.7
+      '@leafer-in/interface': ^2.2.7
+      '@leafer-ui/draw': ^2.2.7
+      '@leafer-ui/interface': ^2.2.7
+
+  '@leafer-in/color@2.2.7':
+    resolution: {integrity: sha512-81yrj9niR7fdAw/iY38eaMY+8Ni3rh87JRJrojvu6LABlN0/UWmnIWOx8r9bEa+84yWEvoxc7ENHDXkuuGUxBA==}
+    peerDependencies:
+      '@leafer-in/interface': ^2.2.7
+      '@leafer-ui/draw': ^2.2.7
+      '@leafer-ui/interface': ^2.2.7
 
   '@leafer-in/editor@2.2.7':
     resolution: {integrity: sha512-LP6rZe1NI6f/IELWZacwsLDM6FgGejU4AzX1k+LJZ4p4UGODZs9SiuYkVUARUQAFl3pO8ut/x/AFyuTzzfVRFA==}
@@ -6195,6 +6219,19 @@ snapshots:
     dependencies:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.5.5
+
+  '@leafer-in/animate@2.2.7(@leafer-in/color@2.2.7(@leafer-in/interface@2.2.7(@leafer-ui/interface@2.2.7)(@leafer/interface@2.2.7))(@leafer-ui/draw@2.2.7)(@leafer-ui/interface@2.2.7))(@leafer-in/interface@2.2.7(@leafer-ui/interface@2.2.7)(@leafer/interface@2.2.7))(@leafer-ui/draw@2.2.7)(@leafer-ui/interface@2.2.7)':
+    dependencies:
+      '@leafer-in/color': 2.2.7(@leafer-in/interface@2.2.7(@leafer-ui/interface@2.2.7)(@leafer/interface@2.2.7))(@leafer-ui/draw@2.2.7)(@leafer-ui/interface@2.2.7)
+      '@leafer-in/interface': 2.2.7(@leafer-ui/interface@2.2.7)(@leafer/interface@2.2.7)
+      '@leafer-ui/draw': 2.2.7
+      '@leafer-ui/interface': 2.2.7
+
+  '@leafer-in/color@2.2.7(@leafer-in/interface@2.2.7(@leafer-ui/interface@2.2.7)(@leafer/interface@2.2.7))(@leafer-ui/draw@2.2.7)(@leafer-ui/interface@2.2.7)':
+    dependencies:
+      '@leafer-in/interface': 2.2.7(@leafer-ui/interface@2.2.7)(@leafer/interface@2.2.7)
+      '@leafer-ui/draw': 2.2.7
+      '@leafer-ui/interface': 2.2.7
 
   '@leafer-in/editor@2.2.7(@leafer-in/interface@2.2.7(@leafer-ui/interface@2.2.7)(@leafer/interface@2.2.7))(@leafer-in/resize@2.2.7(@leafer-in/interface@2.2.7(@leafer-ui/interface@2.2.7)(@leafer/interface@2.2.7))(@leafer-ui/draw@2.2.7)(@leafer-ui/interface@2.2.7))(@leafer-ui/core@2.2.7)(@leafer-ui/draw@2.2.7)(@leafer-ui/interface@2.2.7)':
     dependencies:

@@ -14,6 +14,11 @@ The **Column Navigator Active Path** is the single path authority shared by
 the rail, detail editor, history, and keyboard navigation. The internal
 controller is the **Column Navigator Controller**.
 
+The shared application bottom bar is outside this product area: it renders
+only the regular Tree Path from `activeTempModel.treePath`. It must not render
+or route a second breadcrumb, Back/Forward history, or path selection through
+the Column Navigator Active Path.
+
 This document covers only the `Column Navigator` product area and its
 underlying `Column Navigator` lifecycle domain:
 

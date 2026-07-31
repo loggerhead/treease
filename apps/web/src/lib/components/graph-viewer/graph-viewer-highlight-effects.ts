@@ -7,7 +7,7 @@ export function buildGraphHighlightSignature(
   buildPathKey: (path: PathSeg[]) => string,
 ): string {
   if (!graphHighlight?.path?.length) return '';
-  return `${graphHighlight.revision}|${graphHighlight.target ?? 'auto'}|${buildPathKey(graphHighlight.path)}`;
+  return `${graphHighlight.revision}|${graphHighlight.target ?? 'auto'}|${graphHighlight.revealToken ?? ''}|${buildPathKey(graphHighlight.path)}`;
 }
 
 export function shouldApplyGraphHighlight(input: {

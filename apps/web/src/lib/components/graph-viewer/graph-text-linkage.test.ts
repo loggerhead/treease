@@ -72,6 +72,21 @@ describe('graph-text-linkage', () => {
     vi.mocked(queryPathValue).mockResolvedValue({ status: 'ready', data: { value: 'present' } } as any);
   });
 
+  it('preserves a breadcrumb reveal as a viewport-navigation source', () => {
+    const path = [{ tag: 0, key: 'preview', index: 0 }] as any[];
+    const updateActiveTempModel = vi.fn();
+    const controller = createGraphTextLinkageController(createBaseDeps({ updateActiveTempModel }));
+
+    controller.emitReveal(path, 'value', 'breadcrumb');
+
+    const update = updateActiveTempModel.mock.calls[0][0];
+    expect(update({} as any).graphHighlight).toMatchObject({
+      path,
+      target: 'value',
+      source: 'breadcrumb',
+    });
+  });
+
   it('uses table anchor index to materialize an offscreen search cell before highlight', async () => {
     const path = [
       { tag: 0, key: 'rows', index: 0 },

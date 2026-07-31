@@ -16,6 +16,7 @@ import {
   withColumnNavigatorHeight,
   withEditorSplitRatio,
 } from './editor-layout-state';
+import { clearEditorSplitRatioCookie, writeEditorSplitRatioCookie } from './editor-layout-cookie';
 import { handleError } from '../utils/error-handler';
 
 const DB_NAME = 'treease-settings';
@@ -147,6 +148,7 @@ function createSettingsStore() {
     saveEditorSplitRatio: async (splitRatio: number) => {
       const currentState = get(internalStore);
       const document = withEditorSplitRatio(currentState.document, splitRatio);
+      writeEditorSplitRatioCookie(splitRatio);
       if (document === currentState.document) return;
       await settingsStore.saveDocument(document);
     },
@@ -161,6 +163,7 @@ function createSettingsStore() {
     reset: async () => {
       const document = mergeSettings(defaultSettings, {});
       internalStore.set({ document, settings: document, status: 'ready' });
+      clearEditorSplitRatioCookie();
       try {
         const db = await getDb();
         await db.put(STORE_NAME, document, SETTINGS_KEY);

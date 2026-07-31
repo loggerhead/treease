@@ -52,7 +52,7 @@ export type ColumnNavigatorControllerDeps = {
   inferGraphPaths: (nodes: GraphNode[], edges: GraphEdge[]) => void;
   clearSearchHighlight: () => void;
   clearActiveGraphSelection: () => void;
-  emitReveal: (path: PathSeg[], target: 'key' | 'value' | 'node', trigger: 'click') => void;
+  emitReveal: (path: PathSeg[], target: 'key' | 'value' | 'node', trigger: 'breadcrumb') => void;
   handleError: (
     error: unknown,
     context: { component: string; operation: string; metadata?: Record<string, unknown> },
@@ -358,7 +358,7 @@ export function createColumnNavigatorController(deps: ColumnNavigatorControllerD
           sourceRevision: deps.getRevision(),
           materializedRevision: deps.getRevision(),
         });
-        if (options.reveal && activePath.length) deps.emitReveal(activePath, 'value', 'click');
+        if (options.reveal && activePath.length) deps.emitReveal(activePath, 'value', 'breadcrumb');
         emitState();
       },
     });

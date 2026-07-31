@@ -16,12 +16,36 @@ import {
   readGraphHitResult,
   readGraphLastReveal,
   readGraphRevealProbe,
+  setTempGraphSelection,
   setEditorContent,
   setMonacoPositionByText,
   waitForEditorReady,
   waitForGraphRendered,
   waitForSettingsReady,
 } from './utils';
+
+const trajectoryFixture = readFileSync(
+  new URL('../../../../test/fixtures/json/trajectory.1.json', import.meta.url),
+  'utf8',
+);
+
+const arkServiceTierPath = [
+  { key: 'root_step' },
+  { key: 'output' },
+  { key: 'stream' },
+  { index: 11 },
+  { key: 'extra' },
+  { key: 'ark-service-tier' },
+];
+
+const arkServiceTierDisplayPath = [
+  'root_step',
+  'output',
+  'stream',
+  '[11]',
+  'extra',
+  'ark-service-tier',
+];
 
 type LargeFixtureRow = {
   name: string;
@@ -125,6 +149,42 @@ test('graph click updates tree path and selects editor text from emitted reveal 
     .poll(async () => (await readEditorState(page)).tempModel.treePath, { timeout: 5_000 })
     .toEqual(expect.arrayContaining(revealPayload.path));
   await expect.poll(async () => (await readEditorState(page)).tempModel.selectionLength, { timeout: 5_000 }).toBeGreaterThan(0);
+});
+
+test('bottom-bar breadcrumb rematerializes the trajectory target after its viewport reveal', async ({ page }) => {
+  test.setTimeout(60_000);
+  await page.goto('/editor');
+  await waitForEditorReady(page);
+  await setEditorContent(page, {
+    sourceText: trajectoryFixture,
+    language: 'json',
+  });
+  const trajectoryState = await readEditorState(page);
+  await waitForGraphRendered(page, 30_000, {
+    documentKey: trajectoryState.documentKey,
+    revision: trajectoryState.editorRevision,
+  });
+
+  // Seed the exact path without navigation so the bottom bar can drive the
+  // programmatic viewport transition under test.
+  await setTempGraphSelection(page, arkServiceTierPath, 'key');
+  await expect
+    .poll(async () => (await readEditorState(page)).tempModel.treePath, { timeout: 5_000 })
+    .toEqual(['$', ...arkServiceTierDisplayPath]);
+
+  const targetIsRendered = async () =>
+    (await readGraphClickProbes(page)).some(
+      (probe) =>
+        probe.target === 'key' &&
+        probe.path.join('.') === arkServiceTierDisplayPath.join('.') &&
+        probe.coord !== null,
+    );
+
+  // This field is outside the initial virtual projection. The click below
+  // changes Leafer's viewport; it must cause a fresh virtual projection.
+  await expect.poll(targetIsRendered, { timeout: 5_000 }).toBe(false);
+  await page.getByTestId('tree-path-crumb-6').click();
+  await expect.poll(targetIsRendered, { timeout: 10_000 }).toBe(true);
 });
 
 test('graph click highlight survives leaving the hovered value cell', async ({ page }) => {

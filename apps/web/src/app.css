@@ -38,6 +38,34 @@ body {
   @apply relative flex h-full min-h-0 w-full overflow-hidden;
 }
 
+.editor-page-loading-skeleton {
+  position: absolute;
+  z-index: 30;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 24px;
+  background: var(--app-bg);
+}
+
+.editor-page-loading-skeleton__line {
+  height: 12px;
+  width: 56%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #e2e8f0 25%, #f1f5f9 37%, #e2e8f0 63%);
+  background-size: 400% 100%;
+  animation: editor-page-loading-shimmer 1.2s ease infinite;
+}
+
+.editor-page-loading-skeleton__line--wide { width: 82%; }
+.editor-page-loading-skeleton__line--short { width: 34%; }
+
+@keyframes editor-page-loading-shimmer {
+  0% { background-position: 100% 0; }
+  100% { background-position: 0 0; }
+}
+
 .app-split-pane {
   @apply relative h-full min-h-0 overflow-hidden;
   flex: 0 0 auto;

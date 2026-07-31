@@ -40,6 +40,7 @@ export type GraphHighlightState = {
   target?: GraphHighlightTarget;
   revision: number;
   source: TreeSelectionSource;
+  revealToken?: number;
 };
 
 export type TempModel = {

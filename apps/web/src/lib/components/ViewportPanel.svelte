@@ -46,7 +46,7 @@
 
   export let viewMode: 'graph' | 'text' = 'graph'
   export let onRevealError: (line: number, column: number) => void = () => {}
-  export let onGraphReveal: (payload: { path: PathSeg[]; target?: 'key' | 'value' | 'node'; trigger?: 'click' | 'search' }) => void =
+  export let onGraphReveal: (payload: { path: PathSeg[]; target?: 'key' | 'value' | 'node'; trigger?: 'click' | 'search' | 'breadcrumb' }) => void =
     () => {}
   export let onApplyDiff: (plan: DiffPlan) => void = () => {}
   export let onTextScroll: (payload: { scrollTop: number; scrollLeft: number }) => void = () => {}

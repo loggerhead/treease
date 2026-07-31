@@ -256,7 +256,7 @@ export function createGraphTextLinkageController(
     trigger?: string,
   ): void {
     if (!path?.length || deps.getEnableRevealSync?.() === false) return;
-    const source = trigger === "search" ? "search" : "graph";
+    const source = trigger === 'search' || trigger === 'breadcrumb' ? trigger : 'graph';
     deps.updateActiveTempModel((current) => ({
       ...current,
       treePath: path,

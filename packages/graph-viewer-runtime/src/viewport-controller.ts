@@ -16,9 +16,23 @@ type LeaferAppLike = {
   zoomLayer?: unknown;
   resize?: (options: { width: number; height: number }) => void;
   update?: () => void;
-  getClientPointByWorld?: (point: { x: number; y: number }) => { x?: number; y?: number } | null;
+  zoom?: (
+    target: unknown,
+    padding?: number,
+    scroll?: boolean | 'x' | 'y',
+    transition?: boolean | number | LeaferZoomTransition,
+  ) => unknown;
 };
 type LeaferBox = { width?: number; height?: number };
+type LeaferZoomTransition = {
+  duration: number;
+  event: {
+    update: () => void;
+    completed: () => void;
+  };
+};
+
+const GRAPH_REVEAL_TRANSITION_SECONDS = 0.25;
 
 type GraphViewportRequest = {
   x: number;
@@ -41,8 +55,6 @@ type CreateGraphViewportControllerOptions = {
   ) => void;
   updateRenderableProjection?: () => void;
   updateViewportOverlays: () => void;
-  getLastAutoOffset: () => { x: number; y: number } | null;
-  setLastAutoOffset: (value: { x: number; y: number } | null) => void;
   getPanConstraintBounds?: () => GraphWorldBounds | null;
 };
 
@@ -96,7 +108,21 @@ export function createGraphViewportController(options: CreateGraphViewportContro
   }
 
   function handleViewportZoom(): void {
-    syncViewportOverlays();
+    handleViewportMove();
+  }
+
+  function createRevealTransition(): LeaferZoomTransition {
+    // Leafer applies an animated zoom asynchronously. Its transition lifecycle
+    // is the single source of viewport-change notifications for programmatic
+    // reveals, so GraphSceneRuntime can schedule the projection from the
+    // actual animated viewport rather than from a guessed delay.
+    return {
+      duration: GRAPH_REVEAL_TRANSITION_SECONDS,
+      event: {
+        update: handleViewportMove,
+        completed: handleViewportMove,
+      },
+    };
   }
 
   function moveToWorldViewport(view: GraphViewportRequest): void {
@@ -148,60 +174,14 @@ export function createGraphViewportController(options: CreateGraphViewportContro
 
   function centerOnBox(box: LeaferBox): boolean {
     const leafer = options.getLeafer();
-    if (!leafer?.zoomLayer) return false;
-    const layer = leafer.zoomLayer as LeaferZoomLayer;
-    const worldBox = box as LeaferBox & {
-      getWorldPointByBox?: (point: { x: number; y: number }) => { x?: number; y?: number } | null;
-    };
-    const worldLeafer = leafer as LeaferAppLike & {
-      updateClientBounds?: () => void;
-      clientBounds?: { x: number; y: number; width: number; height: number };
-      getClientPointByWorld?: (point: {
-        x: number;
-        y: number;
-      }) => { x?: number; y?: number } | null;
-    };
-    const highlightWorld =
-      typeof worldBox.getWorldPointByBox === "function"
-        ? worldBox.getWorldPointByBox({ x: (box.width ?? 0) / 2, y: (box.height ?? 0) / 2 })
-        : null;
-    const highlightWorldX = Number(highlightWorld?.x);
-    const highlightWorldY = Number(highlightWorld?.y);
-    if (!Number.isFinite(highlightWorldX) || !Number.isFinite(highlightWorldY)) return false;
-    worldLeafer.updateClientBounds?.();
-    const clientBounds = worldLeafer.clientBounds;
-    if (!clientBounds) return false;
-    const highlightClient =
-      typeof worldLeafer.getClientPointByWorld === "function"
-        ? worldLeafer.getClientPointByWorld({ x: highlightWorldX, y: highlightWorldY })
-        : null;
-    const highlightClientX = Number(highlightClient?.x);
-    const highlightClientY = Number(highlightClient?.y);
-    if (!Number.isFinite(highlightClientX) || !Number.isFinite(highlightClientY)) return false;
-    const viewportClientCenterX = clientBounds.x + clientBounds.width / 2;
-    const viewportClientCenterY = clientBounds.y + clientBounds.height / 2;
-    layer.x = (layer.x ?? 0) + viewportClientCenterX - highlightClientX;
-    layer.y = (layer.y ?? 0) + viewportClientCenterY - highlightClientY;
-    options.setLastAutoOffset({ x: layer.x ?? 0, y: layer.y ?? 0 });
-    leafer.update?.();
-    handleViewportMove();
+    if (!leafer?.zoom) return false;
+    leafer.zoom(box, 0, true, createRevealTransition());
     return true;
   }
 
   function centerOnNode(node: GraphNode): void {
     const leafer = options.getLeafer();
-    const container = options.getContainer();
-    if (!leafer?.zoomLayer || !container) return;
-    const layer = leafer.zoomLayer as LeaferZoomLayer;
-    const center = getViewportCenter();
-    const { scaleX, scaleY } = getZoomScale(layer);
-    const targetX = node.boxArgs.x + node.boxArgs.width / 2;
-    const targetY = node.boxArgs.y + node.boxArgs.height / 2;
-    layer.x = center.x - targetX * scaleX;
-    layer.y = center.y - targetY * scaleY;
-    options.setLastAutoOffset({ x: layer.x ?? 0, y: layer.y ?? 0 });
-    leafer.update?.();
-    handleViewportMove();
+    leafer?.zoom?.(node.boxArgs, 0, true, createRevealTransition());
   }
 
   return {

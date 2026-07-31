@@ -21,6 +21,9 @@ export type LoadedGraphRuntime = {
 /** The one Leafer load/resize/destroy owner for every graph surface. */
 export async function loadGraphViewerRuntime(options: GraphRuntimeLoaderOptions): Promise<LoadedGraphRuntime> {
   await import('@leafer-in/viewport');
+  await import('@leafer-in/color');
+  await import('@leafer-in/animate');
+  await import('@leafer-in/view');
   await options.preload?.();
   const modules = await import('leafer-ui') as unknown as LeaferRuntimeModules;
   const RuntimeCtor = options.preferApp && modules.App ? modules.App : modules.Leafer;

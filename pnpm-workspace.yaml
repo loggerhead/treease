@@ -68,3 +68,5 @@ minimumReleaseAgeExclude:
   - '@leafer/watcher@2.2.7'
   - '@leafer/web-core@2.2.7'
   - leafer-ui@2.2.7
+  - '@leafer-in/animate@2.2.7'
+  - '@leafer-in/color@2.2.7'

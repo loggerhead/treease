@@ -365,10 +365,6 @@
     updateViewportOverlays: () => {
       graphMinimapRuntimeController.updateViewport();
     },
-    getLastAutoOffset: () => lastAutoOffset,
-    setLastAutoOffset: (value) => {
-      lastAutoOffset = value;
-    },
     getPanConstraintBounds: () => {
       const graphData = graphSceneController?.getLastGraphData?.() ?? null;
       const nodes = graphData?.nodes ?? [];
@@ -564,7 +560,7 @@
     clearActiveGraphSelection: () => {
       activeTempModel.update((current) => clearGraphSelectionForFullEdit(current));
     },
-    emitReveal: (path, target) => emitReveal(path, target, 'click'),
+    emitReveal: (path, target) => emitReveal(path, target, 'breadcrumb'),
     handleError,
     applyStructuredValueEdit,
     waitForCommittedDocument,
