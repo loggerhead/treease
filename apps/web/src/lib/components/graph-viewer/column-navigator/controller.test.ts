@@ -299,6 +299,52 @@ describe('path-driven column navigator controller', () => {
     expect(controller.getActivePath()).toEqual(keyPath('beta'));
   });
 
+  it('clears forward history when a new path is selected after going back', async () => {
+    installDocument(
+      {
+        '': readyPathValue('object', '{3}'),
+        alpha: readyPathValue('number', '1'),
+        beta: readyPathValue('number', '2'),
+        gamma: readyPathValue('number', '3'),
+      },
+      { '': [item(keyPath('alpha'), 'number'), item(keyPath('beta'), 'number'), item(keyPath('gamma'), 'number')] },
+    );
+    const { controller, states } = createController();
+
+    await controller.openPath(keyPath('alpha'));
+    await controller.selectPath(keyPath('beta'));
+    await controller.goBack();
+    await controller.selectPath(keyPath('gamma'));
+
+    expect(controller.getActivePath()).toEqual(keyPath('gamma'));
+    expect(states.at(-1)).toMatchObject({ canGoBack: true, canGoForward: false });
+    await controller.goForward();
+    expect(controller.getActivePath()).toEqual(keyPath('gamma'));
+  });
+
+  it('navigates to the parent path without creating a second navigation state', async () => {
+    installDocument(
+      {
+        '': readyPathValue('object', '{1}'),
+        root: readyPathValue('object', '{1}'),
+        'root.child': readyPathValue('object', '{1}'),
+        'root.child.leaf': readyPathValue('string', '"value"'),
+      },
+      {
+        '': [item(keyPath('root'))],
+        root: [item(keyPath('root', 'child'))],
+        'root.child': [item(keyPath('root', 'child', 'leaf'), 'string')],
+      },
+    );
+    const { controller } = createController();
+
+    await controller.openPath(keyPath('root', 'child', 'leaf'));
+    await controller.navigateParent();
+
+    expect(controller.getActivePath()).toEqual(keyPath('root', 'child'));
+    expect(controller.getChain().filter((pane) => pane.pathKey === 'k:root|k:child')).toHaveLength(2);
+  });
+
   it('waits for the current Monaco draft transaction before rebinding the selected path', async () => {
     installDocument(
       {
@@ -346,6 +392,21 @@ describe('path-driven column navigator controller', () => {
     expect(applyStructuredValueEdit.mock.calls.map(([intent]) => intent.raw)).toEqual(['2', '4']);
   });
 
+  it('stops a failed commit without replacing the current detail projection', async () => {
+    installDocument(
+      { '': readyPathValue('object', '{1}'), count: readyPathValue('number', '1') },
+      { '': [item(keyPath('count'), 'number')] },
+    );
+    const applyStructuredValueEdit = vi.fn().mockResolvedValue(false);
+    const { controller } = createController({ applyStructuredValueEdit });
+    await controller.openPath(keyPath('count'));
+
+    await controller.commitValueEdit(controller.getChain().at(-1)!, 'not committed');
+
+    expect(applyStructuredValueEdit).toHaveBeenCalledOnce();
+    expect(controller.getChain().at(-1)?.content?.sourceText).toBe('1');
+  });
+
   it('drops an older asynchronous navigation result when a later path wins', async () => {
     const staleLeaf = deferred<ReturnType<typeof readyPathValue>>();
     mocks.queryPathValue.mockImplementation(async ({ path }: { path: Array<{ key?: string }> }) => {
@@ -365,6 +426,25 @@ describe('path-driven column navigator controller', () => {
     await openA;
 
     expect(controller.getActivePath()).toEqual(keyPath('b'));
+  });
+
+  it('does not rematerialize a pending navigation after reset', async () => {
+    const pending = deferred<ReturnType<typeof readyPathValue>>();
+    mocks.queryPathValue.mockImplementation(async ({ path }: { path: Array<{ key?: string }> }) => {
+      if (!path.length) return readyPathValue('object', '{1}');
+      if (pathKey(path) === 'slow') return pending.promise;
+      return readyPathValue('number', '1');
+    });
+    mocks.prepareGraph.mockResolvedValue({ items: [item(keyPath('slow'), 'number')] });
+    const { controller } = createController();
+
+    const navigation = controller.openPath(keyPath('slow'));
+    controller.reset();
+    pending.resolve(readyPathValue('number', '1'));
+    await navigation;
+
+    expect(controller.getActivePath()).toEqual([]);
+    expect(controller.getChain()).toEqual([]);
   });
 
   it('refreshes active columns and Monaco content when the projection revision changes', async () => {
@@ -392,6 +472,51 @@ describe('path-driven column navigator controller', () => {
 
     expect(controller.getChain().at(-1)?.content?.sourceText).toBe('"external"');
     expect(mocks.cacheClear).toHaveBeenCalled();
+  });
+
+  it('refreshes projection state when render configuration or nesting changes', async () => {
+    installDocument(
+      { '': readyPathValue('object', '{1}'), value: readyPathValue('string', '"old"') },
+      { '': [item(keyPath('value'), 'string')] },
+    );
+    let renderConfig = {};
+    let enableNest = false;
+    const { controller } = createController({
+      getRenderConfig: () => renderConfig as any,
+      getEnableNest: () => enableNest,
+    });
+    await controller.openPath(keyPath('value'));
+    mocks.cacheClear.mockClear();
+    renderConfig = { changed: true };
+    enableNest = true;
+
+    await controller.syncProjection({
+      documentKey: 'document-1',
+      languageId: 'json' as any,
+      revision: 1,
+      graphAppliedRevision: 1,
+      snapshotId: 1 as any,
+      enableNest,
+      renderConfig: renderConfig as any,
+    });
+
+    expect(mocks.cacheClear).toHaveBeenCalledOnce();
+  });
+
+  it('clamps divider height to the shell bounds and clears drag state on release', () => {
+    const { controller, states } = createController();
+
+    controller.setHeight(1);
+    expect(states.at(-1)?.heightPx).toBe(100);
+    controller.setHeight(10_000);
+    expect(states.at(-1)?.heightPx).toBe(600);
+
+    controller.startDividerDrag(400);
+    expect(states.at(-1)?.isDraggingDivider).toBe(true);
+    controller.moveDividerDrag(1_000);
+    expect(states.at(-1)?.heightPx).toBe(100);
+    controller.endDividerDrag();
+    expect(states.at(-1)?.isDraggingDivider).toBe(false);
   });
 
   it('resets all navigation and history state on lifecycle teardown', async () => {

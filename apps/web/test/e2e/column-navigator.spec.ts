@@ -465,3 +465,31 @@ test('full active paths remain horizontally browsable with independent native co
   expect(metrics.columnWidths.every((width) => Math.round(width) === 288)).toBe(true);
   expect(metrics.columnOverflowY.every((overflow) => overflow === 'auto')).toBe(true);
 });
+
+test('column navigator can close and reopen without losing the main document view', async ({ page }) => {
+  await page.goto('/editor');
+  await waitForEditorReady(page);
+  await setEditorContent(page, {
+    sourceText: JSON.stringify({ user: { name: 'Alice' }, keep: true }),
+    language: 'json',
+  });
+  await waitForGraphRendered(page);
+
+  const probe = (await readGraphClickProbes(page)).find(
+    (candidate) => candidate.target === 'value' && candidate.path.join('.') === 'user' && candidate.coord,
+  );
+  expect(probe).toBeTruthy();
+  if (!probe?.coord) throw new Error('user object probe missing');
+  await clickGraphProbeAt(page, probe.coord);
+  await waitForColumnNavigatorSettled(page, 'k:user');
+
+  const navigator = page.getByTestId('column-navigator-graph');
+  await expect(navigator).toBeVisible();
+  await navigator.getByRole('button', { name: 'Close column navigator' }).click();
+  await expect(navigator).toHaveCount(0);
+  await expect(page.getByTestId('graph-viewer-canvas')).toBeVisible();
+
+  await clickGraphProbeAt(page, probe.coord);
+  await waitForColumnNavigatorSettled(page, 'k:user');
+  await expect(page.getByTestId('column-navigator-graph')).toBeVisible();
+});
