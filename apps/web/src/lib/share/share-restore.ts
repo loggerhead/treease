@@ -29,7 +29,7 @@ export async function restoreShareResource(resource: ShareResource, ports: {
   restoreTreePath(path: ShareResource['payload']['interaction']['treePath']): boolean;
   restoreGraphFocus(path: ShareResource['payload']['interaction']['treePath'], target: 'key' | 'value' | 'node'): Promise<boolean>;
   waitForGraphReady(): Promise<boolean>;
-  rebuildSubgraphWorkspace(paths: ShareResource['payload']['interaction']['subgraphWorkspace']['panePaths']): Promise<boolean>;
+  restoreColumnNavigator(activePath: ShareResource['payload']['interaction']['columnNavigator']['activePath']): Promise<boolean>;
   reportNavigationWarning(): void;
 }): Promise<void> {
   await ports.editor.ensureReady();
@@ -58,11 +58,11 @@ async function restoreInteraction(resource: ShareResource, ports: {
   restoreTreePath(path: ShareResource['payload']['interaction']['treePath']): boolean;
   restoreGraphFocus(path: ShareResource['payload']['interaction']['treePath'], target: 'key' | 'value' | 'node'): Promise<boolean>;
   waitForGraphReady(): Promise<boolean>;
-  rebuildSubgraphWorkspace(paths: ShareResource['payload']['interaction']['subgraphWorkspace']['panePaths']): Promise<boolean>;
+  restoreColumnNavigator(activePath: ShareResource['payload']['interaction']['columnNavigator']['activePath']): Promise<boolean>;
   reportNavigationWarning(): void;
 }): Promise<void> {
   const interaction = resource.payload.interaction;
-  const workspaceRestored = await ports.rebuildSubgraphWorkspace(interaction.subgraphWorkspace.panePaths);
+  const columnNavigatorRestored = await ports.restoreColumnNavigator(interaction.columnNavigator.activePath);
   const treeRestored = ports.restoreTreePath(interaction.treePath);
   let focusRestored = true;
   if (interaction.focus?.type === 'editor') ports.editor.restoreSelection(interaction.focus.selection);
@@ -70,5 +70,5 @@ async function restoreInteraction(resource: ShareResource, ports: {
     ports.editor.restoreSelection(interaction.focus.editorSelection);
     focusRestored = await ports.waitForGraphReady() && await ports.restoreGraphFocus(interaction.focus.path, interaction.focus.target);
   }
-  if (!workspaceRestored || !treeRestored || !focusRestored) ports.reportNavigationWarning();
+  if (!columnNavigatorRestored || !treeRestored || !focusRestored) ports.reportNavigationWarning();
 }

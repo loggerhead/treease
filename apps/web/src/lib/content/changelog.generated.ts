@@ -394,7 +394,7 @@ export const generatedChangelog = [
       {
         "heading": "Editing and graph fixes",
         "paragraphs": [
-          "Graph search can now reveal table cells by anchor, subgraph workspaces reset correctly after full replacements, and empty containers render more sensibly as scalar cells when needed.",
+          "Graph search can now reveal table cells by anchor, column navigators reset correctly after full replacements, and empty containers render more sensibly as scalar cells when needed.",
           "Blank input now clears the document, import progress messaging is clearer at the finish line, viewer panes stay mounted across mode switches, and CLI graph output handles missing and scalar cases more cleanly."
         ]
       }
@@ -464,8 +464,8 @@ export const generatedChangelog = [
   },
   {
     "slug": "2026-06-29",
-    "title": "Subgraph Workspace Editing Refresh",
-    "summary": "Subgraph workspaces received a layout and editing overhaul, with better toolbar polish, safer cell editing rules, cleaner minimap rendering, and fixes for JSON formatting and graph edges.",
+    "title": "Column Navigator Editing Refresh",
+    "summary": "Column Navigators received a layout and editing overhaul, with better toolbar polish, safer cell editing rules, cleaner minimap rendering, and fixes for JSON formatting and graph edges.",
     "date": "2026-06-29",
     "isoDate": "2026-06-29",
     "tags": [
@@ -479,8 +479,8 @@ export const generatedChangelog = [
       {
         "heading": "Workspace layout and editing",
         "paragraphs": [
-          "The subgraph workspace layout and editing flow were refined, including command and toolbar UI updates, simpler split-handle presentation, and safer behavior for missing graph cells.",
-          "Editing is now disabled where cells are genuinely missing, and table edit paths inside subgraph workspaces are handled more reliably."
+          "The column navigator layout and editing flow were refined, including command and toolbar UI updates, simpler split-handle presentation, and safer behavior for missing graph cells.",
+          "Editing is now disabled where cells are genuinely missing, and table edit paths inside column navigators are handled more reliably."
         ]
       },
       {

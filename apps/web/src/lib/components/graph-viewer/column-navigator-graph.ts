@@ -11,17 +11,17 @@ import {
   type PathSeg,
 } from '../../store/tree-path';
 import type { GraphCell, GraphEdge, GraphNode, ValueType } from '@treease/graph-viewer-runtime';
-import type { SubgraphWorkspaceGraphData } from './graph-subgraph-workspace-types';
+import type { ColumnNavigatorGraphData } from './column-navigator-types';
 import { isRawGraphDelta } from '../../../shared/worker-protocol/graph-delta-normalize';
 import { normalizeGraphDelta } from '../../../shared/worker-protocol/graph-stream-event-codec';
 import { buildPathKey } from '../../graph/graph-viewer-path';
-import type { SubgraphWorkspaceColumnItem } from './workspace/types';
+import type { ColumnNavigatorColumnItem } from './column-navigator/types';
 
 type GraphCacheEntry = {
   signature: string;
   accessOrder: number;
-  graph?: SubgraphWorkspaceGraphData | null;
-  promise?: Promise<SubgraphWorkspaceGraphData | null>;
+  graph?: ColumnNavigatorGraphData | null;
+  promise?: Promise<ColumnNavigatorGraphData | null>;
 };
 
 type GraphCacheDeps = {
@@ -44,7 +44,7 @@ function buildMetaPathText(path: PathSeg[]): string {
   return readable;
 }
 
-export function rebaseSubgraphWorkspacePath(basePath: PathSeg[], path: PathSeg[]): PathSeg[] {
+export function rebaseColumnNavigatorPath(basePath: PathSeg[], path: PathSeg[]): PathSeg[] {
   if (!basePath.length) return path;
   if (!path.length) return basePath;
   const pathKey = buildWorkspacePathKey(path);
@@ -52,7 +52,7 @@ export function rebaseSubgraphWorkspacePath(basePath: PathSeg[], path: PathSeg[]
   return pathKey === basePathKey || pathKey.startsWith(`${basePathKey}|`) ? path : [...basePath, ...path];
 }
 
-export function formatSubgraphWorkspacePath(path: PathSeg[]): string {
+export function formatColumnNavigatorPath(path: PathSeg[]): string {
   return buildMetaPathText(path);
 }
 
@@ -60,7 +60,7 @@ export function shouldIgnoreSubgraphOpenCell(cell: GraphCell | null | undefined)
   return cell?.isMissing === true;
 }
 
-export function shouldOpenSubgraphWorkspaceContent(value: {
+export function shouldOpenColumnNavigatorContent(value: {
   valueType?: string | null;
   displayText?: string | null;
 }): boolean {
@@ -95,7 +95,7 @@ function itemPreview(cell: GraphCell, childCount: number): string {
   return cell.value ?? cell.text ?? '';
 }
 
-function collectGraphCells(graph: SubgraphWorkspaceGraphData): GraphCell[] {
+function collectGraphCells(graph: ColumnNavigatorGraphData): GraphCell[] {
   const cells: GraphCell[] = [];
   for (const node of graph.nodes) {
     if (node.meta) cells.push(node.meta);
@@ -109,15 +109,15 @@ function collectGraphCells(graph: SubgraphWorkspaceGraphData): GraphCell[] {
  * A column is a snapshot projection flattened to exactly one path level.
  * Rebase first because Core may return either projection-relative or absolute cell paths.
  */
-export function buildSubgraphWorkspaceColumnItems(
-  graph: SubgraphWorkspaceGraphData,
+export function buildColumnNavigatorColumnItems(
+  graph: ColumnNavigatorGraphData,
   containerPath: PathSeg[],
-): SubgraphWorkspaceColumnItem[] {
-  const byPath = new Map<string, SubgraphWorkspaceColumnItem>();
+): ColumnNavigatorColumnItem[] {
+  const byPath = new Map<string, ColumnNavigatorColumnItem>();
   const cells = collectGraphCells(graph);
   const directChildCounts = new Map<string, Set<string>>();
   for (const cell of cells) {
-    const absolutePath = rebaseSubgraphWorkspacePath(containerPath, cell.path ?? []);
+    const absolutePath = rebaseColumnNavigatorPath(containerPath, cell.path ?? []);
     if (absolutePath.length <= containerPath.length + 1) continue;
     const parentPath = absolutePath.slice(0, -1);
     const parentKey = buildWorkspacePathKey(parentPath);
@@ -128,12 +128,12 @@ export function buildSubgraphWorkspaceColumnItems(
   }
   for (const cell of cells) {
     if (cell.isMissing) continue;
-    const absolutePath = rebaseSubgraphWorkspacePath(containerPath, cell.path ?? []);
+    const absolutePath = rebaseColumnNavigatorPath(containerPath, cell.path ?? []);
     if (absolutePath.length !== containerPath.length + 1) continue;
     if (!pathsEqual(absolutePath.slice(0, containerPath.length), containerPath)) continue;
     const pathKey = buildPathKey(absolutePath);
     if (!pathKey) continue;
-    const next: SubgraphWorkspaceColumnItem = {
+    const next: ColumnNavigatorColumnItem = {
       path: absolutePath,
       pathKey,
       label: itemLabel(absolutePath),
@@ -159,7 +159,7 @@ export function buildSubgraphWorkspaceColumnItems(
   return [...byPath.values()];
 }
 
-export function buildSubgraphWorkspaceRenderSignature(renderConfig: GraphViewerConfig): string {
+export function buildColumnNavigatorRenderSignature(renderConfig: GraphViewerConfig): string {
   return [
     renderConfig.columns.keyColumnMaxWidth,
     renderConfig.columns.valueColumnMaxWidth,
@@ -180,7 +180,7 @@ function buildGraphCacheSignature(deps: GraphCacheDeps): string {
     deps.getLanguageId(),
     deps.getRevision(),
     deps.getEnableNest() ? 'nest' : 'flat',
-    buildSubgraphWorkspaceRenderSignature(deps.getRenderConfig()),
+    buildColumnNavigatorRenderSignature(deps.getRenderConfig()),
   ].join('|');
 }
 
@@ -225,7 +225,7 @@ function buildWorkspaceGraphData(
   path: PathSeg[],
   pathKey: string,
   result: { nodes?: GraphNode[]; edges?: GraphEdge[] },
-): SubgraphWorkspaceGraphData | null {
+): ColumnNavigatorGraphData | null {
   const nodes = result.nodes ?? [];
   const edges = normalizeWorkspaceGraphEdgeRows(nodes, result.edges ?? []);
   if (!nodes.length) return null;
@@ -246,7 +246,7 @@ function buildWorkspaceGraphData(
   };
 }
 
-export function createSubgraphWorkspaceGraphCache(deps: GraphCacheDeps) {
+export function createColumnNavigatorGraphCache(deps: GraphCacheDeps) {
   const graphCache = new Map<string, GraphCacheEntry>();
   let graphCacheSignature = '';
   let graphCacheAccessOrder = 0;
@@ -275,7 +275,7 @@ export function createSubgraphWorkspaceGraphCache(deps: GraphCacheDeps) {
     }
   }
 
-  async function prepareGraph(path: PathSeg[]): Promise<SubgraphWorkspaceGraphData | null> {
+  async function prepareGraph(path: PathSeg[]): Promise<ColumnNavigatorGraphData | null> {
     ensureGraphCacheSignature();
     const pathKey = buildWorkspacePathKey(path);
     const signature = graphCacheSignature;
@@ -298,7 +298,7 @@ export function createSubgraphWorkspaceGraphCache(deps: GraphCacheDeps) {
       if (projection.status !== 'ready' || !projection.data.graphData) return null;
       const delta = { ...projection.data.graphData, clear: projection.data.clear ? 1 : 0 };
       if (!isRawGraphDelta(delta)) {
-        throw new Error('subgraph workspace projection decode failed');
+        throw new Error('column navigator projection decode failed');
       }
       const normalized = normalizeGraphDelta(delta);
       return buildWorkspaceGraphData(deps, path, pathKey, {

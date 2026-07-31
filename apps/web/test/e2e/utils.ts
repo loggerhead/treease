@@ -541,7 +541,7 @@ export async function waitForSidecarSettled(page: Page, hookId = 'right-editor',
   );
 }
 
-export async function waitForSubgraphSettled(page: Page, pathKey?: string, timeout = DEFAULT_UI_TIMEOUT) {
+export async function waitForColumnNavigatorSettled(page: Page, pathKey?: string, timeout = DEFAULT_UI_TIMEOUT) {
   await waitForRuntimeReadiness(
     page,
     (readiness) => readiness.subgraph.settled && (pathKey ? readiness.subgraph.pathKey === pathKey : true),
@@ -897,7 +897,7 @@ export async function readGraphClickProbes(page: Page): Promise<GraphClickProbeS
   return readGraphClickProbesByKeys(page, 'root');
 }
 
-export async function readSubgraphWorkspaceClickProbes(page: Page): Promise<GraphClickProbeSnapshot[]> {
+export async function readColumnNavigatorClickProbes(page: Page): Promise<GraphClickProbeSnapshot[]> {
   return readGraphClickProbesByKeys(page, 'workspace');
 }
 
@@ -1174,11 +1174,11 @@ export async function clickGraphProbeAt(page: Page, probe: { x: number; y: numbe
   await page.mouse.click(box.x + probe.x, box.y + probe.y);
 }
 
-export async function clickSubgraphWorkspaceProbeAt(page: Page, probe: { x: number; y: number }) {
-  const workspace = page.getByTestId('graph-subgraph-workspace');
+export async function clickColumnNavigatorProbeAt(page: Page, probe: { x: number; y: number }) {
+  const workspace = page.getByTestId('column-navigator-graph');
   await waitForGraphViewerPaint(page);
   const box = await workspace.boundingBox();
-  if (!box) throw new Error('graph-subgraph-workspace bounding box missing');
+  if (!box) throw new Error('column-navigator-graph bounding box missing');
   await page.mouse.click(box.x + probe.x, box.y + probe.y);
 }
 

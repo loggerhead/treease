@@ -49,7 +49,7 @@
   export let onContentChange: (text: string) => void = () => {};
   export let onEditorBlur: (text: string) => void = () => {};
 
-  // A detached sidecar is the Subgraph Content Pane: it owns a Monaco draft,
+  // A detached sidecar is the Column Detail Editor: it owns a Monaco draft,
   // but its path is part of the primary document. Its writes must therefore
   // return through the graph planner instead of creating a second document.
   const isPrimaryDocumentDraft = () => !attachToPane;
@@ -139,7 +139,7 @@
   });
 
   function sidecarDocumentKey(): string {
-    if (isPrimaryDocumentDraft()) return `subgraph-draft:${tabId}`;
+    if (isPrimaryDocumentDraft()) return `column-navigator-draft:${tabId}`;
     return getWorkspaceTab(tabId)?.documentKey ?? `sidecar:${tabId}:0`;
   }
 

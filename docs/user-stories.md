@@ -15,7 +15,7 @@ This document describes only user behavior, goals, and expected experiences. It 
 
 ## Product Overview
 
-Treease is an editor and Graph workspace for structured text. Users can import structured content into the editor, view and edit text on the left, understand its structure through the Graph on the right, and navigate, edit, compare, and export between the two.
+Treease is an editor and Graph Column Navigator for structured text. Users can import structured content into the editor, view and edit text on the left, understand its structure through the Graph on the right, and navigate, edit, compare, and export between the two.
 
 Treease focuses on a continuous experience: users open content, understand its structure, locate fields, edit content, confirm changes, compare differences, and export results. The Graph is not a standalone display, and the editor is not an isolated text box; both serve the same content.
 
@@ -35,7 +35,7 @@ Treease focuses on a continuous experience: users open content, understand its s
 3. Run format, minify, or sort in the editor, or quickly trigger text operations through command search.
 4. Search or click nodes in the Graph, synchronize Tree Path, and navigate back to the corresponding editor text range.
 5. Hover over a value node in the editor to preview URLs, images, colors, dates, Base64, JWT, Unicode, and more.
-6. Open nested subgraph workspaces in the Graph to continue reading, locating, and editing local content along a nested structure.
+6. Open nested column navigators in the Graph to continue reading, locating, and editing local content along a nested structure.
 7. Edit a value in the Graph and write the change back to the editor. Edit in the editor and update the Graph incrementally.
 8. Export to a target format, preview the converted result on the right, then download the file.
 9. Load a second item into Compare and compare structures first; show textual differences when structural comparison is unavailable.
@@ -114,14 +114,14 @@ As a user reading data, I want to see previews for images, URLs, dates, colors, 
 As a user reading a complex Graph, I want clicking a particular cell to open the Column Navigator at the bottom, so I can keep reading, locating, and editing along the same path instead of relying on transient hover previews.
 
 - User behavior: Click a key, value, index, or row in the Graph.
-- User expectation: Treease preserves the reveal/editor linkage and expands a persistent pane at the bottom; objects and arrays use a graph pane, while scalars use a Monaco content pane.
+- User expectation: Treease preserves the reveal/editor linkage and expands a persistent column at the bottom; objects and arrays use a Column Rail, while scalars use a Monaco column detail editor.
 - User value: Users can retain the global structural view while inspecting and editing local details deeply.
 - Expected experience:
-  - The workspace appears immediately after clicking, without an extra button or hover delay.
+  - The Column Navigator appears immediately after clicking, without an extra button or hover delay.
   - Clicking a key opens its key-value pair, clicking an index or row opens its row, and clicking a value opens its path.
-  - The content pane does not show an additional key input; it shows the path and value editor directly.
-  - Value editing in the content pane reuses the existing bidirectional-editing path rather than introducing a second commit semantic.
-  - While a user types continuously in a content pane, the workspace does not feed an old external value back and interrupt the current input.
+  - The column detail editor does not show an additional key input; it shows the path and value editor directly.
+  - Value editing in the column detail editor reuses the existing bidirectional-editing path rather than introducing a second commit semantic.
+  - While a user types continuously in a column detail editor, the Column Navigator does not feed an old external value back and interrupt the current input.
 
 ### US-07 Navigate Nested Paths in the Column Navigator
 
@@ -135,8 +135,8 @@ As a user reading deeply nested structures, I want clicking a structured cell in
   - Clicking the next structured cell creates a new column on the right. The full path remains available through native horizontal scrolling.
   - The breadcrumb and highlighted ancestor rows tell users which path they are viewing.
   - Columns use native browser scrolling and do not reuse the graph canvas drag, zoom, or pan model.
-  - When users locate a value in a subgraph, the editor remains synchronized to its matching position, keeping the graph-text linkage intact.
-  - When users repeatedly edit the same path in a pane, the final save uses the newest input rather than an older intermediate commit.
+  - When users locate a value in the Column Navigator, the editor remains synchronized to its matching position, keeping the graph-text linkage intact.
+  - When users repeatedly edit the same path in a column, the final save uses the newest input rather than an older intermediate commit.
 
 ### US-08 Synchronize Changes Between the Graph and Editor
 
@@ -184,7 +184,7 @@ As a user who needs to share an example, demo steps, or issue reproduction, I wa
 - Expected experience:
   - Viewer-only, editor-only, compare, text-preview, and similar states can be reproduced directly from a link.
   - The precedence of `text` / `textUrl`, `rightText` / `rightTextUrl`, and `command` / `yq` is clear and predictable.
-  - Same-language examples, a shared set of UI-panel visibility choices, and parser/formatting preferences can be restored with the entry point.
+  - Same-language examples, a shared set of UI-columnl visibility choices, and parser/formatting preferences can be restored with the entry point.
   - Users receive a clear failure or ignore notice when parameters are invalid or a resource fails to load.
 
 ### US-12 Adjust Personal Preferences

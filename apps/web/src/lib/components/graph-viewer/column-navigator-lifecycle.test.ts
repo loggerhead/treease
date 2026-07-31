@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { FullEditUiState } from '../../store/editor-store';
-import { shouldResetSubgraphWorkspaceForFullEdit } from './graph-subgraph-workspace-lifecycle';
+import { shouldResetColumnNavigatorForFullEdit } from './column-navigator-lifecycle';
 
 function createFullEditUiState(
   overrides: Partial<FullEditUiState> = {},
@@ -24,20 +24,20 @@ function createFullEditUiState(
   };
 }
 
-describe('shouldResetSubgraphWorkspaceForFullEdit', () => {
+describe('shouldResetColumnNavigatorForFullEdit', () => {
   it('resets workspace for full document replacement sessions', () => {
     expect(
-      shouldResetSubgraphWorkspaceForFullEdit(
+      shouldResetColumnNavigatorForFullEdit(
         createFullEditUiState({ reason: 'whole-document-replacement' }),
       ),
     ).toBe(true);
     expect(
-      shouldResetSubgraphWorkspaceForFullEdit(
+      shouldResetColumnNavigatorForFullEdit(
         createFullEditUiState({ reason: 'import-file' }),
       ),
     ).toBe(true);
     expect(
-      shouldResetSubgraphWorkspaceForFullEdit(
+      shouldResetColumnNavigatorForFullEdit(
         createFullEditUiState({ reason: 'drop-file' }),
       ),
     ).toBe(true);
@@ -45,17 +45,17 @@ describe('shouldResetSubgraphWorkspaceForFullEdit', () => {
 
   it('resets workspace for language-driven rebuild sessions', () => {
     expect(
-      shouldResetSubgraphWorkspaceForFullEdit(
+      shouldResetColumnNavigatorForFullEdit(
         createFullEditUiState({ reason: 'language-switch' }),
       ),
     ).toBe(true);
     expect(
-      shouldResetSubgraphWorkspaceForFullEdit(
+      shouldResetColumnNavigatorForFullEdit(
         createFullEditUiState({ reason: 'language-example' }),
       ),
     ).toBe(true);
     expect(
-      shouldResetSubgraphWorkspaceForFullEdit(
+      shouldResetColumnNavigatorForFullEdit(
         createFullEditUiState({ reason: 'initial-example' }),
       ),
     ).toBe(true);
@@ -63,22 +63,22 @@ describe('shouldResetSubgraphWorkspaceForFullEdit', () => {
 
   it('does not reset workspace after the rebuild has settled, or without a live session', () => {
     expect(
-      shouldResetSubgraphWorkspaceForFullEdit(
+      shouldResetColumnNavigatorForFullEdit(
         createFullEditUiState({ phase: 'settled' }),
       ),
     ).toBe(false);
     expect(
-      shouldResetSubgraphWorkspaceForFullEdit(
+      shouldResetColumnNavigatorForFullEdit(
         createFullEditUiState({ phase: 'idle' }),
       ),
     ).toBe(false);
     expect(
-      shouldResetSubgraphWorkspaceForFullEdit(
+      shouldResetColumnNavigatorForFullEdit(
         createFullEditUiState({ sessionId: null }),
       ),
     ).toBe(false);
     expect(
-      shouldResetSubgraphWorkspaceForFullEdit(
+      shouldResetColumnNavigatorForFullEdit(
         createFullEditUiState({ active: false }),
       ),
     ).toBe(false);
@@ -86,7 +86,7 @@ describe('shouldResetSubgraphWorkspaceForFullEdit', () => {
 
   it('does not reset workspace for tab reactivation', () => {
     expect(
-      shouldResetSubgraphWorkspaceForFullEdit(
+      shouldResetColumnNavigatorForFullEdit(
         createFullEditUiState({ reason: 'tab-reactivate' }),
       ),
     ).toBe(false);
@@ -94,13 +94,13 @@ describe('shouldResetSubgraphWorkspaceForFullEdit', () => {
 
   it('does not reset a Workspace after the full-edit revision has a visible main graph', () => {
     expect(
-      shouldResetSubgraphWorkspaceForFullEdit(
+      shouldResetColumnNavigatorForFullEdit(
         createFullEditUiState({ revision: 4, phase: 'streaming' }),
         4,
       ),
     ).toBe(false);
     expect(
-      shouldResetSubgraphWorkspaceForFullEdit(
+      shouldResetColumnNavigatorForFullEdit(
         createFullEditUiState({ revision: 4, phase: 'streaming' }),
         3,
       ),

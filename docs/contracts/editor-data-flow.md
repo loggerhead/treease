@@ -173,7 +173,7 @@ Editor Model
   → View Runtime
 ```
 
-This path serves only local visible experiences, such as a JSON block graph, source-editor semantic tokens, and location feedback. It must not bind as the primary document's successful `snapshotId`, serve as the successful baseline for graph / search / planner / subgraph, or bypass `Commit Transaction` to advance primary-document authority.
+This path serves only local visible experiences, such as a JSON block graph, source-editor semantic tokens, and location feedback. It must not bind as the primary document's successful `snapshotId`, serve as the successful baseline for graph / search / planner / Column Navigator, or bypass `Commit Transaction` to advance primary-document authority.
 
 ### 5. Blank / whitespace close
 

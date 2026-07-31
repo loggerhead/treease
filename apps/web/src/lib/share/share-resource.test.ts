@@ -4,7 +4,7 @@ import { createShareResource, parseShareResource } from './share-resource';
 
 const left = { text: '{"left":true}', languageId: 'json' as const };
 const right = { text: '{"right":true}', languageId: 'json' as const };
-const interaction = { treePath: [], focus: null, subgraphWorkspace: { panePaths: [] } };
+const interaction = { treePath: [], focus: null, columnNavigator: { activePath: [] } };
 const input = { left, right, layout: { viewMode: 'graph' as const, activePane: 'left' as const }, viewport: { left: { topLine: 24, scrollLeft: 0 }, right: { topLine: 31, scrollLeft: 0 } }, interaction };
 
 describe('share resource', () => {
@@ -27,7 +27,7 @@ describe('share resource', () => {
     expect(parseShareResource({ type: 'unknown', payload: {} })).toBeNull();
     expect(parseShareResource({ type: 'text_snapshot', payload: { schemaVersion: 1, left, right: null, layout: input.layout, cache: {} } })).toBeNull();
     expect(parseShareResource({ type: 'text_snapshot', payload: { schemaVersion: 1, left, right: null, layout: input.layout, interaction: { ...interaction, unknown: true } } })).toBeNull();
-    expect(parseShareResource({ type: 'text_snapshot', payload: { schemaVersion: 1, left, right: null, layout: input.layout, interaction: { treePath: [{ type: 'key', key: 'a', extra: true }], focus: null, subgraphWorkspace: { panePaths: [] } } } })).toBeNull();
-    expect(parseShareResource({ type: 'text_snapshot', payload: { schemaVersion: 1, left, right: null, layout: input.layout, interaction: { treePath: [], focus: { type: 'graph', path: [], target: 'node' }, subgraphWorkspace: { panePaths: [] } } } })).toBeNull();
+    expect(parseShareResource({ type: 'text_snapshot', payload: { schemaVersion: 1, left, right: null, layout: input.layout, interaction: { treePath: [{ type: 'key', key: 'a', extra: true }], focus: null, columnNavigator: { activePath: [] } } } })).toBeNull();
+    expect(parseShareResource({ type: 'text_snapshot', payload: { schemaVersion: 1, left, right: null, layout: input.layout, interaction: { treePath: [], focus: { type: 'graph', path: [], target: 'node' }, columnNavigator: { activePath: [] } } } })).toBeNull();
   });
 });

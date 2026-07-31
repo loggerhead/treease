@@ -112,7 +112,7 @@ v2 的 `rightMode` 显式记录右侧模式：
     "interaction": {
       "treePath": [],
       "focus": null,
-      "subgraphWorkspace": { "panePaths": [] }
+      "columnNavigator": { "activePath": [] }
     }
   }
 }
@@ -149,7 +149,7 @@ layout.activePane = right（推荐）
 
 ### 4.4 交互状态恢复
 
-`interaction` 现有结构主要描述结构化文档的树路径、图焦点和 subgraph workspace。
+`interaction` 现有结构主要描述结构化文档的树路径、图焦点和 column navigator。
 
 恢复 `code-preview` 时：
 
@@ -158,7 +158,7 @@ layout.activePane = right（推荐）
 - 设置右侧模式为 `code-preview`；
 - 调用 `showCodePreview(text, languageId)`；
 - 强制设置 Text 视图；
-- 不执行右侧结构化图操作、subgraph 恢复或 Core 解析。
+- 不执行右侧结构化图操作、Column Navigator 恢复或 Core 解析。
 
 恢复 `structured` v1/v2 时保持现有交互恢复逻辑。
 
@@ -302,7 +302,7 @@ v2 code-preview
 - [ ] `createShareResource` 写入 v2 的 `rightMode`；
 - [ ] code-preview 分享保存真实语言和完整代码；
 - [ ] `restoreShareResource` 增加 code-preview 恢复分支；
-- [ ] 恢复时跳过结构化图和 subgraph 交互；
+- [ ] 恢复时跳过结构化图和 Column Navigator 交互；
 - [ ] 覆盖 v1、v2 structured、v2 code-preview 三类链接。
 
 ### 阶段五：清理与文档

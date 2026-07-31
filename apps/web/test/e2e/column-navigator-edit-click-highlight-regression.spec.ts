@@ -2,19 +2,19 @@ import { readFileSync } from "node:fs";
 import { expect, test, type Page } from "./fixtures";
 import {
   clickGraphProbeAt,
-  clickSubgraphWorkspaceProbeAt,
+  clickColumnNavigatorProbeAt,
   getMonacoValue,
   installGraphEditEventCapture,
   readGraphClickProbes,
   readEditorWorkspace,
   readGraphHighlight,
-  readSubgraphWorkspaceClickProbes,
+  readColumnNavigatorClickProbes,
   revealGraphPath,
   setEditorContent,
   setMonacoValue,
   waitForEditorReady,
   waitForGraphRendered,
-  waitForSubgraphSettled,
+  waitForColumnNavigatorSettled,
 } from "./utils";
 
 const trajectoryFixture = readFileSync(
@@ -78,7 +78,7 @@ async function ensureGraphMode(page: Page) {
 
 test.setTimeout(60_000);
 
-test("editing a nested trajectory scalar preserves content-pane highlighting across the subgraph and graph click", async ({
+test("editing a nested trajectory scalar preserves column-navigator highlighting across the Column Navigator and graph click", async ({
   page,
 }, testInfo) => {
   testInfo.annotations.push({
@@ -140,30 +140,30 @@ test("editing a nested trajectory scalar preserves content-pane highlighting acr
   if (!basicInfoProbe?.coord)
     throw new Error("main graph basic_info cell is missing a coordinate");
   await clickGraphProbeAt(page, basicInfoProbe.coord);
-  await waitForSubgraphSettled(page, basicInfoPathKey, 30_000);
+  await waitForColumnNavigatorSettled(page, basicInfoPathKey, 30_000);
 
-  const durationProbe = (await readSubgraphWorkspaceClickProbes(page)).find(
+  const durationProbe = (await readColumnNavigatorClickProbes(page)).find(
     (probe) =>
       probe.target === "value" &&
       probe.text === "6837" &&
       matchesPath(probe, durationPath) &&
       probe.coord,
   );
-  expect(durationProbe, "first-level subgraph duration cell").toBeTruthy();
+  expect(durationProbe, "first-level Column Navigator duration cell").toBeTruthy();
   if (!durationProbe?.coord)
     throw new Error(
-      "first-level subgraph duration cell is missing a coordinate",
+      "first-level Column Navigator duration cell is missing a coordinate",
     );
-  await clickSubgraphWorkspaceProbeAt(page, durationProbe.coord);
-  await waitForSubgraphSettled(page, durationPathKey, 30_000);
+  await clickColumnNavigatorProbeAt(page, durationProbe.coord);
+  await waitForColumnNavigatorSettled(page, durationPathKey, 30_000);
 
   await expect
-    .poll(() => getMonacoValue(page, `subgraph-content:${durationPathKey}`), {
+    .poll(() => getMonacoValue(page, `column-navigator-content:${durationPathKey}`), {
       timeout: 10_000,
     })
     .toBe('"6837"');
   await installGraphEditEventCapture(page);
-  await setMonacoValue(page, `subgraph-content:${durationPathKey}`, '"42"');
+  await setMonacoValue(page, `column-navigator-content:${durationPathKey}`, '"42"');
 
   await expect
     .poll(async () =>
@@ -176,24 +176,24 @@ test("editing a nested trajectory scalar preserves content-pane highlighting acr
     )
     .toMatchObject({ detail: { applied: true } });
 
-  // The content pane must not briefly fall back to number/neutral token colors
+  // The column detail editor must not briefly fall back to number/neutral token colors
   // while the graph edit is being committed. Strings use the semantic blue.
-  const subgraphColors = await sampleRenderedTokenColors(
+  const columnNavigatorColors = await sampleRenderedTokenColors(
     page,
-    `subgraph-content:${durationPathKey}`,
+    `column-navigator-content:${durationPathKey}`,
     '"42"',
   );
-  expect(subgraphColors).toEqual(Array(subgraphColors.length).fill("rgb(4, 81, 165)"));
+  expect(columnNavigatorColors).toEqual(Array(columnNavigatorColors.length).fill("rgb(4, 81, 165)"));
 
   await expect.poll(() => readDurationFromSource(page), { timeout: 30_000 }).toBe("42");
-  const contentPaneDocumentKey = `sidecar:subgraph-content:${durationPathKey}:0`;
+  const contentPaneDocumentKey = `sidecar:column-navigator-content:${durationPathKey}:0`;
   await expect
     .poll(async () => (await readEditorWorkspace(page)).snapshotBindingsByDocumentKey[contentPaneDocumentKey] ?? null, {
       timeout: 5_000,
     })
     .toBeNull();
   await waitForGraphRendered(page, 30_000);
-  await waitForSubgraphSettled(page, durationPathKey, 30_000);
+  await waitForColumnNavigatorSettled(page, durationPathKey, 30_000);
 
   await revealGraphPath(
     page,
@@ -240,7 +240,7 @@ test("editing a nested trajectory scalar preserves content-pane highlighting acr
     });
   await expect(
     page
-      .getByTestId("graph-subgraph-workspace")
+      .getByTestId("column-navigator-graph")
       .locator(".treease-json-block-highlight"),
   ).toHaveCount(0);
 });

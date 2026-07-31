@@ -13,7 +13,7 @@ let selectedPath = '$';
 let graphRequestId = 0;
 let graphData: GraphData | null = null;
 let graphViewer: GraphViewerRuntime | null = null;
-let subgraphViewer: GraphViewerRuntime | null = null;
+let columnNavigatorViewer: GraphViewerRuntime | null = null;
 let graphDocumentExpiry = 0;
 const graphWorker = new Worker(new URL('./graph.worker.ts', import.meta.url), { type: 'module' });
 
@@ -30,8 +30,8 @@ function escapeText(value: string): string {
 function render(): void {
   graphViewer?.destroy();
   graphViewer = null;
-  subgraphViewer?.destroy();
-  subgraphViewer = null;
+  columnNavigatorViewer?.destroy();
+  columnNavigatorViewer = null;
   const disabled = settings && !settings.enabled;
   const settingsMarkup = settings ? `
     <section class="settings" aria-label="Listening settings">
@@ -58,7 +58,7 @@ function render(): void {
   } else if (state.status === 'graph_error') {
     content = `<section class="empty-card error"><p class="eyebrow">GRAPH UNAVAILABLE</p><h1>Treease could not build this graph.</h1><p>${escapeText(state.message)}</p></section>`;
   } else {
-    content = '<section id="graph" class="graph-host" aria-label="Treease GraphViewer"></section><section id="subgraph-workspace" class="subgraph-workspace" hidden></section><section class="path-bar"><code id="selected-path">' + escapeText(selectedPath) + '</code></section>';
+    content = '<section id="graph" class="graph-host" aria-label="Treease GraphViewer"></section><section id="column-navigator" data-column-navigator-id="column-navigator" class="column-navigator" hidden></section><section class="path-bar"><code id="selected-path">' + escapeText(selectedPath) + '</code></section>';
   }
   appHost.innerHTML = `${header}${content}${settingsMarkup}`;
   bindControls();
@@ -99,7 +99,7 @@ function renderCurrentGraph(): void {
   graphViewer = new GraphViewerRuntime({ host, config: defaultGraphViewerRenderConfig, interaction: { onActivate: ({ path, nodeKind }) => {
     selectGraphPath(path);
     const workspacePath = resolveWorkspacePath(graphData, path);
-    if ((nodeKind === 'object' || nodeKind === 'table') && workspacePath) showSubgraphWorkspace(path, workspacePath);
+    if ((nodeKind === 'object' || nodeKind === 'table') && workspacePath) showColumnNavigator(path, workspacePath);
   } } });
   void graphViewer.replaceGraph(graphData).catch((error: unknown) => {
     if (state.status !== 'ready') return;
@@ -116,7 +116,7 @@ function isPathPrefix(prefix: GraphData['nodes'][number]['path'], value: GraphDa
   return prefix.length <= value.length && prefix.every((segment, index) => isSamePathSegment(segment, value[index]!));
 }
 
-function buildSubgraph(pathValue: GraphData['nodes'][number]['path']): GraphData | null {
+function buildColumnNavigatorGraph(pathValue: GraphData['nodes'][number]['path']): GraphData | null {
   if (!graphData) return null;
   const nodes = graphData.nodes.filter((node) => isPathPrefix(pathValue, node.path));
   if (nodes.length === 0) return null;
@@ -164,28 +164,28 @@ function formatJsonPath(pathValue: GraphData['nodes'][number]['path']): string {
     ? `${result}.${segment.key}` : `${result}[${segment.index}]`, '$');
 }
 
-function showSubgraphWorkspace(selectedCellPath: GraphData['nodes'][number]['path'], workspacePath: GraphData['nodes'][number]['path']): void {
-  const host = document.querySelector<HTMLElement>('#subgraph-workspace');
+function showColumnNavigator(selectedCellPath: GraphData['nodes'][number]['path'], workspacePath: GraphData['nodes'][number]['path']): void {
+  const host = document.querySelector<HTMLElement>('#column-navigator');
   if (!host) return;
-  subgraphViewer?.destroy();
+  columnNavigatorViewer?.destroy();
   host.hidden = false;
-  document.querySelector<HTMLElement>('#graph')?.classList.add('subgraph-open');
+  document.querySelector<HTMLElement>('#graph')?.classList.add('column-navigator-open');
   const isCellSelection = selectedCellPath.length > workspacePath.length;
   const titlePath = formatJsonPath(selectedCellPath);
-  host.innerHTML = `<header class="subgraph-heading"><span>${isCellSelection ? 'Selected cell' : 'Subgraph workspace'}</span><code>${escapeText(titlePath)}</code><button id="close-subgraph" class="quiet" aria-label="Close subgraph workspace">Close</button></header>${isCellSelection ? `<pre class="subgraph-value">${escapeText(JSON.stringify(readPathValue(selectedCellPath), null, 2))}</pre>` : '<div id="subgraph-canvas" class="subgraph-canvas"></div>'}`;
-  document.querySelector<HTMLButtonElement>('#close-subgraph')?.addEventListener('click', () => {
-    subgraphViewer?.destroy();
-    subgraphViewer = null;
+  host.innerHTML = `<header class="column-navigator-heading"><span>${isCellSelection ? 'Selected cell' : 'Column Navigator'}</span><code>${escapeText(titlePath)}</code><button id="close-column-navigator" class="quiet" aria-label="Close Column Navigator">Close</button></header>${isCellSelection ? `<pre class="column-navigator-value">${escapeText(JSON.stringify(readPathValue(selectedCellPath), null, 2))}</pre>` : '<div id="column-navigator-canvas" class="column-navigator-canvas"></div>'}`;
+  document.querySelector<HTMLButtonElement>('#close-column-navigator')?.addEventListener('click', () => {
+    columnNavigatorViewer?.destroy();
+    columnNavigatorViewer = null;
     host.hidden = true;
     host.replaceChildren();
-    document.querySelector<HTMLElement>('#graph')?.classList.remove('subgraph-open');
+    document.querySelector<HTMLElement>('#graph')?.classList.remove('column-navigator-open');
   });
   if (isCellSelection) return;
-  const graph = buildSubgraph(workspacePath);
-  const canvas = document.querySelector<HTMLElement>('#subgraph-canvas');
+  const graph = buildColumnNavigatorGraph(workspacePath);
+  const canvas = document.querySelector<HTMLElement>('#column-navigator-canvas');
   if (!graph || !canvas) return;
-  subgraphViewer = new GraphViewerRuntime({ host: canvas, config: defaultGraphViewerRenderConfig, interaction: { onActivate: ({ path }) => selectGraphPath(path) } });
-  void subgraphViewer.replaceGraph(graph);
+  columnNavigatorViewer = new GraphViewerRuntime({ host: canvas, config: defaultGraphViewerRenderConfig, interaction: { onActivate: ({ path }) => selectGraphPath(path) } });
+  void columnNavigatorViewer.replaceGraph(graph);
 }
 
 function selectGraphPath(pathValue: GraphData['nodes'][number]['path']): void {

@@ -61,7 +61,7 @@ export type GraphViewerClickTarget = {
 
 export type GraphViewerClickTargetStore = Record<string, GraphViewerClickTarget>;
 
-export type SubgraphWorkspaceRuntime = {
+export type ColumnNavigatorRuntime = {
   host: HTMLElement;
   mount: HTMLDivElement;
   view: HTMLDivElement;

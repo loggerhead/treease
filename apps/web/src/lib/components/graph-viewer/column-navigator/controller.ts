@@ -9,25 +9,25 @@ import { getClampedPaneSize } from '../../ui/split-layout';
 import type { PathSeg } from '../../../store/tree-path';
 import type { StructuredValueEditIntent } from '../graph-value-edit';
 import {
-  buildSubgraphWorkspaceColumnItems,
-  buildSubgraphWorkspaceRenderSignature,
-  createSubgraphWorkspaceGraphCache,
-  formatSubgraphWorkspacePath,
-  shouldOpenSubgraphWorkspaceContent,
-} from '../graph-subgraph-workspace';
+  buildColumnNavigatorColumnItems,
+  buildColumnNavigatorRenderSignature,
+  createColumnNavigatorGraphCache,
+  formatColumnNavigatorPath,
+  shouldOpenColumnNavigatorContent,
+} from '../column-navigator-graph';
 import type {
-  SubgraphWorkspaceColumnItem,
-  SubgraphWorkspaceContentState,
-  SubgraphWorkspacePaneState,
-  SubgraphWorkspaceState,
-  VisibleSubgraphWorkspacePaneState,
+  ColumnNavigatorColumnItem,
+  ColumnNavigatorContentState,
+  ColumnNavigatorPaneState,
+  ColumnNavigatorState,
+  VisibleColumnNavigatorPaneState,
 } from './types';
 
-const SUBGRAPH_WORKSPACE_MIN_HEIGHT = 100;
-const SUBGRAPH_WORKSPACE_MAX_HEIGHT_FRACTION = 0.75;
+const COLUMN_NAVIGATOR_MIN_HEIGHT = 100;
+const COLUMN_NAVIGATOR_MAX_HEIGHT_FRACTION = 0.75;
 const ROOT_PATH_KEY = '$';
 
-export type SubgraphWorkspaceProjectionInput = {
+export type ColumnNavigatorProjectionInput = {
   documentKey: string;
   languageId: SupportedEditorLanguageId;
   revision: number;
@@ -37,7 +37,7 @@ export type SubgraphWorkspaceProjectionInput = {
   renderConfig: GraphViewerConfig;
 };
 
-export type SubgraphWorkspaceControllerDeps = {
+export type ColumnNavigatorControllerDeps = {
   defaultHeightPx: number;
   getActiveSnapshotId: () => SnapshotId | null;
   getWorkspaceSnapshotId: () => SnapshotId | null;
@@ -65,20 +65,20 @@ export type SubgraphWorkspaceControllerDeps = {
     sourceRevision: number;
     materializedRevision: number;
   }) => void;
-  onState: (state: SubgraphWorkspaceState) => void;
-  onPaneReady?: (pane: SubgraphWorkspacePaneState) => void;
+  onState: (state: ColumnNavigatorState) => void;
+  onPaneReady?: (pane: ColumnNavigatorPaneState) => void;
 };
 
 type PreparedWorkspace = {
   activePath: PathSeg[];
-  chain: SubgraphWorkspacePaneState[];
+  chain: ColumnNavigatorPaneState[];
 };
 
 function clonePath(path: PathSeg[]): PathSeg[] {
   return path.map((segment) => ({ ...segment }));
 }
 
-function clonePane(pane: SubgraphWorkspacePaneState): SubgraphWorkspacePaneState {
+function clonePane(pane: ColumnNavigatorPaneState): ColumnNavigatorPaneState {
   return {
     ...pane,
     path: clonePath(pane.path),
@@ -99,10 +99,10 @@ function samePath(left: PathSeg[], right: PathSeg[]): boolean {
   return workspacePathKey(left) === workspacePathKey(right);
 }
 
-export function createSubgraphWorkspaceController(deps: SubgraphWorkspaceControllerDeps) {
+export function createColumnNavigatorController(deps: ColumnNavigatorControllerDeps) {
   const pendingEditTaskMap = new Map<string, Promise<void>>();
   const queuedEditMap = new Map<string, string>();
-  const graphCache = createSubgraphWorkspaceGraphCache({
+  const graphCache = createColumnNavigatorGraphCache({
     getActiveSnapshotId: deps.getActiveSnapshotId,
     getDocumentKey: deps.getDocumentKey,
     getLanguageId: deps.getLanguageId,
@@ -114,7 +114,7 @@ export function createSubgraphWorkspaceController(deps: SubgraphWorkspaceControl
 
   let open = false;
   let activePath: PathSeg[] = [];
-  let chain: SubgraphWorkspacePaneState[] = [];
+  let chain: ColumnNavigatorPaneState[] = [];
   let history: PathSeg[][] = [];
   let historyIndex = -1;
   let heightPx = deps.defaultHeightPx;
@@ -127,7 +127,7 @@ export function createSubgraphWorkspaceController(deps: SubgraphWorkspaceControl
   let navigationOperation: ViewRuntimeOperation | null = null;
   let refreshOperation: ViewRuntimeOperation | null = null;
 
-  function visiblePanes(): VisibleSubgraphWorkspacePaneState[] {
+  function visiblePanes(): VisibleColumnNavigatorPaneState[] {
     return chain.map((pane, absoluteIndex) => ({
       ...clonePane(pane),
       visibleIndex: absoluteIndex,
@@ -160,12 +160,12 @@ export function createSubgraphWorkspaceController(deps: SubgraphWorkspaceControl
     return createViewRuntimeOperation({ captured: context(), getCurrent: context });
   }
 
-  function loadingPane(path: PathSeg[], nextRequestId: number): SubgraphWorkspacePaneState {
+  function loadingPane(path: PathSeg[], nextRequestId: number): ColumnNavigatorPaneState {
     return {
       requestId: nextRequestId,
       path: clonePath(path),
       pathKey: workspacePathKey(path),
-      title: formatSubgraphWorkspacePath(path),
+      title: formatColumnNavigatorPath(path),
       kind: 'column',
       items: [],
       content: null,
@@ -174,25 +174,25 @@ export function createSubgraphWorkspaceController(deps: SubgraphWorkspaceControl
   }
 
   async function readPath(path: PathSeg[]): Promise<{
-    content: SubgraphWorkspaceContentState;
+    content: ColumnNavigatorContentState;
     isContent: boolean;
   } | null> {
     const snapshotId = deps.getWorkspaceSnapshotId();
     const pathValue = await queryPathValue({ documentKey: deps.getDocumentKey(), snapshotId, path });
     if (pathValue.status !== 'ready' || !pathValue.data) return null;
-    const content: SubgraphWorkspaceContentState = {
-      tabId: `subgraph-content:${workspacePathKey(path)}`,
-      tabName: formatSubgraphWorkspacePath(path),
+    const content: ColumnNavigatorContentState = {
+      tabId: `column-navigator-content:${workspacePathKey(path)}`,
+      tabName: formatColumnNavigatorPath(path),
       sourceText: pathValue.data.sourceText || pathValue.data.displayText,
       valueType: pathValue.data.valueType as ValueType,
       semanticTokens: new Uint32Array(pathValue.data.semanticTokens.data).buffer,
       snapshotId,
     };
-    return { content, isContent: shouldOpenSubgraphWorkspaceContent(pathValue.data) };
+    return { content, isContent: shouldOpenColumnNavigatorContent(pathValue.data) };
   }
 
   async function prepareWorkspace(path: PathSeg[], nextRequestId: number): Promise<PreparedWorkspace> {
-    const nextChain: SubgraphWorkspacePaneState[] = [];
+    const nextChain: ColumnNavigatorPaneState[] = [];
     const prefixes = buildWorkspacePathPrefixes(path);
     const reads = await Promise.all(prefixes.map((prefix) => readPath(prefix)));
     for (let index = 0; index < prefixes.length; index += 1) {
@@ -205,7 +205,7 @@ export function createSubgraphWorkspaceController(deps: SubgraphWorkspaceControl
             requestId: nextRequestId,
             path: clonePath(prefix),
             pathKey: workspacePathKey(prefix),
-            title: formatSubgraphWorkspacePath(prefix),
+            title: formatColumnNavigatorPath(prefix),
             kind: 'content',
             items: [],
             content: read.content,
@@ -216,13 +216,13 @@ export function createSubgraphWorkspaceController(deps: SubgraphWorkspaceControl
       }
       try {
         const graph = await graphCache.prepareGraph(prefix);
-        const items = graph ? buildSubgraphWorkspaceColumnItems(graph, prefix) : [];
+        const items = graph ? buildColumnNavigatorColumnItems(graph, prefix) : [];
         if (!items.length && samePath(prefix, path)) {
           nextChain.push({
             requestId: nextRequestId,
             path: clonePath(prefix),
             pathKey: workspacePathKey(prefix),
-            title: formatSubgraphWorkspacePath(prefix),
+            title: formatColumnNavigatorPath(prefix),
             kind: 'content',
             items: [],
             content: read.content,
@@ -234,7 +234,7 @@ export function createSubgraphWorkspaceController(deps: SubgraphWorkspaceControl
           requestId: nextRequestId,
           path: clonePath(prefix),
           pathKey: workspacePathKey(prefix),
-          title: formatSubgraphWorkspacePath(prefix),
+          title: formatColumnNavigatorPath(prefix),
           kind: 'column',
           items,
           content: null,
@@ -243,7 +243,7 @@ export function createSubgraphWorkspaceController(deps: SubgraphWorkspaceControl
       } catch (error) {
         deps.handleError(error, {
           component: 'GraphViewer',
-          operation: 'buildSubgraphWorkspaceColumn',
+          operation: 'buildColumnNavigatorColumn',
           metadata: {
             documentKey: deps.getDocumentKey(),
             language: deps.getLanguageId(),
@@ -254,7 +254,7 @@ export function createSubgraphWorkspaceController(deps: SubgraphWorkspaceControl
           requestId: nextRequestId,
           path: clonePath(prefix),
           pathKey: workspacePathKey(prefix),
-          title: formatSubgraphWorkspacePath(prefix),
+          title: formatColumnNavigatorPath(prefix),
           kind: 'column',
           items: [],
           content: null,
@@ -271,7 +271,7 @@ export function createSubgraphWorkspaceController(deps: SubgraphWorkspaceControl
         requestId: nextRequestId,
         path: clonePath(path),
         pathKey: workspacePathKey(path),
-        title: formatSubgraphWorkspacePath(path),
+        title: formatColumnNavigatorPath(path),
         kind: 'content',
         items: [],
         content: selectedRead.content,
@@ -334,7 +334,7 @@ export function createSubgraphWorkspaceController(deps: SubgraphWorkspaceControl
     await navigate(path, { recordHistory: true, reveal: true });
   }
 
-  function selectedItem(): SubgraphWorkspaceColumnItem | null {
+  function selectedItem(): ColumnNavigatorColumnItem | null {
     const parentKey = workspacePathKey(activePath.slice(0, -1));
     const selectedKey = workspacePathKey(activePath);
     const parent = chain.find((pane) => pane.kind === 'column' && pane.pathKey === parentKey);
@@ -378,7 +378,7 @@ export function createSubgraphWorkspaceController(deps: SubgraphWorkspaceControl
     await navigate(path, { recordHistory: false, reveal: true });
   }
 
-  async function runValueEditLoop(pane: SubgraphWorkspacePaneState, initialText: string): Promise<void> {
+  async function runValueEditLoop(pane: ColumnNavigatorPaneState, initialText: string): Promise<void> {
     let nextText = initialText;
     let currentPane = pane;
     while (nextText !== currentPane.content?.sourceText) {
@@ -412,7 +412,7 @@ export function createSubgraphWorkspaceController(deps: SubgraphWorkspaceControl
     }
   }
 
-  async function commitValueEdit(pane: SubgraphWorkspacePaneState, draft?: string): Promise<void> {
+  async function commitValueEdit(pane: ColumnNavigatorPaneState, draft?: string): Promise<void> {
     if (disposed || deps.getReadonly() || pane.kind !== 'content' || !pane.content) return;
     const nextText = draft ?? pane.content.sourceText;
     if (nextText === pane.content.sourceText) return;
@@ -453,7 +453,7 @@ export function createSubgraphWorkspaceController(deps: SubgraphWorkspaceControl
     });
   }
 
-  async function syncProjection(input: SubgraphWorkspaceProjectionInput): Promise<void> {
+  async function syncProjection(input: ColumnNavigatorProjectionInput): Promise<void> {
     const nextSignature = [
       input.documentKey,
       input.languageId,
@@ -461,7 +461,7 @@ export function createSubgraphWorkspaceController(deps: SubgraphWorkspaceControl
       input.graphAppliedRevision,
       input.snapshotId ?? 'no-snapshot',
       input.enableNest ? 'nest' : 'flat',
-      buildSubgraphWorkspaceRenderSignature(input.renderConfig),
+      buildColumnNavigatorRenderSignature(input.renderConfig),
     ].join('|');
     if (nextSignature === projectionSignature) return;
     projectionSignature = nextSignature;
@@ -476,8 +476,8 @@ export function createSubgraphWorkspaceController(deps: SubgraphWorkspaceControl
     return getClampedPaneSize(
       nextHeightPx,
       deps.getShellHeight(),
-      SUBGRAPH_WORKSPACE_MIN_HEIGHT,
-      SUBGRAPH_WORKSPACE_MAX_HEIGHT_FRACTION,
+      COLUMN_NAVIGATOR_MIN_HEIGHT,
+      COLUMN_NAVIGATOR_MAX_HEIGHT_FRACTION,
     );
   }
 

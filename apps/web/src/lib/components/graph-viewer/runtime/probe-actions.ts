@@ -56,14 +56,14 @@ export function createGraphRuntimeProbeActions(deps: ProbeActionDeps) {
     ) => controller()?.registerRootClickTarget(target, cell, kind, nodeKind) ?? '',
     getRuntimeProbeTargets: (scope: 'root' = 'root') =>
       controller()?.getRuntimeProbeTargets(scope) ?? [],
-    getSubgraphWorkspaceProbeTargets: (): GraphRuntimeProbeTarget[] => {
+    getColumnNavigatorProbeTargets: (): GraphRuntimeProbeTarget[] => {
       const workspace = deps.getWorkspaceRoot();
       if (!workspace) return [];
       const workspaceRect = workspace.getBoundingClientRect();
-      return [...workspace.querySelectorAll<HTMLElement>('[data-subgraph-item-path]')].map((element) => {
+      return [...workspace.querySelectorAll<HTMLElement>('[data-column-navigator-item-path]')].map((element) => {
         const rect = element.getBoundingClientRect();
-        const valueType = element.dataset.subgraphItemValueType ?? '';
-        const rawPreview = element.dataset.subgraphItemPreview ?? '';
+        const valueType = element.dataset.columnNavigatorItemValueType ?? '';
+        const rawPreview = element.dataset.columnNavigatorItemPreview ?? '';
         let preview = rawPreview;
         if (valueType === 'string') {
           try {
@@ -75,13 +75,13 @@ export function createGraphRuntimeProbeActions(deps: ProbeActionDeps) {
         }
         let path: PathSeg[] = [];
         try {
-          path = JSON.parse(element.dataset.subgraphItemPath ?? '[]') as PathSeg[];
+          path = JSON.parse(element.dataset.columnNavigatorItemPath ?? '[]') as PathSeg[];
         } catch {
           path = [];
         }
         return {
           scope: 'workspace',
-          id: element.dataset.subgraphItemPathKey ?? '',
+          id: element.dataset.columnNavigatorItemPathKey ?? '',
           target: 'value',
           nodeType: element.tagName,
           coord: {
@@ -101,7 +101,7 @@ export function createGraphRuntimeProbeActions(deps: ProbeActionDeps) {
           cell: {
             text: preview,
             valueType,
-            isTableCell: element.dataset.subgraphItemIndex === 'true',
+            isTableCell: element.dataset.columnNavigatorItemIndex === 'true',
             isHeader: false,
             path,
           },

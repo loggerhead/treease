@@ -39,12 +39,12 @@
     return await runtime?.waitForGraphReady() ?? false;
   }
 
-  export function getSubgraphWorkspacePaths(): PathSeg[][] {
-    return runtime?.getSubgraphWorkspacePaths() ?? [];
+  export function getColumnNavigatorActivePath(): PathSeg[] {
+    return runtime?.getColumnNavigatorActivePath() ?? [];
   }
 
-  export async function restoreSubgraphWorkspacePaths(paths: PathSeg[][]): Promise<boolean> {
-    return await runtime?.restoreSubgraphWorkspacePaths(paths) ?? false;
+  export async function restoreColumnNavigatorPath(path: PathSeg[]): Promise<boolean> {
+    return await runtime?.restoreColumnNavigatorPath(path) ?? false;
   }
 
   export async function exportImage(): Promise<void> {

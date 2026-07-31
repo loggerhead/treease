@@ -23,7 +23,7 @@ The draft entity that receives text edits and applies edits.
 
 ### Graph Interaction
 
-Editing entry points from the primary graph, subgraph-workspace graph panes, and content panes.
+Editing entry points from the primary graph, column-navigator Column Rails, and column detail editors.
 
 ### Graph Edit Planner
 
@@ -100,31 +100,31 @@ Graph interaction
   → New snapshot / new graph
 ```
 
-### 3. Subgraph-workspace graph pane
+### 3. Column Navigator Column Rail
 
 ```text
-graph pane inline edit
+Column Rail inline edit
   → Graph Edit Planner
   → edits / replace
   → Editor Model
   → Commit Transaction
 ```
 
-### 4. Subgraph-workspace content pane
+### 4. Column Navigator column detail editor
 
 ```text
-content-pane Monaco draft
+Column Detail Editor Monaco draft
   → Graph Edit Planner
   → edits / replace
   → Editor Model
   → Commit Transaction
 ```
 
-## Subgraph-Workspace Entry-Point Constraints
+## Column Navigator Entry-Point Constraints
 
-- The graph pane and content pane in a subgraph workspace are only bidirectional-edit entry points.
+- The Column Rail and column detail editor in a column navigator are only bidirectional-edit entry points.
 - Planner authority does not change by entry point.
-- For product rules such as pane routing, draft ownership, and workspace lifetime, see `./subgraph-workspace.md`.
+- For product rules such as column routing, draft ownership, and Column Navigator lifetime, see `./column-navigator.md`.
 
 ## Checklist
 

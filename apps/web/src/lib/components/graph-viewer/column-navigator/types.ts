@@ -1,7 +1,7 @@
 import type { ValueType } from '@treease/graph-viewer-runtime';
 import type { PathSeg } from '../../../store/tree-path';
 
-export type SubgraphWorkspaceContentState = {
+export type ColumnNavigatorContentState = {
   tabId: string;
   tabName: string;
   sourceText: string;
@@ -12,7 +12,7 @@ export type SubgraphWorkspaceContentState = {
   snapshotId: number | null;
 };
 
-export type SubgraphWorkspaceColumnItem = {
+export type ColumnNavigatorColumnItem = {
   path: PathSeg[];
   pathKey: string;
   label: string;
@@ -22,28 +22,28 @@ export type SubgraphWorkspaceColumnItem = {
   isContainer: boolean;
 };
 
-export type SubgraphWorkspacePaneState = {
+export type ColumnNavigatorPaneState = {
   requestId?: number;
   path: PathSeg[];
   pathKey: string;
   title: string;
   kind: 'column' | 'content';
-  items: SubgraphWorkspaceColumnItem[];
-  content: SubgraphWorkspaceContentState | null;
+  items: ColumnNavigatorColumnItem[];
+  content: ColumnNavigatorContentState | null;
   status: 'loading' | 'ready' | 'empty' | 'error';
   error?: string;
 };
 
-export type VisibleSubgraphWorkspacePaneState = SubgraphWorkspacePaneState & {
+export type VisibleColumnNavigatorPaneState = ColumnNavigatorPaneState & {
   visibleIndex: number;
   absoluteIndex: number;
 };
 
-export type SubgraphWorkspaceState = {
+export type ColumnNavigatorState = {
   open: boolean;
   activePath: PathSeg[];
-  chain: SubgraphWorkspacePaneState[];
-  visiblePanes: VisibleSubgraphWorkspacePaneState[];
+  chain: ColumnNavigatorPaneState[];
+  visiblePanes: VisibleColumnNavigatorPaneState[];
   canGoBack: boolean;
   canGoForward: boolean;
   heightPx: number;

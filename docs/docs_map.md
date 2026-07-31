@@ -117,9 +117,43 @@ Do not edit it by hand; run `pnpm docs:map:gen`.
   - H2: Data Flow
   - H3: 1. Editor → Graph
   - H3: 2. Graph → Editor
-  - H3: 3. Subgraph-workspace graph pane
-  - H3: 4. Subgraph-workspace content pane
-  - H2: Subgraph-Workspace Entry-Point Constraints
+  - H3: 3. Column Navigator Column Rail
+  - H3: 4. Column Navigator column detail editor
+  - H2: Column Navigator Entry-Point Constraints
+  - H2: Checklist
+
+## contracts/column-navigator.md
+
+- Route: /contracts/column-navigator
+- Headings:
+  - H1: Column Navigator Contract
+  - H2: Core Entities
+  - H3: Column Navigator Active Path
+  - H3: Column Navigator Surface
+  - H3: Column
+  - H3: Column Detail Editor
+  - H3: Column Projection
+  - H3: Local Draft
+  - H3: Pending Commit
+  - H2: Core Entity Relationships
+  - H2: Column Navigator Constraints
+  - H3: Subdomain role
+  - H3: Column constraints
+  - H3: Graph / content routing constraints
+  - H3: Projection constraints
+  - H3: Editing constraints
+  - H3: Lifecycle constraints
+  - H2: Data Flow
+  - H3: 1. Main-graph click opens the Column Navigator
+  - H3: 2. Drill down in a column
+  - H3: 3. Edit in a column detail editor
+  - H3: 4. External main-document refresh affects the Column Navigator
+  - H3: 5. Consecutive commits on the same path
+  - H2: Column Navigator Rules
+  - H3: Path rules
+  - H3: Cache rules
+  - H2: Module Architecture
+  - H3: Interaction-consistency rules
   - H2: Checklist
 
 ## contracts/desktop-workspace.md
@@ -242,40 +276,6 @@ Do not edit it by hand; run `pnpm docs:map:gen`.
   - H3: Nested JSON constraints
   - H3: Auto-format constraints
   - H3: Root scalar replace constraint
-  - H2: Checklist
-
-## contracts/subgraph-workspace.md
-
-- Route: /contracts/subgraph-workspace
-- Headings:
-  - H1: Column Navigator Contract
-  - H2: Core Entities
-  - H3: Active Path
-  - H3: Workspace Surface
-  - H3: Column
-  - H3: Content Pane
-  - H3: Workspace Projection
-  - H3: Local Draft
-  - H3: Pending Commit
-  - H2: Core Entity Relationships
-  - H2: Subgraph Workspace Constraints
-  - H3: Subdomain role
-  - H3: Column constraints
-  - H3: Graph / content routing constraints
-  - H3: Projection constraints
-  - H3: Editing constraints
-  - H3: Lifecycle constraints
-  - H2: Data Flow
-  - H3: 1. Main-graph click opens the workspace
-  - H3: 2. Drill down in a column
-  - H3: 3. Edit in a content pane
-  - H3: 4. External main-document refresh affects the workspace
-  - H3: 5. Consecutive commits on the same path
-  - H2: Workspace-Specific Rules
-  - H3: Path rules
-  - H3: Cache rules
-  - H2: Module Architecture
-  - H3: Interaction-consistency rules
   - H2: Checklist
 
 ## formats/csv.md

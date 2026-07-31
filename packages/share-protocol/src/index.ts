@@ -1,7 +1,6 @@
 import { z } from 'zod';
 
 export const MAX_SHARE_PATH_DEPTH = 64;
-export const MAX_SHARE_WORKSPACE_PANES = 32;
 
 export const supportedEditorLanguageIdSchema = z.enum(['json', 'yaml', 'toml', 'javascript', 'python']);
 export type SupportedEditorLanguageId = z.infer<typeof supportedEditorLanguageIdSchema>;
@@ -28,7 +27,7 @@ const interactionSchema = z.object({
     // the corresponding source range in Monaco. Persist both semantic layers.
     z.object({ type: z.literal('graph'), path: pathSchema, target: z.enum(['key', 'value', 'node']), editorSelection: editorSelectionSchema }).strict(),
   ]).nullable(),
-  subgraphWorkspace: z.object({ panePaths: z.array(pathSchema).max(MAX_SHARE_WORKSPACE_PANES) }).strict(),
+  columnNavigator: z.object({ activePath: pathSchema }).strict(),
 }).strict();
 
 const compareActionSchema = z.discriminatedUnion('type', [

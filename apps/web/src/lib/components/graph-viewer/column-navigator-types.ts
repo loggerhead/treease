@@ -1,8 +1,8 @@
-// Responsibility: define subgraph-workspace graph data types.
+// Responsibility: define column-navigator graph data types.
 import type { GraphEdge, GraphNode } from '@treease/graph-viewer-runtime';
 import type { PathSeg } from '../../store/tree-path';
 
-export type SubgraphWorkspaceGraphData = {
+export type ColumnNavigatorGraphData = {
   pathKey: string;
   path: PathSeg[];
   nodes: GraphNode[];

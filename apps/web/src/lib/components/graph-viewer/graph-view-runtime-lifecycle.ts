@@ -165,7 +165,7 @@ export function disposeGraphViewRuntime(deps: {
   disposeRenderCoordinator: () => Promise<void>;
   disposeScene: () => void;
   resetActiveEditState: () => void;
-  disposeSubgraphWorkspace: () => void;
+  disposeColumnNavigator: () => void;
   unsubscribeStreamProgress: () => void;
   disposeStreamProgress: () => void;
   resetLifecycle: () => void;
@@ -180,7 +180,7 @@ export function disposeGraphViewRuntime(deps: {
   void deps.disposeRenderCoordinator();
   deps.disposeScene();
   deps.resetActiveEditState();
-  deps.disposeSubgraphWorkspace();
+  deps.disposeColumnNavigator();
   deps.unsubscribeStreamProgress();
   deps.disposeStreamProgress();
   deps.resetLifecycle();

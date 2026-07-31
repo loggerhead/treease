@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
-  buildSubgraphWorkspaceColumnItems,
-  formatSubgraphWorkspacePath,
+  buildColumnNavigatorColumnItems,
+  formatColumnNavigatorPath,
   normalizeWorkspaceGraphEdgeRows,
-  rebaseSubgraphWorkspacePath,
-  shouldOpenSubgraphWorkspaceContent,
+  rebaseColumnNavigatorPath,
+  shouldOpenColumnNavigatorContent,
   shouldIgnoreSubgraphOpenCell,
-} from './graph-subgraph-workspace';
+} from './column-navigator-graph';
 import type { GraphEdge, GraphNode } from '@treease/graph-viewer-runtime';
 import type { PathSeg } from '../../store/tree-path';
 import { PathSegTag } from '@core-wasm/index';
@@ -130,10 +130,10 @@ function indexSeg(index: number): PathSeg {
   return { tag: PathSegTag.INDEX, key: '' as any, index } as PathSeg;
 }
 
-describe('formatSubgraphWorkspacePath', () => {
+describe('formatColumnNavigatorPath', () => {
   it('keeps the full path so the pane header can use its available width', () => {
     expect(
-      formatSubgraphWorkspacePath([
+      formatColumnNavigatorPath([
         keySeg('agent_steps'),
         indexSeg(0),
         keySeg('steps'),
@@ -145,22 +145,22 @@ describe('formatSubgraphWorkspacePath', () => {
   });
 });
 
-describe('rebaseSubgraphWorkspacePath', () => {
+describe('rebaseColumnNavigatorPath', () => {
   it('rebases relative workspace cell paths onto the workspace root path', () => {
     expect(
-      rebaseSubgraphWorkspacePath([keySeg('preview'), keySeg('uris')], [indexSeg(1)]),
+      rebaseColumnNavigatorPath([keySeg('preview'), keySeg('uris')], [indexSeg(1)]),
     ).toEqual([keySeg('preview'), keySeg('uris'), indexSeg(1)]);
   });
 
   it('preserves absolute paths that already include the workspace root', () => {
     const absolutePath = [keySeg('preview'), keySeg('uris'), indexSeg(1)];
     expect(
-      rebaseSubgraphWorkspacePath([keySeg('preview'), keySeg('uris')], absolutePath),
+      rebaseColumnNavigatorPath([keySeg('preview'), keySeg('uris')], absolutePath),
     ).toBe(absolutePath);
   });
 
   it('maps empty relative paths back to the workspace root path', () => {
-    expect(rebaseSubgraphWorkspacePath([keySeg('preview')], [])).toEqual([keySeg('preview')]);
+    expect(rebaseColumnNavigatorPath([keySeg('preview')], [])).toEqual([keySeg('preview')]);
   });
 });
 
@@ -198,24 +198,24 @@ describe('shouldIgnoreSubgraphOpenCell', () => {
   });
 });
 
-describe('shouldOpenSubgraphWorkspaceContent', () => {
-  it('keeps scalar values on the content-pane path', () => {
-    expect(shouldOpenSubgraphWorkspaceContent({ valueType: 'number', displayText: '123' })).toBe(true);
-    expect(shouldOpenSubgraphWorkspaceContent({ valueType: 'string', displayText: '"Alice"' })).toBe(true);
+describe('shouldOpenColumnNavigatorContent', () => {
+  it('keeps scalar values on the column-navigator path', () => {
+    expect(shouldOpenColumnNavigatorContent({ valueType: 'number', displayText: '123' })).toBe(true);
+    expect(shouldOpenColumnNavigatorContent({ valueType: 'string', displayText: '"Alice"' })).toBe(true);
   });
 
   it('keeps non-empty containers on the graph-pane path', () => {
-    expect(shouldOpenSubgraphWorkspaceContent({ valueType: 'object', displayText: '{2}' })).toBe(false);
-    expect(shouldOpenSubgraphWorkspaceContent({ valueType: 'array', displayText: '[3]' })).toBe(false);
+    expect(shouldOpenColumnNavigatorContent({ valueType: 'object', displayText: '{2}' })).toBe(false);
+    expect(shouldOpenColumnNavigatorContent({ valueType: 'array', displayText: '[3]' })).toBe(false);
   });
 
-  it('treats empty containers as single-cell content panes', () => {
-    expect(shouldOpenSubgraphWorkspaceContent({ valueType: 'object', displayText: '{}' })).toBe(true);
-    expect(shouldOpenSubgraphWorkspaceContent({ valueType: 'array', displayText: '[]' })).toBe(true);
+  it('treats empty containers as single-cell column detail editors', () => {
+    expect(shouldOpenColumnNavigatorContent({ valueType: 'object', displayText: '{}' })).toBe(true);
+    expect(shouldOpenColumnNavigatorContent({ valueType: 'array', displayText: '[]' })).toBe(true);
   });
 });
 
-describe('buildSubgraphWorkspaceColumnItems', () => {
+describe('buildColumnNavigatorColumnItems', () => {
   it('shows child counts for container rows from the projected subtree', () => {
     const path = [keySeg('preview')];
     const graph = {
@@ -256,7 +256,7 @@ describe('buildSubgraphWorkspaceColumnItems', () => {
       height: 0,
     } as any;
 
-    expect(buildSubgraphWorkspaceColumnItems(graph, [])).toEqual([
+    expect(buildColumnNavigatorColumnItems(graph, [])).toEqual([
       expect.objectContaining({ path, preview: '{}', isContainer: false }),
     ]);
   });
@@ -273,7 +273,7 @@ describe('buildSubgraphWorkspaceColumnItems', () => {
         ] }],
       }],
     } as any;
-    expect(buildSubgraphWorkspaceColumnItems(graph, [])).toEqual([
+    expect(buildColumnNavigatorColumnItems(graph, [])).toEqual([
       expect.objectContaining({ label: 'nil', preview: 'null', isContainer: false }),
       expect.objectContaining({ label: 'arr0', preview: '[]', isContainer: false }),
       expect.objectContaining({ label: 'obj0', preview: '{}', isContainer: false }),
@@ -370,7 +370,7 @@ describe('buildSubgraphWorkspaceColumnItems', () => {
       height: 100,
     } as any;
 
-    expect(buildSubgraphWorkspaceColumnItems(graph, basePath)).toEqual([
+    expect(buildColumnNavigatorColumnItems(graph, basePath)).toEqual([
       expect.objectContaining({
         path: namePath,
         pathKey: 'k:user|k:name',
@@ -421,6 +421,6 @@ describe('buildSubgraphWorkspaceColumnItems', () => {
       height: 0,
     } as any;
 
-    expect(buildSubgraphWorkspaceColumnItems(graph, [])).toEqual([]);
+    expect(buildColumnNavigatorColumnItems(graph, [])).toEqual([]);
   });
 });

@@ -2,17 +2,17 @@ import { expect, test } from './fixtures';
 import {
   applyMonacoEdits,
   clickGraphProbeAt,
-  clickSubgraphWorkspaceProbeAt,
+  clickColumnNavigatorProbeAt,
   getMonacoRenderedTokenColor,
   getMonacoValue,
   readEditorState,
   readGraphClickProbes,
-  readSubgraphWorkspaceClickProbes,
+  readColumnNavigatorClickProbes,
   setEditorContent,
   setMonacoValue,
   waitForEditorReady,
   waitForGraphRendered,
-  waitForSubgraphSettled,
+  waitForColumnNavigatorSettled,
 } from './utils';
 
 const semanticPalette = {
@@ -73,8 +73,8 @@ test('graph cells and Monaco use the identical Core semantic color across suppor
       .toBe(expectedColor);
 
     await clickGraphProbeAt(page, probe.coord);
-    await waitForSubgraphSettled(page, 'k:value');
-    const hookId = 'subgraph-content:k:value';
+    await waitForColumnNavigatorSettled(page, 'k:value');
+    const hookId = 'column-navigator-content:k:value';
     await expect
       .poll(() => getMonacoRenderedTokenColor(page, hookId, entry.text), { timeout: 5_000 })
       .toBe(expectedColor);
@@ -103,9 +103,9 @@ test('structured content is an editable main-editor projection without reformatt
   expect(objectProbe).toBeTruthy();
   if (!objectProbe?.coord) throw new Error('object probe missing');
   await clickGraphProbeAt(page, objectProbe.coord);
-  await waitForSubgraphSettled(page, 'k:object');
+  await waitForColumnNavigatorSettled(page, 'k:object');
 
-  const hookId = 'subgraph-content:k:object';
+  const hookId = 'column-navigator-content:k:object';
   await expect.poll(() => getMonacoValue(page, hookId), { timeout: 5_000 }).toBe(`{
     "int": 42,
     "bool": true,
@@ -123,22 +123,22 @@ test('structured content is an editable main-editor projection without reformatt
   const mainValueColor = await getMonacoRenderedTokenColor(page, 'source-editor', '42', 3);
   await expect.poll(() => getMonacoRenderedTokenColor(page, hookId, '42', 2), { timeout: 5_000 }).toBe(mainValueColor);
 
-  const workspace = page.getByTestId('graph-subgraph-workspace');
-  const longKey = workspace.locator('[data-subgraph-item-path-key="k:table_without_header"]');
-  await expect(longKey).toHaveAttribute('data-subgraph-item-preview', '[3]');
-  expect(await longKey.locator('.graph-subgraph-item__label').evaluate((element) => element.getBoundingClientRect().width))
+  const workspace = page.getByTestId('column-navigator-graph');
+  const longKey = workspace.locator('[data-column-navigator-item-path-key="k:table_without_header"]');
+  await expect(longKey).toHaveAttribute('data-column-navigator-item-preview', '[3]');
+  expect(await longKey.locator('.column-navigator-item__label').evaluate((element) => element.getBoundingClientRect().width))
     .toBeGreaterThanOrEqual(120);
-  await expect(workspace.locator('[data-subgraph-item-path-key="k:object|k:arr0"]')).toHaveAttribute(
-    'data-subgraph-item-preview',
+  await expect(workspace.locator('[data-column-navigator-item-path-key="k:object|k:arr0"]')).toHaveAttribute(
+    'data-column-navigator-item-preview',
     '[]',
   );
-  await expect(workspace.locator('[data-subgraph-item-path-key="k:object|k:obj0"]')).toHaveAttribute(
-    'data-subgraph-item-preview',
+  await expect(workspace.locator('[data-column-navigator-item-path-key="k:object|k:obj0"]')).toHaveAttribute(
+    'data-column-navigator-item-preview',
     '{}',
   );
   await expect
     .poll(() =>
-      longKey.locator('.graph-subgraph-item__preview').evaluate((element) => getComputedStyle(element).color),
+      longKey.locator('.column-navigator-item__preview').evaluate((element) => getComputedStyle(element).color),
     )
     .toBe('rgb(107, 114, 128)');
 
@@ -156,7 +156,7 @@ function parseSourceText(sourceText: string): any {
   return JSON.parse(sourceText);
 }
 
-test('subgraph workspace content pane uses monaco editor and syncs edits back to editor', async ({ page }) => {
+test('column navigator column detail editor uses monaco editor and syncs edits back to editor', async ({ page }) => {
   await page.goto('/editor');
   await waitForEditorReady(page);
 
@@ -177,23 +177,23 @@ test('subgraph workspace content pane uses monaco editor and syncs edits back to
   if (!keyProbe?.coord) throw new Error('user.name key probe missing');
 
   await clickGraphProbeAt(page, keyProbe.coord);
-  await waitForSubgraphSettled(page, 'k:user|k:name');
+  await waitForColumnNavigatorSettled(page, 'k:user|k:name');
 
-  const workspace = page.getByTestId('graph-subgraph-workspace');
-  const contentPane = workspace.getByTestId('graph-subgraph-content-pane');
+  const workspace = page.getByTestId('column-navigator-graph');
+  const contentPane = workspace.getByTestId('column-navigator-content-pane');
   const pane = contentPane.locator('..');
   await expect(workspace).toBeVisible();
   await expect(contentPane).toBeVisible();
-  await expect(pane).toHaveAttribute('data-content-path-key', 'k:user|k:name');
-  await expect(pane.getByTestId('graph-subgraph-key-input')).toHaveCount(0);
-  const monacoHost = pane.getByTestId('graph-subgraph-monaco-editor');
+  await expect(pane).toHaveAttribute('data-column-navigator-content-path-key', 'k:user|k:name');
+  await expect(pane.getByTestId('column-navigator-key-input')).toHaveCount(0);
+  const monacoHost = pane.getByTestId('column-navigator-monaco-editor');
   await expect(monacoHost).toBeVisible();
   await expect
-    .poll(async () => getMonacoValue(page, 'subgraph-content:k:user|k:name'), { timeout: 5_000 })
+    .poll(async () => getMonacoValue(page, 'column-navigator-content:k:user|k:name'), { timeout: 5_000 })
     .toBe('"Alice"');
 
   await monacoHost.click();
-  await setMonacoValue(page, 'subgraph-content:k:user|k:name', 'Bob');
+  await setMonacoValue(page, 'column-navigator-content:k:user|k:name', 'Bob');
 
   await expect
     .poll(async () => parseSourceText((await readEditorState(page)).sourceText), { timeout: 5_000 })
@@ -210,18 +210,18 @@ test('subgraph workspace content pane uses monaco editor and syncs edits back to
   if (!rowProbe?.coord) throw new Error('rows[0] probe missing');
 
   await clickGraphProbeAt(page, rowProbe.coord);
-  await waitForSubgraphSettled(page, 'k:rows|i:0');
+  await waitForColumnNavigatorSettled(page, 'k:rows|i:0');
 
-  const rowPane = workspace.locator('[data-column-path-key="k:rows|i:0"]');
-  await expect(rowPane.locator('.graph-subgraph-pane__header')).toHaveCount(0);
-  await expect(rowPane.locator('.graph-subgraph-pane__items')).toBeVisible();
-  await expect(workspace.locator('[data-content-path-key="k:rows|i:0"]')).toBeVisible();
+  const rowPane = workspace.locator('[data-column-navigator-path-key="k:rows|i:0"]');
+  await expect(rowPane.locator('.column-navigator-pane__header')).toHaveCount(0);
+  await expect(rowPane.locator('.column-navigator-pane__items')).toBeVisible();
+  await expect(workspace.locator('[data-column-navigator-content-path-key="k:rows|i:0"]')).toBeVisible();
   await expect
-    .poll(async () => getMonacoValue(page, 'subgraph-content:k:rows|i:0'), { timeout: 5_000 })
+    .poll(async () => getMonacoValue(page, 'column-navigator-content:k:rows|i:0'), { timeout: 5_000 })
     .toBe('{"title":"one","done":false}');
 });
 
-test('subgraph workspace highlights null roots and keeps string editing caret stable', async ({ page }) => {
+test('column navigator highlights null roots and keeps string editing caret stable', async ({ page }) => {
   await page.goto('/editor');
   await waitForEditorReady(page);
 
@@ -242,10 +242,10 @@ test('subgraph workspace highlights null roots and keeps string editing caret st
   if (!nilProbe?.coord) throw new Error('object.nil probe missing');
 
   await clickGraphProbeAt(page, nilProbe.coord);
-  await waitForSubgraphSettled(page, 'k:object|k:nil');
+  await waitForColumnNavigatorSettled(page, 'k:object|k:nil');
 
   await expect
-    .poll(async () => getMonacoValue(page, 'subgraph-content:k:object|k:nil'), { timeout: 5_000 })
+    .poll(async () => getMonacoValue(page, 'column-navigator-content:k:object|k:nil'), { timeout: 5_000 })
     .toBe('null');
 
   const refreshedProbes = await readGraphClickProbes(page);
@@ -256,15 +256,15 @@ test('subgraph workspace highlights null roots and keeps string editing caret st
   if (!nameProbe?.coord) throw new Error('user.name probe missing');
 
   await clickGraphProbeAt(page, nameProbe.coord);
-  await waitForSubgraphSettled(page, 'k:user|k:name');
+  await waitForColumnNavigatorSettled(page, 'k:user|k:name');
 
-  await applyMonacoEdits(page, 'subgraph-content:k:user|k:name', [
+  await applyMonacoEdits(page, 'column-navigator-content:k:user|k:name', [
     {
       range: { startLineNumber: 1, startColumn: 3, endLineNumber: 1, endColumn: 3 },
       text: 'B',
     },
   ]);
-  await applyMonacoEdits(page, 'subgraph-content:k:user|k:name', [
+  await applyMonacoEdits(page, 'column-navigator-content:k:user|k:name', [
     {
       range: { startLineNumber: 1, startColumn: 4, endLineNumber: 1, endColumn: 4 },
       text: 'C',
@@ -272,14 +272,14 @@ test('subgraph workspace highlights null roots and keeps string editing caret st
   ]);
 
   await expect
-    .poll(async () => getMonacoValue(page, 'subgraph-content:k:user|k:name'), { timeout: 5_000 })
+    .poll(async () => getMonacoValue(page, 'column-navigator-content:k:user|k:name'), { timeout: 5_000 })
     .toBe('"ABC"');
   await expect
     .poll(async () => parseSourceText((await readEditorState(page)).sourceText).user.name, { timeout: 5_000 })
     .toBe('ABC');
 });
 
-test('subgraph workspace rebases nested click paths before opening the next pane', async ({ page }) => {
+test('column navigator rebases nested click paths before opening the next pane', async ({ page }) => {
   await page.goto('/editor');
   await waitForEditorReady(page);
 
@@ -309,36 +309,36 @@ test('subgraph workspace rebases nested click paths before opening the next pane
   if (!urisProbe?.coord) throw new Error('preview.uris probe missing');
 
   await clickGraphProbeAt(page, urisProbe.coord);
-  await waitForSubgraphSettled(page, 'k:preview|k:uris');
+  await waitForColumnNavigatorSettled(page, 'k:preview|k:uris');
 
-  const workspaceProbes = await readSubgraphWorkspaceClickProbes(page);
+  const workspaceProbes = await readColumnNavigatorClickProbes(page);
   const uriItemProbe = workspaceProbes.find(
     (probe) => probe.target === 'value' && probe.path.join('.') === 'preview.uris.[1]' && probe.coord,
   );
   expect(uriItemProbe, JSON.stringify(workspaceProbes, null, 2)).toBeTruthy();
   if (!uriItemProbe?.coord) throw new Error('preview.uris[1] workspace probe missing');
 
-  await clickSubgraphWorkspaceProbeAt(page, uriItemProbe.coord);
-  await waitForSubgraphSettled(page, 'k:preview|k:uris|i:1');
+  await clickColumnNavigatorProbeAt(page, uriItemProbe.coord);
+  await waitForColumnNavigatorSettled(page, 'k:preview|k:uris|i:1');
 
-  const indexItem = page.locator('[data-subgraph-item-index="true"]').first();
-  await expect(indexItem.locator('.graph-subgraph-item__dot')).toHaveCount(1);
+  const indexItem = page.locator('[data-column-navigator-item-index="true"]').first();
+  await expect(indexItem.locator('.column-navigator-item__dot')).toHaveCount(1);
   await expect(indexItem.locator('svg')).toHaveCount(0);
 
-  await expect(page.locator('[data-subgraph-item-path-key="k:preview"]')).toHaveAttribute(
-    'data-subgraph-path-ancestor',
+  await expect(page.locator('[data-column-navigator-item-path-key="k:preview"]')).toHaveAttribute(
+    'data-column-navigator-path-ancestor',
     'true',
   );
-  await expect(page.locator('[data-subgraph-item-path-key="k:preview|k:uris"]')).toHaveAttribute(
-    'data-subgraph-path-ancestor',
+  await expect(page.locator('[data-column-navigator-item-path-key="k:preview|k:uris"]')).toHaveAttribute(
+    'data-column-navigator-path-ancestor',
     'true',
   );
 
-  const panes = page.getByTestId('graph-subgraph-pane');
+  const panes = page.getByTestId('column-navigator-pane');
   await expect(panes).toHaveCount(4);
-  await expect(panes.nth(3)).toHaveAttribute('data-content-path-key', 'k:preview|k:uris|i:1');
+  await expect(panes.nth(3)).toHaveAttribute('data-column-navigator-content-path-key', 'k:preview|k:uris|i:1');
   await expect
-    .poll(async () => getMonacoValue(page, 'subgraph-content:k:preview|k:uris|i:1'), { timeout: 5_000 })
+    .poll(async () => getMonacoValue(page, 'column-navigator-content:k:preview|k:uris|i:1'), { timeout: 5_000 })
     .toBe('"https://treease.com/path?redirect=1"');
   await expect(page.getByText('Reveal failed')).toHaveCount(0);
 });
@@ -365,32 +365,32 @@ test('workspace keyboard navigation is focus-bounded and Monaco keeps arrow keys
   expect(rootProbe).toBeTruthy();
   if (!rootProbe?.coord) throw new Error('root probe missing');
   await clickGraphProbeAt(page, rootProbe.coord);
-  await waitForSubgraphSettled(page, 'k:root', 20_000);
+  await waitForColumnNavigatorSettled(page, 'k:root', 20_000);
 
-  const workspace = page.getByTestId('graph-subgraph-workspace');
+  const workspace = page.getByTestId('column-navigator-graph');
   await workspace.focus();
   await page.keyboard.press('ArrowRight');
-  await waitForSubgraphSettled(page, 'k:root|k:first', 20_000);
-  await expect(workspace.locator('[data-subgraph-item-path-key="k:root|k:first"]')).toHaveAttribute('aria-pressed', 'true');
+  await waitForColumnNavigatorSettled(page, 'k:root|k:first', 20_000);
+  await expect(workspace.locator('[data-column-navigator-item-path-key="k:root|k:first"]')).toHaveAttribute('aria-pressed', 'true');
 
   await page.keyboard.press('ArrowDown');
-  await waitForSubgraphSettled(page, 'k:root|k:second', 20_000);
-  await expect(workspace.locator('[data-subgraph-item-path-key="k:root|k:second"]')).toHaveAttribute('aria-pressed', 'true');
+  await waitForColumnNavigatorSettled(page, 'k:root|k:second', 20_000);
+  await expect(workspace.locator('[data-column-navigator-item-path-key="k:root|k:second"]')).toHaveAttribute('aria-pressed', 'true');
 
   await page.getByTestId('monaco-source-editor').click();
   await page.keyboard.press('ArrowUp');
-  await expect(workspace.locator('[data-subgraph-item-path-key="k:root|k:second"]')).toHaveAttribute('aria-pressed', 'true');
+  await expect(workspace.locator('[data-column-navigator-item-path-key="k:root|k:second"]')).toHaveAttribute('aria-pressed', 'true');
 
-  await workspace.locator('[data-subgraph-item-path-key="k:root|k:second|k:leaf"]').click();
-  await waitForSubgraphSettled(page, 'k:root|k:second|k:leaf', 20_000);
-  const detailMonaco = workspace.getByTestId('graph-subgraph-monaco-editor');
+  await workspace.locator('[data-column-navigator-item-path-key="k:root|k:second|k:leaf"]').click();
+  await waitForColumnNavigatorSettled(page, 'k:root|k:second|k:leaf', 20_000);
+  const detailMonaco = workspace.getByTestId('column-navigator-monaco-editor');
   await detailMonaco.click();
   await page.keyboard.press('ArrowLeft');
   await expect
-    .poll(() => getMonacoValue(page, 'subgraph-content:k:root|k:second|k:leaf'))
+    .poll(() => getMonacoValue(page, 'column-navigator-content:k:root|k:second|k:leaf'))
     .toBe('"two"');
-  await expect(workspace.locator('[data-subgraph-selected="true"]')).toHaveAttribute(
-    'data-subgraph-item-path-key',
+  await expect(workspace.locator('[data-column-navigator-selected="true"]')).toHaveAttribute(
+    'data-column-navigator-item-path-key',
     'k:root|k:second|k:leaf',
   );
 });
@@ -421,9 +421,9 @@ test('full active paths remain horizontally browsable with independent native co
   expect(rootProbe).toBeTruthy();
   if (!rootProbe?.coord) throw new Error('deep root probe missing');
   await clickGraphProbeAt(page, rootProbe.coord);
-  await waitForSubgraphSettled(page, 'k:level1', 20_000);
+  await waitForColumnNavigatorSettled(page, 'k:level1', 20_000);
 
-  const workspace = page.getByTestId('graph-subgraph-workspace');
+  const workspace = page.getByTestId('column-navigator-graph');
   const pathKeys = [
     'k:level1|k:level2',
     'k:level1|k:level2|k:level3',
@@ -434,19 +434,19 @@ test('full active paths remain horizontally browsable with independent native co
     'k:level1|k:level2|k:level3|k:level4|k:level5|k:level6|i:39|k:value',
   ];
   for (const nextPathKey of pathKeys) {
-    await workspace.locator(`[data-subgraph-item-path-key="${nextPathKey}"]`).click();
-    await waitForSubgraphSettled(page, nextPathKey, 20_000);
+    await workspace.locator(`[data-column-navigator-item-path-key="${nextPathKey}"]`).click();
+    await waitForColumnNavigatorSettled(page, nextPathKey, 20_000);
   }
-  await waitForSubgraphSettled(
+  await waitForColumnNavigatorSettled(
     page,
     'k:level1|k:level2|k:level3|k:level4|k:level5|k:level6|i:39|k:value',
     20_000,
   );
 
   const metrics = await workspace.evaluate((root) => {
-    const rail = root.querySelector<HTMLElement>('.graph-subgraph-workspace__track');
-    const columns = [...root.querySelectorAll<HTMLElement>('.graph-subgraph-pane')];
-    const detail = root.querySelector<HTMLElement>('.graph-subgraph-detail');
+    const rail = root.querySelector<HTMLElement>('.column-navigator-graph__track');
+    const columns = [...root.querySelectorAll<HTMLElement>('.column-navigator-pane')];
+    const detail = root.querySelector<HTMLElement>('.column-navigator-detail');
     return {
       railOverflowX: rail ? getComputedStyle(rail).overflowX : '',
       railScrollWidth: rail?.scrollWidth ?? 0,
@@ -454,7 +454,7 @@ test('full active paths remain horizontally browsable with independent native co
       railScrollLeft: rail?.scrollLeft ?? 0,
       columnWidths: columns.map((column) => column.getBoundingClientRect().width),
       columnOverflowY: columns.map((column) =>
-        getComputedStyle(column.querySelector<HTMLElement>('.graph-subgraph-pane__items')!).overflowY),
+        getComputedStyle(column.querySelector<HTMLElement>('.column-navigator-pane__items')!).overflowY),
       detailOverflow: detail ? getComputedStyle(detail).overflow : '',
     };
   });

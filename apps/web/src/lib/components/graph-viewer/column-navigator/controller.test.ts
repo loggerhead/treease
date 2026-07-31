@@ -13,22 +13,22 @@ vi.mock('../../../services/SnapshotProjectionService', () => ({
   queryPathValue: mocks.queryPathValue,
 }));
 
-vi.mock('../graph-subgraph-workspace', () => ({
-  createSubgraphWorkspaceGraphCache: () => ({
+vi.mock('../column-navigator-graph', () => ({
+  createColumnNavigatorGraphCache: () => ({
     clear: mocks.cacheClear,
     prepareGraph: mocks.prepareGraph,
   }),
-  buildSubgraphWorkspaceColumnItems: (graph: { items?: unknown[] }) => graph.items ?? [],
-  formatSubgraphWorkspacePath: (path: Array<{ key?: string; index?: number }>) =>
+  buildColumnNavigatorColumnItems: (graph: { items?: unknown[] }) => graph.items ?? [],
+  formatColumnNavigatorPath: (path: Array<{ key?: string; index?: number }>) =>
     path.length ? `$.${path.map((segment) => segment.key ?? `[${segment.index}]`).join('.')}` : '$',
-  shouldOpenSubgraphWorkspaceContent: (value: { valueType?: string; displayText?: string }) =>
+  shouldOpenColumnNavigatorContent: (value: { valueType?: string; displayText?: string }) =>
     (value.valueType !== 'object' && value.valueType !== 'array') ||
     value.displayText === '{}' ||
     value.displayText === '[]',
-  buildSubgraphWorkspaceRenderSignature: () => 'render-config',
+  buildColumnNavigatorRenderSignature: () => 'render-config',
 }));
 
-import { buildWorkspacePathPrefixes, createSubgraphWorkspaceController } from './controller';
+import { buildWorkspacePathPrefixes, createColumnNavigatorController } from './controller';
 
 function keySeg(key: string) {
   return { tag: PathSegTag.KEY, key: key as any, index: 0 };
@@ -85,7 +85,7 @@ function installDocument(values: Record<string, ReturnType<typeof readyPathValue
 
 function createController(overrides: Record<string, unknown> = {}) {
   const states: any[] = [];
-  const controller = createSubgraphWorkspaceController({
+  const controller = createColumnNavigatorController({
     defaultHeightPx: 220,
     getActiveSnapshotId: () => 'snapshot-active' as any,
     getWorkspaceSnapshotId: () => 'snapshot-workspace' as any,
@@ -115,7 +115,7 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
-describe('path-driven subgraph workspace controller', () => {
+describe('path-driven column navigator controller', () => {
   it('builds every container column from the single active path and terminates leaves in Monaco content', async () => {
     installDocument(
       {

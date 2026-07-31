@@ -151,7 +151,7 @@ describe('Graph View Runtime lifecycle', () => {
       },
       disposeScene: mark('scene'),
       resetActiveEditState: mark('edit'),
-      disposeSubgraphWorkspace: mark('workspace'),
+      disposeColumnNavigator: mark('workspace'),
       unsubscribeStreamProgress: mark('unsubscribe'),
       disposeStreamProgress: mark('progress'),
       resetLifecycle: mark('lifecycle'),

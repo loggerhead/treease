@@ -344,7 +344,7 @@
           return viewerRef?.revealPath(localPath, { target }) ?? Promise.resolve(false);
         },
         waitForGraphReady: () => viewerRef?.waitForGraphReady() ?? Promise.resolve(false),
-        rebuildSubgraphWorkspace: async (panePaths) => await viewerRef.restoreSubgraphWorkspacePaths(panePaths.map(fromSharePath)),
+        restoreColumnNavigator: async (activePath) => await viewerRef.restoreColumnNavigatorPath(fromSharePath(activePath)),
         reportNavigationWarning: () => toast.warning('The shared document opened, but part of its saved navigation could not be restored.'),
       });
     } catch (error) {
@@ -368,7 +368,7 @@
       focus: graphHighlight && selection
         ? { type: 'graph', path: toSharePath(graphHighlight.path), target: graphHighlight.target, editorSelection: selection }
         : selection ? { type: 'editor', selection } : null,
-      subgraphWorkspace: { panePaths: viewerRef?.getSubgraphWorkspacePaths().map(toSharePath) ?? [] },
+      columnNavigator: { activePath: viewerRef ? toSharePath(viewerRef.getColumnNavigatorActivePath()) : [] },
     };
     return createResourceFromState({
       compareKind: $compareState.kind,

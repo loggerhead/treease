@@ -1,7 +1,7 @@
-// Responsibility: define subgraph-workspace close rules during the full-edit lifecycle.
+// Responsibility: define column-navigator close rules during the full-edit lifecycle.
 import type { FullEditUiState } from '../../store/full-edit-ui-store';
 
-const subgraphWorkspaceResetReasonSet = new Set<NonNullable<FullEditUiState['reason']>>([
+const columnNavigatorResetReasonSet = new Set<NonNullable<FullEditUiState['reason']>>([
   'initial-example',
   'language-example',
   'language-switch',
@@ -10,7 +10,7 @@ const subgraphWorkspaceResetReasonSet = new Set<NonNullable<FullEditUiState['rea
   'drop-file',
 ]);
 
-export function shouldResetSubgraphWorkspaceForFullEdit(
+export function shouldResetColumnNavigatorForFullEdit(
   fullEditUiState: FullEditUiState | null | undefined,
   graphAppliedRevision?: number,
 ): boolean {
@@ -19,6 +19,6 @@ export function shouldResetSubgraphWorkspaceForFullEdit(
   if (graphAppliedRevision != null && graphAppliedRevision >= fullEditUiState.revision) return false;
   return (
     fullEditUiState.reason != null &&
-    subgraphWorkspaceResetReasonSet.has(fullEditUiState.reason)
+    columnNavigatorResetReasonSet.has(fullEditUiState.reason)
   );
 }

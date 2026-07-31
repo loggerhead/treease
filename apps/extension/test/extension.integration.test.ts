@@ -90,8 +90,8 @@ test('renders Graphs for a highlighted GitHub-style cell and a 128 KB raw JSON d
     // rendered canvas, rather than an implementation-only workspace probe.
     await graphCanvas.click({ position: { x: 96, y: 64 } });
     await expect(panel.locator('#selected-path')).not.toHaveText('$');
-    await expect(panel.locator('#subgraph-workspace')).toBeVisible();
-    await expect(panel.getByText('Subgraph workspace', { exact: true })).toBeVisible();
+    await expect(panel.locator('#column-navigator')).toBeVisible();
+    await expect(panel.getByText('Column Navigator', { exact: true })).toBeVisible();
     const panelScrollBefore = await panel.evaluate(() => document.scrollingElement?.scrollTop ?? 0);
     await graphCanvas.hover({ position: { x: 80, y: 80 } });
     await panel.mouse.wheel(0, 240);

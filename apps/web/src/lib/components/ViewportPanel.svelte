@@ -371,12 +371,12 @@
     showEntitlementOverlay(block)
   }
 
-  export function getSubgraphWorkspacePaths(): PathSeg[][] {
-    return graphViewer?.getSubgraphWorkspacePaths?.() ?? [];
+  export function getColumnNavigatorActivePath(): PathSeg[] {
+    return graphViewer?.getColumnNavigatorActivePath?.() ?? [];
   }
 
-  export async function restoreSubgraphWorkspacePaths(paths: PathSeg[][]): Promise<boolean> {
-    return await graphViewer?.restoreSubgraphWorkspacePaths?.(paths) ?? false;
+  export async function restoreColumnNavigatorPath(path: PathSeg[]): Promise<boolean> {
+    return await graphViewer?.restoreColumnNavigatorPath?.(path) ?? false;
   }
 
   export function setTextScrollPosition(position: { scrollTop: number; scrollLeft: number }) {

@@ -9,7 +9,7 @@ function isPathPrefix(prefix: Path, value: Path): boolean {
   });
 }
 
-/** Maps a rendered cell to the closest graph node that can own a subgraph. */
+/** Maps a rendered cell to the closest graph node that can own a Column Navigator path. */
 export function resolveWorkspacePath(graph: GraphData | null, path: Path): Path | null {
   if (!graph) return null;
   const owner = graph.nodes
