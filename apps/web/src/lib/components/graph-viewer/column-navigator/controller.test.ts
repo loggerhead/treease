@@ -176,7 +176,7 @@ describe('path-driven column navigator controller', () => {
     expect(controller.getChain().at(-1)?.content?.sourceText).toBe('{1}');
   });
 
-  it('keeps the already materialized ancestor columns visible while navigation is loading', async () => {
+  it('keeps the complete committed workspace visible while navigation is loading', async () => {
     installDocument(
       {
         '': readyPathValue('object', '{2}'),
@@ -202,10 +202,11 @@ describe('path-driven column navigator controller', () => {
     const navigation = controller.selectPath(keyPath('user', 'name'));
     await Promise.resolve();
 
-    expect(states.at(-1)?.chain.map((pane: any) => [pane.pathKey, pane.status])).toEqual([
-      ['$', 'ready'],
-      ['k:user', 'ready'],
-      ['k:user|k:name', 'loading'],
+    expect(states.at(-1)?.isLoading).toBe(true);
+    expect(states.at(-1)?.chain.map((pane: any) => [pane.pathKey, pane.kind, pane.status])).toEqual([
+      ['$', 'column', 'ready'],
+      ['k:user', 'column', 'ready'],
+      ['k:user', 'content', 'ready'],
     ]);
 
     pendingLeaf.resolve(readyPathValue('string', '"Alice"'));
@@ -229,6 +230,32 @@ describe('path-driven column navigator controller', () => {
     expect(queriedPaths.filter((path) => path === '')).toHaveLength(1);
     expect(queriedPaths.filter((path) => path === 'alpha')).toHaveLength(1);
     expect(queriedPaths.filter((path) => path === 'beta')).toHaveLength(1);
+  });
+
+  it('wraps sibling navigation from the first item to the last and back again', async () => {
+    installDocument(
+      {
+        '': readyPathValue('object', '{3}'),
+        alpha: readyPathValue('number', '1'),
+        beta: readyPathValue('number', '2'),
+        gamma: readyPathValue('number', '3'),
+      },
+      {
+        '': [
+          item(keyPath('alpha'), 'number'),
+          item(keyPath('beta'), 'number'),
+          item(keyPath('gamma'), 'number'),
+        ],
+      },
+    );
+    const { controller } = createController();
+    await controller.openPath(keyPath('alpha'));
+
+    await controller.moveSibling(-1);
+    expect(controller.getActivePath()).toEqual(keyPath('gamma'));
+
+    await controller.moveSibling(1);
+    expect(controller.getActivePath()).toEqual(keyPath('alpha'));
   });
 
   it('binds subtree text to the detail editor while the selected container keeps its column', async () => {

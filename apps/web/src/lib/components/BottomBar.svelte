@@ -205,6 +205,7 @@
             type="button"
             class="inline-flex h-[24px] w-[24px] items-center justify-center rounded-[6px] text-[#64748b] hover:bg-[#e2e8f0] hover:text-[#1e293b] disabled:cursor-default disabled:text-[#cbd5e1] disabled:hover:bg-transparent"
             aria-label="Back in workspace history"
+            title="Back in workspace history"
             data-testid="bottom-column-navigator-back"
             disabled={!columnNavigatorState?.open || !columnNavigatorState.canGoBack}
             on:click={() => void onColumnNavigatorBack()}
@@ -213,6 +214,7 @@
             type="button"
             class="inline-flex h-[24px] w-[24px] items-center justify-center rounded-[6px] text-[#64748b] hover:bg-[#e2e8f0] hover:text-[#1e293b] disabled:cursor-default disabled:text-[#cbd5e1] disabled:hover:bg-transparent"
             aria-label="Forward in workspace history"
+            title="Forward in workspace history"
             data-testid="bottom-column-navigator-forward"
             disabled={!columnNavigatorState?.open || !columnNavigatorState.canGoForward}
             on:click={() => void onColumnNavigatorForward()}

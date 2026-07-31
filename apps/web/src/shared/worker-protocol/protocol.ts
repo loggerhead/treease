@@ -81,6 +81,7 @@ export type WorkerRequest =
   | { id: number; type: 'init'; wasmURL: string; wasmBytes?: ArrayBuffer }
   | { id: number; type: 'dispose' }
   | { id: number; type: 'diagnostics'; documentKey: string; language: string; text: string }
+  | { id: number; type: 'semanticTokens'; language: string; text: string }
   | {
       id: number;
       type: 'parseAndStore';

@@ -41,6 +41,8 @@ export type VisibleColumnNavigatorPaneState = ColumnNavigatorPaneState & {
 
 export type ColumnNavigatorState = {
   open: boolean;
+  /** A new path is being prepared while the last complete workspace stays visible. */
+  isLoading: boolean;
   activePath: PathSeg[];
   chain: ColumnNavigatorPaneState[];
   visiblePanes: VisibleColumnNavigatorPaneState[];

@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onDestroy, tick } from 'svelte';
   import type * as Monaco from 'monaco-editor';
+  import type { SnapshotId } from '@core-wasm/index';
 
   import { createFreshnessScope } from '../../guards/freshness-scope';
   import { buildDocumentJobSettings } from '../../graph-stream/document-job-runner';
@@ -38,6 +39,9 @@
   export let sourceText: string | null = null;
   /** Exact semantic-token slice projected from the primary snapshot. */
   export let projectedSemanticTokens: ArrayBuffer | null = null;
+  export let projectedSnapshotId: SnapshotId | null = null;
+  export let projectedDocumentKey = '';
+  export let projectedRevision = 0;
   export let runtimeHookId = 'right-editor';
   export let containerTestId = 'right-text-editor-container';
   export let attachToPane = true;
@@ -45,6 +49,7 @@
   export let lineNumbersMinChars: number | undefined = undefined;
   export let compactGutter = false;
   export let hideLineNumbers = false;
+  export let readOnly = false;
   export let onScroll: (payload: { scrollTop: number; scrollLeft: number }) => void = () => {};
   export let onContentChange: (text: string) => void = () => {};
   export let onEditorBlur: (text: string) => void = () => {};
@@ -88,8 +93,14 @@
   let lastAppliedThemeSignature = '';
   let detachedDraftText = sourceText ?? '';
   let detachedDraftRevision = 0;
+  let detachedDraftBaseline = {
+    documentKey: projectedDocumentKey,
+    snapshotId: projectedSnapshotId,
+    revision: projectedRevision,
+    pending: false,
+  };
   $: sidecarTab = $editorWorkspace.tabsById[tabId] ?? null;
-  $: if (model && projectedSemanticTokens) {
+  $: if (model && projectedSemanticTokens && (!isPrimaryDocumentDraft() || !detachedDraftBaseline.pending)) {
     primeProjectedSemanticTokens();
   }
   $: if (monaco) {
@@ -99,6 +110,7 @@
       applyEditorTheme(monaco, themeName, $settings);
     }
   }
+  $: editor?.updateOptions({ readOnly });
 
   const fullEditSink = createWorkspaceTabFullEditSink(tabId);
 
@@ -152,6 +164,9 @@
     if (!model || !projectedSemanticTokens) return;
     const modelDocumentKey = (model as Monaco.editor.ITextModel & { __treeaseDocumentKey?: string }).__treeaseDocumentKey;
     primeSemanticTokensForDocument(documentKey ?? modelDocumentKey ?? sidecarDocumentKey(), projectedSemanticTokens);
+    // This is tied to one accepted snapshot projection, not a generic
+    // language reset. Monaco can now read the matching cached token payload.
+    refreshSemanticTokensForLanguage(activeLanguage);
   }
 
   function syncLastModelSnapshot(): string {
@@ -196,6 +211,7 @@
   function commitSidecarEditorState(): number {
     if (isPrimaryDocumentDraft()) {
       detachedDraftRevision += 1;
+      detachedDraftBaseline = { ...detachedDraftBaseline, pending: true };
       return detachedDraftRevision;
     }
     const current = getWorkspaceTab(tabId);
@@ -205,6 +221,61 @@
       revision,
     });
     return revision;
+  }
+
+  function projectionIsNewerThanDetachedDraft(): boolean {
+    if (projectedDocumentKey !== detachedDraftBaseline.documentKey) return true;
+    return (
+      projectedRevision > detachedDraftBaseline.revision &&
+      projectedSnapshotId !== detachedDraftBaseline.snapshotId
+    );
+  }
+
+  function mayApplyDetachedProjection(value: string): boolean {
+    if (projectedDocumentKey !== detachedDraftBaseline.documentKey) return true;
+    if (!projectionIsNewerThanDetachedDraft()) return false;
+    // A queued local edit can receive an earlier committed projection before
+    // its own transaction lands. Only the projection that acknowledges the
+    // currently visible draft may retire that pending state.
+    return !detachedDraftBaseline.pending || value === detachedDraftText;
+  }
+
+  function acceptDetachedProjection(value: string): void {
+    detachedDraftText = value;
+    detachedDraftBaseline = {
+      documentKey: projectedDocumentKey,
+      snapshotId: projectedSnapshotId,
+      revision: projectedRevision,
+      pending: false,
+    };
+  }
+
+  async function refreshDetachedDraftSemanticTokens(
+    requestModel: Monaco.editor.ITextModel,
+    requestText: string,
+    requestLanguage: SupportedEditorLanguageId,
+    requestRevision: number,
+  ): Promise<void> {
+    if (!isPrimaryDocumentDraft()) return;
+    const response = await callSharedWasmWorker<{ semanticTokens?: number[] }>('semanticTokens', {
+      language: requestLanguage,
+      text: requestText,
+    });
+    if (
+      requestModel !== model ||
+      !isPrimaryDocumentDraft() ||
+      activeLanguage !== requestLanguage ||
+      detachedDraftRevision !== requestRevision ||
+      requestModel.getValue() !== requestText
+    ) {
+      return;
+    }
+    const semanticTokens = response.semanticTokens ?? [];
+    primeSemanticTokensForDocument(
+      sidecarDocumentKey(),
+      new Uint32Array(semanticTokens).buffer,
+    );
+    refreshSemanticTokensForLanguage(requestLanguage);
   }
 
   async function applySidecarGraphAnalysis(
@@ -417,6 +488,7 @@
       ...(compactGutter
         ? { glyphMargin: false, folding: false, lineDecorationsWidth: 0, padding: { top: 0, bottom: 0 } }
         : {}),
+      readOnly,
     });
     cleanupTestHook = attachMonacoTestHook(editor, runtimeHookId, monaco.editor.tokenize);
     editor.onDidChangeModelContent((event) => {
@@ -448,21 +520,21 @@
       lastModelText = nextText;
       if (wholeDocumentReplacement) {
         updateSidecarSourceText(nextText, { clearSnapshot: true });
-        if (isPrimaryDocumentDraft()) {
-          refreshSemanticTokensForLanguage(activeLanguage);
-        }
         if (!isPrimaryDocumentDraft()) {
           void runFullEditForCurrentText('whole-document-replacement', nextText, requestLanguage);
         } else {
           commitSidecarEditorState();
+          void refreshDetachedDraftSemanticTokens(
+            activeModel,
+            nextText,
+            requestLanguage,
+            detachedDraftRevision,
+          );
         }
         onContentChange(nextText);
         return;
       }
       updateSidecarSourceText(nextText, { clearSnapshot: false });
-      if (isPrimaryDocumentDraft()) {
-        refreshSemanticTokensForLanguage(activeLanguage);
-      }
       const isFlush = (event as unknown as { isFlush?: boolean }).isFlush ?? false;
       if (!isPrimaryDocumentDraft() && documentKey && changes.length > 0 && !isFlush) {
         const documentTextEdits = monacoChangesToDocumentTextEdits(
@@ -511,6 +583,14 @@
         commitSidecarEditorState();
       }
       if (isPrimaryDocumentDraft()) commitSidecarEditorState();
+      if (isPrimaryDocumentDraft()) {
+        void refreshDetachedDraftSemanticTokens(
+          activeModel,
+          nextText,
+          requestLanguage,
+          detachedDraftRevision,
+        );
+      }
       onContentChange(nextText);
     });
     editor.onDidScrollChange((event) => {
@@ -678,7 +758,22 @@
   }
 
   $: if (sourceText != null && (isPrimaryDocumentDraft() ? detachedDraftText : sidecarTab?.sourceText) !== sourceText && !suppressChange) {
-    void syncExternalSourceText(sourceText, activeLanguage);
+    if (!isPrimaryDocumentDraft()) {
+      void syncExternalSourceText(sourceText, activeLanguage);
+    } else if (mayApplyDetachedProjection(sourceText)) {
+      acceptDetachedProjection(sourceText);
+      void syncExternalSourceText(sourceText, activeLanguage);
+    }
+  }
+
+  $: if (
+    isPrimaryDocumentDraft() &&
+    sourceText != null &&
+    detachedDraftBaseline.pending &&
+    sourceText === detachedDraftText &&
+    mayApplyDetachedProjection(sourceText)
+  ) {
+    acceptDetachedProjection(sourceText);
   }
 
   onDestroy(() => {

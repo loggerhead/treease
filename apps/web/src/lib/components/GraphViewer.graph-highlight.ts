@@ -2,14 +2,9 @@ import type { TempModel } from '../store/graph-selection-store';
 import type { PathSeg } from '../store/tree-path';
 
 export function clearGraphSelectionAfterEdit(current: TempModel, _editPath: PathSeg[]): TempModel {
-  const highlight = current.graphHighlight;
-  if (!highlight?.path?.length) return current;
-  if (highlight.source !== 'graph') return current;
-  return {
-    ...current,
-    treePath: [],
-    graphHighlight: null,
-  };
+  // A value edit preserves its path. Scene replacement owns only the old box;
+  // the committed snapshot decides whether this logical selection still exists.
+  return current;
 }
 
 export function clearGraphSelectionForFullEdit(current: TempModel): TempModel {

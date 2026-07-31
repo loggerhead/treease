@@ -1,5 +1,5 @@
 // Responsibility: own Worker transport lifecycle, readiness gating, serialized dispatch, request correlation, and ok/error responses.
-import { TOKEN_TYPES, initWasm } from '@core-wasm/index';
+import { TOKEN_TYPES, getSemanticTokens, initWasm } from '@core-wasm/index';
 import { guessLanguage } from '@core-wasm/guess-language';
 
 import {
@@ -66,6 +66,7 @@ export function createWorkerTransport(ctx: WorkerContext): WorkerTransport {
   const operations = {
     guessLanguage: async (message) => guessLanguage(message.text),
     semanticTokensLegend: async () => [...TOKEN_TYPES],
+    semanticTokens: async (message) => ({ semanticTokens: await getSemanticTokens(message.language, message.text) }),
     diagnostics: async (message) => handleDiagnostics(message),
     parseAndStore: async (message) => handleParseAndStore(documentParseRuntime, message),
     findJsonBlockAtPosition: async (message) => handleFindJsonBlockAtPosition(message),

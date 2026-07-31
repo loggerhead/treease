@@ -114,6 +114,7 @@ export function createColumnNavigatorController(deps: ColumnNavigatorControllerD
   });
 
   let open = false;
+  let isLoading = false;
   let activePath: PathSeg[] = [];
   let chain: ColumnNavigatorPaneState[] = [];
   let history: PathSeg[][] = [];
@@ -144,6 +145,7 @@ export function createColumnNavigatorController(deps: ColumnNavigatorControllerD
     const panes = visiblePanes();
     deps.onState({
       open,
+      isLoading,
       activePath: clonePath(activePath),
       chain: chain.map(clonePane),
       visiblePanes: panes,
@@ -323,19 +325,19 @@ export function createColumnNavigatorController(deps: ColumnNavigatorControllerD
     await pendingEditTaskMap.get(workspacePathKey(activePath));
     if (disposed) return;
     void navigationOperation?.cancel();
+    void refreshOperation?.cancel();
     const operation = createWorkspaceOperation();
     navigationOperation = operation;
     const nextRequestId = ++requestId;
     const requestedPathKey = workspacePathKey(path);
     open = true;
+    isLoading = true;
     activePath = clonePath(path);
-    const preservedChain = chain.filter(
-      (pane) =>
-        pane.kind === 'column' &&
-        pane.path.length < path.length &&
-        workspacePathKey(path.slice(0, pane.path.length)) === pane.pathKey,
-    );
-    chain = [...preservedChain, loadingPane(path, nextRequestId)];
+    // A navigation request must never clear an already readable workspace.
+    // Keep the committed chain (including its detail editor) until the next
+    // complete chain can replace it in one render; only first open needs a
+    // loading pane because there is no stable content to retain.
+    if (!chain.length) chain = [loadingPane(path, nextRequestId)];
     if (options.recordHistory) recordHistory(path);
     deps.markSubgraphRequested({
       requestId: nextRequestId,
@@ -343,12 +345,13 @@ export function createColumnNavigatorController(deps: ColumnNavigatorControllerD
       sourceRevision: deps.getRevision(),
     });
     emitState();
-    await operation.run({
+    const result = await operation.run({
       execute: ({ step }) => step(() => prepareWorkspace(path, nextRequestId)),
       land: (prepared) => {
         if (disposed) return;
         activePath = clonePath(prepared.activePath);
         chain = prepared.chain;
+        isLoading = false;
         deps.markSubgraphMaterialized({
           requestId: nextRequestId,
           pathKey: requestedPathKey,
@@ -359,6 +362,10 @@ export function createColumnNavigatorController(deps: ColumnNavigatorControllerD
         emitState();
       },
     });
+    if (result.status === 'failed' && navigationOperation === operation) {
+      isLoading = false;
+      emitState();
+    }
   }
 
   async function openPath(path: PathSeg[], _parentAbsoluteIndex = -1): Promise<void> {
@@ -383,7 +390,8 @@ export function createColumnNavigatorController(deps: ColumnNavigatorControllerD
     );
     if (!parent?.items.length) return;
     const index = parent.items.findIndex((item) => item.pathKey === workspacePathKey(activePath));
-    const nextIndex = Math.max(0, Math.min(parent.items.length - 1, (index < 0 ? 0 : index) + delta));
+    const currentIndex = index < 0 ? 0 : index;
+    const nextIndex = (currentIndex + delta + parent.items.length) % parent.items.length;
     const item = parent.items[nextIndex];
     if (item && item.pathKey !== workspacePathKey(activePath)) await selectPath(item.path);
   }
@@ -483,6 +491,7 @@ export function createColumnNavigatorController(deps: ColumnNavigatorControllerD
         if (disposed) return;
         activePath = clonePath(prepared.activePath);
         chain = prepared.chain;
+        isLoading = false;
         emitState();
       },
     });
@@ -556,6 +565,7 @@ export function createColumnNavigatorController(deps: ColumnNavigatorControllerD
     void refreshOperation?.cancel();
     requestId += 1;
     open = false;
+    isLoading = false;
     activePath = [];
     chain = [];
     history = [];

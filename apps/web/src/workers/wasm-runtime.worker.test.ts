@@ -13,7 +13,7 @@ const mocked = vi.hoisted(() => ({
   formatJson: vi.fn(async () => ({ text: 'formatted' })),
   minifyJson: vi.fn(async () => ({ text: 'minified' })),
   sortText: vi.fn(async () => 'sorted'),
-  getSemanticTokens: vi.fn(async () => new Uint8Array()),
+  getSemanticTokens: vi.fn(async (): Promise<number[]> => []),
   getDiagnostics: vi.fn(async () => []),
   convertJson: vi.fn(async () => ({ text: 'converted' })),
   runYqText: vi.fn(async () => 'yq-output'),
@@ -183,7 +183,7 @@ describe('wasm-runtime worker', () => {
     mocked.formatJson.mockImplementation(async () => ({ text: 'formatted', cursor: 0 }));
     mocked.minifyJson.mockImplementation(async () => ({ text: 'minified', cursor: 0 }));
     mocked.sortText.mockImplementation(async () => 'sorted');
-    mocked.getSemanticTokens.mockImplementation(async () => new Uint8Array());
+    mocked.getSemanticTokens.mockImplementation(async () => []);
     mocked.getDiagnostics.mockImplementation(async () => []);
     mocked.getStoredDocumentAnalysis.mockImplementation(async () => null);
     mocked.findJsonBlockAtPosition.mockImplementation(async () => ({ found: false, startByte: 0, endByte: 0, startRow: 0, startColumn: 0, endRow: 0, endColumn: 0 }));
@@ -1028,6 +1028,22 @@ it('returns structured diff when isStructurallyEqual returns false for structura
       expect(res.ok).toBe(true);
       expect(res.data).toEqual(mocked.TOKEN_TYPES);
       expect(res.data).toEqual([...mocked.TREE_NODE_TOKEN_TYPES, ...mocked.AUXILIARY_TOKEN_TYPES]);
+    });
+
+    it('encodes detached draft semantic tokens without creating a document snapshot', async () => {
+      mocked.getSemanticTokens.mockResolvedValue([0, 0, 3, 3, 0]);
+
+      const res = await send({
+        id: 40,
+        type: 'semanticTokens',
+        language: 'json',
+        text: '"42"',
+      });
+
+      expect(res.ok).toBe(true);
+      expect(res.data).toEqual({ semanticTokens: [0, 0, 3, 3, 0] });
+      expect(mocked.getSemanticTokens).toHaveBeenCalledWith('json', '"42"');
+      expect(mocked.startDocumentJob).not.toHaveBeenCalled();
     });
   });
 

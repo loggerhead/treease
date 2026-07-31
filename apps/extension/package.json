@@ -13,8 +13,8 @@
   },
   "dependencies": {
     "@treease/graph-viewer-runtime": "workspace:*",
-    "@leafer-in/viewport": "^2.0.0",
-    "leafer-ui": "^2.0.0"
+    "@leafer-in/viewport": "^2.2.7",
+    "leafer-ui": "^2.2.7"
   },
   "devDependencies": {
     "@playwright/test": "^1.53.1",

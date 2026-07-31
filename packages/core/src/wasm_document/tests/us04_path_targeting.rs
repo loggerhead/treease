@@ -277,6 +277,43 @@ fn wasm_document_query_snapshot_returns_lightweight_projections() {
 }
 
 #[test]
+fn wasm_document_path_value_for_toml_tables_includes_source_text() {
+    let _guard = lock_test_mutex();
+    reset_test_state();
+
+    let preview_source = "[preview]\ncolor = \"#4f46e5\"\ntime = \"2026-04-13T10:00:00Z\"\n\n";
+    let items_source = "[[items]]\nname = \"Ada\"\n\n[[items]]\nname = \"Grace\"\n";
+    let source = format!("{preview_source}{items_source}");
+    let (snapshot_id, _) = analyze_document_via_job("query-toml-tables", "toml", &[&source]);
+
+    for (path_pattern, value_type, expected_source) in [
+        ("$.preview", "object", preview_source),
+        ("$.items", "array", items_source),
+    ] {
+        let result = query_snapshot_impl(QuerySnapshotRequest {
+            document_key: "query-toml-tables".to_owned(),
+            snapshot_id: snapshot_id.0 as u32,
+            query_kind: QueryKind::PathValue as u8,
+            has_path: true,
+            path_pattern: path_pattern.to_owned(),
+            span_start: 0,
+            span_end: 0,
+            target: QueryTargetKind::Value,
+        })
+        .expect("path-value query should execute");
+        let path_value = match result {
+            SnapshotReadResult::Ready { data } => {
+                data.path_value.expect("TOML table path value present")
+            }
+            SnapshotReadResult::SnapshotNotReady => panic!("snapshot should be ready"),
+        };
+
+        assert_eq!(path_value.value_type, value_type, "{path_pattern}");
+        assert_eq!(path_value.source_text, expected_source, "{path_pattern}");
+    }
+}
+
+#[test]
 fn wasm_document_query_snapshot_resolves_path_on_2mb_json_fixture() {
     let _guard = lock_test_mutex();
     reset_test_state();

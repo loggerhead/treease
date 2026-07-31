@@ -8,7 +8,7 @@ import {
 } from '../services/treease-server';
 import { openLemonSqueezyCheckout, preloadLemonSqueezyCheckout } from './lemon-squeezy-checkout';
 
-type CheckoutReturnUrl = {
+export type CheckoutReturnUrl = {
   successUrl: string;
 };
 
@@ -28,6 +28,14 @@ export type CheckoutStartOutcome =
   | { status: 'opened' }
   | { status: 'login-required' }
   | { status: 'failed'; message: string };
+
+export type BillingCheckoutActionOptions = {
+  priceId: BillingPriceId;
+  returnUrl: CheckoutReturnUrl;
+  prepared?: PreparedBillingCheckout | Promise<PreparedBillingCheckout | null> | null;
+  onLoginRequired?: () => void;
+  onFailed?: (message: string) => void;
+};
 
 function preloadCheckoutInBackground(dependencies: CheckoutDependencies): void {
   void dependencies.preloadCheckout().catch(() => {});
@@ -92,4 +100,21 @@ export async function startBillingCheckout(
   } catch (cause) {
     return failedCheckout(cause);
   }
+}
+
+/** Runs the shared checkout action for UI surfaces that may have a prepared URL. */
+export async function runBillingCheckout(options: BillingCheckoutActionOptions): Promise<CheckoutStartOutcome> {
+  let outcome: CheckoutStartOutcome;
+  try {
+    const prepared = await options.prepared;
+    outcome = prepared
+      ? await openPreparedBillingCheckout(prepared)
+      : await startBillingCheckout(options.priceId, options.returnUrl);
+  } catch {
+    outcome = await startBillingCheckout(options.priceId, options.returnUrl);
+  }
+
+  if (outcome.status === 'login-required') options.onLoginRequired?.();
+  if (outcome.status === 'failed') options.onFailed?.(outcome.message);
+  return outcome;
 }

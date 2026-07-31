@@ -5,8 +5,8 @@
   "type": "module",
   "exports": { ".": "./src/index.ts" },
   "dependencies": {
-    "@leafer-in/viewport": "^2.0.0",
-    "leafer-ui": "^2.0.0"
+    "@leafer-in/viewport": "^2.2.7",
+    "leafer-ui": "^2.2.7"
   },
   "devDependencies": {
     "typescript": "^5.9.3",

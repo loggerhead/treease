@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onDestroy, onMount } from 'svelte';
-  import { ChevronDown, Gauge, LogOut, RefreshCw, Settings, User as UserIcon } from 'lucide-svelte';
+  import { ChevronDown, Gauge, LogOut, RefreshCw, Settings, Sparkles, User as UserIcon } from 'lucide-svelte';
   import { toast } from 'svelte-sonner';
   import { trackEvent } from '../analytics/ga4';
   import { authUser, authUserDetails, observeAuthUser } from '../auth/auth-user-store';
@@ -14,6 +14,7 @@
   } from '../services/treease-server';
   import { getUsageClientId } from '../billing/client-id';
   import { applyLocalUsage } from '../billing/entitlement-gate';
+  import { runBillingCheckout } from '../billing/checkout-flow';
   import {
     DropdownMenu,
     DropdownMenuContent,
@@ -39,6 +40,7 @@
   let accountRequest = 0;
   let usageRequest = 0;
   let managingPlan = false;
+  let checkoutBusy = false;
   let accountMenuOpen = false;
   let subscriptionViewTrackedForOpen = false;
   let usageExpanded = true;
@@ -146,6 +148,32 @@
       toast.error('Unable to open plan management. Please try again later.');
       managingPlan = false;
     }
+  }
+
+  async function upgradeToPro(): Promise<void> {
+    if (!subscription || subscription.tier !== 'free' || checkoutBusy) return;
+
+    checkoutBusy = true;
+
+    try {
+      await runBillingCheckout({
+        priceId: 'monthly',
+        returnUrl: { successUrl: new URL('/editor', window.location.origin).toString() },
+        onLoginRequired: onLogin,
+        onFailed: (message) => toast.error(message),
+      });
+    } finally {
+      checkoutBusy = false;
+    }
+  }
+
+  async function handlePlanAction(): Promise<void> {
+    if (!subscription) return;
+    if (subscription.tier === 'free') {
+      await upgradeToPro();
+      return;
+    }
+    await managePlan();
   }
 
   function trackSubscriptionViewed(): void {
@@ -320,10 +348,11 @@
           <DropdownMenuItem
             class="rounded-[7px] px-2 py-2 text-[13px]"
             data-testid="account-manage-plan-menu-item"
-            disabled={managingPlan}
-            onSelect={() => void managePlan()}
+            disabled={managingPlan || checkoutBusy}
+            onSelect={() => void handlePlanAction()}
           >
-            {subscription.tier === 'free' ? 'Upgrade to Pro' : managingPlan ? 'Opening…' : 'Manage plan'}
+            <Sparkles size={14} />
+            {subscription.tier === 'free' ? (checkoutBusy ? 'Opening checkout…' : 'Upgrade to Pro') : managingPlan ? 'Opening…' : 'Manage plan'}
           </DropdownMenuItem>
           {/if}
           <DropdownMenuSeparator class="my-1" />

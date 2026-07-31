@@ -81,6 +81,7 @@ export {
 } from './document-api';
 export {
   getDiagnostics,
+  getSemanticTokens,
   formatText,
   minifyText,
   sortText,

@@ -260,6 +260,12 @@ struct GetDiagnosticsOutput {
     diagnostics: Vec<u32>,
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct GetSemanticTokensOutput {
+    semantic_tokens: Vec<u32>,
+}
+
 #[wasm_bindgen]
 pub fn get_diagnostics(spec: JsValue) -> Result<JsValue, JsValue> {
     let input: GetDiagnosticsInput =
@@ -279,6 +285,21 @@ fn get_diagnostics_impl(language: &str, text: &str) -> GetDiagnosticsOutput {
     GetDiagnosticsOutput {
         diagnostics: analysis.diagnostics_raw,
     }
+}
+
+/// Encode tokens without creating or advancing a document snapshot. This is
+/// used by local editor drafts while their authoritative commit is in flight.
+#[wasm_bindgen]
+pub fn get_semantic_tokens(spec: JsValue) -> Result<JsValue, JsValue> {
+    let input: GetDiagnosticsInput =
+        serde_wasm_bindgen::from_value(spec).map_err(|e| JsValue::from_str(&e.to_string()))?;
+    let output = GetSemanticTokensOutput {
+        semantic_tokens: crate::semantic_tokens_shared::encode_document_semantic_tokens(
+            &input.language,
+            &input.text,
+        ),
+    };
+    Ok(serde_wasm_bindgen::to_value(&output).map_err(|e| JsValue::from_str(&e.to_string()))?)
 }
 
 // ── compareStructured export ───────────────────────────────────────────

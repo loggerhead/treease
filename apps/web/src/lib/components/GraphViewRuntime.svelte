@@ -1,8 +1,6 @@
 <!-- Responsibility: own the Leafer lifecycle, controller assembly, cross-boundary orchestration, and DOM template. -->
 <script lang="ts">
   import { onDestroy, onMount, tick, createEventDispatcher } from 'svelte';
-  import { cubicOut } from 'svelte/easing';
-  import { fly } from 'svelte/transition';
   import { ChevronLeft, ChevronRight, X } from 'lucide-svelte';
   import {
     documentKey as documentKeyStore,
@@ -236,6 +234,8 @@
   let columnNavigatorChain: ColumnNavigatorPaneState[] = [];
   let columnNavigatorVisiblePanes: VisibleColumnNavigatorPaneState[] = [];
   let columnNavigatorOpen = false;
+  let columnNavigatorLoading = false;
+  let columnNavigatorInitialLoading = false;
   let columnNavigatorActivePath: PathSeg[] = [];
   let columnNavigatorCanGoBack = false;
   let columnNavigatorCanGoForward = false;
@@ -281,6 +281,10 @@
   $: {
     columnNavigatorDetailPane = columnNavigatorVisiblePanes.find((pane) => pane.kind === 'content') ?? null;
   }
+  $: columnNavigatorInitialLoading =
+    columnNavigatorLoading &&
+    columnNavigatorVisiblePanes.length === 1 &&
+    columnNavigatorVisiblePanes[0]?.status === 'loading';
   $: {
     const nextScrollKey = `${workspacePathKey(columnNavigatorActivePath)}|${columnNavigatorVisiblePanes.length}`;
     if (columnNavigatorOpen && nextScrollKey !== lastSubgraphScrollKey) {
@@ -507,6 +511,7 @@
     materializeTarget: (renderHandle) => graphSceneController.materializeTarget(renderHandle),
   });
   const clearSearchHighlight = graphTextLinkageController.clearSearchHighlight;
+  const clearRenderedSearchHighlights = graphTextLinkageController.clearRenderedSearchHighlights;
   const resolveTreePathByPosition = graphTextLinkageController.resolveTreePathByPosition;
   const ensurePathIndex = graphTextLinkageController.ensurePathIndex;
   const emitReveal = graphTextLinkageController.emitReveal;
@@ -567,6 +572,7 @@
     markSubgraphMaterialized,
     onState: (state) => {
       columnNavigatorOpen = state.open;
+      columnNavigatorLoading = state.isLoading;
       columnNavigatorActivePath = state.activePath;
       columnNavigatorChain = state.chain;
       columnNavigatorVisiblePanes = state.visiblePanes;
@@ -830,6 +836,7 @@
     },
     buildPathSegFromCell,
     clearSearchHighlight,
+    clearRenderedSearchHighlights,
     getClickTargetProbes: () => graphRuntimeProbeActions.listClickTargetProbes(),
     getClickTargetProbeStore: () => graphRuntimeProbeController?.getRootStore() ?? (Object.create(null) as any),
     upsertCellEntry,
@@ -1279,6 +1286,16 @@
         target: graphHighlight.target,
         navigate: graphHighlight.source === 'search' || graphHighlight.source === 'breadcrumb',
       });
+      // A newly committed graph may not have registered its replacement boxes
+      // when the old visual selection is cleared.  The linkage controller
+      // restores that visual state from the retained logical path, then uses
+      // the snapshot projection (not box presence) to decide whether it can
+      // be discarded.
+      void graphTextLinkageController.reconcileActiveHighlight({
+        documentKey: documentKeyValue,
+        snapshotId: graphRenderCoordinator.getActiveSnapshotId(),
+        graphAppliedRevision: appliedRevision,
+      });
     }
   }
 
@@ -1412,14 +1429,23 @@
     <div
       bind:this={columnNavigatorRoot}
       class="column-navigator-graph"
+      class:column-navigator-graph--loading={columnNavigatorLoading}
       data-testid="column-navigator-graph"
       style:height={`${columnNavigatorHeightPx}px`}
+      style:font-family={renderConfig.fontFamily}
       tabindex="0"
       role="tree"
       aria-label="Column Navigator column browser"
       on:keydown={handleColumnNavigatorKeydown}
-      transition:fly={{ y: 18, duration: 180, opacity: 0.14, easing: cubicOut }}
+      aria-busy={columnNavigatorLoading}
     >
+      {#if columnNavigatorInitialLoading}
+        <div class="column-navigator-loading-skeleton" role="status" aria-live="polite" aria-label="Opening column navigator">
+          <div class="column-navigator-loading-skeleton__column"></div>
+          <div class="column-navigator-loading-skeleton__column"></div>
+          <div class="column-navigator-loading-skeleton__detail"></div>
+        </div>
+      {:else}
       <div bind:this={columnNavigatorRail} class="column-navigator-graph__track">
         {#each columnNavigatorVisiblePanes as pane (`${pane.kind}:${pane.pathKey}`)}
           {#if pane.kind === 'column'}
@@ -1460,7 +1486,9 @@
                           : resolveSemanticTypeColor(renderConfig.colors.semanticType, item.semType)}
                       >{item.preview}</span>
                       {#if item.isContainer}
-                        <ChevronRight class="column-navigator-item__chevron" size={13} strokeWidth={1.8} />
+                        <span class="column-navigator-item__chevron-slot" aria-hidden="true">
+                          <ChevronRight class="column-navigator-item__chevron" size={13} strokeWidth={1.8} />
+                        </span>
                       {/if}
                     </button>
                   {/each}
@@ -1478,6 +1506,10 @@
           {/if}
         {/each}
       </div>
+      {/if}
+      {#if columnNavigatorLoading && !columnNavigatorInitialLoading}
+        <span class="column-navigator-loading-indicator" role="status" aria-live="polite">Updating path…</span>
+      {/if}
       <button
         type="button"
         class="column-navigator-graph__dismiss"
@@ -1499,12 +1531,16 @@
                   language={languageIdValue}
                   sourceText={columnNavigatorDetailPane.content.sourceText}
                   projectedSemanticTokens={columnNavigatorDetailPane.content.semanticTokens}
+                  projectedSnapshotId={columnNavigatorDetailPane.content.snapshotId}
+                  projectedDocumentKey={documentKeyValue}
+                  projectedRevision={editorRevisionValue}
                   runtimeHookId={columnNavigatorDetailPane.content.tabId}
                   containerTestId="column-navigator-monaco-editor"
                   attachToPane={false}
                   destroyOnUnmount={true}
                   hideLineNumbers={true}
                   compactGutter={true}
+                  readOnly={readonly || columnNavigatorLoading}
                   onScroll={() => {}}
                   onContentChange={(text) => {
                     emitReveal(columnNavigatorDetailPane!.path, 'value', 'click');
@@ -1579,9 +1615,7 @@
     overflow: hidden;
     outline: none;
     border-top: 1px solid rgba(148, 163, 184, 0.28);
-    background:
-      linear-gradient(180deg, rgba(245, 248, 252, 0.98), rgba(238, 243, 248, 0.98)),
-      radial-gradient(circle at 14% 0%, rgba(59, 130, 246, 0.08), transparent 32%);
+    background: #eef3f8;
     box-shadow:
       inset 0 1px 0 rgba(255, 255, 255, 0.76),
       0 -12px 24px rgba(15, 23, 42, 0.08);
@@ -1591,6 +1625,22 @@
     box-shadow:
       inset 0 2px 0 rgba(59, 130, 246, 0.42),
       0 -12px 24px rgba(15, 23, 42, 0.08);
+  }
+
+  .column-navigator-loading-indicator {
+    position: absolute;
+    z-index: 5;
+    top: 6px;
+    right: 30px;
+    color: #64748b;
+    font-size: 11px;
+    opacity: 0;
+    pointer-events: none;
+    animation: column-navigator-loading-indicator-in 1ms linear 150ms forwards;
+  }
+
+  @keyframes column-navigator-loading-indicator-in {
+    to { opacity: 1; }
   }
 
   :global(.column-navigator-graph__divider) {
@@ -1620,10 +1670,10 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 26px;
-    height: 26px;
+    width: 22px;
+    height: 28px;
     border: 0;
-    border-radius: 7px;
+    border-radius: 0;
     background: transparent;
     color: #64748b;
     cursor: pointer;
@@ -1631,16 +1681,18 @@
 
   .column-navigator-graph__dismiss {
     position: absolute;
-    top: 8px;
-    right: 8px;
+    top: 0;
+    right: 0;
     z-index: 6;
-    background: rgba(255, 255, 255, 0.82);
-    box-shadow: 0 2px 8px rgba(15, 23, 42, 0.08);
+    border: 1px solid #cbd5e1;
+    background: #e2e8f0;
+    color: #475569;
+    box-shadow: none;
   }
 
   .column-navigator-graph__dismiss:hover {
     color: #1e293b;
-    background: rgba(226, 232, 240, 0.76);
+    background: #cbd5e1;
   }
 
   .column-navigator-graph__track {
@@ -1652,6 +1704,41 @@
     overscroll-behavior-inline: contain;
     scrollbar-color: rgba(100, 116, 139, 0.4) transparent;
     padding-right: 440px;
+  }
+
+  .column-navigator-loading-skeleton {
+    display: grid;
+    grid-template-columns: 288px 288px minmax(0, 1fr);
+    height: 100%;
+    min-height: 0;
+  }
+
+  .column-navigator-loading-skeleton__column,
+  .column-navigator-loading-skeleton__detail {
+    position: relative;
+    overflow: hidden;
+    border-right: 1px solid rgba(203, 213, 225, 0.82);
+    background: rgba(250, 252, 255, 0.9);
+  }
+
+  .column-navigator-loading-skeleton__detail {
+    border-right: 0;
+    background: rgba(248, 250, 252, 0.96);
+  }
+
+  .column-navigator-loading-skeleton__column::after,
+  .column-navigator-loading-skeleton__detail::after {
+    position: absolute;
+    inset: 18px 14px;
+    content: '';
+    background: linear-gradient(90deg, #edf2f7 25%, #f8fafc 38%, #edf2f7 63%);
+    background-size: 400% 100%;
+    animation: column-navigator-skeleton-shimmer 1.4s ease-in-out infinite;
+  }
+
+  @keyframes column-navigator-skeleton-shimmer {
+    from { background-position: 100% 0; }
+    to { background-position: 0 0; }
   }
 
   .column-navigator-pane {
@@ -1705,7 +1792,6 @@
     min-width: 0;
     overflow: hidden;
     color: #334155;
-    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
     font-size: 11px;
     font-weight: 600;
     text-overflow: ellipsis;
@@ -1728,16 +1814,20 @@
 
   .column-navigator-item {
     display: grid;
-    grid-template-columns: minmax(132px, 1.25fr) minmax(48px, 0.75fr) auto;
+    grid-template-columns: fit-content(42%) minmax(48px, 1fr) auto;
+    grid-template-rows: 16px;
     align-items: center;
-    gap: 6px;
+    align-content: center;
+    column-gap: 10px;
+    row-gap: 6px;
     width: 100%;
     min-height: 31px;
     padding: 5px 7px;
     border: 1px solid transparent;
-    border-radius: 7px;
+    border-radius: 0;
     background: transparent;
     color: #334155;
+    font-family: inherit;
     text-align: left;
     cursor: default;
     transition:
@@ -1751,19 +1841,19 @@
   }
 
   .column-navigator-item.selected {
-    border-color: rgba(96, 165, 250, 0.38);
-    background: linear-gradient(90deg, rgba(219, 234, 254, 0.92), rgba(239, 246, 255, 0.82));
-    box-shadow: inset 2px 0 0 #3b82f6;
+    border-color: #bfdbfe;
+    background: #eaf2ff;
+    box-shadow: none;
   }
 
   .column-navigator-item.path-ancestor:not(.selected) {
     border-color: rgba(148, 163, 184, 0.22);
     background: rgba(148, 163, 184, 0.15);
-    box-shadow: inset 2px 0 0 rgba(100, 116, 139, 0.48);
+    box-shadow: none;
   }
 
   .column-navigator-item.index {
-    grid-template-columns: 18px minmax(108px, 1.15fr) minmax(48px, 0.75fr) auto;
+    grid-template-columns: 18px fit-content(38%) minmax(48px, 1fr) auto;
   }
 
   .column-navigator-item.index .column-navigator-item__dot {
@@ -1794,9 +1884,8 @@
   .column-navigator-item__preview {
     min-width: 0;
     overflow: hidden;
-    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-    font-size: 11px;
-    line-height: 1.45;
+    font-size: 12px;
+    line-height: 16px;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
@@ -1817,26 +1906,35 @@
   }
 
   .column-navigator-item__chevron {
+    display: block;
     color: #94a3b8;
+  }
+
+  .column-navigator-item__chevron-slot {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 16px;
+    width: 13px;
   }
 
   .column-navigator-pane__content {
     display: grid;
     height: 100%;
     min-height: 0;
-    background: linear-gradient(180deg, rgba(248, 250, 252, 0.96), rgba(241, 245, 249, 0.96));
+    background: #f1f5f9;
   }
 
   .column-navigator-pane__content-editor {
     min-height: 0;
-    padding: 0;
+    padding: 8px;
   }
 
   .column-navigator-pane__content-editor :global([data-testid='column-navigator-monaco-editor']) {
     height: 100%;
     border: 0;
     border-radius: 0;
-    background: rgba(255, 255, 255, 0.95);
+    background: #ffffff;
     overflow: hidden;
     box-shadow: none;
   }

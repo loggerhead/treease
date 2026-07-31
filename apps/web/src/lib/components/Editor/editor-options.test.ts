@@ -9,6 +9,8 @@ describe('createTreeaseMonacoEditorOptions', () => {
       fontSize: 13,
       scrollBeyondLastLine: false,
       automaticLayout: true,
+      smoothScrolling: true,
+      cursorSmoothCaretAnimation: 'on',
       wordWrap: 'on',
       minimap: { enabled: false },
       stickyScroll: {

@@ -18,7 +18,7 @@ function createTempModel(): TempModel {
 }
 
 describe('GraphViewer graph highlight', () => {
-  it('clears graph click selection after edit', () => {
+  it('preserves graph click selection after an in-place value edit', () => {
     const path = [{ tag: 0, key: 'user', index: 0 }, { tag: 0, key: 'name', index: 0 }] as any[];
     const current: TempModel = {
       ...createTempModel(),
@@ -33,8 +33,7 @@ describe('GraphViewer graph highlight', () => {
 
     const next = clearGraphSelectionAfterEdit(current, path);
 
-    expect(next.treePath).toEqual([]);
-    expect(next.graphHighlight).toBeNull();
+    expect(next).toEqual(current);
   });
 
   it('preserves non-graph highlight after edit', () => {
@@ -55,7 +54,7 @@ describe('GraphViewer graph highlight', () => {
     expect(next).toEqual(current);
   });
 
-  it('clears graph highlight when editing a different path', () => {
+  it('keeps graph highlight until the committed snapshot resolves its path', () => {
     const currentPath = [{ tag: 0, key: 'user', index: 0 }, { tag: 0, key: 'name', index: 0 }] as any[];
     const editPath = [{ tag: 0, key: 'user', index: 0 }, { tag: 0, key: 'role', index: 0 }] as any[];
     const current: TempModel = {
@@ -71,8 +70,7 @@ describe('GraphViewer graph highlight', () => {
 
     const next = clearGraphSelectionAfterEdit(current, editPath);
 
-    expect(next.treePath).toEqual([]);
-    expect(next.graphHighlight).toBeNull();
+    expect(next).toEqual(current);
   });
 
   it('clears any persisted tree selection before full edit replaces the document', () => {

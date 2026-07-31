@@ -4,9 +4,14 @@ vi.mock('../../services/TreePathService', () => ({
   resolveTreePathFromTextResult: vi.fn(),
 }));
 
+vi.mock('../../services/SnapshotProjectionService', () => ({
+  queryPathValue: vi.fn(),
+}));
+
 import { createGraphTextLinkageController } from './graph-text-linkage';
 import { buildPathKey } from '../../graph/graph-viewer-path';
 import { resolveTreePathFromTextResult } from '../../services/TreePathService';
+import { queryPathValue } from '../../services/SnapshotProjectionService';
 
 class MockBox {
   fill: string | undefined;
@@ -64,6 +69,7 @@ function createBaseDeps(overrides: Record<string, any> = {}) {
 describe('graph-text-linkage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(queryPathValue).mockResolvedValue({ status: 'ready', data: { value: 'present' } } as any);
   });
 
   it('uses table anchor index to materialize an offscreen search cell before highlight', async () => {
@@ -315,6 +321,97 @@ describe('graph-text-linkage', () => {
     controller.refreshActiveHighlight();
     expect(highlightedBox.selected).toBe(true);
     expect(highlightedBox.selectedStyle?.fill).toBe('#ff0');
+    expect(updateActiveTempModel).not.toHaveBeenCalled();
+  });
+
+  it('clears retained logical selection only when the committed snapshot proves its path is absent', async () => {
+    const path = ['$', 'library', 'missing'] as any[];
+    const pathKey = buildPathKey(path);
+    const highlightedBox = new MockBox();
+    const updateActiveTempModel = vi.fn();
+    const setGraphHighlightTestState = vi.fn();
+    const controller = createGraphTextLinkageController(createBaseDeps({
+      getCellBoxByPathMap: () => new Map([[pathKey, {
+        value: highlightedBox,
+        row: new MockBox('#fff'),
+      }]]),
+      updateActiveTempModel,
+      setGraphHighlightTestState,
+    }));
+
+    await controller.revealPath(path, { target: 'value', navigate: false });
+    vi.mocked(queryPathValue).mockResolvedValue({ status: 'ready', data: null } as any);
+    await controller.reconcileActiveHighlight({
+      documentKey: 'cache',
+      snapshotId: 7 as any,
+      graphAppliedRevision: 0,
+    });
+
+    expect(highlightedBox.selected).toBe(false);
+    expect(setGraphHighlightTestState).toHaveBeenLastCalledWith(null);
+    expect(updateActiveTempModel).toHaveBeenCalledTimes(1);
+    const update = updateActiveTempModel.mock.calls[0][0];
+    expect(update({
+      treePath: path,
+      graphHighlight: { path, target: 'value', revision: 0, source: 'graph' },
+    })).toMatchObject({ treePath: [], graphHighlight: null });
+  });
+
+  it('does not clear retained logical selection for an unready snapshot read', async () => {
+    const path = ['$', 'library', 'book'] as any[];
+    const pathKey = buildPathKey(path);
+    const highlightedBox = new MockBox();
+    const updateActiveTempModel = vi.fn();
+    const controller = createGraphTextLinkageController(createBaseDeps({
+      getCellBoxByPathMap: () => new Map([[pathKey, {
+        value: highlightedBox,
+        row: new MockBox('#fff'),
+      }]]),
+      updateActiveTempModel,
+    }));
+
+    await controller.revealPath(path, { target: 'value', navigate: false });
+    vi.mocked(queryPathValue).mockResolvedValue({ status: 'snapshotNotReady' } as any);
+    await controller.reconcileActiveHighlight({
+      documentKey: 'cache',
+      snapshotId: 7 as any,
+      graphAppliedRevision: 0,
+    });
+
+    expect(highlightedBox.selected).toBe(true);
+    expect(updateActiveTempModel).not.toHaveBeenCalled();
+  });
+
+  it('discards a path-absence result that became stale while the snapshot changed', async () => {
+    const path = ['$', 'library', 'book'] as any[];
+    const pathKey = buildPathKey(path);
+    const highlightedBox = new MockBox();
+    const updateActiveTempModel = vi.fn();
+    let activeSnapshot = 7;
+    let resolveQuery: ((value: any) => void) | undefined;
+    vi.mocked(queryPathValue).mockReturnValue(new Promise((resolve) => {
+      resolveQuery = resolve;
+    }) as any);
+    const controller = createGraphTextLinkageController(createBaseDeps({
+      getActiveSnapshotId: () => activeSnapshot,
+      getCellBoxByPathMap: () => new Map([[pathKey, {
+        value: highlightedBox,
+        row: new MockBox('#fff'),
+      }]]),
+      updateActiveTempModel,
+    }));
+
+    await controller.revealPath(path, { target: 'value', navigate: false });
+    const reconciliation = controller.reconcileActiveHighlight({
+      documentKey: 'cache',
+      snapshotId: 7 as any,
+      graphAppliedRevision: 0,
+    });
+    activeSnapshot = 8;
+    resolveQuery?.({ status: 'ready', data: null });
+    await reconciliation;
+
+    expect(highlightedBox.selected).toBe(true);
     expect(updateActiveTempModel).not.toHaveBeenCalled();
   });
 

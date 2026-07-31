@@ -6,6 +6,7 @@ import type { GraphCell, GraphNode } from '@treease/graph-viewer-runtime';
 import { isPathSegIndex, type PathSeg } from "../../store/tree-path";
 import type { GraphHighlightTarget } from "../../store/graph-selection-store";
 import { resolveTreePathFromTextResult } from "../../services/TreePathService";
+import { queryPathValue } from "../../services/SnapshotProjectionService";
 import type { CellBoxEntry, GraphViewerClickTarget, LeaferBox } from "./model";
 import {
   getCellEntry,
@@ -102,6 +103,7 @@ export function createGraphTextLinkageController(
     path: PathSeg[];
     target?: GraphHighlightTarget;
   } | null = null;
+  let highlightValidationToken = 0;
 
   function clearRenderedSearchHighlights(): void {
     if (activeSearchHighlights.length === 0) return;
@@ -676,8 +678,55 @@ export function createGraphTextLinkageController(
     });
   }
 
+  /**
+   * Render bindings are deliberately not used to decide whether a selection
+   * still exists: a scene replacement temporarily has no bindings.  The
+   * snapshot projection is the authority for clearing a retained selection.
+   */
+  async function reconcileActiveHighlight(options: {
+    documentKey: string;
+    snapshotId: SnapshotId | null;
+    graphAppliedRevision: number;
+  }): Promise<void> {
+    const active = activeHighlightState;
+    if (!active?.path.length || !options.documentKey || options.snapshotId == null) return;
+
+    const token = ++highlightValidationToken;
+    const result = await queryPathValue({
+      documentKey: options.documentKey,
+      snapshotId: options.snapshotId,
+      path: active.path,
+    });
+    if (
+      token !== highlightValidationToken ||
+      activeHighlightState !== active ||
+      deps.getDocumentKey() !== options.documentKey ||
+      deps.getActiveSnapshotId() !== options.snapshotId ||
+      deps.getGraphAppliedRevision() !== options.graphAppliedRevision
+    ) {
+      return;
+    }
+    // Unready and failed reads are not proof that the path disappeared.
+    if (result.status !== "ready" || result.data != null) return;
+
+    clearSearchHighlight();
+    const activePathKey = buildPathKey(active.path);
+    deps.updateActiveTempModel((current) => {
+      const highlight = current.graphHighlight;
+      if (!highlight || buildPathKey(highlight.path) !== activePathKey) return current;
+      const treePathMatches = Array.isArray(current.treePath) &&
+        buildPathKey(current.treePath) === activePathKey;
+      return {
+        ...current,
+        ...(treePathMatches ? { treePath: [] } : {}),
+        graphHighlight: null,
+      };
+    });
+  }
+
   return {
     clearSearchHighlight,
+    clearRenderedSearchHighlights,
     resolveTreePathByPosition,
     ensurePathIndex,
     hydrateResolvedGraphPaths,
@@ -685,5 +734,6 @@ export function createGraphTextLinkageController(
     revealSearchResult,
     revealPath,
     refreshActiveHighlight,
+    reconcileActiveHighlight,
   };
 }

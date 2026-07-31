@@ -1383,7 +1383,7 @@
     <div bind:this={splitLayoutContainer} bind:clientWidth={containerWidth} class="app-split-layout" class:invisible={!layoutReady}>
       {#if showEditorPane}
         <section
-          class="app-split-pane app-split-pane--left flex flex-col border-r border-[var(--border-strong)] bg-[var(--panel-bg)]"
+          class="app-split-pane app-split-pane--left flex flex-col bg-[var(--panel-bg)]"
           class:app-split-pane--collapsed={leftPaneCollapsed}
           class:app-split-pane--instant={isDraggingSplitter}
           data-testid="left-pane"
@@ -1520,6 +1520,7 @@
       {#if showViewerPane}
         <section
           class="app-split-pane app-split-pane--right bg-[var(--panel-bg-alt)]"
+          class:app-split-pane--split-right={visibleLayoutMode === 'split'}
           class:app-split-pane--collapsed={rightPaneCollapsed}
           class:app-split-pane--instant={isDraggingSplitter}
           data-testid="right-pane"

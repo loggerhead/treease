@@ -7,9 +7,8 @@
   import SiteHeader from '$lib/components/SiteHeader.svelte';
   import LoginDialog from '$lib/components/LoginDialog.svelte';
   import {
-    openPreparedBillingCheckout,
     prewarmBillingCheckout,
-    startBillingCheckout,
+    runBillingCheckout,
     type PreparedBillingCheckout,
   } from '$lib/billing/checkout-flow';
   import { authReady, authUser } from '$lib/auth/auth-user-store';
@@ -118,24 +117,17 @@
     checkoutBusy = true;
     try {
       const preparation = checkoutPreparations[priceId];
-      let outcome;
-      try {
-        let prepared: PreparedBillingCheckout | null = preparation ? await preparation : null;
-        if (!prepared) {
-          const checkout = (await pricingPrewarm)?.checkouts?.find((entry) => entry.priceId === priceId);
-          prepared = checkout ? { priceId: checkout.priceId, checkoutUrl: checkout.url } : null;
-        }
-        outcome = prepared
-          ? await openPreparedBillingCheckout(prepared)
-          : await startBillingCheckout(priceId, checkoutReturnUrl());
-      } catch {
-        outcome = await startBillingCheckout(priceId, checkoutReturnUrl());
-      }
-      if (outcome.status === 'login-required') {
-        loginOpen = true;
-        return;
-      }
-      if (outcome.status === 'failed') toast.error(outcome.message);
+      const prepared = preparation ?? (async (): Promise<PreparedBillingCheckout | null> => {
+        const checkout = (await pricingPrewarm)?.checkouts?.find((entry) => entry.priceId === priceId);
+        return checkout ? { priceId: checkout.priceId, checkoutUrl: checkout.url } : null;
+      })();
+      await runBillingCheckout({
+        priceId,
+        returnUrl: checkoutReturnUrl(),
+        prepared,
+        onLoginRequired: () => (loginOpen = true),
+        onFailed: (message) => toast.error(message),
+      });
     } finally {
       checkoutBusy = false;
     }

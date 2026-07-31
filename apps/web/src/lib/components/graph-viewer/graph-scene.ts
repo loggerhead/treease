@@ -21,6 +21,7 @@ type GraphSceneControllerDeps = {
   setLayers: (layers: Partial<GraphSceneLayers>) => void;
   buildPathSegFromCell: (cell: any, rowIndex: number) => any;
   clearSearchHighlight: () => void;
+  clearRenderedSearchHighlights: () => void;
   beginMainGraphRedraw: (nodes: GraphNode[]) => Map<number, any>;
   setFullGraph: (nodes: GraphNode[]) => void;
   getNodeDataMap: () => Map<number, GraphNode>;
@@ -125,6 +126,7 @@ export function createGraphSceneController(deps: GraphSceneControllerDeps) {
     setLayers: deps.setLayers,
     buildPathSegFromCell: deps.buildPathSegFromCell,
     clearSearchHighlight: deps.clearSearchHighlight,
+    clearRenderedSearchHighlights: deps.clearRenderedSearchHighlights,
     beginMainGraphRedraw: deps.beginMainGraphRedraw,
     setFullGraph: deps.setFullGraph,
     getNodeDataMap: deps.getNodeDataMap,

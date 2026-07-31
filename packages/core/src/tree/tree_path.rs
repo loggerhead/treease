@@ -385,6 +385,28 @@ fn collect_toml_key_parts_from_node(
     }
 }
 
+fn toml_table_path_segments(node: tree_sitter::Node<'_>, source: &[u8]) -> Vec<OwnedPathSeg> {
+    for index in 0..node.child_count() {
+        let Some(child) = node.child(index as _) else {
+            continue;
+        };
+        if is_punctuation_type(child.kind()) || matches!(child.kind(), "[[" | "]]" | "pair") {
+            continue;
+        }
+        let mut parts = Vec::new();
+        collect_toml_key_parts_from_node(source, child, &mut parts);
+        if !parts.is_empty() {
+            return parts.into_iter().map(OwnedPathSeg::Key).collect();
+        }
+        if let Ok(raw) = std::str::from_utf8(&source[child.start_byte()..child.end_byte()]) {
+            if !raw.is_empty() {
+                return vec![OwnedPathSeg::Key(normalize_key_text(raw))];
+            }
+        }
+    }
+    Vec::new()
+}
+
 /// Extract the key text from a pair node.
 ///
 fn get_pair_key(pair_node: tree_sitter::Node<'_>, source: &[u8]) -> Option<String> {
@@ -499,37 +521,8 @@ fn build_structured_tree_path_segments(
         if language_name == "toml"
             && (parent_type == "table" || parent_type == "table_array_element")
         {
-            let count = parent.child_count();
-            let mut key_node: Option<tree_sitter::Node<'_>> = None;
-            for i in 0..count {
-                let child = match parent.child(i as _) {
-                    Some(c) => c,
-                    None => continue,
-                };
-                let child_type = child.kind();
-                if is_punctuation_type(child_type) {
-                    continue;
-                }
-                if child_type == "pair" {
-                    continue;
-                }
-                key_node = Some(child);
-                break;
-            }
-            if let Some(kn) = key_node {
-                let mut parts: Vec<String> = Vec::new();
-                collect_toml_key_parts_from_node(source, kn, &mut parts);
-                if !parts.is_empty() {
-                    for part in parts.into_iter().rev() {
-                        segments.push(OwnedPathSeg::Key(part));
-                    }
-                } else {
-                    let raw =
-                        std::str::from_utf8(&source[kn.start_byte()..kn.end_byte()]).unwrap_or("");
-                    if !raw.is_empty() {
-                        segments.push(OwnedPathSeg::Key(normalize_key_text(raw)));
-                    }
-                }
+            for segment in toml_table_path_segments(parent, source).into_iter().rev() {
+                segments.push(segment);
             }
             current = parent;
             continue;
@@ -1040,6 +1033,42 @@ fn structured_path_span_for_pair(
         .then(|| path_span_from_ts_node(target_node))
 }
 
+fn toml_table_span(
+    node: tree_sitter::Node<'_>,
+    source: &[u8],
+    path: &[PathSeg<'_>],
+) -> Option<PathSpan> {
+    if node.kind() != "document" {
+        return None;
+    }
+    let mut first: Option<tree_sitter::Node<'_>> = None;
+    let mut last: Option<tree_sitter::Node<'_>> = None;
+    for index in 0..node.named_child_count() {
+        let Some(child) = node.named_child(index as _) else {
+            continue;
+        };
+        if !matches!(child.kind(), "table" | "table_array_element") {
+            continue;
+        }
+        let candidate = toml_table_path_segments(child, source);
+        if !path_segments_match(path, &borrowed_tree_path(&candidate)) {
+            continue;
+        }
+        first.get_or_insert(child);
+        last = Some(child);
+    }
+    let (first, last) = (first?, last?);
+    // TOML tables are AST siblings, while TreeStore owns their logical map or
+    // sequence nodes. Resolve the whole table range before header-key descent.
+    let start = first.start_position();
+    Some(PathSpan {
+        start_byte: i32::try_from(first.start_byte()).ok()?,
+        end_byte: i32::try_from(last.end_byte()).ok()?,
+        row: i32::try_from(start.row).ok()?,
+        column: i32::try_from(start.column).ok()?,
+    })
+}
+
 fn recover_structured_path_span(
     node: tree_sitter::Node<'_>,
     language_name: &str,
@@ -1047,6 +1076,11 @@ fn recover_structured_path_span(
     path: &[PathSeg<'_>],
     prefer_key: bool,
 ) -> Option<PathSpan> {
+    if language_name == "toml" {
+        if let Some(span) = toml_table_span(node, source, path) {
+            return Some(span);
+        }
+    }
     if lang_spec::is_pair_node_type(node.kind(), language_name) {
         if let Some(span) =
             structured_path_span_for_pair(node, language_name, source, path, prefer_key)

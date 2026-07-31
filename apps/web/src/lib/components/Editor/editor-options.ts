@@ -8,6 +8,8 @@ export function createTreeaseMonacoEditorOptions(
     fontSize: 13,
     scrollBeyondLastLine: false,
     automaticLayout: true,
+    smoothScrolling: true,
+    cursorSmoothCaretAnimation: 'on',
     'semanticHighlighting.enabled': true,
     wordWrap: 'on',
     minimap: { enabled: false },

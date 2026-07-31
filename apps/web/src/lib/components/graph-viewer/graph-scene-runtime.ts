@@ -357,6 +357,7 @@ type GraphSceneRuntimeDeps = {
     event: unknown,
     space: "client" | "box" | "local" | "world",
   ) => { x: number; y: number } | null;
+  clearRenderedSearchHighlights?: () => void;
   refreshActiveHighlight?: () => void;
   updateLeafer: () => void;
 };
@@ -624,7 +625,9 @@ export function createGraphSceneRuntime(deps: GraphSceneRuntimeDeps) {
   }
 
   function beginFullSceneReplace(graphData: GraphSceneViewData): void {
-    deps.clearSearchHighlight();
+    // The logical path/target survives scene replacement. Only the old Leafer
+    // boxes are released here; the committed projection restores their style.
+    deps.clearRenderedSearchHighlights?.();
     clearRenderedMainGraph();
     deps.beginMainGraphRedraw(graphData.nodes);
     updateAutoPosition(graphData.nodes);
@@ -869,6 +872,7 @@ export function createGraphSceneRuntime(deps: GraphSceneRuntimeDeps) {
     dirtyRegion.flush(deps.getLeafer(), false);
     if (!skipLeaferRender) flushLeaferSceneLayout();
     committedProjection = projection;
+    deps.refreshActiveHighlight?.();
     resolveProjectionWaiters(projection.revision);
     const container = deps.getContainer();
     if (container) {

@@ -53,6 +53,10 @@ body {
   min-width: 0;
 }
 
+.app-split-pane--split-right {
+  border-left: 1px solid var(--border-strong);
+}
+
 .app-split-pane--collapsed {
   pointer-events: none;
 }

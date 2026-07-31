@@ -41,6 +41,11 @@ export async function getDiagnostics(language: string, text: string): Promise<Wa
   return decodeWasmErrors(result?.diagnostics ?? []);
 }
 
+export async function getSemanticTokens(language: string, text: string): Promise<number[]> {
+  const result = await callWasm((mod) => (mod as any).get_semantic_tokens({ language, text } as any));
+  return Array.from(result?.semanticTokens ?? []);
+}
+
 export async function parseToTree(language: string, text: string, _options?: ParseOptions): Promise<TreeNode> {
   const result = await callWasm((mod) => mod.parse_value_to_tree({ language, text, nest: false } as any));
   if (result && result.tree) {

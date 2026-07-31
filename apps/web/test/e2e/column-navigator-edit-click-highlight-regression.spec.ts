@@ -166,6 +166,10 @@ test("editing a nested trajectory scalar preserves column-navigator highlighting
   await setMonacoValue(page, `column-navigator-content:${durationPathKey}`, '"42"');
 
   await expect
+    .poll(() => getMonacoValue(page, `column-navigator-content:${durationPathKey}`), { timeout: 5_000 })
+    .toBe('"42"');
+
+  await expect
     .poll(async () =>
       page.evaluate(() => window._treease?.test.getGraphEditEvents().some((event) => event.type === 'commit') ?? false),
     )
@@ -194,7 +198,10 @@ test("editing a nested trajectory scalar preserves column-navigator highlighting
     .toBeNull();
   await waitForGraphRendered(page, 30_000);
   await waitForColumnNavigatorSettled(page, durationPathKey, 30_000);
-
+  await expect.poll(() => readGraphHighlight(page), { timeout: 5_000 }).toMatchObject({
+    path: ['$', ...durationPath],
+    target: 'value',
+  });
   await revealGraphPath(
     page,
     [
@@ -243,4 +250,18 @@ test("editing a nested trajectory scalar preserves column-navigator highlighting
       .getByTestId("column-navigator-graph")
       .locator(".treease-json-block-highlight"),
   ).toHaveCount(0);
+
+  // The second edit is submitted while the first is still committing. Its
+  // eventual projection must not let the older snapshot overwrite Monaco.
+  await setMonacoValue(page, `column-navigator-content:${durationPathKey}`, '"43"');
+  await setMonacoValue(page, `column-navigator-content:${durationPathKey}`, '"44"');
+  await expect
+    .poll(() => getMonacoValue(page, `column-navigator-content:${durationPathKey}`), { timeout: 5_000 })
+    .toBe('"44"');
+  await expect.poll(() => readDurationFromSource(page), { timeout: 30_000 }).toBe("44");
+  await waitForGraphRendered(page, 30_000);
+  await expect.poll(() => readGraphHighlight(page), { timeout: 5_000 }).toMatchObject({
+    path: ['$', ...durationPath],
+    target: 'value',
+  });
 });
