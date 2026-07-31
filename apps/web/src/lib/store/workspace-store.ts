@@ -1,4 +1,5 @@
 import type { SnapshotId } from '@core-wasm/index';
+import type { SupportedEditorLanguageId } from '../monaco/language-support';
 import { derived, get, type Readable, type Writable } from 'svelte/store';
 import {
   activeDocumentAuthorityStore,
@@ -11,9 +12,9 @@ import {
   setAuthorityWorkspaceState,
 } from './active-document-authority';
 import {
-  activateWorkspaceTab,
-  addWorkspaceTab,
-  closeWorkspaceTab,
+  activateWorkspaceTabTransition,
+  closeWorkspaceTabTransition,
+  createWorkspaceTabTransition,
   createEditorWorkspaceState,
   ensureDetachedSidecarTab,
   ensureSidecarTab,
@@ -21,7 +22,6 @@ import {
   removeDetachedSidecarTab,
   summarizeWorkspaceTabs,
   syncSidecarLanguageFromPrimary,
-  syncWorkspaceEditorTab,
   updateWorkspaceTab as patchWorkspaceTab,
   type EditorWorkspaceState,
   type EditorWorkspaceTab,
@@ -161,18 +161,25 @@ export function initWorkspaceFromPrimaryTab(payload: { id: string; name: string 
   setWorkspaceState(next);
 }
 
-export function addWorkspaceTabFromEditor(payload: WorkspaceEditorTabInput): void {
-  setWorkspaceState(addWorkspaceTab(get(workspaceStore), payload));
+export function createWorkspaceTabTransitionFromEditor(payload: WorkspaceEditorTabInput) {
+  const result = createWorkspaceTabTransition(get(workspaceStore), payload);
+  if (result) setWorkspaceState(syncSidecarLanguageFromPrimary(result.workspace));
+  return result;
 }
 
-export function activateWorkspaceTabFromEditor(payload: WorkspaceEditorTabInput): void {
-  const withSyncedTab = syncWorkspaceEditorTab(get(workspaceStore), payload, 'primary');
-  setWorkspaceState(syncSidecarLanguageFromPrimary(activateWorkspaceTab(withSyncedTab, payload.id)));
+export function activateWorkspaceTabTransitionFromEditor(tabId: string) {
+  const result = activateWorkspaceTabTransition(get(workspaceStore), tabId);
+  if (result) setWorkspaceState(syncSidecarLanguageFromPrimary(result.workspace));
+  return result;
 }
 
-export function closeWorkspaceTabFromEditor(tabId: string, fallback?: WorkspaceEditorTabInput): void {
-  const result = closeWorkspaceTab(get(workspaceStore), tabId, fallback);
-  setWorkspaceState(syncSidecarLanguageFromPrimary(result.workspace));
+export function closeWorkspaceTabTransitionFromEditor(
+  tabId: string,
+  blank: { id: string; documentKey: string; name: string; languageId: SupportedEditorLanguageId },
+) {
+  const result = closeWorkspaceTabTransition(get(workspaceStore), tabId, blank);
+  if (result) setWorkspaceState(syncSidecarLanguageFromPrimary(result.workspace));
+  return result;
 }
 
 export function getWorkspaceTabSummaries(): EditorWorkspaceTabSummary[] {

@@ -89,8 +89,15 @@
   import { runPostpaidCapability } from '../../lib/billing/entitlement-gate';
   import { workspaceHost } from '../../lib/workspace-host';
   import { exchangeAuthCode, signOut } from '../../lib/auth/supabase-auth';
-  import { editorWorkspace, getWorkspaceState, updateWorkspaceTab } from '../../lib/store/workspace-store';
-  import { isWorkspaceTabDirty, type EditorWorkspaceTabSummary } from '../../lib/store/editor-workspace';
+  import { editorWorkspace, getWorkspaceState, setWorkspaceState, updateWorkspaceTab } from '../../lib/store/workspace-store';
+  import {
+    activateWorkspaceTabTransition,
+    createEditorWorkspaceState,
+    createWorkspaceTabTransition,
+    isWorkspaceTabDirty,
+    summarizeWorkspaceTabs,
+    type EditorWorkspaceTabSummary,
+  } from '../../lib/store/editor-workspace';
   import { clearCompareState, compareState } from '../../lib/store/compare-state';
   import {
     generateStruct,
@@ -117,6 +124,8 @@
   let tabSummaries: EditorWorkspaceTabSummary[] = [];
   let showTabDirty = false;
   let activeTabId = '';
+  let workspaceBootstrapReady = false;
+  let workspaceCommandReady = false;
   let scrollSyncLock: 'editor' | 'viewer' | null = null;
   const serverSplitRatio = data.editorSplitRatio;
   let splitLayoutState = createSplitLayoutState(serverSplitRatio ?? DEFAULT_EDITOR_SPLIT_RATIO);
@@ -1087,6 +1096,7 @@
   }
 
   function handleCloseTab(id: string) {
+    if (!workspaceCommandReady) return;
     const tab = getWorkspaceState().tabsById[id];
     if (showTabDirty && tab && isWorkspaceTabDirty(tab) && !window.confirm(`Close ${tab.name} without saving local changes?`)) {
       return;
@@ -1100,7 +1110,13 @@
   }
 
   function handleActivateTab(id: string) {
+    if (!workspaceCommandReady) return;
     editorRef?.activateTab(id);
+  }
+
+  function handleRenameTab(id: string, name: string) {
+    if (!workspaceCommandReady) return;
+    editorRef?.renameDocument(id, name);
   }
 
   function sessionFromWorkspace(): WorkspaceSession {
@@ -1133,46 +1149,57 @@
     }, 300);
   }
 
-  async function restoreWorkspaceSession(session: WorkspaceSession): Promise<void> {
-    if (!session.tabs.length || !editorRef) return;
-    sessionRestoring = true;
-    try {
-      await editorRef.ensureReady();
-      const [first, ...remaining] = session.tabs;
-      const firstLanguage = languageForFileName(`recovery.${first.languageId}`);
-      const firstOrigin = first.origin ?? (first.sourceText === getLanguageExample(firstLanguage) ? 'example' : 'user');
-      await editorRef.replaceActiveFromFile({
-        text: first.sourceText,
-        languageId: firstLanguage,
-        origin: firstOrigin,
-        skipUsageMetering: true,
+  /**
+   * Session data is host-owned input, not a sequence of interactive editor
+   * commands. Build its complete left-tab topology before Monaco mounts so
+   * the first model, authority state, and header all start on one document.
+   */
+  function bootstrapWorkspaceSession(session: WorkspaceSession): void {
+    if (!session.tabs.length) return;
+    const current = getWorkspaceState();
+    const currentPrimary = current.tabsById[current.primaryTabId];
+    if (!currentPrimary) throw new Error('Workspace bootstrap requires a primary tab.');
+
+    const [first, ...remaining] = session.tabs;
+    const firstLanguage = languageForFileName(`recovery.${first.languageId}`);
+    const firstOrigin = first.origin ?? (first.sourceText === getLanguageExample(firstLanguage) ? 'example' : 'user');
+    let workspace = createEditorWorkspaceState({
+      ...currentPrimary,
+      id: 'session-tab-0',
+      role: 'primary',
+      name: first.name,
+      documentKey: 'session-tab-0:0',
+      languageId: firstLanguage,
+      sourceText: first.sourceText,
+      origin: firstOrigin,
+      revision: 0,
+      graphAppliedRevision: 0,
+      snapshotId: null,
+      savedText: first.savedText,
+      fileLinkedDocument: undefined,
+    });
+
+    for (const [index, tab] of remaining.entries()) {
+      const id = `session-tab-${index + 1}`;
+      const languageId = languageForFileName(`recovery.${tab.languageId}`);
+      const transition = createWorkspaceTabTransition(workspace, {
+        id,
+        name: tab.name,
+        documentKey: `${id}:0`,
+        languageId,
+        sourceText: tab.sourceText,
+        origin: tab.origin ?? 'user',
+        savedText: tab.savedText,
       });
-      const firstTab = activeWorkspaceTab();
-      if (firstTab) {
-        editorRef.renameDocument(firstTab.id, first.name);
-        updateWorkspaceTab(firstTab.id, {
-          name: first.name,
-          sourceText: first.sourceText,
-          savedText: first.savedText,
-          origin: firstOrigin,
-        });
-      }
-      for (const tab of remaining) {
-        editorRef.openDocument({
-          name: tab.name,
-          text: tab.sourceText,
-          languageId: languageForFileName(`recovery.${tab.languageId}`),
-          origin: tab.origin ?? 'user',
-        });
-      }
-      await tick();
-      const restored = getWorkspaceState().tabOrder;
-      const active = restored[Math.min(session.activeTabIndex, restored.length - 1)];
-      if (active) editorRef.activateTab(active);
-      toast.info('Recovered the previous workspace as local drafts.');
-    } finally {
-      sessionRestoring = false;
+      if (!transition) throw new Error(`Invalid recovered tab at index ${index + 1}.`);
+      workspace = transition.workspace;
     }
+
+    const activeIndex = Math.max(0, Math.min(session.activeTabIndex, workspace.tabOrder.length - 1));
+    const activeTabId = workspace.tabOrder[activeIndex];
+    const activeTransition = activeTabId ? activateWorkspaceTabTransition(workspace, activeTabId) : null;
+    if (!activeTransition) throw new Error('Recovered workspace has no active left tab.');
+    setWorkspaceState(activeTransition.workspace);
   }
 
   async function handleDesktopDeepLinks(urls: URL[]): Promise<void> {
@@ -1232,14 +1259,14 @@
   type StaticWorkspaceCommand = Exclude<WorkspaceCommand, `workspace:open-recent:${string}`>;
 
   const workspaceCommands: Record<StaticWorkspaceCommand, () => void | Promise<void>> = {
-    'workspace:new': handleAddTab,
-    'workspace:open': handleOpenDocument,
+    'workspace:new': () => workspaceCommandReady && handleAddTab(),
+    'workspace:open': () => workspaceCommandReady && handleOpenDocument(),
     'workspace:save': () => saveActiveDocument(),
     'workspace:save-as': () => saveActiveDocument(true),
     'workspace:import': () => topBarRef?.openImportPanel(),
     'workspace:export': () => topBarRef?.openExportPanel(),
     'workspace:clear-recent': handleClearRecentFiles,
-    'workspace:close-tab': () => activeTabId && handleCloseTab(activeTabId),
+    'workspace:close-tab': () => workspaceCommandReady && activeTabId && handleCloseTab(activeTabId),
     'workspace:toggle-viewer': () => { showViewerPane = !showViewerPane; },
     'workspace:help': () => void (async () => (await workspaceHost).openExternal(new URL('https://treease.io')) )(),
   };
@@ -1288,6 +1315,8 @@
     : showBottomBar
       ? 'minmax(0, 1fr) var(--bottombar-height)'
       : 'minmax(0, 1fr)';
+  $: tabSummaries = summarizeWorkspaceTabs($editorWorkspace);
+  $: activeTabId = $editorWorkspace.activeTabId;
 
   onMount(() => {
     const resetRequested = isEditorResetRequested(window.location.search);
@@ -1319,9 +1348,20 @@
     void (async () => {
       const host = await workspaceHost;
       showTabDirty = host.surface === 'desktop';
-      if (shareID.present) return;
+      if (shareID.present) {
+        workspaceBootstrapReady = true;
+        return;
+      }
       const session = await host.loadSession();
-      if (session) await restoreWorkspaceSession(session);
+      sessionRestoring = true;
+      try {
+        if (session) bootstrapWorkspaceSession(session);
+      } finally {
+        sessionRestoring = false;
+      }
+      workspaceBootstrapReady = true;
+      await tick();
+      await editorRef?.ensureReady();
       if (host.surface === 'desktop') {
         for (const file of await host.takeStartupFiles()) await openWorkspaceFile(file);
         await handleDesktopDeepLinks(await host.getInitialDeepLinks());
@@ -1333,6 +1373,7 @@
       }
       stopWorkspaceSession = editorWorkspace.subscribe(() => scheduleWorkspaceSessionSave());
       scheduleWorkspaceSessionSave();
+      workspaceCommandReady = true;
     })().catch((error) => {
       const message = error instanceof Error ? error.message : String(error);
       toast.error(`Desktop workspace initialization failed: ${message}`);
@@ -1405,7 +1446,7 @@
     </section>
   {:else}
   <div class="grid h-full min-h-0 min-w-0 overflow-hidden" style:grid-template-rows={shellRowsClass}>
-    {#if showTopBar}
+    {#if showTopBar && workspaceCommandReady}
       <TopBar
         bind:this={topBarRef}
         tabs={tabSummaries}
@@ -1418,6 +1459,7 @@
         onAddTab={workspaceCommands['workspace:new']}
         onCloseTab={handleCloseTab}
         onActivateTab={handleActivateTab}
+        onRenameTab={handleRenameTab}
         onRequestImportFile={handleRequestImportFile}
         onImportFileStream={handleImportFileStream}
         onExportPreview={handleExportPreview}
@@ -1442,18 +1484,18 @@
           style:opacity={leftPaneCollapsed ? 0 : 1}
         >
           <div class="min-h-0 flex-1">
-            <Editor
-              bind:this={editorRef}
-              bind:tabSummaries
-              bind:activeTabId
-              enableRevealSync={syncScrollEnabled}
-              {synchronizedRuntimeLoading}
-              runBidirectionalEdit={runEditorFullEditUsage}
-              onRequestImportFile={handleRequestImportFile}
-              on:reveal={handleEditorReveal}
-              on:runtime-state={handleEditorRuntimeEvent}
-              onScroll={handleEditorScroll}
-            />
+            {#if workspaceBootstrapReady}
+              <Editor
+                bind:this={editorRef}
+                enableRevealSync={syncScrollEnabled}
+                {synchronizedRuntimeLoading}
+                runBidirectionalEdit={runEditorFullEditUsage}
+                onRequestImportFile={handleRequestImportFile}
+                on:reveal={handleEditorReveal}
+                on:runtime-state={handleEditorRuntimeEvent}
+                onScroll={handleEditorScroll}
+              />
+            {/if}
           </div>
           {#if aiInputOpen}
             <AiInput
@@ -1684,12 +1726,10 @@
     </div>
   </div>
 {/if}
-{#if !showEditorPane}
+{#if !showEditorPane && workspaceBootstrapReady}
   <div class="pointer-events-none absolute -left-[10000px] top-0 h-px w-px overflow-hidden opacity-0" aria-hidden="true">
     <Editor
       bind:this={editorRef}
-      bind:tabSummaries
-      bind:activeTabId
       enableRevealSync={syncScrollEnabled}
       {synchronizedRuntimeLoading}
       runBidirectionalEdit={runEditorFullEditUsage}

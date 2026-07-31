@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   activateWorkspaceTab,
   addWorkspaceTab,
-  closeWorkspaceTab,
+  closeWorkspaceTabTransition,
   createEditorWorkspaceState,
   ensureSidecarTab,
   reinitializeWorkspaceFromPrimaryTab,
@@ -154,10 +154,9 @@ describe('editor-workspace', () => {
       sourceText: 'name: second\n',
     });
 
-    const result = closeWorkspaceTab(workspace, 'tab-second');
+    const result = closeWorkspaceTabTransition(workspace, 'tab-second', { id: 'blank', documentKey: 'blank:0', name: 'Untitled', languageId: 'json' as any })!;
 
-    expect(result.closedTab?.id).toBe('tab-second');
-    expect(result.nextActiveTabId).toBe('tab-primary');
+    expect(result.effect).toEqual({ kind: 'activate-existing', tabId: 'tab-primary', disposeTabId: 'tab-second' });
     expect(result.workspace.tabOrder).toEqual(['tab-primary']);
     expect(result.workspace.primaryTabId).toBe('tab-primary');
     expect(result.workspace.tabsById['tab-second']).toBeUndefined();
@@ -175,29 +174,24 @@ describe('editor-workspace', () => {
       'tab-second',
     );
 
-    const result = closeWorkspaceTab(workspace, 'tab-second');
+    const result = closeWorkspaceTabTransition(workspace, 'tab-second', { id: 'blank', documentKey: 'blank:0', name: 'Untitled', languageId: 'json' as any })!;
 
-    expect(result.closedTab?.id).toBe('tab-second');
-    expect(result.nextActiveTabId).toBe('tab-primary');
+    expect(result.effect).toEqual({ kind: 'activate-existing', tabId: 'tab-primary', disposeTabId: 'tab-second' });
     expect(result.workspace.primaryTabId).toBe('tab-primary');
     expect(result.workspace.tabsById['tab-primary'].role).toBe('primary');
   });
 
-  it('ignores closing the last left tab without fallback and keeps active primary valid', () => {
+  it('replaces the last left tab with a new blank primary document', () => {
     const workspace = createEditorWorkspaceState(tab());
 
-    const result = closeWorkspaceTab(workspace, 'tab-primary');
+    const result = closeWorkspaceTabTransition(workspace, 'tab-primary', { id: 'tab-blank', documentKey: 'tab-blank:0', name: 'Untitled 2', languageId: 'json' as any })!;
 
-    expect(result.workspace).toBe(workspace);
-    expect(result.closedTab).toBeNull();
-    expect(result.nextActiveTabId).toBe('tab-primary');
-    expect(result.workspace.primaryTabId).toBe('tab-primary');
-    expect(result.workspace.activeTabId).toBe('tab-primary');
-    expect(result.workspace.paneTabIds.left).toBe('tab-primary');
-    expect(result.workspace.tabsById['tab-primary'].role).toBe('primary');
+    expect(result.effect).toEqual({ kind: 'activate-new-blank', tabId: 'tab-blank', documentKey: 'tab-blank:0', disposeTabId: 'tab-primary' });
+    expect(result.workspace.tabOrder).toEqual(['tab-blank']);
+    expect(result.workspace.tabsById['tab-blank']).toMatchObject({ role: 'primary', sourceText: '', documentKey: 'tab-blank:0' });
   });
 
-  it('creates a fallback primary when closing the last left tab and preserves sidecar', () => {
+  it('preserves the sidecar when closing the last left tab', () => {
     const workspace = ensureSidecarTab(createEditorWorkspaceState(tab()), {
       id: 'tab-sidecar',
       name: 'Right Editor',
@@ -205,27 +199,19 @@ describe('editor-workspace', () => {
       sourceText: '{"right":true}',
     });
 
-    const result = closeWorkspaceTab(workspace, 'tab-primary', {
-      id: 'tab-fallback',
-      name: 'Fallback',
-      documentKey: 'tab-fallback:0',
-      languageId: 'yaml' as any,
-      sourceText: 'fallback: true\n',
-    });
+    const result = closeWorkspaceTabTransition(workspace, 'tab-primary', { id: 'tab-blank', name: 'Untitled', documentKey: 'tab-blank:0', languageId: 'yaml' as any })!;
 
-    expect(result.closedTab?.id).toBe('tab-primary');
-    expect(result.nextActiveTabId).toBe('tab-fallback');
-    expect(result.workspace.primaryTabId).toBe('tab-fallback');
-    expect(result.workspace.activeTabId).toBe('tab-fallback');
-    expect(result.workspace.paneTabIds.left).toBe('tab-fallback');
+    expect(result.workspace.primaryTabId).toBe('tab-blank');
+    expect(result.workspace.activeTabId).toBe('tab-blank');
+    expect(result.workspace.paneTabIds.left).toBe('tab-blank');
     expect(result.workspace.paneTabIds.right).toBe('tab-sidecar');
-    expect(result.workspace.tabOrder).toEqual(['tab-fallback']);
-    expect(result.workspace.tabsById['tab-fallback']).toMatchObject({
+    expect(result.workspace.tabOrder).toEqual(['tab-blank']);
+    expect(result.workspace.tabsById['tab-blank']).toMatchObject({
       role: 'primary',
-      name: 'Fallback',
-      documentKey: 'tab-fallback:0',
+      name: 'Untitled',
+      documentKey: 'tab-blank:0',
       languageId: 'yaml',
-      sourceText: 'fallback: true\n',
+      sourceText: '',
     });
     expect(result.workspace.tabsById['tab-sidecar']).toMatchObject({
       role: 'sidecar',
@@ -233,7 +219,29 @@ describe('editor-workspace', () => {
     });
   });
 
-  it('rejects last-tab fallback when fallback id matches the sidecar tab', () => {
+  it('drops only the removed document snapshot binding', () => {
+    const workspace = addWorkspaceTab(createEditorWorkspaceState(tab()), {
+      id: 'tab-second',
+      name: 'Untitled 2',
+      documentKey: 'tab-second:0',
+      languageId: 'yaml' as any,
+      sourceText: 'name: second\n',
+    });
+    const withBindings = { ...workspace, snapshotBindingsByDocumentKey: {
+      'tab-primary:0': { documentKey: 'tab-primary:0', revision: 1, snapshotId: 7 },
+      'tab-second:0': { documentKey: 'tab-second:0', revision: 1, snapshotId: 8 },
+    } };
+
+    const result = closeWorkspaceTabTransition(withBindings, 'tab-second', {
+      id: 'tab-blank', documentKey: 'tab-blank:0', name: 'Untitled', languageId: 'json' as any,
+    })!;
+
+    expect(result.workspace.snapshotBindingsByDocumentKey).toEqual({
+      'tab-primary:0': { documentKey: 'tab-primary:0', revision: 1, snapshotId: 7 },
+    });
+  });
+
+  it('rejects a close transition whose generated blank id conflicts with a sidecar', () => {
     const workspace = ensureSidecarTab(createEditorWorkspaceState(tab()), {
       id: 'tab-sidecar',
       name: 'Right Editor',
@@ -241,46 +249,27 @@ describe('editor-workspace', () => {
       sourceText: '{"right":true}',
     });
 
-    const result = closeWorkspaceTab(workspace, 'tab-primary', {
+    const result = closeWorkspaceTabTransition(workspace, 'tab-primary', {
       id: 'tab-sidecar',
       name: 'Fallback',
       documentKey: 'tab-sidecar:0',
       languageId: 'yaml' as any,
-      sourceText: 'fallback: true\n',
     });
 
-    expect(result.workspace).toBe(workspace);
-    expect(result.closedTab).toBeNull();
-    expect(result.nextActiveTabId).toBe('tab-primary');
-    expect(result.workspace.primaryTabId).toBe('tab-primary');
-    expect(result.workspace.paneTabIds.right).toBe('tab-sidecar');
-    expect(result.workspace.tabsById['tab-sidecar']).toMatchObject({
-      role: 'sidecar',
-      sourceText: '{"right":true}',
-    });
+    expect(result).toBeNull();
   });
 
-  it('rejects last-tab fallback when fallback id matches an existing tab', () => {
+  it('rejects a close transition whose generated blank id already exists', () => {
     const workspace = createEditorWorkspaceState(tab());
 
-    const result = closeWorkspaceTab(workspace, 'tab-primary', {
+    const result = closeWorkspaceTabTransition(workspace, 'tab-primary', {
       id: 'tab-primary',
       name: 'Fallback',
       documentKey: 'tab-primary:next',
       languageId: 'yaml' as any,
-      sourceText: 'fallback: true\n',
     });
 
-    expect(result.workspace).toBe(workspace);
-    expect(result.closedTab).toBeNull();
-    expect(result.nextActiveTabId).toBe('tab-primary');
-    expect(result.workspace.primaryTabId).toBe('tab-primary');
-    expect(result.workspace.activeTabId).toBe('tab-primary');
-    expect(result.workspace.tabsById['tab-primary']).toMatchObject({
-      role: 'primary',
-      documentKey: 'tab-primary:0',
-      sourceText: '{"a":1}',
-    });
+    expect(result).toBeNull();
   });
 
   it('syncs editor tab fields without mutating sidecar state', () => {

@@ -489,7 +489,7 @@ describe('editor-store', () => {
       });
     });
 
-    it('adds a background workspace tab without changing primary compatibility fields', () => {
+    it('creates and activates a workspace tab as the new primary document', () => {
       editorStore.actions.setSourceText('{"primary":true}');
       editorStore.actions.setDocumentKey('tab-primary:0');
       editorStore.actions.setLanguageId('json');
@@ -512,12 +512,12 @@ describe('editor-store', () => {
       });
 
       const state = editorStore.get();
-      expect(state.sourceText).toBe('{"primary":true}');
-      expect(state.documentKey).toBe('tab-primary:0');
-      expect(state.languageId).toBe('json');
+      expect(state.sourceText).toBe('name: second\n');
+      expect(state.documentKey).toBe('tab-second:0');
+      expect(state.languageId).toBe('yaml');
       expect(state.workspace.tabOrder).toEqual(['tab-primary', 'tab-second']);
       expect(state.workspace.tabsById['tab-second']).toMatchObject({
-        role: 'background',
+        role: 'primary',
         languageId: 'yaml',
         sourceText: 'name: second\n',
       });
@@ -571,7 +571,7 @@ describe('editor-store', () => {
       expect(state.languageId).toBe('yaml');
       expect(state.editorRevision).toBe(4);
       expect(state.graphAppliedRevision).toBe(3);
-      expect(state.tempModel.cursor).toBe('Ln 2, Col 1');
+      expect(state.tempModel.cursor).toBe('Ln 1, Col 1');
       expect(state.workspace.primaryTabId).toBe('tab-second');
       expect(state.workspace.tabsById['tab-primary'].role).toBe('background');
       expect(state.workspace.tabsById['tab-second'].role).toBe('primary');
@@ -665,14 +665,9 @@ describe('editor-store', () => {
       editorStore.actions.closeWorkspaceTabFromEditor('tab-second');
 
       const state = editorStore.get();
-      expect(state.sourceText).toBe(before.sourceText);
-      expect(state.previousSourceText).toBe(before.previousSourceText);
-      expect(state.documentKey).toBe(before.documentKey);
-      expect(state.languageId).toBe(before.languageId);
-      expect(state.editorRevision).toBe(before.editorRevision);
-      expect(state.graphAppliedRevision).toBe(before.graphAppliedRevision);
-      expect(state.tempModel).toEqual(before.tempModel);
-      expect(state.fullEditUiState).toEqual(before.fullEditUiState);
+      expect(state.sourceText).toBe('{"primary":true}');
+      expect(state.documentKey).toBe('tab-primary:0');
+      expect(state.languageId).toBe('json');
       expect(state.workspace.tabOrder).toEqual(['tab-primary']);
       expect(state.workspace.tabsById['tab-second']).toBeUndefined();
       expect(state.workspace.primaryTabId).toBe('tab-primary');
@@ -743,7 +738,7 @@ describe('editor-store', () => {
       expect(state.workspace.tabsById['tab-second']).toBeUndefined();
     });
 
-    it('closes the last active workspace tab with a valid fallback and mirrors fallback fields', () => {
+    it('closes the last active workspace tab into a fresh blank primary document', () => {
       editorStore.actions.setSourceText('{"primary":true}');
       editorStore.actions.setDocumentKey('tab-primary:0');
       editorStore.actions.setLanguageId('json');
@@ -752,39 +747,13 @@ describe('editor-store', () => {
         name: 'Untitled 1',
       });
 
-      editorStore.actions.closeWorkspaceTabFromEditor('tab-primary', {
-        id: 'tab-fallback',
-        name: 'Untitled Fallback',
-        documentKey: 'tab-fallback:0',
-        languageId: 'toml' as any,
-        sourceText: 'name = "fallback"\n',
-        revision: 9,
-        graphAppliedRevision: 8,
-        snapshotId: 90,
-        tempModel: {
-          ...editorStore.get().tempModel,
-          scratchText: 'name = "fallback"\n',
-          cursor: 'Ln 1, Col 18',
-        },
-        fullEditUiState: {
-          ...editorStore.get().fullEditUiState,
-          documentKey: 'tab-fallback:0',
-          revision: 9,
-          byteLength: 18,
-        },
-      });
+      editorStore.actions.closeWorkspaceTabFromEditor('tab-primary');
 
       const state = editorStore.get();
-      const fallbackTab = state.workspace.tabsById['tab-fallback'];
-      expect(state.sourceText).toBe(fallbackTab.sourceText);
-      expect(state.documentKey).toBe(fallbackTab.documentKey);
-      expect(state.languageId).toBe(fallbackTab.languageId);
-      expect(state.editorRevision).toBe(fallbackTab.revision);
-      expect(state.graphAppliedRevision).toBe(fallbackTab.graphAppliedRevision);
-      expect(state.tempModel).toEqual(fallbackTab.tempModel);
-      expect(state.fullEditUiState).toEqual(fallbackTab.fullEditUiState);
-      expect(state.workspace.primaryTabId).toBe('tab-fallback');
-      expect(state.workspace.tabOrder).toEqual(['tab-fallback']);
+      const replacementTab = state.workspace.tabsById[state.workspace.primaryTabId];
+      expect(replacementTab).toMatchObject({ role: 'primary', sourceText: '' });
+      expect(replacementTab.id).not.toBe('tab-primary');
+      expect(state.workspace.tabOrder).toEqual([replacementTab.id]);
       expect(state.workspace.tabsById['tab-primary']).toBeUndefined();
     });
 
@@ -871,7 +840,7 @@ describe('editor-store', () => {
       });
     });
 
-    it('ignores background tab language patches to keep inactive editor metadata isolated', () => {
+    it('updates a primary tab language through document authority', () => {
       editorStore.actions.setLanguageId('json');
       editorStore.actions.initWorkspaceFromPrimaryTab({
         id: 'tab-primary',
@@ -891,8 +860,8 @@ describe('editor-store', () => {
       });
 
       expect(editorStore.get().workspace.tabsById['tab-second']).toMatchObject({
-        role: 'background',
-        languageId: 'yaml',
+        role: 'primary',
+        languageId: 'toml',
         sourceText: 'changed',
       });
     });

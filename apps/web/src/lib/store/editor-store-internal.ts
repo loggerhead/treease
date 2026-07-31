@@ -38,13 +38,13 @@ import {
   type WorkspaceEditorTabInput,
 } from './editor-workspace';
 import {
-  activateWorkspaceTabFromEditor as activateWorkspaceTabInWorkspace,
-  addWorkspaceTabFromEditor as addWorkspaceTabInWorkspace,
+  activateWorkspaceTabTransitionFromEditor as activateWorkspaceTabInWorkspace,
+  createWorkspaceTabTransitionFromEditor as addWorkspaceTabInWorkspace,
   bindWorkspaceSnapshot as bindWorkspaceSnapshotState,
   clearWorkspaceSnapshotBinding,
   cloneWorkspaceStateForRead,
   cloneWorkspaceStateForWrite,
-  closeWorkspaceTabFromEditor as closeWorkspaceTabInWorkspace,
+  closeWorkspaceTabTransitionFromEditor as closeWorkspaceTabInWorkspace,
   editorWorkspace,
   ensureDetachedSidecarWorkspaceTab,
   ensureSidecarWorkspaceTab,
@@ -697,9 +697,14 @@ function createEditorStore() {
         }),
       initWorkspaceFromPrimaryTab: (payload: { id: string; name: string }) => initWorkspaceFromPrimaryTabState(payload),
       addWorkspaceTabFromEditor: (payload: WorkspaceEditorTabInput) => addWorkspaceTabInWorkspace(payload),
-      activateWorkspaceTabFromEditor: (payload: WorkspaceEditorTabInput) => activateWorkspaceTabInWorkspace(payload),
-      closeWorkspaceTabFromEditor: (tabId: string, fallback?: WorkspaceEditorTabInput) =>
-        closeWorkspaceTabInWorkspace(tabId, fallback),
+      activateWorkspaceTabFromEditor: (payload: WorkspaceEditorTabInput) => activateWorkspaceTabInWorkspace(payload.id),
+      closeWorkspaceTabFromEditor: (tabId: string) =>
+        closeWorkspaceTabInWorkspace(tabId, {
+          id: `blank-${Date.now()}`,
+          documentKey: `blank-${Date.now()}:0`,
+          name: 'Untitled',
+          languageId: getWorkspaceState().tabsById[getWorkspaceState().activeTabId]?.languageId ?? 'json',
+        }),
       getWorkspaceTabSummaries: () => getWorkspaceTabSummariesState(),
       ensureSidecarWorkspaceTab: (payload: { id: string; name: string; sourceText: string }) =>
         ensureSidecarWorkspaceTab(payload),

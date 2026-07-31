@@ -65,10 +65,13 @@ export type WorkspaceEditorTabInput = {
   savedText?: string;
 };
 
-export type CloseWorkspaceTabResult = {
+export type TabTopologyEffect =
+  | { kind: 'activate-existing'; tabId: string; disposeTabId?: string }
+  | { kind: 'activate-new-blank'; tabId: string; documentKey: string; disposeTabId: string };
+
+export type TabTopologyTransition = {
   workspace: EditorWorkspaceState;
-  nextActiveTabId: string | null;
-  closedTab: EditorWorkspaceTab | null;
+  effect: TabTopologyEffect;
 };
 
 export type EditorWorkspaceTabPatch = {
@@ -324,6 +327,32 @@ export function addWorkspaceTab(workspace: EditorWorkspaceState, input: Workspac
   };
 }
 
+/** Create and select a new left document in one topology transition. */
+export function createWorkspaceTabTransition(
+  workspace: EditorWorkspaceState,
+  input: WorkspaceEditorTabInput,
+): TabTopologyTransition | null {
+  if (workspace.tabsById[input.id]) return null;
+  const withTab = addWorkspaceTab(workspace, input);
+  return {
+    workspace: activateWorkspaceTab(withTab, input.id),
+    effect: { kind: 'activate-existing', tabId: input.id },
+  };
+}
+
+/** Select an existing left tab. Sidecars and unknown ids have no transition. */
+export function activateWorkspaceTabTransition(
+  workspace: EditorWorkspaceState,
+  tabId: string,
+): TabTopologyTransition | null {
+  const target = workspace.tabsById[tabId];
+  if (!target || target.role === 'sidecar') return null;
+  return {
+    workspace: activateWorkspaceTab(workspace, tabId),
+    effect: { kind: 'activate-existing', tabId },
+  };
+}
+
 export function activateWorkspaceTab(workspace: EditorWorkspaceState, tabId: string): EditorWorkspaceState {
   const target = workspace.tabsById[tabId];
   if (!target || target.role === 'sidecar') return workspace;
@@ -342,31 +371,40 @@ export function activateWorkspaceTab(workspace: EditorWorkspaceState, tabId: str
   };
 }
 
-export function closeWorkspaceTab(
+/**
+ * Pure left-tab topology transition. Closing the last tab is a product action:
+ * it replaces that document with a newly identified empty primary document.
+ */
+export function closeWorkspaceTabTransition(
   workspace: EditorWorkspaceState,
   tabId: string,
-  fallback?: WorkspaceEditorTabInput,
-): CloseWorkspaceTabResult {
+  blank: { id: string; documentKey: string; name: string; languageId: SupportedEditorLanguageId },
+): TabTopologyTransition | null {
   const closedTab = workspace.tabsById[tabId];
-  if (!closedTab || closedTab.role === 'sidecar') {
-    return { workspace, nextActiveTabId: workspace.activeTabId ?? null, closedTab: null };
-  }
+  if (!closedTab || closedTab.role === 'sidecar') return null;
   const closedIndex = workspace.tabOrder.indexOf(tabId);
-  if (closedIndex < 0) {
-    return { workspace, nextActiveTabId: workspace.activeTabId ?? null, closedTab: null };
-  }
+  if (closedIndex < 0) return null;
   let nextTabOrder = workspace.tabOrder.filter((id) => id !== tabId);
   if (nextTabOrder.length === 0) {
-    if (!fallback || workspace.tabsById[fallback.id] || fallback.id === workspace.paneTabIds.right) {
-      return { workspace, nextActiveTabId: workspace.activeTabId, closedTab: null };
-    }
+    if (workspace.tabsById[blank.id] || workspace.paneTabIds.right === blank.id) return null;
   }
   const nextTabsById = { ...workspace.tabsById };
   delete nextTabsById[tabId];
-  if (nextTabOrder.length === 0 && fallback) {
-    const fallbackTab = createEditorTabFromInput(fallback, 'primary');
-    nextTabsById[fallback.id] = fallbackTab;
-    nextTabOrder = [fallback.id];
+  if (nextTabOrder.length === 0) {
+    nextTabsById[blank.id] = createEditorTabFromInput({ ...blank, sourceText: '', origin: 'user' }, 'primary');
+    nextTabOrder = [blank.id];
+    const nextWorkspace = {
+      ...workspace,
+      tabsById: nextTabsById,
+      primaryTabId: blank.id,
+      activeTabId: blank.id,
+      tabOrder: nextTabOrder,
+      paneTabIds: { ...workspace.paneTabIds, left: blank.id },
+      snapshotBindingsByDocumentKey: Object.fromEntries(
+        Object.entries(workspace.snapshotBindingsByDocumentKey).filter(([key]) => key !== closedTab.documentKey),
+      ),
+    };
+    return { workspace: nextWorkspace, effect: { kind: 'activate-new-blank', tabId: blank.id, documentKey: blank.documentKey, disposeTabId: tabId } };
   }
   const wasActive = workspace.primaryTabId === tabId || workspace.activeTabId === tabId || workspace.paneTabIds.left === tabId;
   const nextActiveTabId = wasActive
@@ -384,10 +422,14 @@ export function closeWorkspaceTab(
       left: nextActiveTabId,
     },
   };
+  const snapshotBindingsByDocumentKey = Object.fromEntries(
+    Object.entries(nextWorkspace.snapshotBindingsByDocumentKey).filter(([key]) => key !== closedTab.documentKey),
+  );
   return {
-    workspace: nextWorkspace,
-    nextActiveTabId,
-    closedTab,
+    workspace: { ...nextWorkspace, snapshotBindingsByDocumentKey },
+    effect: wasActive
+      ? { kind: 'activate-existing', tabId: nextActiveTabId!, disposeTabId: tabId }
+      : { kind: 'activate-existing', tabId: workspace.activeTabId, disposeTabId: tabId },
   };
 }
 

@@ -26,12 +26,9 @@
     type JsonBlockSelection,
   } from '../../store/full-edit-ui-store';
   import {
-    activateWorkspaceTabFromEditor,
-    addWorkspaceTabFromEditor,
-    closeWorkspaceTabFromEditor,
+    getWorkspaceRawState,
     getWorkspaceState,
-    getWorkspaceTabSummaries,
-    initWorkspaceFromPrimaryTab,
+    setWorkspaceState,
     updateWorkspaceTab,
   } from '../../store/workspace-store';
   import type { PathSeg } from '../../store/tree-path';
@@ -60,7 +57,6 @@
   } from '../../test-bridge/runtime-readiness';
   import { awaitEditorRuntimeStartupDelay } from '../../test-bridge/runtime-startup-delay';
 
-  import TabManager from './TabManager.svelte';
   import EditorDropZone from './EditorDropZone.svelte';
   import { shouldSyncGraphHighlightFromCursorReason } from './EditorCore.graph-highlight';
   import { ensureModelDocumentKey } from './document-key';
@@ -72,15 +68,21 @@
   import { createEditorRuntimeController } from './editor-runtime-controller';
   import { commitEditorTabTextChange } from './editor-tab-edit-commit';
   import { settleWholeDocumentReplacement } from './whole-document-replacement';
-  import type { EditorModelWithDocumentKey, EditorTab, TabSummary } from './types';
+  import type { EditorModelWithDocumentKey } from './types';
+  import { EditorTabRuntime } from './editor-tab-runtime';
+  import {
+    activateWorkspaceTabTransition,
+    closeWorkspaceTabTransition,
+    createWorkspaceTabTransition,
+    syncSidecarLanguageFromPrimary,
+    type EditorWorkspaceTab,
+  } from '../../store/editor-workspace';
   import { EDITOR_CONFIG } from '../../config/constants';
   import { monacoChangesToDocumentTextEdits, type MonacoTextChange } from '../../../shared/document-text-edits';
   import { serializePath } from '../../../shared/document-anchor-utils';
   import { createTreeaseMonacoEditorOptions } from './editor-options';
   import type { DocumentOrigin } from '../../document-origin';
 
-  export let tabSummaries: TabSummary[] = [];
-  export let activeTabId = '';
   export let onScroll: (payload: { scrollTop: number; scrollLeft: number }) => void = () => {};
   export let enableRevealSync = true;
   export let synchronizedRuntimeLoading = false;
@@ -251,13 +253,15 @@
     callSharedWasmWorker<T>(method as any, input);
 
   function rotateActiveDocumentKey(): string {
-    const activeId = tabManager?.getActiveTabId();
-    if (activeId) {
-      const rotated = tabManager.rotateDocumentKey(activeId);
-      if (rotated) {
-        documentKeyStore.set(rotated);
-        return rotated;
-      }
+    const activeId = getWorkspaceState().activeTabId;
+    const tab = getWorkspaceState().tabsById[activeId];
+    const activeModel = tabRuntime?.get(activeId);
+    if (tab && activeModel) {
+      const rotated = `${tab.documentKey}:${Date.now()}`;
+      activeModel.__treeaseDocumentKey = rotated;
+      updateWorkspaceTab(activeId, { documentKey: rotated });
+      documentKeyStore.set(rotated);
+      return rotated;
     }
     const fallback = ensureModelDocumentKey(model);
     documentKeyStore.set(fallback);
@@ -363,12 +367,12 @@
     placeholderVisible = true;
   }
 
-  let tabManager: TabManager;
+  let tabRuntime: EditorTabRuntime;
+  let tabSequence = 1;
   let dropZone: EditorDropZone;
 
   function activeTabHasUserInput(language: SupportedEditorLanguageId): boolean {
-    const manager = tabManager as TabManager | undefined;
-    const activeId = manager?.getActiveTabId();
+    const activeId = getWorkspaceState().activeTabId;
     if (!activeId) return false;
     const recorded = userInputByTabId.get(activeId);
     if (recorded !== undefined) return recorded;
@@ -376,8 +380,7 @@
   }
 
   function markActiveTabUserInput(value: boolean): void {
-    const manager = tabManager as TabManager | undefined;
-    const activeId = manager?.getActiveTabId();
+    const activeId = getWorkspaceState().activeTabId;
     if (activeId) {
       userInputByTabId.set(activeId, value);
       if (value) setActiveTabOrigin('user');
@@ -385,8 +388,7 @@
   }
 
   function setActiveTabOrigin(origin: DocumentOrigin): void {
-    const manager = tabManager as TabManager | undefined;
-    const activeId = manager?.getActiveTabId();
+    const activeId = getWorkspaceState().activeTabId;
     if (activeId) {
       userInputByTabId.set(activeId, origin !== 'example');
       updateWorkspaceTab(activeId, { origin });
@@ -435,9 +437,10 @@
     rotateActiveDocumentKey,
     setModelDocumentKey,
     setActiveTabDocumentKey: (documentKey) => {
-      const activeId = tabManager?.getActiveTabId();
+      const activeId = getWorkspaceState().activeTabId;
       if (activeId) {
-        tabManager.setTabDocumentKey(activeId, documentKey);
+        const activeModel = tabRuntime?.get(activeId);
+        if (activeModel) activeModel.__treeaseDocumentKey = documentKey;
         updateWorkspaceTab(activeId, { documentKey });
       }
     },
@@ -593,10 +596,8 @@
       }
       ensureSemanticTokensProvider(next);
       ensureDocumentColorProvider(next);
-      const activeId = tabManager?.getActiveTabId();
-      if (activeId) {
-        tabManager?.updateTabLanguage(activeId, next);
-      }
+      const activeId = getWorkspaceState().activeTabId;
+      if (activeId) updateWorkspaceTab(activeId, { languageId: next });
       if (next !== 'json') {
         jsonBlockSelection.set(null);
       }
@@ -610,8 +611,11 @@
 
 
   function initFirstTab() {
-    const firstTab = tabManager.initTabs();
-    model = firstTab.model;
+    const workspace = getWorkspaceState();
+    const firstTab = workspace.tabsById[workspace.activeTabId];
+    if (!firstTab) throw new Error('Workspace must have an active left tab before editor initialization.');
+    tabRuntime = new EditorTabRuntime(monaco);
+    model = tabRuntime.getOrCreate(firstTab);
     lastModelLength = model.getValue().length;
     lastModelText = model.getValue();
     const container = dropZone.getContainer();
@@ -652,7 +656,6 @@
     );
     ensureLanguageRegistered(languageIdValue);
     monaco.editor.setModelLanguage(model, languageIdValue);
-    initWorkspaceFromPrimaryTab({ id: firstTab.id, name: firstTab.name });
     syncColorViewportState('init');
     return firstTab;
   }
@@ -900,12 +903,8 @@
       }
     });
     tempModelUnsub = activeTempModel.subscribe((value) => {
-      const activeId = tabManager?.getActiveTabId();
-      if (!activeId) return;
-      const current = tabManager?.getTempModel(activeId);
-      if (!current || current !== value) {
-        tabManager?.setTempModel(activeId, value);
-      }
+      const activeId = getWorkspaceState().activeTabId;
+      if (activeId) updateWorkspaceTab(activeId, { tempModel: value });
     });
     jsonBlockSelectionUnsub = jsonBlockSelection.subscribe((value) => {
       jsonBlockSelectionValue = value;
@@ -1103,86 +1102,49 @@
     editor.setScrollPosition({ scrollTop: 0, scrollLeft: 0 });
   }
 
-  function workspacePayloadForTab(tab: EditorTab) {
-    const workspaceTab = getWorkspaceState().tabsById[tab.id];
-    const isActiveEditorTab = tabManager?.getActiveTabId() === tab.id;
-    const snapshotId = workspaceTab
-      ? workspaceTab.snapshotId
-      : isActiveEditorTab
-        ? getWorkspaceSnapshotId(tab.documentKey)
-        : null;
-    const fullEditState = workspaceTab
-      ? workspaceTab.fullEditUiState
-      : isActiveEditorTab
-        ? fullEditUiStateValue
-        : undefined;
-    return {
-      id: tab.id,
-      name: tab.name,
-      documentKey: tab.documentKey,
-      languageId: tab.languageId,
-      origin: tab.origin,
-      sourceText: tab.model.getValue(),
-      revision: workspaceTab?.revision ?? (isActiveEditorTab ? editorRevisionValue : 0),
-      graphAppliedRevision: workspaceTab?.graphAppliedRevision ?? (isActiveEditorTab ? $graphAppliedRevision : 0),
-      snapshotId,
-      tempModel: tabManager.getTempModel(tab.id) ?? workspaceTab?.tempModel ?? $activeTempModel,
-      ...(fullEditState ? { fullEditUiState: fullEditState } : {}),
-    };
-  }
+  type InstalledActiveTab = { model: Monaco.editor.ITextModel; text: string };
 
-  function syncTabBindings() {
-    tabSummaries = getWorkspaceTabSummaries();
-    activeTabId = getWorkspaceState().activeTabId;
-  }
-
-  async function setActiveTab(
-    tab: EditorTab,
-    reason: 'initial-example' | 'tab-reactivate' = 'tab-reactivate',
-    options: { awaitSnapshotReady?: boolean; editorReadOnly?: boolean } = {},
-  ) {
-    if (!editor) return false;
-    tabManager.setActiveTabId(tab.id);
+  function installActiveTab(tab: EditorWorkspaceTab): InstalledActiveTab | null {
+    if (!editor) return null;
     if (!userInputByTabId.has(tab.id)) {
       userInputByTabId.set(tab.id, false);
     }
     jsonBlockSelection.set(null);
     clearJsonBlockDecoration();
-    model = tab.model;
+    model = tabRuntime.getOrCreate(tab);
     setModelDocumentKey(model, tab.documentKey);
-    editor.setModel(tab.model);
+    editor.setModel(model);
+    // The installed Monaco model and authority session must change together.
+    // Otherwise a later session-store emission can overwrite this tab with the
+    // text from the previously active model.
+    isStoreUpdateSuppressed = true;
+    const text = model.getValue();
+    sourceText.set(text);
+    documentKeyStore.set(tab.documentKey);
     placeholderVisible = false;
     updateEditorPlaceholder();
     syncColorViewportState('model');
-    lastModelLength = tab.model.getValue().length;
-    lastModelText = tab.model.getValue();
-    activateWorkspaceTabFromEditor(workspacePayloadForTab(tab));
+    lastModelLength = model.getValue().length;
+    lastModelText = model.getValue();
     setLanguageIdWithoutExample(tab.languageId);
     setActiveEditorIo();
-    const tempModel = tabManager.getTempModel(tab.id) ?? {
-      diffInputText: '',
-      scratchText: '',
-      commandQuery: '',
-      status: 'Ready',
-      error: '',
-      cursor: 'Ln 1, Col 1',
-      selectionLength: 0,
-      treePath: [],
-      graphHighlight: null,
-      diagnostics: [],
-    };
-    tabManager.setTempModel(tab.id, tempModel);
-    activeTempModel.set(tempModel);
-    syncTabBindings();
-    isStoreUpdateSuppressed = true;
-    const nextText = tab.model.getValue();
-    const requestModel = tab.model;
+    activeTempModel.set(tab.tempModel);
+    return { model, text };
+  }
+
+  async function startInstalledActiveTab(
+    tab: EditorWorkspaceTab,
+    installed: InstalledActiveTab,
+    reason: 'initial-example' | 'tab-reactivate',
+    options: { awaitSnapshotReady?: boolean; editorReadOnly?: boolean } = {},
+  ): Promise<boolean> {
+    const requestModel = installed.model;
     const fullEditRequest = {
       language: tab.languageId,
-      text: nextText,
+      text: installed.text,
       reason,
       editorReadOnly: options.editorReadOnly ?? false,
-      isFresh: () => model === requestModel && requestModel.getValue() === nextText,
+      isFresh: () => model === requestModel && requestModel.getValue() === installed.text,
     };
     try {
       if (options.awaitSnapshotReady) {
@@ -1200,17 +1162,31 @@
     }
   }
 
+  async function setActiveTab(
+    tab: EditorWorkspaceTab,
+    reason: 'initial-example' | 'tab-reactivate' = 'tab-reactivate',
+    options: { awaitSnapshotReady?: boolean; editorReadOnly?: boolean } = {},
+  ): Promise<boolean> {
+    const installed = installActiveTab(tab);
+    if (!installed) return false;
+    if (reason === 'initial-example') commitEditorState();
+    return startInstalledActiveTab(tab, installed, reason, options);
+  }
+
   export function addTab() {
     if (guardImportInProgress()) return;
     if (!monaco) return;
-    const tab = tabManager.addTab(languageIdValue, getLanguageExample(languageIdValue));
-    if (tab) {
-      userInputByTabId.set(tab.id, false);
-      addWorkspaceTabFromEditor({ ...workspacePayloadForTab(tab), savedText: tab.model.getValue() });
-      void setActiveTab(tab);
-      return;
+    const id = `tab-${Date.now()}-${tabSequence++}`;
+    const transition = createWorkspaceTabTransition(getWorkspaceRawState(), { id, name: `Untitled ${tabSequence}`, documentKey: `${id}:0`, languageId: languageIdValue, sourceText: getLanguageExample(languageIdValue), origin: 'example' });
+    const tab = transition?.workspace.tabsById[id];
+    if (tab && transition) {
+      // Install the model before publishing the new active workspace tab.
+      const installed = installActiveTab(tab);
+      if (!installed) return;
+      setWorkspaceState(syncSidecarLanguageFromPrimary(transition.workspace));
+      commitEditorState();
+      void startInstalledActiveTab(tab, installed, 'tab-reactivate');
     }
-    syncTabBindings();
   }
 
   export function openDocument(payload: {
@@ -1221,17 +1197,16 @@
     fileLinkedDocument?: { grantId: string; name: string };
   }): string | null {
     if (guardImportInProgress() || !monaco) return null;
-    const tab = tabManager.addTab(payload.languageId, payload.text, payload.origin ?? 'import');
+    const id = `tab-${Date.now()}-${tabSequence++}`;
+    const transition = createWorkspaceTabTransition(getWorkspaceRawState(), { id, name: payload.name, documentKey: `${id}:0`, languageId: payload.languageId, sourceText: payload.text, origin: payload.origin ?? 'import', fileLinkedDocument: payload.fileLinkedDocument, savedText: payload.fileLinkedDocument ? payload.text : undefined });
+    const tab = transition?.workspace.tabsById[id];
     if (!tab) return null;
-    tabManager.setTabName(tab.id, payload.name);
     userInputByTabId.set(tab.id, true);
-    addWorkspaceTabFromEditor({
-      ...workspacePayloadForTab(tab),
-      name: payload.name,
-      fileLinkedDocument: payload.fileLinkedDocument,
-      savedText: payload.fileLinkedDocument ? payload.text : undefined,
-    });
-    void setActiveTab(tab, 'tab-reactivate');
+    const installed = installActiveTab(tab);
+    if (!installed) return null;
+    setWorkspaceState(syncSidecarLanguageFromPrimary(transition.workspace));
+    commitEditorState();
+    void startInstalledActiveTab(tab, installed, 'tab-reactivate');
     return tab.id;
   }
 
@@ -1249,40 +1224,53 @@
   }
 
   export function replaceDocumentFromFile(payload: { tabId: string; text: string; languageId: SupportedEditorLanguageId }): void {
-    const tab = tabManager?.activateTab(payload.tabId);
+    const tab = getWorkspaceState().tabsById[payload.tabId];
     if (!tab || !monaco) return;
-    monaco.editor.setModelLanguage(tab.model, payload.languageId);
-    tab.model.setValue(payload.text);
-    tabManager.updateTabLanguage(tab.id, payload.languageId);
+    const targetModel = tabRuntime.getOrCreate(tab);
+    monaco.editor.setModelLanguage(targetModel, payload.languageId);
+    targetModel.setValue(payload.text);
     userInputByTabId.set(tab.id, true);
     updateWorkspaceTab(tab.id, { origin: 'import', languageId: payload.languageId, sourceText: payload.text });
   }
 
   export function renameDocument(tabId: string, name: string): void {
-    tabManager?.setTabName(tabId, name);
-    syncTabBindings();
+    updateWorkspaceTab(tabId, { name });
   }
 
   export function closeTab(id: string) {
     if (guardImportInProgress()) return;
+    const workspace = getWorkspaceRawState();
+    const wasActive = workspace.activeTabId === id || workspace.primaryTabId === id || workspace.paneTabIds.left === id;
+    const blankId = `tab-${Date.now()}-${tabSequence++}`;
+    const transition = closeWorkspaceTabTransition(workspace, id, { id: blankId, documentKey: `${blankId}:0`, name: `Untitled ${tabSequence}`, languageId: languageIdValue });
+    if (!transition) return;
     userInputByTabId.delete(id);
-    const nextTab = tabManager.closeTab(id, languageIdValue, getLanguageExample(languageIdValue));
-    if (nextTab && !userInputByTabId.has(nextTab.id)) {
-      userInputByTabId.set(nextTab.id, false);
-    }
-    if (nextTab) {
-      closeWorkspaceTabFromEditor(id, workspacePayloadForTab(nextTab));
-      void setActiveTab(nextTab);
+    const nextTab = transition.workspace.tabsById[transition.effect.tabId];
+    if (!nextTab) return;
+    if (!wasActive) {
+      setWorkspaceState(syncSidecarLanguageFromPrimary(transition.workspace));
+      if (transition.effect.disposeTabId) tabRuntime.dispose(transition.effect.disposeTabId);
       return;
     }
-    closeWorkspaceTabFromEditor(id);
-    syncTabBindings();
+    // Install successor before releasing the removed model; editorIO must never observe a disposed active document.
+    const installed = installActiveTab(nextTab);
+    if (!installed) return;
+    setWorkspaceState(syncSidecarLanguageFromPrimary(transition.workspace));
+    if (transition.effect.kind === 'activate-new-blank') commitEditorState();
+    void startInstalledActiveTab(nextTab, installed, 'tab-reactivate');
+    if (transition.effect.disposeTabId) tabRuntime.dispose(transition.effect.disposeTabId);
   }
 
   export function activateTab(id: string) {
     if (guardImportInProgress()) return;
-    const tab = tabManager.activateTab(id);
-    if (tab) void setActiveTab(tab);
+    const transition = activateWorkspaceTabTransition(getWorkspaceRawState(), id);
+    const tab = transition?.workspace.tabsById[id];
+    if (tab && transition) {
+      const installed = installActiveTab(tab);
+      if (!installed) return;
+      setWorkspaceState(syncSidecarLanguageFromPrimary(transition.workspace));
+      void startInstalledActiveTab(tab, installed, 'tab-reactivate');
+    }
   }
 
   export function formatActive() {
@@ -1673,7 +1661,7 @@
       model.dispose();
       model = null;
     }
-    tabManager?.disposeAll();
+    tabRuntime?.disposeAll();
     hoverPreviewDisposable?.dispose();
     hoverPreviewDisposable = null;
     storeUnsub?.();
@@ -1707,11 +1695,6 @@
     }
   }
 
-  $: if (tabManager) {
-    tabSummaries = getWorkspaceTabSummaries();
-    activeTabId = getWorkspaceState().activeTabId;
-  }
-
   export async function ensureReady(): Promise<void> {
     while (!editor || !model || !editorRuntimeReady) {
       await new Promise<void>((resolve) => setTimeout(resolve, 16));
@@ -1735,7 +1718,6 @@
     loading={editorRuntimeOverlay.loading}
     loadingPhase={editorRuntimeOverlay.phase}
   />
-  <TabManager bind:this={tabManager} {monaco} {maxTabs} initialLanguageId={languageIdValue} {initialCode} />
 </div>
 
 <style>

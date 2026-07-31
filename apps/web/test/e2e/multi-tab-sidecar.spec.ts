@@ -91,6 +91,69 @@ test('left editor tabs preserve text and mirror only the active tab into primary
     .toBe('json');
 });
 
+test('immediately closing the active new tab keeps header, editor, and authority on its successor', async ({ page }) => {
+  await setEditorContent(page, { language: 'json', sourceText: '{"tab":"one"}' });
+  const [firstTabId] = await leftTabIds(page);
+
+  await page.getByTestId('new-tab-button').click();
+  await expect.poll(async () => (await leftTabIds(page)).length, { timeout: 5_000 }).toBe(2);
+  const [, secondTabId] = await leftTabIds(page);
+  await page.getByTestId(`tab-close-${secondTabId}`).click();
+
+  await expect.poll(async () => await leftTabIds(page), { timeout: 5_000 }).toEqual([firstTabId]);
+  await expect.poll(async () => activeWorkspaceTabId(page), { timeout: 5_000 }).toBe(firstTabId);
+  await expect.poll(async () => getMonacoValue(page, 'source-editor'), { timeout: 5_000 }).toBe('{"tab":"one"}');
+  await expect.poll(async () => {
+    const [workspace, state] = await Promise.all([readEditorWorkspace(page), readEditorState(page)]);
+    return state.documentKey === workspace.tabsById[workspace.activeTabId]?.documentKey;
+  }, { timeout: 5_000 }).toBe(true);
+});
+
+test('restores a persisted multi-tab session before the editor accepts tab commands', async ({ page }) => {
+  await page.evaluate(async () => {
+    const database = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open('treease-workspace', 1);
+      request.onupgradeneeded = () => request.result.createObjectStore('sessions', { keyPath: 'id' });
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    await new Promise<void>((resolve, reject) => {
+      const transaction = database.transaction('sessions', 'readwrite');
+      transaction.objectStore('sessions').put({
+        id: 'current',
+        session: {
+          version: 1,
+          activeTabIndex: 1,
+          tabs: [
+            { name: 'first.json', languageId: 'json', sourceText: '{"restored":1}', origin: 'user' },
+            { name: 'second.json', languageId: 'json', sourceText: '{"restored":2}', origin: 'user' },
+          ],
+        },
+      });
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () => reject(transaction.error);
+    });
+    database.close();
+  });
+
+  // Leave the first page before opening the recovered workspace so its pending
+  // debounced save cannot overwrite the explicitly seeded host session.
+  await page.goto('about:blank');
+  await page.goto('/editor');
+  await waitForEditorReady(page);
+  await expect(page.getByTestId('editor-tab-strip')).toBeVisible({ timeout: 5_000 });
+  await expect.poll(async () => readEditorWorkspace(page), { timeout: 5_000 }).toMatchObject({
+    tabOrder: ['session-tab-0', 'session-tab-1'],
+    activeTabId: 'session-tab-1',
+    primaryTabId: 'session-tab-1',
+  });
+  await expect.poll(async () => getMonacoValue(page, 'source-editor'), { timeout: 5_000 }).toBe('{"restored":2}');
+  await expect.poll(async () => {
+    const [workspace, state] = await Promise.all([readEditorWorkspace(page), readEditorState(page)]);
+    return state.documentKey === workspace.tabsById[workspace.activeTabId]?.documentKey;
+  }, { timeout: 5_000 }).toBe(true);
+});
+
 test('closing tabs removes only left tabs and never lists the right sidecar tab', async ({ page }) => {
   await setEditorContent(page, {
     language: 'json',
@@ -129,6 +192,27 @@ test('closing tabs removes only left tabs and never lists the right sidecar tab'
   const state = await readEditorState(page);
   expect(state.sourceText).not.toBe('{"right":true}');
   expect((await readEditorWorkspace(page)).tabsById['tab-sidecar'].sourceText).toBe('{"right":true}');
+});
+
+test('closing the last left tab creates a new blank primary and retains the sidecar', async ({ page }) => {
+  await setEditorContent(page, { language: 'json', sourceText: '{"left":1}' });
+  const [closedTabId] = await leftTabIds(page);
+  await page.getByRole('button', { name: 'Text mode', exact: true }).click();
+  await expect(page.getByTestId('monaco-right-editor')).toBeVisible({ timeout: 5_000 });
+  await setMonacoValue(page, 'right-editor', '{"right":true}');
+
+  page.once('dialog', (dialog) => void dialog.accept());
+  await page.getByTestId(`tab-close-${closedTabId}`).click();
+  await expect.poll(async () => leftTabIds(page), { timeout: 5_000 }).toHaveLength(1);
+  const [replacementId] = await leftTabIds(page);
+  const workspace = await readEditorWorkspace(page);
+  expect(replacementId).not.toBe(closedTabId);
+  expect(workspace.activeTabId).toBe(replacementId);
+  expect(workspace.primaryTabId).toBe(replacementId);
+  expect(workspace.tabsById[replacementId]).toMatchObject({ sourceText: '', role: 'primary' });
+  expect(workspace.paneTabIds.right).toBe('tab-sidecar');
+  expect(workspace.tabsById['tab-sidecar']).toMatchObject({ role: 'sidecar', sourceText: '{"right":true}' });
+  await expect.poll(async () => getMonacoValue(page, 'source-editor'), { timeout: 5_000 }).toBe('');
 });
 
 test('formatting applies to the active left tab without mutating inactive tabs', async ({ page }) => {

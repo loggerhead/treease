@@ -5,10 +5,6 @@
   import type { SupportedEditorLanguageId } from '../monaco/language-support';
   import type { RuntimeStateEventDetail } from '../runtime-loading';
   import EditorCore from './Editor/EditorCore.svelte';
-  import type { TabSummary } from './Editor/types';
-
-  export let tabSummaries: TabSummary[] = [];
-  export let activeTabId = '';
   export let onScroll: (payload: { scrollTop: number; scrollLeft: number }) => void = () => {};
   export let enableRevealSync = true;
   export let synchronizedRuntimeLoading = false;
@@ -161,14 +157,6 @@
     dispatch('reveal', event.detail);
   }
 
-  function handleTabSummariesChange(event: CustomEvent<TabSummary[]>) {
-    tabSummaries = event.detail;
-  }
-
-  function handleActiveTabIdChange(event: CustomEvent<string>) {
-    activeTabId = event.detail;
-  }
-
   function handleRuntimeState(event: CustomEvent<RuntimeStateEventDetail>) {
     dispatch('runtime-state', event.detail);
   }
@@ -176,8 +164,6 @@
 
 <EditorCore
   bind:this={editorCore}
-  bind:tabSummaries
-  bind:activeTabId
   {enableRevealSync}
   {synchronizedRuntimeLoading}
   {runBidirectionalEdit}
