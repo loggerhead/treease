@@ -136,7 +136,7 @@ test('double-clicking a main-graph scalar cell enters inline edit mode', async (
     .toBeGreaterThan(beforeOpenCount);
 });
 
-test('graph value edit clears graph click highlight', async ({ page }) => {
+test('graph value edit preserves graph click highlight', async ({ page }) => {
   await page.goto('/editor');
   await waitForEditorReady(page);
   await installGraphEditEventCapture(page);
@@ -201,5 +201,7 @@ test('graph value edit clears graph click highlight', async ({ page }) => {
   });
 
   expect(committed).toBe(true);
-  await expect.poll(async () => readTempGraphSelection(page), { timeout: 5_000 }).toBeNull();
+  await expect
+    .poll(async () => readTempGraphSelection(page), { timeout: 5_000 })
+    .toEqual(expect.objectContaining({ path: selectedPath, source: 'graph' }));
 });

@@ -2,7 +2,15 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { buildPathKey } from '../../graph/graph-viewer-path';
 import type { GraphCell } from '@treease/graph-viewer-runtime';
-import { getCellEntry, resolveCellPath, upsertCellEntry } from './graph-anchor-index';
+import {
+  getCellEntry,
+  getHighlightDecorations,
+  registerCellBox,
+  registerRowBox,
+  resolveCellPath,
+  unregisterCellBox,
+  upsertCellEntry,
+} from './graph-anchor-index';
 import type { CellBoxEntry } from './model';
 
 describe('graph-anchor-index', () => {
@@ -36,5 +44,25 @@ describe('graph-anchor-index', () => {
 
     expect(result).toEqual([]);
     expect(resolveTreePathByPosition).not.toHaveBeenCalled();
+  });
+
+  it('resolves the renderer-owned row and target decoration slots', () => {
+    const map = new Map<string, CellBoxEntry>();
+    const path = [{ tag: 0, key: 'img', index: 0 }] as any[];
+    const cell = { text: 'logo', path } as GraphCell;
+    const row = {} as any;
+    const value = {} as any;
+    const rowDecoration = {} as any;
+    const valueDecoration = {} as any;
+
+    registerRowBox(map, cell, row, undefined, undefined, undefined, rowDecoration);
+    registerCellBox(map, cell, 'value', value, valueDecoration);
+
+    expect(getHighlightDecorations(getCellEntry(map, path), 'value')).toEqual([
+      rowDecoration,
+      valueDecoration,
+    ]);
+    unregisterCellBox(map, cell, 'value', value);
+    expect(getHighlightDecorations(getCellEntry(map, path), 'value')).toEqual([rowDecoration]);
   });
 });

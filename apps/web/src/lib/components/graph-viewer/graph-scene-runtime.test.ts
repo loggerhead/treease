@@ -379,6 +379,7 @@ function createDeps(options?: {
       setFullGraph: vi.fn(),
       getNodeDataMap: () => nodeDataMap,
       getNodeBoxMap: () => nodeBoxMap,
+      getCellBoxByPathMap: () => new Map(),
       getClickTargetProbes: () => Object.values(probeStore),
       getClickTargetProbeStore: () => probeStore as any,
       registerCellBox: vi.fn(),

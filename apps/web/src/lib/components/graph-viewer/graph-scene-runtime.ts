@@ -39,6 +39,9 @@ import type {
   RawGraphDelta,
 } from "../../../shared/worker-protocol/protocol";
 import type { GraphSceneLayers, GraphViewerClickTargetStore } from "./model";
+import type { GraphHighlightState } from '../../store/editor-store-types';
+import { getCellEntry, getHighlightDecorations } from './graph-anchor-index';
+import { createGraphSelectionDecorationController } from './graph-selection-decoration';
 
 export type GraphSceneViewData = {
   nodes: GraphNode[];
@@ -319,9 +322,10 @@ type GraphSceneRuntimeDeps = {
   setFullGraph: (nodes: GraphNode[]) => void;
   getNodeDataMap: () => Map<number, GraphNode>;
   getNodeBoxMap: () => Map<number, any>;
+  getCellBoxByPathMap: () => Map<string, any>;
   getClickTargetProbes: () => any[];
   getClickTargetProbeStore: () => GraphViewerClickTargetStore;
-  registerCellBox: (cell: any, kind: any, box: any) => void;
+  registerCellBox: (cell: any, kind: any, box: any, selectionDecoration?: any) => void;
   unregisterCellBox: (cell: any, kind: any, box: any) => void;
   registerRowBox: (
     cell: any,
@@ -329,6 +333,7 @@ type GraphSceneRuntimeDeps = {
     scrollOwner?: any,
     bodyHeight?: number,
     contentHeight?: number,
+    selectionDecoration?: any,
   ) => void;
   unregisterRowBox: (cell: any, rowBox: any) => void;
   registerClickTarget: (
@@ -386,9 +391,25 @@ export function createGraphSceneRuntime(deps: GraphSceneRuntimeDeps) {
   let pendingStreamRedrawDone: Promise<void> | null = null;
   let resolvePendingStreamRedraw: (() => void) | null = null;
   let renderWorkGeneration = 0;
+  let activeGraphHighlight: GraphHighlightState | null = null;
   const projectionWaiters = new Map<string, Array<() => void>>();
+  const selectionDecoration = createGraphSelectionDecorationController({
+    resolveDecorations: (highlight) =>
+      getHighlightDecorations(
+        getCellEntry(deps.getCellBoxByPathMap(), highlight.path),
+        highlight.target,
+      ),
+  });
 
   function flushLeaferSceneLayout(): void {
+    deps.updateLeafer();
+  }
+
+  function syncGraphHighlight(highlight: GraphHighlightState | null): void {
+    activeGraphHighlight = highlight
+      ? { ...highlight, path: highlight.path.map((segment) => ({ ...segment })) }
+      : null;
+    selectionDecoration.sync(activeGraphHighlight);
     deps.updateLeafer();
   }
 
@@ -626,8 +647,9 @@ export function createGraphSceneRuntime(deps: GraphSceneRuntimeDeps) {
 
   function beginFullSceneReplace(graphData: GraphSceneViewData): void {
     // The logical path/target survives scene replacement. Only the old Leafer
-    // boxes are released here; the committed projection restores their style.
+    // boxes are released here; the committed projection restores selection decorations.
     deps.clearRenderedSearchHighlights?.();
+    selectionDecoration.clear();
     clearRenderedMainGraph();
     deps.beginMainGraphRedraw(graphData.nodes);
     updateAutoPosition(graphData.nodes);
@@ -655,11 +677,11 @@ export function createGraphSceneRuntime(deps: GraphSceneRuntimeDeps) {
       TextCtor,
       PenCtor,
       editable: deps.isReadonly?.() ? false : undefined,
-      registerCellBox: (cell, kind, box) => {
+      registerCellBox: (cell, kind, box, selectionDecoration) => {
         if (box && typeof box === "object") {
           cellBindings.set(box, { cell, kind, box });
         }
-        deps.registerCellBox(cell, kind, box);
+        deps.registerCellBox(cell, kind, box, selectionDecoration);
       },
       unregisterCellBox: (cell, kind, box) => {
         if (box && typeof box === "object") {
@@ -673,6 +695,7 @@ export function createGraphSceneRuntime(deps: GraphSceneRuntimeDeps) {
         scrollOwner,
         bodyHeight,
         contentHeight,
+        selectionDecoration,
       ) => {
         if (rowBox && typeof rowBox === "object") {
           rowBindings.set(rowBox, { cell, rowBox });
@@ -683,6 +706,7 @@ export function createGraphSceneRuntime(deps: GraphSceneRuntimeDeps) {
           scrollOwner,
           bodyHeight,
           contentHeight,
+          selectionDecoration,
         );
       },
       unregisterRowBox: (cell, rowBox) => {
@@ -705,7 +729,10 @@ export function createGraphSceneRuntime(deps: GraphSceneRuntimeDeps) {
       bindVerticalScrollGesture: deps.bindVerticalScrollGesture,
       bindPointerDown: deps.bindPointerDown,
       getPointFromEvent: deps.getPointFromEvent,
-      refreshActiveHighlight: deps.refreshActiveHighlight,
+      refreshActiveHighlight: () => {
+        selectionDecoration.sync(activeGraphHighlight);
+        deps.refreshActiveHighlight?.();
+      },
     };
   }
 
@@ -872,7 +899,8 @@ export function createGraphSceneRuntime(deps: GraphSceneRuntimeDeps) {
     dirtyRegion.flush(deps.getLeafer(), false);
     if (!skipLeaferRender) flushLeaferSceneLayout();
     committedProjection = projection;
-    deps.refreshActiveHighlight?.();
+    selectionDecoration.sync(activeGraphHighlight);
+    deps.updateLeafer();
     resolveProjectionWaiters(projection.revision);
     const container = deps.getContainer();
     if (container) {
@@ -1074,6 +1102,7 @@ export function createGraphSceneRuntime(deps: GraphSceneRuntimeDeps) {
     committedProjection = null;
     materializationIntent = null;
     clearRenderedMainGraph();
+    selectionDecoration.clear();
     deps.setFullGraph([]);
     deps.updateLeafer();
   }
@@ -1168,7 +1197,10 @@ export function createGraphSceneRuntime(deps: GraphSceneRuntimeDeps) {
         runtime.updateWindow?.({ forceRebindVisibleRows: true });
         scrolled = true;
       }
-      if (scrolled) deps.updateLeafer();
+      if (scrolled) {
+        selectionDecoration.sync(activeGraphHighlight);
+        deps.updateLeafer();
+      }
       return scrolled;
     }
     const runtime = tableRuntimeByNodeId.get(nodeIdOrRowIndex) as
@@ -1178,6 +1210,7 @@ export function createGraphSceneRuntime(deps: GraphSceneRuntimeDeps) {
     if (!virtualList) return false;
     virtualList.scrollToIndex(rowIndex);
     runtime.updateWindow?.({ forceRebindVisibleRows: true });
+    selectionDecoration.sync(activeGraphHighlight);
     deps.updateLeafer();
     return true;
   }
@@ -1196,6 +1229,7 @@ export function createGraphSceneRuntime(deps: GraphSceneRuntimeDeps) {
     setLastViewData,
     updateRenderableProjection,
     submitMaterializationIntent,
+    syncGraphHighlight,
     materializeTarget,
     waitForProjection,
     getCommittedProjection: () => committedProjection,

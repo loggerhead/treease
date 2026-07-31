@@ -59,8 +59,8 @@ export function createGraphRenderState() {
       upsertCellEntry(cellBoxByPathMap, cell, updater),
     updateCellEntry: (cell: GraphCell, updater: (entry: CellBoxEntry) => void) =>
       updateCellEntry(cellBoxByPathMap, cell, updater),
-    registerCellBox: (cell: GraphCell, kind: GraphCellKind, box: LeaferBox) =>
-      registerCellBox(cellBoxByPathMap, cell, kind, box),
+    registerCellBox: (cell: GraphCell, kind: GraphCellKind, box: LeaferBox, selectionDecoration?: LeaferBox) =>
+      registerCellBox(cellBoxByPathMap, cell, kind, box, selectionDecoration),
     unregisterCellBox: (cell: GraphCell, kind: GraphCellKind, box: LeaferBox) =>
       unregisterCellBox(cellBoxByPathMap, cell, kind, box),
     registerRowBox: (
@@ -69,7 +69,8 @@ export function createGraphRenderState() {
       scrollOwner?: ScrollableBox,
       bodyHeight?: number,
       contentHeight?: number,
-    ) => registerRowBox(cellBoxByPathMap, cell, rowBox, scrollOwner, bodyHeight, contentHeight),
+      selectionDecoration?: LeaferBox,
+    ) => registerRowBox(cellBoxByPathMap, cell, rowBox, scrollOwner, bodyHeight, contentHeight, selectionDecoration),
     unregisterRowBox: (cell: GraphCell, rowBox: LeaferBox) => unregisterRowBox(cellBoxByPathMap, cell, rowBox),
     indexTableCellAnchorsForNode: (node: GraphNode) => indexTableCellAnchorsForNode(tableCellAnchorMap, node),
     removeTableCellAnchorsForNode: (nodeId: number) => removeTableCellAnchorsForNode(tableCellAnchorMap, nodeId),

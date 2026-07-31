@@ -1078,8 +1078,8 @@ describe('graph-viewer-render', () => {
 
     drawTableNode(ctx, node);
 
-    expect(registerCellBox).toHaveBeenNthCalledWith(1, expect.any(Object), 'key', expect.any(MockBox));
-    expect(registerCellBox).toHaveBeenNthCalledWith(2, expect.any(Object), 'value', expect.any(MockBox));
+    expect(registerCellBox).toHaveBeenNthCalledWith(1, expect.any(Object), 'key', expect.any(MockBox), expect.any(MockBox));
+    expect(registerCellBox).toHaveBeenNthCalledWith(2, expect.any(Object), 'value', expect.any(MockBox), expect.any(MockBox));
     expect(registerClickTarget).toHaveBeenNthCalledWith(1, expect.any(MockBox), expect.any(Object), 'key', 'table');
     expect(registerClickTarget).toHaveBeenNthCalledWith(3, expect.any(MockBox), expect.any(Object), 'value', 'table');
   });

@@ -206,7 +206,7 @@ test('graph click highlight survives leaving the hovered value cell', async ({ p
 
   await expect
     .poll(async () => readGraphHighlight(page), { timeout: 5_000 })
-    .toEqual(expect.objectContaining({ path: ['$', 'object', 'bool'], target: 'value', fill: '#ffe27a' }));
+    .toEqual(expect.objectContaining({ path: ['$', 'object', 'bool'], target: 'value' }));
 });
 
 test('graph click reveals header-table cell paths back to editor', async ({ page }) => {

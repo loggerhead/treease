@@ -2,6 +2,7 @@ import type { GraphViewerConfig } from "../../settings/ui-settings";
 import { type GraphNode } from '@treease/graph-viewer-runtime';
 import { createGraphSceneRuntime } from "./graph-scene-runtime";
 import type { GraphSceneLayers, GraphViewerClickTargetStore } from "./model";
+import type { GraphHighlightState } from '../../store/editor-store-types';
 
 type GraphSceneControllerDeps = {
   getContainer: () => HTMLElement | null;
@@ -26,6 +27,7 @@ type GraphSceneControllerDeps = {
   setFullGraph: (nodes: GraphNode[]) => void;
   getNodeDataMap: () => Map<number, GraphNode>;
   getNodeBoxMap: () => Map<number, any>;
+  getCellBoxByPathMap: () => Map<string, any>;
   getClickTargetProbes: () => any[];
   getClickTargetProbeStore: () => GraphViewerClickTargetStore;
   upsertCellEntry: (
@@ -61,7 +63,7 @@ type GraphSceneControllerDeps = {
     target: "key" | "value" | "node",
     source: "click" | "test-hook",
   ) => void;
-  registerCellBox: (cell: any, kind: any, box: any) => void;
+  registerCellBox: (cell: any, kind: any, box: any, selectionDecoration?: any) => void;
   unregisterCellBox: (cell: any, kind: any, box: any) => void;
   registerRowBox: (
     cell: any,
@@ -69,6 +71,7 @@ type GraphSceneControllerDeps = {
     scrollOwner?: any,
     bodyHeight?: number,
     contentHeight?: number,
+    selectionDecoration?: any,
   ) => void;
   unregisterRowBox: (cell: any, rowBox: any) => void;
   registerClickTarget: (
@@ -131,6 +134,7 @@ export function createGraphSceneController(deps: GraphSceneControllerDeps) {
     setFullGraph: deps.setFullGraph,
     getNodeDataMap: deps.getNodeDataMap,
     getNodeBoxMap: deps.getNodeBoxMap,
+    getCellBoxByPathMap: deps.getCellBoxByPathMap,
     getClickTargetProbes: deps.getClickTargetProbes,
     getClickTargetProbeStore: deps.getClickTargetProbeStore,
     registerCellBox: deps.registerCellBox,
@@ -165,5 +169,6 @@ export function createGraphSceneController(deps: GraphSceneControllerDeps) {
     isTargetMaterialized: runtime.isTargetMaterialized,
     dispose: runtime.dispose,
     scrollTableToRow: runtime.scrollTableToRow,
+    syncGraphHighlight: (highlight: GraphHighlightState | null) => runtime.syncGraphHighlight(highlight),
   };
 }

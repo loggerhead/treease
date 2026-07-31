@@ -101,6 +101,7 @@ export type TableRowBinding = {
   cell: GraphCell;
   kind: GraphCellKind;
   box: any;
+  selectionDecoration: any;
   text: any;
 };
 
@@ -108,8 +109,10 @@ export type TableRowRenderEntry = {
   rowBox: any;
   cellContainer: any;
   cellBoxes: any[];
+  cellSelectionDecorations: any[];
   borderBoxes: any[];
   textNodes: any[];
+  rowSelectionDecoration: any;
   rowIndex: number | null;
   bindings: TableRowBinding[];
 };
@@ -146,7 +149,7 @@ export type DrawContext = {
   /** @deprecated Kept only for test fixtures; renderer ignores it. */
   valueTypeToSemType?: Partial<Record<ValueType, string>>;
   editable?: boolean;
-  registerCellBox: (cell: GraphCell, kind: GraphCellKind, box: any) => void;
+  registerCellBox: (cell: GraphCell, kind: GraphCellKind, box: any, selectionDecoration?: any) => void;
   unregisterCellBox?: (cell: GraphCell, kind: GraphCellKind, box: any) => void;
   registerRowBox: (
     cell: GraphCell,
@@ -154,6 +157,7 @@ export type DrawContext = {
     scrollOwner?: any,
     bodyHeight?: number,
     contentHeight?: number,
+    selectionDecoration?: any,
   ) => void;
   unregisterRowBox?: (cell: GraphCell, rowBox: any) => void;
   registerClickTarget: (

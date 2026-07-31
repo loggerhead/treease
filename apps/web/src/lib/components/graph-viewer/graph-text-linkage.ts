@@ -94,11 +94,6 @@ export function createGraphTextLinkageController(
   deps: GraphTextLinkageControllerDeps,
 ) {
   let revealPathToken = 0;
-  let activeSearchHighlights: Array<{
-    target: LeaferBox;
-    selected: boolean;
-    selectedStyle?: LeaferBox["selectedStyle"];
-  }> = [];
   let activeHighlightState: {
     path: PathSeg[];
     target?: GraphHighlightTarget;
@@ -106,38 +101,12 @@ export function createGraphTextLinkageController(
   let highlightValidationToken = 0;
 
   function clearRenderedSearchHighlights(): void {
-    if (activeSearchHighlights.length === 0) return;
-    activeSearchHighlights.forEach((entry) => {
-      entry.target.selected = entry.selected;
-      entry.target.selectedStyle = entry.selectedStyle;
-    });
-    activeSearchHighlights = [];
     deps.setGraphHighlightTestState(null);
   }
 
   function clearSearchHighlight(): void {
-    if (activeSearchHighlights.length === 0 && activeHighlightState == null) {
-      return;
-    }
     clearRenderedSearchHighlights();
     activeHighlightState = null;
-  }
-
-  function applySearchHighlight(
-    target: LeaferBox | null,
-    style: { fill?: string; stroke?: string },
-  ): void {
-    if (!target) return;
-    activeSearchHighlights.push({
-      target,
-      selected: target.selected,
-      selectedStyle: target.selectedStyle,
-    });
-    target.selectedStyle = {
-      ...(target.selectedStyle ?? {}),
-      ...style,
-    };
-    target.selected = true;
   }
 
   async function resolveTreePathByPosition(
@@ -553,7 +522,6 @@ export function createGraphTextLinkageController(
   ): boolean {
     const cellBoxByPathMap = deps.getCellBoxByPathMap();
     const nodeBoxMap = deps.getNodeBoxMap();
-    const renderConfig = deps.getRenderConfig();
     if (!path || path.length === 0) return false;
     const { renderHandle, node } = resolveNodeForPath(path);
     let entry = getCellEntry(cellBoxByPathMap, path);
@@ -585,19 +553,10 @@ export function createGraphTextLinkageController(
       }
       scrollRowIntoView(path, entry);
     }
-    const cellHighlight = renderConfig.colors.table.hoverCellBackground;
-    const rowHighlight = renderConfig.colors.table.hoverRowBackground;
-    if (entry?.row) applySearchHighlight(entry.row, { fill: rowHighlight });
     const { target: resolvedTarget, box: highlightBox } = getHighlightTarget(
       entry,
       options?.target,
     );
-    if (
-      (resolvedTarget === "key" || resolvedTarget === "value") &&
-      highlightBox
-    ) {
-      applySearchHighlight(highlightBox, { fill: cellHighlight });
-    }
     const focusBox = highlightBox ?? entry?.row ?? null;
     deps.setGraphHighlightTestState(
       path,
@@ -613,11 +572,7 @@ export function createGraphTextLinkageController(
         resolvedTarget,
         focusBox ?? entry?.row ?? null,
       );
-    } else if (renderHandle != null) {
-      const nodeBox = nodeBoxMap.get(renderHandle);
-      if (nodeBox) applySearchHighlight(nodeBox, { fill: rowHighlight });
     }
-    deps.updateLeafer();
     return true;
   }
 

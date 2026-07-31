@@ -79,6 +79,9 @@ test('rapid Column Navigator ArrowDown leaves one yellow graph cell', async ({ p
   await waitForColumnNavigatorSettled(page, 'k:table', 20_000);
 
   const workspace = page.getByTestId('column-navigator-graph');
+  // Move the pointer off the root graph so this test measures the shared
+  // graphHighlight decoration rather than an unrelated pointer-hover fill.
+  await workspace.hover();
   await workspace.focus();
   await page.keyboard.press('ArrowRight');
   await waitForColumnNavigatorSettled(page, 'k:table|i:0', 20_000);

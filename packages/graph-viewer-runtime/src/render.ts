@@ -96,6 +96,30 @@ export function createCellBox(
   return box;
 }
 
+/** A dedicated render slot between a cell/row background and its content. */
+export function createSelectionDecoration(
+  ctx: DrawContext,
+  parent: any,
+  bounds: Pick<GraphBoxArgs, 'width' | 'height' | 'cornerRadius'>,
+  fill: string,
+) {
+  const decoration = new ctx.BoxCtor({
+    name: 'graph-selection-decoration',
+    x: 0,
+    y: 0,
+    width: bounds.width,
+    height: bounds.height,
+    cornerRadius: bounds.cornerRadius,
+    fill,
+    visible: false,
+    hittable: false,
+    hitSelf: false,
+    hitChildren: false,
+  });
+  parent.add(decoration);
+  return decoration;
+}
+
 function isHeaderlessSequenceTable(node?: GraphNode): boolean {
   return !!node?.table && node.table.headerHeight === 0 && (node.table.columns?.length ?? 0) === 0;
 }
@@ -336,8 +360,15 @@ function createTableRowSlot(
   rowBox.hoverStyle = {
     fill: ctx.styleConfig.colors.table.hoverRowBackground,
   };
+  const rowSelectionDecoration = createSelectionDecoration(
+    ctx,
+    rowBox,
+    templateRow.boxArgs,
+    ctx.styleConfig.colors.table.hoverRowBackground,
+  );
   const cellContainer = createCellBox(ctx, rowBox, templateRow.cellBoxArgs, { fill: 'transparent' });
   const cellBoxes: any[] = [];
+  const cellSelectionDecorations: any[] = [];
   const borderBoxes: any[] = [];
   const textNodes: any[] = [];
   const bindings: TableRowBinding[] = [];
@@ -357,6 +388,12 @@ function createTableRowSlot(
       width: column?.boxArgs.width ?? cell.boxArgs.width,
     };
     const box = createCellBox(ctx, cellContainer, contentBounds, { fill: 'transparent' });
+    const selectionDecoration = createSelectionDecoration(
+      ctx,
+      box,
+      contentBounds,
+      ctx.styleConfig.colors.table.hoverCellBackground,
+    );
     const borderBox = createBorderStrokeBox(
       ctx,
       cellContainer,
@@ -371,17 +408,20 @@ function createTableRowSlot(
     };
     const text = createCellText(ctx, box, cell, kind, options.node.kind, options.node);
     cellBoxes.push(box);
+    cellSelectionDecorations.push(selectionDecoration);
     borderBoxes.push(borderBox);
     textNodes.push(text);
-    bindings.push({ cell, kind, box, text });
+    bindings.push({ cell, kind, box, selectionDecoration, text });
   });
 
   return {
     rowBox,
     cellContainer,
     cellBoxes,
+    cellSelectionDecorations,
     borderBoxes,
     textNodes,
+    rowSelectionDecoration,
     rowIndex: null,
     bindings,
   };
@@ -429,6 +469,8 @@ function bindTableRowSlot(
   entry.rowBox.y = row.boxArgs.y - options.rowStartY;
   entry.rowBox.width = row.boxArgs.width;
   entry.rowBox.height = row.boxArgs.height;
+  entry.rowSelectionDecoration.width = row.boxArgs.width;
+  entry.rowSelectionDecoration.height = row.boxArgs.height;
 
   entry.cellContainer.x = row.cellBoxArgs.x;
   entry.cellContainer.y = row.cellBoxArgs.y;
@@ -442,6 +484,7 @@ function bindTableRowSlot(
     cell.isHeaderlessTable = headerlessTable;
     const kind: GraphCellKind = cellIndex === 0 ? 'key' : 'value';
     const box = entry.cellBoxes[cellIndex];
+    const selectionDecoration = entry.cellSelectionDecorations[cellIndex];
     const borderBox = entry.borderBoxes[cellIndex];
     const text = entry.textNodes[cellIndex];
     const binding = entry.bindings[cellIndex];
@@ -455,6 +498,8 @@ function bindTableRowSlot(
     box.y = contentY;
     box.width = contentWidth;
     box.height = contentHeight;
+    selectionDecoration.width = contentWidth;
+    selectionDecoration.height = contentHeight;
     borderBox.x = contentX;
     borderBox.y = contentY;
     borderBox.width = contentWidth;
@@ -465,10 +510,18 @@ function bindTableRowSlot(
     binding.cell = cell;
     binding.kind = kind;
     binding.box = box;
+    binding.selectionDecoration = selectionDecoration;
     binding.text = text;
 
-    ctx.registerCellBox(cell, kind, box);
-    ctx.registerRowBox(cell, entry.rowBox, options.bodyViewport, options.viewportHeight, options.contentHeight);
+    ctx.registerCellBox(cell, kind, box, selectionDecoration);
+    ctx.registerRowBox(
+      cell,
+      entry.rowBox,
+      options.bodyViewport,
+      options.viewportHeight,
+      options.contentHeight,
+      entry.rowSelectionDecoration,
+    );
     ctx.registerClickTarget(box, cell, kind, options.node.kind);
     ctx.registerClickTarget(text, cell, kind, options.node.kind);
   });
@@ -513,16 +566,28 @@ export function drawSimpleNode(ctx: DrawContext, node: GraphNode) {
     rowBox.hoverStyle = {
       fill: ctx.styleConfig.colors.table.hoverRowBackground,
     };
+    const rowSelectionDecoration = createSelectionDecoration(
+      ctx,
+      rowBox,
+      row.boxArgs,
+      ctx.styleConfig.colors.table.hoverRowBackground,
+    );
     const cellBox = createCellBox(ctx, rowBox, row.cellBoxArgs, { fill: 'transparent' });
     row.cells.forEach((cell, cellIndex) => {
       const isValue = cellIndex === 1;
       const box = createCellBox(ctx, cellBox, cell.boxArgs, { fill: 'transparent' });
+      const selectionDecoration = createSelectionDecoration(
+        ctx,
+        box,
+        cell.boxArgs,
+        ctx.styleConfig.colors.table.hoverCellBackground,
+      );
       box.hitType = 'all';
       box.hoverStyle = {
         fill: ctx.styleConfig.colors.table.hoverCellBackground,
       };
-      ctx.registerCellBox(cell, isValue ? 'value' : 'key', box);
-      ctx.registerRowBox(cell, rowBox);
+      ctx.registerCellBox(cell, isValue ? 'value' : 'key', box, selectionDecoration);
+      ctx.registerRowBox(cell, rowBox, undefined, undefined, undefined, rowSelectionDecoration);
       const kind = isValue ? 'value' : 'key';
       ctx.registerClickTarget(box, cell, kind, node.kind);
       const text = createCellText(ctx, box, cell, kind, node.kind, node);

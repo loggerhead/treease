@@ -46,6 +46,9 @@ export type CellBoxEntry = {
   key?: LeaferBox;
   value?: LeaferBox;
   row?: LeaferBox;
+  keySelectionDecoration?: LeaferBox;
+  valueSelectionDecoration?: LeaferBox;
+  rowSelectionDecoration?: LeaferBox;
   scrollOwner?: ScrollableBox;
   bodyHeight?: number;
   contentHeight?: number;

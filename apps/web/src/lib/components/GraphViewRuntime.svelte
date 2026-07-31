@@ -825,6 +825,7 @@
       nodeLayer,
       overlayLayer,
     }),
+    getCellBoxByPathMap: () => graphRenderState.getCellBoxByPathMap(),
     setLayers: (layers) => {
       if ('edgeLayer' in layers) edgeLayer = (layers.edgeLayer ?? null) as Box | null;
       if ('nodeLayer' in layers) nodeLayer = (layers.nodeLayer ?? null) as Box | null;
@@ -1260,10 +1261,13 @@
     const graphHighlightSignature = buildGraphHighlightSignature(graphHighlight, buildPathKey);
     const appliedRevision = $graphAppliedRevision;
     if (isFullEditInteractionBlocked()) {
+      graphSceneController.syncGraphHighlight(null);
       resetAppliedGraphHighlightState({ clearHighlight: true });
     } else if (!graphHighlightSignature) {
+      graphSceneController.syncGraphHighlight(null);
       resetAppliedGraphHighlightState({ clearHighlight: true });
     } else if (!enableRevealSync) {
+      graphSceneController.syncGraphHighlight(null);
       resetAppliedGraphHighlightState();
     } else if (
       shouldApplyGraphHighlight({
@@ -1278,6 +1282,7 @@
     ) {
       lastAppliedGraphHighlightSignature = graphHighlightSignature;
       lastAppliedGraphHighlightRevision = appliedRevision;
+      graphSceneController.syncGraphHighlight(graphHighlight);
       revealPath(graphHighlight.path, {
         target: graphHighlight.target,
         navigate: graphHighlight.source === 'search' || graphHighlight.source === 'breadcrumb',

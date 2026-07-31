@@ -24,6 +24,14 @@ class MockBox {
   }
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((nextResolve) => {
+    resolve = nextResolve;
+  });
+  return { promise, resolve };
+}
+
 function createBaseDeps(overrides: Record<string, any> = {}) {
   return {
     getDocumentKey: () => 'cache',
@@ -134,8 +142,6 @@ describe('graph-text-linkage', () => {
       cellIndex: 1,
       target: 'value',
     });
-    expect(highlightedBox.selected).toBe(true);
-    expect(highlightedBox.selectedStyle?.fill).toBe('#ff0');
     expect(setGraphHighlightTestState).toHaveBeenCalledWith(path, 'value', highlightedBox);
   });
 
@@ -267,7 +273,6 @@ describe('graph-text-linkage', () => {
 
     controller.revealPath(path, { target: 'value', navigate: false });
     await Promise.resolve();
-    expect(highlightedBox.selected).toBe(true);
 
     cellMap.delete(pathKey);
     cellMap.set('$.library.book[46].title', {
@@ -334,8 +339,6 @@ describe('graph-text-linkage', () => {
     });
 
     controller.refreshActiveHighlight();
-    expect(highlightedBox.selected).toBe(true);
-    expect(highlightedBox.selectedStyle?.fill).toBe('#ff0');
     expect(updateActiveTempModel).not.toHaveBeenCalled();
   });
 
@@ -393,7 +396,6 @@ describe('graph-text-linkage', () => {
       graphAppliedRevision: 0,
     });
 
-    expect(highlightedBox.selected).toBe(true);
     expect(updateActiveTempModel).not.toHaveBeenCalled();
   });
 
@@ -426,7 +428,6 @@ describe('graph-text-linkage', () => {
     resolveQuery?.({ status: 'ready', data: null });
     await reconciliation;
 
-    expect(highlightedBox.selected).toBe(true);
     expect(updateActiveTempModel).not.toHaveBeenCalled();
   });
 
@@ -474,8 +475,38 @@ describe('graph-text-linkage', () => {
     controller.revealPath(path, { target: 'node', navigate: false });
     await Promise.resolve();
 
-    expect(nodeBox.selected).toBe(true);
-    expect(nodeBox.selectedStyle?.fill).toBe('#eee');
+  });
+
+  it('drops a stale materialized reveal before it can publish a visual target', async () => {
+    const firstPath = [{ tag: 0, key: 'first', index: 0 }] as any[];
+    const secondPath = [{ tag: 0, key: 'second', index: 0 }] as any[];
+    const firstMaterialization = deferred<boolean>();
+    const setGraphHighlightTestState = vi.fn();
+    const controller = createGraphTextLinkageController(createBaseDeps({
+      getNodeDataMap: () => new Map([
+        [1, { renderHandle: 1, path: firstPath }],
+        [2, { renderHandle: 2, path: secondPath }],
+      ]),
+      getPathKeyToRenderHandleMap: () => new Map([
+        [buildPathKey(firstPath), 1],
+        [buildPathKey(secondPath), 2],
+      ]),
+      getCellBoxByPathMap: () => new Map([
+        [buildPathKey(firstPath), { value: new MockBox(), row: new MockBox() }],
+        [buildPathKey(secondPath), { value: new MockBox(), row: new MockBox() }],
+      ]),
+      materializeTarget: (handle: number) => handle === 1 ? firstMaterialization.promise : Promise.resolve(true),
+      setGraphHighlightTestState,
+    }));
+
+    const first = controller.revealPath(firstPath, { target: 'value', navigate: true });
+    await Promise.resolve();
+    const second = controller.revealPath(secondPath, { target: 'value', navigate: true });
+    firstMaterialization.resolve(true);
+
+    await expect(first).resolves.toBe(false);
+    await expect(second).resolves.toBe(true);
+    expect(setGraphHighlightTestState).toHaveBeenLastCalledWith(secondPath, 'value', expect.any(MockBox));
   });
 
   it('derives headerless table row scroll fallback directly from the target path', async () => {

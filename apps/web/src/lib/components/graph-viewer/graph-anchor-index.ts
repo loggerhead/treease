@@ -53,11 +53,14 @@ export function registerCellBox(
   cell: GraphCell,
   kind: GraphCellKind,
   box: LeaferBox,
+  selectionDecoration?: LeaferBox,
 ): void {
   if (kind !== 'key' && kind !== 'value') return;
   upsertCellEntry(map, cell, (entry) => {
     if (kind === 'key') entry.key = box;
     if (kind === 'value') entry.value = box;
+    if (kind === 'key') entry.keySelectionDecoration = selectionDecoration;
+    if (kind === 'value') entry.valueSelectionDecoration = selectionDecoration;
   });
 }
 
@@ -71,6 +74,8 @@ export function unregisterCellBox(
   updateCellEntry(map, cell, (entry) => {
     if (kind === 'key' && entry.key === box) entry.key = undefined;
     if (kind === 'value' && entry.value === box) entry.value = undefined;
+    if (kind === 'key' && entry.key === undefined) entry.keySelectionDecoration = undefined;
+    if (kind === 'value' && entry.value === undefined) entry.valueSelectionDecoration = undefined;
   });
 }
 
@@ -81,10 +86,12 @@ export function registerRowBox(
   scrollOwner?: ScrollableBox,
   bodyHeight?: number,
   contentHeight?: number,
+  selectionDecoration?: LeaferBox,
 ): void {
   upsertCellEntry(map, cell, (entry) => {
     entry.row = rowBox;
     entry.cell = cell;
+    entry.rowSelectionDecoration = selectionDecoration;
     if (scrollOwner) entry.scrollOwner = scrollOwner;
     if (bodyHeight) entry.bodyHeight = bodyHeight;
     if (contentHeight) entry.contentHeight = contentHeight;
@@ -98,13 +105,14 @@ export function unregisterRowBox(map: Map<string, CellBoxEntry>, cell: GraphCell
     entry.scrollOwner = undefined;
     entry.bodyHeight = undefined;
     entry.contentHeight = undefined;
+    entry.rowSelectionDecoration = undefined;
   });
 }
 
 export function createCellEntryBindings(map: Map<string, CellBoxEntry>) {
   return {
-    registerCellBox: (cell: GraphCell, kind: GraphCellKind, box: LeaferBox): void => {
-      registerCellBox(map, cell, kind, box);
+    registerCellBox: (cell: GraphCell, kind: GraphCellKind, box: LeaferBox, selectionDecoration?: LeaferBox): void => {
+      registerCellBox(map, cell, kind, box, selectionDecoration);
     },
     unregisterCellBox: (cell: GraphCell, kind: GraphCellKind, box: LeaferBox): void => {
       unregisterCellBox(map, cell, kind, box);
@@ -115,8 +123,9 @@ export function createCellEntryBindings(map: Map<string, CellBoxEntry>) {
       scrollOwner?: ScrollableBox,
       bodyHeight?: number,
       contentHeight?: number,
+      selectionDecoration?: LeaferBox,
     ): void => {
-      registerRowBox(map, cell, rowBox, scrollOwner, bodyHeight, contentHeight);
+      registerRowBox(map, cell, rowBox, scrollOwner, bodyHeight, contentHeight, selectionDecoration);
     },
     unregisterRowBox: (cell: GraphCell, rowBox: LeaferBox): void => {
       unregisterRowBox(map, cell, rowBox);
@@ -163,6 +172,21 @@ export function getHighlightTarget(
     return { target: 'node', box: entry.row };
   }
   return { target: preferredTarget ?? 'node', box: null };
+}
+
+export function getHighlightDecorations(
+  entry: CellBoxEntry | null | undefined,
+  preferredTarget?: GraphAnchorTarget,
+): LeaferBox[] {
+  if (!entry) return [];
+  const resolvedTarget = getHighlightTarget(entry, preferredTarget).target;
+  const targetDecoration =
+    resolvedTarget === 'key'
+      ? entry.keySelectionDecoration
+      : resolvedTarget === 'value'
+        ? entry.valueSelectionDecoration
+        : entry.rowSelectionDecoration;
+  return [...new Set([entry.rowSelectionDecoration, targetDecoration].filter((box): box is LeaferBox => !!box))];
 }
 
 export async function resolveCellPath(
