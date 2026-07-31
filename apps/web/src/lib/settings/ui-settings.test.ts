@@ -1,10 +1,11 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { TOKEN_TYPES, TOKEN_TYPE_THEME_KEY, TREE_NODE_TOKEN_TYPES } from '@core-wasm/index';
 import {
   mergeSettings,
   buildEditorTheme,
   buildEditorThemeSignature,
   defaultSettings,
+  applyEditorTheme,
   sanitizeSettingsDocument,
   settingsJsonSchema,
 } from './ui-settings';
@@ -162,6 +163,35 @@ describe('ui-settings', () => {
           expect.objectContaining({ token: 'delimiter.colon', foreground: '4b5563' }),
         ]),
       );
+    });
+  });
+
+  describe('applyEditorTheme', () => {
+    it('does not reset a shared Monaco runtime for the same theme signature', () => {
+      const defineTheme = vi.fn();
+      const setTheme = vi.fn();
+      const monaco = { editor: { defineTheme, setTheme } } as any;
+
+      applyEditorTheme(monaco, 'tree-sitter-light', defaultSettings);
+      applyEditorTheme(monaco, 'tree-sitter-light', defaultSettings);
+
+      expect(defineTheme).toHaveBeenCalledTimes(1);
+      expect(setTheme).toHaveBeenCalledTimes(1);
+    });
+
+    it('reapplies the theme when theme-affecting settings change', () => {
+      const defineTheme = vi.fn();
+      const setTheme = vi.fn();
+      const monaco = { editor: { defineTheme, setTheme } } as any;
+      const changedSettings = mergeSettings(defaultSettings, {
+        editor: { semanticTypeColors: { str: '#ff0000' } },
+      } as any);
+
+      applyEditorTheme(monaco, 'tree-sitter-light', defaultSettings);
+      applyEditorTheme(monaco, 'tree-sitter-light', changedSettings);
+
+      expect(defineTheme).toHaveBeenCalledTimes(2);
+      expect(setTheme).toHaveBeenCalledTimes(2);
     });
   });
 

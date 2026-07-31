@@ -70,9 +70,32 @@ body {
   user-select: none;
 }
 
+.app-split-divider::after {
+  content: "";
+  position: absolute;
+  z-index: 1;
+  pointer-events: none;
+  border-radius: 999px;
+  background: var(--accent);
+  opacity: 0;
+  transition: opacity 140ms ease;
+}
+
+.app-split-divider:hover::after,
+.app-split-divider--dragging::after {
+  opacity: 1;
+}
+
 .app-split-divider--vertical {
   @apply absolute top-0 z-10 h-full cursor-col-resize;
   width: 10px;
+}
+
+.app-split-divider--vertical::after {
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 2px;
 }
 
 .app-split-divider__handle {
@@ -84,6 +107,13 @@ body {
 .app-split-divider--horizontal {
   @apply relative z-10 w-full cursor-row-resize;
   height: 1px;
+}
+
+.app-split-divider--horizontal::after {
+  top: -1px;
+  right: 0;
+  left: 0;
+  height: 2px;
 }
 
 .app-split-divider--horizontal::before {

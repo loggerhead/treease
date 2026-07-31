@@ -57,9 +57,12 @@ export function ensureLanguageRegistered(
 export function createSemanticTokensRegistrar(options: SemanticTokensRegistrarOptions) {
   const { monaco, tokenTypes } = options;
   const registeredLanguages = new Set<string>();
-  const activeRefreshListeners = new Set<() => void>();
+  const refreshListenersByLanguage = new Map<string, Set<() => void>>();
   const semanticTokensByDocumentKey = new Map<string, ArrayBuffer>();
   const pendingByDocumentKey = new Map<string, Set<(tokens: ArrayBuffer | null) => void>>();
+  const pendingRefreshLanguages = new Set<string>();
+  let refreshAllPending = false;
+  let refreshScheduled = false;
 
   const settlePending = (documentKey: string, tokens: ArrayBuffer | null) => {
     const pending = pendingByDocumentKey.get(documentKey);
@@ -101,8 +104,24 @@ export function createSemanticTokensRegistrar(options: SemanticTokensRegistrarOp
     });
   };
 
-  const refreshSemanticTokens = (_languageId?: string) => {
-    activeRefreshListeners.forEach((listener) => listener());
+  const flushSemanticTokenRefresh = () => {
+    refreshScheduled = false;
+    const listeners = refreshAllPending
+      ? [...refreshListenersByLanguage.values()].flatMap((languageListeners) => [...languageListeners])
+      : [...pendingRefreshLanguages].flatMap((languageId) => [
+          ...(refreshListenersByLanguage.get(languageId) ?? []),
+        ]);
+    refreshAllPending = false;
+    pendingRefreshLanguages.clear();
+    new Set(listeners).forEach((listener) => listener());
+  };
+
+  const refreshSemanticTokens = (languageId?: string) => {
+    if (languageId) pendingRefreshLanguages.add(languageId);
+    else refreshAllPending = true;
+    if (refreshScheduled) return;
+    refreshScheduled = true;
+    queueMicrotask(flushSemanticTokenRefresh);
   };
 
   const primeSemanticTokens = (documentKey: string, semanticTokens: ArrayBuffer) => {
@@ -110,9 +129,6 @@ export function createSemanticTokensRegistrar(options: SemanticTokensRegistrarOp
     const tokens = semanticTokens.slice(0);
     semanticTokensByDocumentKey.set(documentKey, tokens);
     settlePending(documentKey, tokens);
-    // Priming changes the provider's result for a live model. Monaco otherwise
-    // keeps its last lexical rendering until a later, unrelated editor change.
-    refreshSemanticTokens();
   };
 
   const clearSemanticTokens = (documentKey?: string) => {
@@ -132,18 +148,21 @@ export function createSemanticTokensRegistrar(options: SemanticTokensRegistrarOp
     const provider: Monaco.languages.DocumentSemanticTokensProvider = {
       onDidChange: (listener) => {
         const wrapped = () => listener(undefined);
-        activeRefreshListeners.add(wrapped);
+        let languageListeners = refreshListenersByLanguage.get(languageId);
+        if (!languageListeners) {
+          languageListeners = new Set();
+          refreshListenersByLanguage.set(languageId, languageListeners);
+        }
+        languageListeners.add(wrapped);
         return {
-          dispose: () => {
-            activeRefreshListeners.delete(wrapped);
-          },
+          dispose: () => languageListeners?.delete(wrapped),
         };
       },
       getLegend: () => ({
         tokenTypes: [...tokenTypes],
         tokenModifiers: [],
       }),
-      provideDocumentSemanticTokens: async (
+      provideDocumentSemanticTokens: (
         textModel: Monaco.editor.ITextModel,
         _lastResultId: string | null,
         token: Monaco.CancellationToken,
@@ -152,45 +171,48 @@ export function createSemanticTokensRegistrar(options: SemanticTokensRegistrarOp
         const documentKey =
           (textModel as Monaco.editor.ITextModel & { __treeaseDocumentKey?: string }).__treeaseDocumentKey ??
           `${textModel.uri.toString()}-${textModel.getVersionId()}`;
-        if (token?.isCancellationRequested) return { data: new Uint32Array() };
-        try {
-          const _validate = (data: Uint32Array) =>
-            validateSemanticTokensData(data, textModel.getLineCount(), (line) => textModel.getLineMaxColumn(line) - 1);
-          const _isCurrentVersion = () => textModel.getVersionId() === requestVersionId;
-          const primed = semanticTokensByDocumentKey.get(documentKey);
-          if (primed) {
-            if (token?.isCancellationRequested) return { data: new Uint32Array() };
-            if (!_isCurrentVersion()) return { data: new Uint32Array() };
-            const data = new Uint32Array(primed.slice(0));
-            if (!_validate(data)) return { data: new Uint32Array() };
-            return { data };
-          }
-          const resolved = await resolveDocumentAnalysis({
-            documentKey,
-          });
-          if (token?.isCancellationRequested) return { data: new Uint32Array() };
-          if (!_isCurrentVersion()) return { data: new Uint32Array() };
-          if (resolved.status !== 'resolved' || !(resolved.analysis.semanticTokens instanceof ArrayBuffer)) {
-            if (!(options.isImportActive?.() ?? false)) {
-              const delayed = await waitForPrimedSemanticTokens(documentKey, token);
-              if (delayed && !token?.isCancellationRequested) {
-                if (!_isCurrentVersion()) return { data: new Uint32Array() };
-                const data = new Uint32Array(delayed);
-                if (!_validate(data)) return { data: new Uint32Array() };
-                return { data };
-              }
-            }
-            return { data: new Uint32Array() };
-          }
-          primeSemanticTokens(documentKey, resolved.analysis.semanticTokens);
-          if (!_isCurrentVersion()) return { data: new Uint32Array() };
-          const freshData = new Uint32Array(resolved.analysis.semanticTokens.slice(0));
-          if (!_validate(freshData)) return { data: new Uint32Array() };
-          return { data: freshData };
-        } catch (error) {
-          console.error('[semanticTokens] failed', { language: languageId, error });
+        if (token?.isCancellationRequested) {
           return { data: new Uint32Array() };
         }
+        const validate = (data: Uint32Array) =>
+          validateSemanticTokensData(data, textModel.getLineCount(), (line) => textModel.getLineMaxColumn(line) - 1);
+        const isCurrentVersion = () => textModel.getVersionId() === requestVersionId;
+        const primed = semanticTokensByDocumentKey.get(documentKey);
+        if (primed) {
+          const data = new Uint32Array(primed.slice(0));
+          if (!isCurrentVersion() || !validate(data)) return { data: new Uint32Array() };
+          // Keep cache hits synchronous. Monaco otherwise clears the current
+          // semantic decorations while awaiting an already available result.
+          return { data };
+        }
+        return (async () => {
+          try {
+            const resolved = await resolveDocumentAnalysis({
+              documentKey,
+            });
+            if (token?.isCancellationRequested || !isCurrentVersion()) return { data: new Uint32Array() };
+            if (resolved.status !== 'resolved' || !(resolved.analysis.semanticTokens instanceof ArrayBuffer)) {
+              if (!(options.isImportActive?.() ?? false)) {
+                const delayed = await waitForPrimedSemanticTokens(documentKey, token);
+                if (delayed && !token?.isCancellationRequested) {
+                  if (!isCurrentVersion()) return { data: new Uint32Array() };
+                  const data = new Uint32Array(delayed);
+                  if (!validate(data)) return { data: new Uint32Array() };
+                  return { data };
+                }
+              }
+              return { data: new Uint32Array() };
+            }
+            primeSemanticTokens(documentKey, resolved.analysis.semanticTokens);
+            if (!isCurrentVersion()) return { data: new Uint32Array() };
+            const freshData = new Uint32Array(resolved.analysis.semanticTokens.slice(0));
+            if (!validate(freshData)) return { data: new Uint32Array() };
+            return { data: freshData };
+          } catch (error) {
+            console.error('[semanticTokens] failed', { language: languageId, error });
+            return { data: new Uint32Array() };
+          }
+        })();
       },
       releaseDocumentSemanticTokens: () => {},
     };

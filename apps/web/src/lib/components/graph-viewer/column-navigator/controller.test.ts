@@ -176,6 +176,61 @@ describe('path-driven column navigator controller', () => {
     expect(controller.getChain().at(-1)?.content?.sourceText).toBe('{1}');
   });
 
+  it('keeps the already materialized ancestor columns visible while navigation is loading', async () => {
+    installDocument(
+      {
+        '': readyPathValue('object', '{2}'),
+        user: readyPathValue('object', '{1}'),
+        'user.name': readyPathValue('string', '"Alice"'),
+      },
+      {
+        '': [item(keyPath('user'))],
+        user: [item(keyPath('user', 'name'), 'string')],
+      },
+    );
+    const pendingLeaf = deferred<ReturnType<typeof readyPathValue>>();
+    mocks.queryPathValue.mockImplementation(async ({ path }: { path: Array<{ key?: string }> }) => {
+      if (pathKey(path) === 'user.name') return pendingLeaf.promise;
+      return ({ '': readyPathValue('object', '{2}'), user: readyPathValue('object', '{1}') } as any)[pathKey(path)] ?? {
+        status: 'ready',
+        data: null,
+      };
+    });
+    const { controller, states } = createController();
+    await controller.openPath(keyPath('user'));
+
+    const navigation = controller.selectPath(keyPath('user', 'name'));
+    await Promise.resolve();
+
+    expect(states.at(-1)?.chain.map((pane: any) => [pane.pathKey, pane.status])).toEqual([
+      ['$', 'ready'],
+      ['k:user', 'ready'],
+      ['k:user|k:name', 'loading'],
+    ]);
+
+    pendingLeaf.resolve(readyPathValue('string', '"Alice"'));
+    await navigation;
+  });
+
+  it('reuses path values shared by sibling navigations within the same snapshot', async () => {
+    installDocument(
+      {
+        '': readyPathValue('object', '{2}'),
+        alpha: readyPathValue('number', '1'),
+        beta: readyPathValue('number', '2'),
+      },
+      { '': [item(keyPath('alpha'), 'number'), item(keyPath('beta'), 'number')] },
+    );
+    const { controller } = createController();
+    await controller.openPath(keyPath('alpha'));
+    await controller.selectPath(keyPath('beta'));
+
+    const queriedPaths = mocks.queryPathValue.mock.calls.map(([input]) => pathKey(input.path));
+    expect(queriedPaths.filter((path) => path === '')).toHaveLength(1);
+    expect(queriedPaths.filter((path) => path === 'alpha')).toHaveLength(1);
+    expect(queriedPaths.filter((path) => path === 'beta')).toHaveLength(1);
+  });
+
   it('binds subtree text to the detail editor while the selected container keeps its column', async () => {
     installDocument(
       {

@@ -1348,7 +1348,18 @@
         selectionRange.end.column,
       ),
     );
-    editor.revealPositionInCenter(selectionRange.start);
+    // Navigating between fields should not force Monaco to rebuild the visible
+    // semantic-token viewport when the target is already visible.  The
+    // unconditional center reveal causes a transient loss of semantic
+    // decorations on every navigation change.
+    editor.revealRangeInCenterIfOutsideViewport(
+      new monaco.Range(
+        selectionRange.start.lineNumber,
+        selectionRange.start.column,
+        selectionRange.end.lineNumber,
+        selectionRange.end.column,
+      ),
+    );
     if (shouldFocusEditor) {
       unfocusedExternalRevealSelection = false;
       editor.focus();

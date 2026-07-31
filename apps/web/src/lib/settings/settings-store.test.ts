@@ -217,6 +217,16 @@ describe('settings-store', () => {
     }));
   });
 
+  it('persists a column navigator height without applying it as a user setting', async () => {
+    await settingsStore.saveColumnNavigatorHeight(320);
+    const state = settingsStore.get();
+    expect(settingsStore.getColumnNavigatorHeight()).toBe(320);
+    expect(state.document).toEqual(expect.objectContaining({
+      __treeaseEditorLayout: expect.objectContaining({ columnNavigatorHeightPx: 320 })
+    }));
+    expect(state.settings).not.toHaveProperty('__treeaseEditorLayout');
+  });
+
   it('keeps editor layout state out of the Settings dialog document and preserves it on dialog save', async () => {
     await settingsStore.saveEditorSplitRatio(0.42);
     let dialogDocument: unknown;
@@ -228,7 +238,7 @@ describe('settings-store', () => {
     expect(settingsStore.getEditorSplitRatio()).toBe(0.42);
     expect(settingsStore.get().document).toEqual(expect.objectContaining({
       parser: { enableNest: false },
-      __treeaseEditorLayout: { splitRatio: 0.42 }
+      __treeaseEditorLayout: expect.objectContaining({ splitRatio: 0.42 })
     }));
   });
 

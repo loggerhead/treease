@@ -11,6 +11,7 @@
   import { activeTempModel } from '../store/graph-selection-store'
   import { jsonBlockSelection } from '../store/full-edit-ui-store'
   import type { PathSeg } from '../store/tree-path'
+  import type { ColumnNavigatorState } from './graph-viewer/column-navigator/types'
   import { readImportSourceSample, resolveImportSourceFormat } from '../import/resolve-import-source'
   import { callSharedWasmWorker } from '../wasm/wasm-worker-singleton'
   import {
@@ -51,6 +52,7 @@
   export let onTextScroll: (payload: { scrollTop: number; scrollLeft: number }) => void = () => {}
   export let onSwap: (payload: { rightText: string; rightLanguage: SupportedEditorLanguageId }) => void = () => {}
   export let onGraphRuntimeState: (payload: RuntimeStateEventDetail) => void = () => {}
+  export let onColumnNavigatorState: (payload: ColumnNavigatorState) => void = () => {}
   export let enableRevealSync = true
   export let synchronizedRuntimeLoading = false
   export let graphOnly = false
@@ -379,6 +381,18 @@
     return await graphViewer?.restoreColumnNavigatorPath?.(path) ?? false;
   }
 
+  export async function goColumnNavigatorBack(): Promise<void> {
+    await graphViewer?.goColumnNavigatorBack?.();
+  }
+
+  export async function goColumnNavigatorForward(): Promise<void> {
+    await graphViewer?.goColumnNavigatorForward?.();
+  }
+
+  export async function selectColumnNavigatorPath(path: PathSeg[]): Promise<void> {
+    await graphViewer?.selectColumnNavigatorPath?.(path);
+  }
+
   export function setTextScrollPosition(position: { scrollTop: number; scrollLeft: number }) {
     if (graphOnly) return
     sidecarEditor?.setScrollPosition(position)
@@ -574,6 +588,7 @@
       onEntitlementBlocked={handleEntitlementBlocked}
       on:reveal={handleGraphReveal}
       on:runtime-state={handleGraphViewerRuntimeState}
+      on:column-navigator-state={(event) => onColumnNavigatorState(event.detail)}
     />
   </div>
   {#if pricingOverlayVisible}

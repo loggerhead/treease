@@ -175,14 +175,29 @@ export function buildEditorThemeSignature(settings: Settings): string {
   });
 }
 
+type AppliedEditorTheme = {
+  themeName: string;
+  signature: string;
+};
+
+// Monaco themes are global to a loaded Monaco runtime. Keep this state at the
+// runtime boundary so mounting another editor surface does not reset the DOM
+// decorations of editors that are already visible.
+const appliedEditorThemes = new WeakMap<object, AppliedEditorTheme>();
+
 /** Apply the one shared semantic palette to every Monaco surface. */
 export function applyEditorTheme(
   monaco: typeof import('monaco-editor'),
   themeName: string,
   settings: Settings,
 ): void {
+  const signature = buildEditorThemeSignature(settings);
+  const applied = appliedEditorThemes.get(monaco);
+  if (applied?.themeName === themeName && applied.signature === signature) return;
+
   monaco.editor.defineTheme(themeName, buildEditorTheme(settings) as Monaco.editor.IStandaloneThemeData);
   monaco.editor.setTheme(themeName);
+  appliedEditorThemes.set(monaco, { themeName, signature });
 }
 
 function mergeObject(target: any, source: any) {

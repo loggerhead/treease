@@ -9,9 +9,11 @@ import {
   type SettingsDocument
 } from './ui-settings';
 import {
+  getColumnNavigatorHeight,
   getEditorSplitRatio,
   mergeEditorLayoutState,
   omitEditorLayoutState,
+  withColumnNavigatorHeight,
   withEditorSplitRatio,
 } from './editor-layout-state';
 import { handleError } from '../utils/error-handler';
@@ -149,6 +151,13 @@ function createSettingsStore() {
       await settingsStore.saveDocument(document);
     },
     getEditorSplitRatio: () => getEditorSplitRatio(get(internalStore).document),
+    saveColumnNavigatorHeight: async (heightPx: number) => {
+      const currentState = get(internalStore);
+      const document = withColumnNavigatorHeight(currentState.document, heightPx);
+      if (document === currentState.document) return;
+      await settingsStore.saveDocument(document);
+    },
+    getColumnNavigatorHeight: () => getColumnNavigatorHeight(get(internalStore).document),
     reset: async () => {
       const document = mergeSettings(defaultSettings, {});
       internalStore.set({ document, settings: document, status: 'ready' });

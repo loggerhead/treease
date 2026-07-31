@@ -94,7 +94,6 @@ export class GraphViewerRuntime {
         if (!this.workspaceProbeTarget && (nodeKind === 'object' || nodeKind === 'table')) this.workspaceProbeTarget = target;
         pointerController.bindPointerClick(target, () => {
           this.lastTargetActivationAt = Date.now();
-          this.highlight(target.parent ?? target);
           this.options.interaction?.onActivate?.({ path: cell.path, nodeKind, target: 'cell' });
         });
         return '';
@@ -118,7 +117,6 @@ export class GraphViewerRuntime {
         registerMetaClickTarget: (target: any, cell: GraphCell) => {
           pointerController.bindPointerClick(target, () => {
             this.lastTargetActivationAt = Date.now();
-            this.highlight(target.parent ?? target);
             this.options.interaction?.onActivate?.({ path: cell.path, nodeKind: node.kind, target: 'cell' });
           });
         },

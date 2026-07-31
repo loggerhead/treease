@@ -4,6 +4,7 @@
   import type { RuntimeStateEventDetail } from '../runtime-loading';
   import type { UsageBlock } from '../billing/entitlement-gate';
   import type { PathSeg } from '../store/tree-path';
+  import type { ColumnNavigatorState } from './graph-viewer/column-navigator/types';
   import GraphViewRuntime from './GraphViewRuntime.svelte';
 
   type GraphSearchTarget = 'node' | 'key' | 'value';
@@ -21,7 +22,11 @@
   export let readonly = false;
   export let onEntitlementBlocked: (block: UsageBlock) => void = () => {};
 
-  const dispatch = createEventDispatcher<{ reveal: unknown; 'runtime-state': RuntimeStateEventDetail }>();
+  const dispatch = createEventDispatcher<{
+    reveal: unknown;
+    'runtime-state': RuntimeStateEventDetail;
+    'column-navigator-state': ColumnNavigatorState;
+  }>();
   let runtime: GraphViewRuntime | null = null;
 
   export function revealSearchResult(result: GraphSearchResult): void {
@@ -45,6 +50,18 @@
 
   export async function restoreColumnNavigatorPath(path: PathSeg[]): Promise<boolean> {
     return await runtime?.restoreColumnNavigatorPath(path) ?? false;
+  }
+
+  export async function goColumnNavigatorBack(): Promise<void> {
+    await runtime?.goColumnNavigatorBack();
+  }
+
+  export async function goColumnNavigatorForward(): Promise<void> {
+    await runtime?.goColumnNavigatorForward();
+  }
+
+  export async function selectColumnNavigatorPath(path: PathSeg[]): Promise<void> {
+    await runtime?.selectColumnNavigatorPath(path);
   }
 
   export async function exportImage(): Promise<void> {
@@ -72,4 +89,5 @@
   {onEntitlementBlocked}
   on:reveal={(event) => dispatch('reveal', event.detail)}
   on:runtime-state={(event) => dispatch('runtime-state', event.detail)}
+  on:column-navigator-state={(event) => dispatch('column-navigator-state', event.detail)}
 />

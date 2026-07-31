@@ -15,6 +15,7 @@ import {
   formatColumnNavigatorPath,
   shouldOpenColumnNavigatorContent,
 } from '../column-navigator-graph';
+import type { ColumnNavigatorGraphData } from '../column-navigator-types';
 import type {
   ColumnNavigatorColumnItem,
   ColumnNavigatorContentState,
@@ -126,6 +127,10 @@ export function createColumnNavigatorController(deps: ColumnNavigatorControllerD
   let disposed = false;
   let navigationOperation: ViewRuntimeOperation | null = null;
   let refreshOperation: ViewRuntimeOperation | null = null;
+  const pathValueCache = new Map<
+    string,
+    { signature: string; promise: Promise<{ content: ColumnNavigatorContentState; isContent: boolean } | null> }
+  >();
 
   function visiblePanes(): VisibleColumnNavigatorPaneState[] {
     return chain.map((pane, absoluteIndex) => ({
@@ -178,23 +183,45 @@ export function createColumnNavigatorController(deps: ColumnNavigatorControllerD
     isContent: boolean;
   } | null> {
     const snapshotId = deps.getWorkspaceSnapshotId();
-    const pathValue = await queryPathValue({ documentKey: deps.getDocumentKey(), snapshotId, path });
-    if (pathValue.status !== 'ready' || !pathValue.data) return null;
-    const content: ColumnNavigatorContentState = {
-      tabId: `column-navigator-content:${workspacePathKey(path)}`,
-      tabName: formatColumnNavigatorPath(path),
-      sourceText: pathValue.data.sourceText || pathValue.data.displayText,
-      valueType: pathValue.data.valueType as ValueType,
-      semanticTokens: new Uint32Array(pathValue.data.semanticTokens.data).buffer,
-      snapshotId,
-    };
-    return { content, isContent: shouldOpenColumnNavigatorContent(pathValue.data) };
+    const pathKey = workspacePathKey(path);
+    const signature = `${deps.getDocumentKey()}|${snapshotId ?? 'no-snapshot'}`;
+    const cached = pathValueCache.get(pathKey);
+    if (cached?.signature === signature) return cached.promise;
+
+    const promise = queryPathValue({ documentKey: deps.getDocumentKey(), snapshotId, path }).then((pathValue) => {
+      if (pathValue.status !== 'ready' || !pathValue.data) return null;
+      const content: ColumnNavigatorContentState = {
+        tabId: `column-navigator-content:${pathKey}`,
+        tabName: formatColumnNavigatorPath(path),
+        sourceText: pathValue.data.sourceText || pathValue.data.displayText,
+        valueType: pathValue.data.valueType as ValueType,
+        semanticTokens: new Uint32Array(pathValue.data.semanticTokens.data).buffer,
+        snapshotId,
+      };
+      return { content, isContent: shouldOpenColumnNavigatorContent(pathValue.data) };
+    }).catch((error) => {
+      if (pathValueCache.get(pathKey)?.promise === promise) pathValueCache.delete(pathKey);
+      throw error;
+    });
+    pathValueCache.set(pathKey, { signature, promise });
+    return promise;
   }
 
   async function prepareWorkspace(path: PathSeg[], nextRequestId: number): Promise<PreparedWorkspace> {
     const nextChain: ColumnNavigatorPaneState[] = [];
     const prefixes = buildWorkspacePathPrefixes(path);
     const reads = await Promise.all(prefixes.map((prefix) => readPath(prefix)));
+    const firstContentIndex = reads.findIndex((read) => read?.isContent === true);
+    const lastGraphIndex = firstContentIndex === -1 ? prefixes.length - 1 : firstContentIndex - 1;
+    const graphResults = await Promise.all(
+      prefixes.map((prefix, index) => {
+        if (index > lastGraphIndex || !reads[index]) return Promise.resolve({ graph: null as ColumnNavigatorGraphData | null });
+        return graphCache
+          .prepareGraph(prefix)
+          .then((graph) => ({ graph }))
+          .catch((error) => ({ error }));
+      }),
+    );
     for (let index = 0; index < prefixes.length; index += 1) {
       const prefix = prefixes[index]!;
       const read = reads[index];
@@ -215,7 +242,9 @@ export function createColumnNavigatorController(deps: ColumnNavigatorControllerD
         return { activePath: clonePath(prefix), chain: nextChain };
       }
       try {
-        const graph = await graphCache.prepareGraph(prefix);
+        const graphResult = graphResults[index]!;
+        if ('error' in graphResult) throw graphResult.error;
+        const graph = graphResult.graph;
         const items = graph ? buildColumnNavigatorColumnItems(graph, prefix) : [];
         if (!items.length && samePath(prefix, path)) {
           nextChain.push({
@@ -300,7 +329,13 @@ export function createColumnNavigatorController(deps: ColumnNavigatorControllerD
     const requestedPathKey = workspacePathKey(path);
     open = true;
     activePath = clonePath(path);
-    chain = [loadingPane(path, nextRequestId)];
+    const preservedChain = chain.filter(
+      (pane) =>
+        pane.kind === 'column' &&
+        pane.path.length < path.length &&
+        workspacePathKey(path.slice(0, pane.path.length)) === pane.pathKey,
+    );
+    chain = [...preservedChain, loadingPane(path, nextRequestId)];
     if (options.recordHistory) recordHistory(path);
     deps.markSubgraphRequested({
       requestId: nextRequestId,
@@ -469,6 +504,7 @@ export function createColumnNavigatorController(deps: ColumnNavigatorControllerD
     void navigationOperation?.cancel();
     void refreshOperation?.cancel();
     graphCache.clear();
+    pathValueCache.clear();
     await refresh();
   }
 
@@ -499,6 +535,13 @@ export function createColumnNavigatorController(deps: ColumnNavigatorControllerD
     emitState();
   }
 
+  function setHeight(nextHeightPx: number): void {
+    const next = clampHeight(nextHeightPx);
+    if (next === heightPx) return;
+    heightPx = next;
+    emitState();
+  }
+
   function syncHeightToShell(): void {
     if (!open) return;
     const next = clampHeight(heightPx);
@@ -522,6 +565,7 @@ export function createColumnNavigatorController(deps: ColumnNavigatorControllerD
     deps.clearSearchHighlight();
     deps.clearActiveGraphSelection();
     graphCache.clear();
+    pathValueCache.clear();
     emitState();
   }
 
@@ -549,6 +593,7 @@ export function createColumnNavigatorController(deps: ColumnNavigatorControllerD
     reset,
     dispose,
     syncHeightToShell,
+    setHeight,
     startDividerDrag,
     moveDividerDrag,
     endDividerDrag,

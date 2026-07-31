@@ -92,6 +92,7 @@
     type ColumnNavigatorPaneState,
     type VisibleColumnNavigatorPaneState,
   } from './graph-viewer/column-navigator/index';
+  import type { ColumnNavigatorState } from './graph-viewer/column-navigator/types';
   import {
     clearGraphViewerTestHooks as clearGraphViewerTestHookState,
     shouldAttachGraphViewerTestHooks,
@@ -154,6 +155,7 @@
   const COLUMN_NAVIGATOR_DEFAULT_HEIGHT = 220;
 
   let graphViewerShell: HTMLDivElement;
+  let graphViewerMain: HTMLDivElement;
   let graphViewerShellHeight = 0;
   let container: HTMLDivElement;
   let minimapHost: HTMLDivElement;
@@ -187,7 +189,11 @@
   let DragEventCtor: typeof DragEvent | undefined;
   let LeaferEventCtor: typeof LeaferEvent | undefined;
   let PointerEventCtor: typeof LeaferPointerEvent | undefined;
-  const dispatch = createEventDispatcher<{ reveal: unknown; 'runtime-state': RuntimeStateEventDetail }>();
+  const dispatch = createEventDispatcher<{
+    reveal: unknown;
+    'runtime-state': RuntimeStateEventDetail;
+    'column-navigator-state': ColumnNavigatorState;
+  }>();
   let lastRuntimeStateSignature = '';
 
   $: documentKeyValue = $documentKeyStore;
@@ -234,6 +240,7 @@
   let columnNavigatorCanGoBack = false;
   let columnNavigatorCanGoForward = false;
   let columnNavigatorHeightPx = COLUMN_NAVIGATOR_DEFAULT_HEIGHT;
+  let restoredColumnNavigatorHeight = false;
   let isDraggingColumnNavigatorDivider = false;
   let columnNavigatorRoot: HTMLDivElement;
   let columnNavigatorRail: HTMLDivElement;
@@ -263,6 +270,13 @@
   };
   $: if (columnNavigatorOpen) {
     columnNavigatorController.syncHeightToShell();
+  }
+  $: if ($settings && !restoredColumnNavigatorHeight) {
+    const savedColumnNavigatorHeight = settingsStore.getColumnNavigatorHeight();
+    if (savedColumnNavigatorHeight !== null) {
+      columnNavigatorController.setHeight(savedColumnNavigatorHeight);
+      restoredColumnNavigatorHeight = true;
+    }
   }
   $: {
     columnNavigatorDetailPane = columnNavigatorVisiblePanes.find((pane) => pane.kind === 'content') ?? null;
@@ -560,6 +574,7 @@
       columnNavigatorCanGoForward = state.canGoForward;
       columnNavigatorHeightPx = state.heightPx;
       isDraggingColumnNavigatorDivider = state.isDraggingDivider;
+      dispatch('column-navigator-state', state);
     },
     onPaneReady: syncSubgraphReadinessForPane,
   });
@@ -955,8 +970,13 @@
     await columnNavigatorController.commitValueEdit(pane, draft);
   }
 
-  async function selectColumnNavigatorPath(path: PathSeg[]): Promise<void> {
+  async function selectColumnNavigatorPathInternal(path: PathSeg[]): Promise<void> {
     await columnNavigatorController.selectPath(path);
+    // Selecting a leaf may mount the Monaco detail editor. Keep keyboard
+    // navigation owned by the column navigator instead of transferring focus
+    // to the newly mounted editor.
+    await tick();
+    columnNavigatorRoot?.focus();
   }
 
   async function scrollSubgraphSelectionIntoView(): Promise<void> {
@@ -985,6 +1005,7 @@
   }
 
   function handleColumnNavigatorKeydown(event: KeyboardEvent): void {
+    if (!columnNavigatorOpen || hasActiveEdit()) return;
     if (isWorkspaceTextEditorTarget(event.target)) return;
     const historyDirection =
       event.altKey && event.key === 'ArrowLeft' ? -1 :
@@ -1018,6 +1039,16 @@
     }
   }
 
+  function handleGraphPointerDown(event: PointerEvent): void {
+    if (event.target instanceof Element && event.target.closest('[data-testid="graph-viewer-minimap"]')) return;
+    graphViewerMain?.focus();
+  }
+
+  function handleGraphKeydown(event: KeyboardEvent): void {
+    if (!columnNavigatorOpen) return;
+    handleColumnNavigatorKeydown(event);
+  }
+
   function handleColumnNavigatorDividerDragStart(clientY: number) {
     columnNavigatorController.startDividerDrag(clientY);
   }
@@ -1028,6 +1059,7 @@
 
   function handleColumnNavigatorDividerDragEnd() {
     columnNavigatorController.endDividerDrag();
+    void settingsStore.saveColumnNavigatorHeight(columnNavigatorHeightPx);
   }
 
   export function revealSearchResult(result: GraphSearchResult): void {
@@ -1058,6 +1090,21 @@
     } catch {
       return false;
     }
+  }
+
+  export async function goColumnNavigatorBack(): Promise<void> {
+    if (isFullEditInteractionBlocked() || !columnNavigatorOpen) return;
+    await columnNavigatorController.goBack();
+  }
+
+  export async function goColumnNavigatorForward(): Promise<void> {
+    if (isFullEditInteractionBlocked() || !columnNavigatorOpen) return;
+    await columnNavigatorController.goForward();
+  }
+
+  export async function selectColumnNavigatorPath(path: PathSeg[]): Promise<void> {
+    if (isFullEditInteractionBlocked() || !columnNavigatorOpen) return;
+    await selectColumnNavigatorPathInternal(path);
   }
 
   const graphViewerRuntimeApi = {
@@ -1268,9 +1315,28 @@
   class:graph-viewer-shell--with-workspace={columnNavigatorOpen}
   data-testid="graph-viewer-root"
 >
-  <div class="graph-viewer-main">
+  <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+  <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+  <div
+    bind:this={graphViewerMain}
+    class="graph-viewer-main"
+    tabindex="0"
+    role="application"
+    aria-label="Graph"
+    on:pointerdown={handleGraphPointerDown}
+    on:keydown={handleGraphKeydown}
+  >
+    <!--
+      Keep the graph decoration outside Leafer's scene. This node is created once
+      with the graph surface and is never touched by node/edge projection updates.
+    -->
     <div
-      class="absolute inset-0 z-0"
+      class="graph-background-grid"
+      aria-hidden="true"
+      data-testid="graph-background-grid"
+    ></div>
+    <div
+      class="absolute inset-0 z-[1]"
       class:invisible={showRuntimeLoading}
       class:pointer-events-none={showRuntimeLoading}
     >
@@ -1278,7 +1344,8 @@
       <div
         bind:this={minimapHost}
         class="pointer-events-auto absolute bottom-4 right-4 z-[2] h-[150px] w-[220px] overflow-hidden rounded-[14px]
-          shadow-[0_12px_28px_rgba(15,23,42,0.14)] backdrop-blur"
+          shadow-[0_12px_28px_rgba(15,23,42,0.14)] backdrop-blur transition-[bottom] duration-200 ease-out"
+        style:bottom={`${columnNavigatorOpen ? columnNavigatorHeightPx + 16 : 16}px`}
         class:hidden={streamProgressState.visible ||
           (isFullEditProgressActive() && $fullEditUiState?.phase !== 'settled')}
         data-testid="graph-viewer-minimap"
@@ -1325,6 +1392,10 @@
 
   {#if columnNavigatorOpen}
     <div
+      class="column-navigator-overlay"
+      style={`--column-navigator-height: ${columnNavigatorHeightPx}px`}
+    >
+    <div
       class={`app-split-divider app-split-divider--horizontal column-navigator-graph__divider ${
         isDraggingColumnNavigatorDivider ? 'app-split-divider--dragging' : ''
       }`}
@@ -1349,35 +1420,6 @@
       on:keydown={handleColumnNavigatorKeydown}
       transition:fly={{ y: 18, duration: 180, opacity: 0.14, easing: cubicOut }}
     >
-      <nav class="column-navigator-graph__pathbar" aria-label="Column Navigator path">
-        <div class="column-navigator-graph__history">
-          <button
-            type="button"
-            aria-label="Back in workspace history"
-            disabled={!columnNavigatorCanGoBack}
-            on:click={() => void columnNavigatorController.goBack()}
-          ><ChevronLeft size={15} strokeWidth={2} /></button>
-          <button
-            type="button"
-            aria-label="Forward in workspace history"
-            disabled={!columnNavigatorCanGoForward}
-            on:click={() => void columnNavigatorController.goForward()}
-          ><ChevronRight size={15} strokeWidth={2} /></button>
-        </div>
-        <div class="column-navigator-graph__breadcrumbs">
-          {#each buildWorkspacePathPrefixes(columnNavigatorActivePath) as prefix (workspacePathKey(prefix))}
-            <button
-              type="button"
-              class:active={workspacePathKey(prefix) === workspacePathKey(columnNavigatorActivePath)}
-              title={buildReadablePath(prefix)}
-              on:click={() => void selectColumnNavigatorPath(prefix)}
-            >{pathSegmentLabel(prefix)}</button>
-            {#if workspacePathKey(prefix) !== workspacePathKey(columnNavigatorActivePath)}
-              <ChevronRight size={12} strokeWidth={1.8} aria-hidden="true" />
-            {/if}
-          {/each}
-        </div>
-      </nav>
       <div bind:this={columnNavigatorRail} class="column-navigator-graph__track">
         {#each columnNavigatorVisiblePanes as pane (`${pane.kind}:${pane.pathKey}`)}
           {#if pane.kind === 'column'}
@@ -1399,7 +1441,7 @@
                       data-column-navigator-item-value-type={item.valueType}
                       data-column-navigator-item-index={isPathSegIndex(item.path.at(-1)!)}
                       aria-pressed={item.pathKey === workspacePathKey(columnNavigatorActivePath)}
-                      on:click={() => void selectColumnNavigatorPath(item.path)}
+                      on:click={() => void selectColumnNavigatorPathInternal(item.path)}
                     >
                       {#if isPathSegIndex(item.path.at(-1)!)}
                         <span
@@ -1462,6 +1504,7 @@
                   attachToPane={false}
                   destroyOnUnmount={true}
                   hideLineNumbers={true}
+                  compactGutter={true}
                   onScroll={() => {}}
                   onContentChange={(text) => {
                     emitReveal(columnNavigatorDetailPane!.path, 'value', 'click');
@@ -1474,6 +1517,7 @@
           </div>
         </section>
       {/if}
+    </div>
     </div>
   {/if}
 
@@ -1498,20 +1542,39 @@
     grid-template-rows: minmax(0, 1fr) auto;
   }
 
-  .graph-viewer-shell--with-workspace {
-    grid-template-rows: minmax(0, 1fr) auto auto;
-  }
-
   .graph-viewer-main {
     position: relative;
     min-height: 0;
     overflow: hidden;
+    outline: none;
+    isolation: isolate;
+  }
+
+  /*
+    Static viewport decoration: no Leafer objects, no scene reconciliation, and
+    no dependency on graph nodes/edges. Keeping it as a sibling beneath the
+    interactive render surface prevents graph updates from rebuilding the grid.
+  */
+  .graph-background-grid {
+    position: absolute;
+    z-index: 0;
+    inset: 0;
+    pointer-events: none;
+    contain: paint;
+    background-color: #ffffff;
+    background-image:
+      linear-gradient(rgba(226, 232, 240, 0.72) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(226, 232, 240, 0.72) 1px, transparent 1px);
+    background-size: 28px 28px;
   }
 
   .column-navigator-graph {
-    position: relative;
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    left: 0;
     display: grid;
-    grid-template-rows: 38px minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
     min-height: 0;
     overflow: hidden;
     outline: none;
@@ -1531,27 +1594,28 @@
   }
 
   :global(.column-navigator-graph__divider) {
+    position: absolute;
+    right: 0;
+    bottom: var(--column-navigator-height);
+    left: 0;
     background: transparent;
   }
 
-  .column-navigator-graph__pathbar {
-    display: grid;
-    grid-template-columns: auto minmax(0, 1fr);
-    align-items: center;
-    gap: 8px;
-    min-width: 0;
-    padding: 0 8px;
-    border-bottom: 1px solid rgba(203, 213, 225, 0.78);
-    background: rgba(255, 255, 255, 0.76);
-    backdrop-filter: blur(12px);
+  .column-navigator-overlay {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    height: 100%;
+    z-index: 20;
+    pointer-events: none;
   }
 
-  .column-navigator-graph__history {
-    display: flex;
-    gap: 2px;
+  .column-navigator-overlay :global(.column-navigator-graph__divider),
+  .column-navigator-overlay .column-navigator-graph {
+    pointer-events: auto;
   }
 
-  .column-navigator-graph__history button,
   .column-navigator-graph__dismiss {
     display: inline-flex;
     align-items: center;
@@ -1574,55 +1638,9 @@
     box-shadow: 0 2px 8px rgba(15, 23, 42, 0.08);
   }
 
-  .column-navigator-graph__history button:hover:not(:disabled),
   .column-navigator-graph__dismiss:hover {
     color: #1e293b;
     background: rgba(226, 232, 240, 0.76);
-  }
-
-  .column-navigator-graph__history button:disabled {
-    color: #cbd5e1;
-    cursor: default;
-  }
-
-  .column-navigator-graph__breadcrumbs {
-    display: flex;
-    align-items: center;
-    min-width: 0;
-    overflow-x: auto;
-    scrollbar-width: none;
-  }
-
-  .column-navigator-graph__breadcrumbs::-webkit-scrollbar {
-    display: none;
-  }
-
-  .column-navigator-graph__breadcrumbs button {
-    flex: 0 0 auto;
-    max-width: 180px;
-    overflow: hidden;
-    padding: 4px 6px;
-    border: 0;
-    border-radius: 6px;
-    background: transparent;
-    color: #64748b;
-    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-    font-size: 11px;
-    line-height: 1.3;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    cursor: pointer;
-  }
-
-  .column-navigator-graph__breadcrumbs button:hover,
-  .column-navigator-graph__breadcrumbs button.active {
-    color: #1e3a5f;
-    background: rgba(219, 234, 254, 0.72);
-  }
-
-  .column-navigator-graph__breadcrumbs :global(svg) {
-    flex: 0 0 auto;
-    color: #a8b3c2;
   }
 
   .column-navigator-graph__track {
@@ -1811,13 +1829,13 @@
 
   .column-navigator-pane__content-editor {
     min-height: 0;
-    padding: 40px 10px 10px;
+    padding: 0;
   }
 
   .column-navigator-pane__content-editor :global([data-testid='column-navigator-monaco-editor']) {
     height: 100%;
-    border: 1px solid #dbe3ef;
-    border-radius: 9px;
+    border: 0;
+    border-radius: 0;
     background: rgba(255, 255, 255, 0.95);
     overflow: hidden;
     box-shadow: none;

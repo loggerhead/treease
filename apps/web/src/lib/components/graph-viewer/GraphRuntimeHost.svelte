@@ -106,7 +106,7 @@
           preload: async () => {
             await Promise.all([import('@leafer-in/editor'), import('@leafer-in/state'), import('@leafer-in/text-editor'), import('@leafer-in/export')]);
           },
-          leaferOptions: { editor: { visible: true, hittable: true, hover: false, moveable: false, resizeable: false, rotateable: false, skewable: false, flipable: false } },
+          leaferOptions: { editor: { visible: true, hittable: true, hover: false, editBox: false, moveable: false, resizeable: false, rotateable: false, skewable: false, flipable: false } },
         }));
         const mod = loaded.modules;
         await step(async () => {

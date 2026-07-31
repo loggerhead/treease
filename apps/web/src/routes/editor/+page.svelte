@@ -65,6 +65,7 @@
   import { markPreviewCompleted, markPreviewRequested } from '../../lib/test-bridge/runtime-readiness';
   import { setTreeaseUrlPresetState } from '../../lib/test-bridge/window-treease';
   import type { DiffPlan } from '../../lib/graph/diff-plan';
+  import type { ColumnNavigatorState } from '../../lib/components/graph-viewer/column-navigator/types';
   import { serializePath } from '../../shared/document-anchor-utils';
   import {
     FileCode,
@@ -137,6 +138,7 @@
   let viewerViewMode: 'graph' | 'text' = 'graph';
   let editorRuntimeLoading = true;
   let viewerRuntimeLoading = true;
+  let columnNavigatorState: ColumnNavigatorState | null = null;
   let synchronizedRuntimeLoading = true;
   let syncScrollEnabled = true;
   let aiInputOpen = false;
@@ -462,6 +464,10 @@
       lastTrackedGraphViewRevision = $editorRevision;
       trackEvent('graph_view', { language: editorRef?.getActiveLanguage() ?? $languageIdStore });
     }
+  }
+
+  function handleColumnNavigatorState(payload: ColumnNavigatorState): void {
+    columnNavigatorState = payload;
   }
 
   $: runtimeGateViewMode = showViewerPane ? viewerViewMode : 'text';
@@ -1529,6 +1535,7 @@
             onRevealError={(line, column) => editorRef?.revealError(line, column)}
             onGraphReveal={handleGraphReveal}
             onGraphRuntimeState={handleViewerRuntimeState}
+            onColumnNavigatorState={handleColumnNavigatorState}
             onTextScroll={handleViewerScroll}
             onApplyDiff={handleApplyDiff}
             onSwap={handleSwapEditors}
@@ -1576,6 +1583,12 @@
     </div>
     {#if showBottomBar}
       <BottomBar
+        editorWidthPx={showEditorPane ? leftPaneWidthPx : 0}
+        graphVisible={showViewerPane}
+        {columnNavigatorState}
+        onColumnNavigatorBack={() => viewerRef?.goColumnNavigatorBack?.()}
+        onColumnNavigatorForward={() => viewerRef?.goColumnNavigatorForward?.()}
+        onColumnNavigatorPathSelect={(path) => viewerRef?.selectColumnNavigatorPath?.(path)}
         onFormat={() => editorRef?.formatActive()}
         onMinify={() => editorRef?.minifyActive()}
         onCompact={() => editorRef?.compactActive()}

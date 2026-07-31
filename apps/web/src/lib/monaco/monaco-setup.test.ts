@@ -189,7 +189,7 @@ describe('monaco-setup', () => {
     expect(callWasmWorker).not.toHaveBeenCalled();
   });
 
-  it('exposes semantic token refresh hook through provider onDidChange', () => {
+  it('exposes language-scoped semantic token refresh through provider onDidChange', async () => {
     const ensure = createSemanticTokensRegistrar({
       monaco: monaco as any,
       callWasmWorker,
@@ -202,14 +202,16 @@ describe('monaco-setup', () => {
     const disposable = provider.onDidChange(listener);
 
     ensure.refreshSemanticTokens('json');
+    await Promise.resolve();
     expect(listener).toHaveBeenCalledTimes(1);
 
     disposable.dispose();
     ensure.refreshSemanticTokens('json');
+    await Promise.resolve();
     expect(listener).toHaveBeenCalledTimes(1);
   });
 
-  it('notifies Monaco when a Core semantic-token snapshot is primed', () => {
+  it('does not broadcast when a semantic-token snapshot is only primed', async () => {
     const ensure = createSemanticTokensRegistrar({
       monaco: monaco as any,
       callWasmWorker,
@@ -223,10 +225,11 @@ describe('monaco-setup', () => {
 
     ensure.primeSemanticTokens('file://primed-json', new Uint32Array([0, 0, 4, 0, 0]).buffer);
 
-    expect(listener).toHaveBeenCalledTimes(1);
+    await Promise.resolve();
+    expect(listener).not.toHaveBeenCalled();
   });
 
-  it('refreshes active semantic token listeners across language switches', () => {
+  it('does not refresh listeners for another language', async () => {
     const ensure = createSemanticTokensRegistrar({
       monaco: monaco as any,
       callWasmWorker,
@@ -240,8 +243,9 @@ describe('monaco-setup', () => {
 
     ensure('toml');
     ensure.refreshSemanticTokens('toml');
+    await Promise.resolve();
 
-    expect(listener).toHaveBeenCalledTimes(1);
+    expect(listener).not.toHaveBeenCalled();
   });
 
   it('registers yq language support once', () => {

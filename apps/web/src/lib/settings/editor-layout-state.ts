@@ -1,6 +1,7 @@
 import type { SettingsDocument } from './ui-settings';
 
 export const DEFAULT_EDITOR_SPLIT_RATIO = 0.28;
+export const DEFAULT_COLUMN_NAVIGATOR_HEIGHT_PX = 220;
 
 const EDITOR_LAYOUT_STATE_KEY = '__treeaseEditorLayout';
 const MIN_SPLIT_RATIO = 0.2;
@@ -8,6 +9,7 @@ const MAX_SPLIT_RATIO = 0.8;
 
 type EditorLayoutState = {
   splitRatio?: unknown;
+  columnNavigatorHeightPx?: unknown;
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -35,6 +37,31 @@ export function withEditorSplitRatio(document: SettingsDocument, splitRatio: num
     [EDITOR_LAYOUT_STATE_KEY]: {
       ...currentState,
       splitRatio: normalized,
+    },
+  };
+}
+
+export function normalizeColumnNavigatorHeight(value: unknown): number | null {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return null;
+  return Math.max(100, value);
+}
+
+export function getColumnNavigatorHeight(document: SettingsDocument): number | null {
+  if (!isRecord(document)) return null;
+  const state = document[EDITOR_LAYOUT_STATE_KEY];
+  if (!isRecord(state)) return null;
+  return normalizeColumnNavigatorHeight((state as EditorLayoutState).columnNavigatorHeightPx);
+}
+
+export function withColumnNavigatorHeight(document: SettingsDocument, heightPx: number): SettingsDocument {
+  const normalized = normalizeColumnNavigatorHeight(heightPx);
+  if (normalized === null) return document;
+  const currentState = isRecord(document[EDITOR_LAYOUT_STATE_KEY]) ? document[EDITOR_LAYOUT_STATE_KEY] : {};
+  return {
+    ...document,
+    [EDITOR_LAYOUT_STATE_KEY]: {
+      ...currentState,
+      columnNavigatorHeightPx: normalized,
     },
   };
 }
