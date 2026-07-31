@@ -63,6 +63,7 @@
   export let pricingActionDisabled: (plan: PricingPlan) => boolean = () => false
   export let pricingActionLabel: (plan: PricingPlan) => string = (plan) => plan.ctaLabel
   export let onEntitlementBlocked: (block: UsageBlock) => void = () => {}
+  export let onFileDrop: (event: DragEvent) => void | Promise<void> = () => {}
 
   type DiffResponse = {
     mode: 'tree' | 'text'
@@ -585,6 +586,7 @@
       {enableRevealSync}
       {synchronizedRuntimeLoading}
       readonly={readonlyGraph}
+      {onFileDrop}
       onEntitlementBlocked={handleEntitlementBlocked}
       on:reveal={handleGraphReveal}
       on:runtime-state={handleGraphViewerRuntimeState}

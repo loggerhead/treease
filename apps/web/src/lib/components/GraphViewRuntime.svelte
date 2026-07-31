@@ -146,6 +146,7 @@
   export let enableRevealSync = true;
   export let synchronizedRuntimeLoading = false;
   export let readonly = false;
+  export let onFileDrop: (event: globalThis.DragEvent) => void | Promise<void> = () => {};
   export let onEntitlementBlocked: (block: UsageBlock) => void = () => {};
 
   const MINIMAP_WIDTH = 220;
@@ -1323,6 +1324,17 @@
         error: Boolean(errorMessage),
       });
     }
+  }
+
+  function handleFileDrop(event: globalThis.DragEvent): void {
+    event.preventDefault();
+    event.stopPropagation();
+    void onFileDrop(event);
+  }
+
+  function handleFileDragOver(event: globalThis.DragEvent): void {
+    event.preventDefault();
+    event.stopPropagation();
   }
 </script>
 

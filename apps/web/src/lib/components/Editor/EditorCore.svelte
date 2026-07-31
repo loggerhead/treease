@@ -1555,6 +1555,10 @@
     await editorFullEditController.handleDrop(event);
   }
 
+  export async function handleFileDrop(event: DragEvent): Promise<void> {
+    await handleDrop(event);
+  }
+
   async function resolveWholeDocumentReplacementLanguage(
     text: string,
     currentLanguage: SupportedEditorLanguageId,

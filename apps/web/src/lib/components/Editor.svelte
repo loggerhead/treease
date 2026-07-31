@@ -101,6 +101,10 @@
     return editorCore?.importStream(file, sourceLanguage, targetLanguage);
   }
 
+  export function handleFileDrop(event: DragEvent) {
+    return editorCore?.handleFileDrop(event);
+  }
+
   export function revealError(startLineNumber: number, startColumn: number) {
     editorCore?.revealError(startLineNumber, startColumn);
   }

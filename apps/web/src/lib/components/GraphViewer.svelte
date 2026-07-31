@@ -20,6 +20,7 @@
   export let enableRevealSync = true;
   export let synchronizedRuntimeLoading = false;
   export let readonly = false;
+  export let onFileDrop: (event: DragEvent) => void | Promise<void> = () => {};
   export let onEntitlementBlocked: (block: UsageBlock) => void = () => {};
 
   const dispatch = createEventDispatcher<{
@@ -86,6 +87,7 @@
   {enableRevealSync}
   {synchronizedRuntimeLoading}
   {readonly}
+  {onFileDrop}
   {onEntitlementBlocked}
   on:reveal={(event) => dispatch('reveal', event.detail)}
   on:runtime-state={(event) => dispatch('runtime-state', event.detail)}

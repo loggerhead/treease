@@ -1585,6 +1585,7 @@
             onTextScroll={handleViewerScroll}
             onApplyDiff={handleApplyDiff}
             onSwap={handleSwapEditors}
+            onFileDrop={(event) => editorRef?.handleFileDrop(event)}
             {pricingPlanGridComponent}
             pricingUsageNotice={null}
             onPricingSelectPlan={(priceId) => void handleAiQuotaUpgrade(priceId)}
