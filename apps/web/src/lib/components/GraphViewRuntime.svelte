@@ -547,16 +547,13 @@
   const onRuntimeReady = ({ editor }: { editor: unknown | null }) => bindGraphEditorLifecycle(editor);
   const columnNavigatorController = createColumnNavigatorController({
     defaultHeightPx: COLUMN_NAVIGATOR_DEFAULT_HEIGHT,
-    getActiveSnapshotId: () => graphRenderCoordinator.getActiveSnapshotId(),
     getWorkspaceSnapshotId: () => getWorkspaceSnapshotId(documentKeyValue),
     getDocumentKey: () => documentKeyValue,
     getLanguageId: () => languageIdValue,
     getRevision: () => editorRevisionValue,
-    getRenderConfig: () => renderConfig,
     getEnableNest: () => $settings.parser.enableNest,
     getReadonly: () => readonly,
     getShellHeight: () => graphViewerShellHeight,
-    inferGraphPaths: (nodes, edges) => graphSceneController.inferGraphPaths(nodes, edges),
     clearSearchHighlight,
     clearActiveGraphSelection: () => {
       activeTempModel.update((current) => clearGraphSelectionForFullEdit(current));
@@ -1252,7 +1249,6 @@
       graphAppliedRevision: $graphAppliedRevision,
       snapshotId: getWorkspaceSnapshotId(documentKeyValue),
       enableNest: $settings.parser.enableNest,
-      renderConfig,
     });
   }
   $: graphViewRuntimeLifecycle.settle($fullEditUiState);

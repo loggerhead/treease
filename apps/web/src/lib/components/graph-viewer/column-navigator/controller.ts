@@ -1,21 +1,17 @@
 import type { SnapshotId } from '@core-wasm/index';
-import type { GraphEdge, GraphNode, ValueType } from '@treease/graph-viewer-runtime';
+import type { ValueType } from '@treease/graph-viewer-runtime';
 import type { SupportedEditorLanguageId } from '../../../monaco/language-support';
-import type { GraphViewerConfig } from '../../../settings/ui-settings';
-import { queryPathValue } from '../../../services/SnapshotProjectionService';
+import { queryDirectChildren, queryPathValue } from '../../../services/SnapshotProjectionService';
 import { buildPathKey } from '../../../graph/graph-viewer-path';
 import { createViewRuntimeOperation, type ViewRuntimeOperation } from '../../../guards/view-runtime-operation';
 import { getClampedPaneSize } from '../../ui/split-layout';
 import type { PathSeg } from '../../../store/tree-path';
 import type { StructuredValueEditIntent } from '../graph-value-edit';
 import {
-  buildColumnNavigatorColumnItems,
-  buildColumnNavigatorRenderSignature,
-  createColumnNavigatorGraphCache,
+  buildColumnNavigatorDirectItems,
   formatColumnNavigatorPath,
   shouldOpenColumnNavigatorContent,
 } from '../column-navigator-graph';
-import type { ColumnNavigatorGraphData } from '../column-navigator-types';
 import type {
   ColumnNavigatorColumnItem,
   ColumnNavigatorContentState,
@@ -26,6 +22,7 @@ import type {
 
 const COLUMN_NAVIGATOR_MIN_HEIGHT = 100;
 const COLUMN_NAVIGATOR_MAX_HEIGHT_FRACTION = 0.75;
+const SIBLING_REVEAL_DEBOUNCE_MS = 48;
 const ROOT_PATH_KEY = '$';
 
 export type ColumnNavigatorProjectionInput = {
@@ -35,21 +32,17 @@ export type ColumnNavigatorProjectionInput = {
   graphAppliedRevision: number;
   snapshotId: SnapshotId | null;
   enableNest: boolean;
-  renderConfig: GraphViewerConfig;
 };
 
 export type ColumnNavigatorControllerDeps = {
   defaultHeightPx: number;
-  getActiveSnapshotId: () => SnapshotId | null;
   getWorkspaceSnapshotId: () => SnapshotId | null;
   getDocumentKey: () => string;
   getLanguageId: () => SupportedEditorLanguageId;
   getRevision: () => number;
-  getRenderConfig: () => GraphViewerConfig;
   getEnableNest: () => boolean;
   getReadonly: () => boolean;
   getShellHeight: () => number;
-  inferGraphPaths: (nodes: GraphNode[], edges: GraphEdge[]) => void;
   clearSearchHighlight: () => void;
   clearActiveGraphSelection: () => void;
   emitReveal: (path: PathSeg[], target: 'key' | 'value' | 'node', trigger: 'breadcrumb') => void;
@@ -103,16 +96,6 @@ function samePath(left: PathSeg[], right: PathSeg[]): boolean {
 export function createColumnNavigatorController(deps: ColumnNavigatorControllerDeps) {
   const pendingEditTaskMap = new Map<string, Promise<void>>();
   const queuedEditMap = new Map<string, string>();
-  const graphCache = createColumnNavigatorGraphCache({
-    getActiveSnapshotId: deps.getActiveSnapshotId,
-    getDocumentKey: deps.getDocumentKey,
-    getLanguageId: deps.getLanguageId,
-    getRevision: deps.getRevision,
-    getEnableNest: deps.getEnableNest,
-    getRenderConfig: deps.getRenderConfig,
-    inferGraphPaths: deps.inferGraphPaths,
-  });
-
   let open = false;
   let isLoading = false;
   let activePath: PathSeg[] = [];
@@ -128,9 +111,15 @@ export function createColumnNavigatorController(deps: ColumnNavigatorControllerD
   let disposed = false;
   let navigationOperation: ViewRuntimeOperation | null = null;
   let refreshOperation: ViewRuntimeOperation | null = null;
+  let queuedSiblingRevealPath: PathSeg[] | null = null;
+  let siblingRevealTimer: ReturnType<typeof setTimeout> | null = null;
   const pathValueCache = new Map<
     string,
     { signature: string; promise: Promise<{ content: ColumnNavigatorContentState; isContent: boolean } | null> }
+  >();
+  const directChildrenCache = new Map<
+    string,
+    { signature: string; promise: Promise<ColumnNavigatorColumnItem[]> }
   >();
 
   function visiblePanes(): VisibleColumnNavigatorPaneState[] {
@@ -209,18 +198,34 @@ export function createColumnNavigatorController(deps: ColumnNavigatorControllerD
     return promise;
   }
 
+  function readDirectChildren(path: PathSeg[]): Promise<ColumnNavigatorColumnItem[]> {
+    const snapshotId = deps.getWorkspaceSnapshotId();
+    const pathKey = workspacePathKey(path);
+    const signature = `${deps.getDocumentKey()}|${snapshotId ?? 'no-snapshot'}`;
+    const cached = directChildrenCache.get(pathKey);
+    if (cached?.signature === signature) return cached.promise;
+
+    const promise = queryDirectChildren({ documentKey: deps.getDocumentKey(), snapshotId, path })
+      .then((result) => result.status === 'ready' ? buildColumnNavigatorDirectItems(path, result.data) : [])
+      .catch((error) => {
+        if (directChildrenCache.get(pathKey)?.promise === promise) directChildrenCache.delete(pathKey);
+        throw error;
+      });
+    directChildrenCache.set(pathKey, { signature, promise });
+    return promise;
+  }
+
   async function prepareWorkspace(path: PathSeg[], nextRequestId: number): Promise<PreparedWorkspace> {
     const nextChain: ColumnNavigatorPaneState[] = [];
     const prefixes = buildWorkspacePathPrefixes(path);
     const reads = await Promise.all(prefixes.map((prefix) => readPath(prefix)));
     const firstContentIndex = reads.findIndex((read) => read?.isContent === true);
-    const lastGraphIndex = firstContentIndex === -1 ? prefixes.length - 1 : firstContentIndex - 1;
-    const graphResults = await Promise.all(
+    const lastColumnIndex = firstContentIndex === -1 ? prefixes.length - 1 : firstContentIndex - 1;
+    const directChildren = await Promise.all(
       prefixes.map((prefix, index) => {
-        if (index > lastGraphIndex || !reads[index]) return Promise.resolve({ graph: null as ColumnNavigatorGraphData | null });
-        return graphCache
-          .prepareGraph(prefix)
-          .then((graph) => ({ graph }))
+        if (index > lastColumnIndex || !reads[index]) return Promise.resolve({ items: [] as ColumnNavigatorColumnItem[] });
+        return readDirectChildren(prefix)
+          .then((items) => ({ items }))
           .catch((error) => ({ error }));
       }),
     );
@@ -244,10 +249,9 @@ export function createColumnNavigatorController(deps: ColumnNavigatorControllerD
         return { activePath: clonePath(prefix), chain: nextChain };
       }
       try {
-        const graphResult = graphResults[index]!;
-        if ('error' in graphResult) throw graphResult.error;
-        const graph = graphResult.graph;
-        const items = graph ? buildColumnNavigatorColumnItems(graph, prefix) : [];
+        const result = directChildren[index]!;
+        if ('error' in result) throw result.error;
+        const items = result.items;
         if (!items.length && samePath(prefix, path)) {
           nextChain.push({
             requestId: nextRequestId,
@@ -269,7 +273,7 @@ export function createColumnNavigatorController(deps: ColumnNavigatorControllerD
           kind: 'column',
           items,
           content: null,
-          status: graph ? 'ready' : 'empty',
+          status: 'ready',
         });
       } catch (error) {
         deps.handleError(error, {
@@ -318,25 +322,47 @@ export function createColumnNavigatorController(deps: ColumnNavigatorControllerD
     historyIndex = history.length - 1;
   }
 
-  async function navigate(path: PathSeg[], options: { recordHistory: boolean; reveal: boolean }): Promise<void> {
+  function clearQueuedSiblingReveal(): void {
+    queuedSiblingRevealPath = null;
+    if (siblingRevealTimer) clearTimeout(siblingRevealTimer);
+    siblingRevealTimer = null;
+  }
+
+  function queueSiblingReveal(path: PathSeg[]): void {
+    queuedSiblingRevealPath = clonePath(path);
+    if (siblingRevealTimer) clearTimeout(siblingRevealTimer);
+    siblingRevealTimer = setTimeout(() => {
+      siblingRevealTimer = null;
+      const revealPath = queuedSiblingRevealPath;
+      queuedSiblingRevealPath = null;
+      if (revealPath?.length) deps.emitReveal(revealPath, 'value', 'breadcrumb');
+    }, SIBLING_REVEAL_DEBOUNCE_MS);
+  }
+
+  async function navigate(
+    path: PathSeg[],
+    options: { recordHistory: boolean; reveal: 'immediate' | 'debounced' | 'none' },
+  ): Promise<void> {
     if (disposed) return;
     // Selection rebinding waits for the current Monaco draft transaction to
     // become terminal, so a late commit cannot land on a newly selected path.
-    await pendingEditTaskMap.get(workspacePathKey(activePath));
-    if (disposed) return;
     void navigationOperation?.cancel();
     void refreshOperation?.cancel();
     const operation = createWorkspaceOperation();
     navigationOperation = operation;
+    const pendingEditTask = pendingEditTaskMap.get(workspacePathKey(activePath));
+    if (pendingEditTask) {
+      await pendingEditTask;
+      if (!operation.isCurrent()) return;
+    }
     const nextRequestId = ++requestId;
     const requestedPathKey = workspacePathKey(path);
     open = true;
     isLoading = true;
     activePath = clonePath(path);
-    // A navigation request must never clear an already readable workspace.
-    // Keep the committed chain (including its detail editor) until the next
-    // complete chain can replace it in one render; only first open needs a
-    // loading pane because there is no stable content to retain.
+    // A navigation operation owns the wait for the current Monaco draft.
+    // Resetting the workspace invalidates it before this state can become visible.
+    // Keep a readable chain until its replacement is ready.
     if (!chain.length) chain = [loadingPane(path, nextRequestId)];
     if (options.recordHistory) recordHistory(path);
     deps.markSubgraphRequested({
@@ -358,7 +384,8 @@ export function createColumnNavigatorController(deps: ColumnNavigatorControllerD
           sourceRevision: deps.getRevision(),
           materializedRevision: deps.getRevision(),
         });
-        if (options.reveal && activePath.length) deps.emitReveal(activePath, 'value', 'breadcrumb');
+        if (options.reveal === 'immediate' && activePath.length) deps.emitReveal(activePath, 'value', 'breadcrumb');
+        if (options.reveal === 'debounced') queueSiblingReveal(activePath);
         emitState();
       },
     });
@@ -369,11 +396,13 @@ export function createColumnNavigatorController(deps: ColumnNavigatorControllerD
   }
 
   async function openPath(path: PathSeg[], _parentAbsoluteIndex = -1): Promise<void> {
-    await navigate(path, { recordHistory: true, reveal: false });
+    clearQueuedSiblingReveal();
+    await navigate(path, { recordHistory: true, reveal: 'none' });
   }
 
   async function selectPath(path: PathSeg[]): Promise<void> {
-    await navigate(path, { recordHistory: true, reveal: true });
+    clearQueuedSiblingReveal();
+    await navigate(path, { recordHistory: true, reveal: 'immediate' });
   }
 
   function selectedItem(): ColumnNavigatorColumnItem | null {
@@ -393,7 +422,9 @@ export function createColumnNavigatorController(deps: ColumnNavigatorControllerD
     const currentIndex = index < 0 ? 0 : index;
     const nextIndex = (currentIndex + delta + parent.items.length) % parent.items.length;
     const item = parent.items[nextIndex];
-    if (item && item.pathKey !== workspacePathKey(activePath)) await selectPath(item.path);
+    if (item && item.pathKey !== workspacePathKey(activePath)) {
+      await navigate(item.path, { recordHistory: true, reveal: 'debounced' });
+    }
   }
 
   async function enterSelected(): Promise<void> {
@@ -418,7 +449,7 @@ export function createColumnNavigatorController(deps: ColumnNavigatorControllerD
     const path = history[nextIndex];
     if (!path || nextIndex < 0 || nextIndex >= history.length) return;
     historyIndex = nextIndex;
-    await navigate(path, { recordHistory: false, reveal: true });
+    await navigate(path, { recordHistory: false, reveal: 'immediate' });
   }
 
   async function runValueEditLoop(pane: ColumnNavigatorPaneState, initialText: string): Promise<void> {
@@ -505,15 +536,14 @@ export function createColumnNavigatorController(deps: ColumnNavigatorControllerD
       input.graphAppliedRevision,
       input.snapshotId ?? 'no-snapshot',
       input.enableNest ? 'nest' : 'flat',
-      buildColumnNavigatorRenderSignature(input.renderConfig),
     ].join('|');
     if (nextSignature === projectionSignature) return;
     projectionSignature = nextSignature;
     projectionEpoch += 1;
     void navigationOperation?.cancel();
     void refreshOperation?.cancel();
-    graphCache.clear();
     pathValueCache.clear();
+    directChildrenCache.clear();
     await refresh();
   }
 
@@ -560,6 +590,7 @@ export function createColumnNavigatorController(deps: ColumnNavigatorControllerD
   }
 
   function reset(): void {
+    clearQueuedSiblingReveal();
     projectionEpoch += 1;
     void navigationOperation?.cancel();
     void refreshOperation?.cancel();
@@ -574,8 +605,8 @@ export function createColumnNavigatorController(deps: ColumnNavigatorControllerD
     queuedEditMap.clear();
     deps.clearSearchHighlight();
     deps.clearActiveGraphSelection();
-    graphCache.clear();
     pathValueCache.clear();
+    directChildrenCache.clear();
     emitState();
   }
 

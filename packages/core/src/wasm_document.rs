@@ -337,7 +337,8 @@ fn query_snapshot_impl(
         4 => QueryKind::NodePreview,
         5 => QueryKind::PathValue,
         6 => QueryKind::FieldLabels,
-        _ => QueryKind::SearchIndex,
+        7 => QueryKind::SearchIndex,
+        _ => QueryKind::DirectChildren,
     };
     let query = SnapshotQuery {
         snapshot_id: SnapshotId(requested_snapshot_id),

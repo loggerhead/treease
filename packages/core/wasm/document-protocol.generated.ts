@@ -222,6 +222,8 @@ export interface DocumentPathValue {
     semanticTokens: SemanticTokensPayload;
 }
 
+export type DocumentDirectChild = { kind: "key"; key: string; preview: string; valueType: string; semType: number; isContainer: boolean } | { kind: "index"; index: number; preview: string; valueType: string; semType: number; isContainer: boolean };
+
 export interface DocumentSearchItem {
     path: string;
     pathText: string;
@@ -291,7 +293,7 @@ export interface DocumentAnchor {
     spanEnd: number;
 }
 
-export type QueryKind = "findAnchors" | "resolvePath" | "resolveHover" | "rootValueKind" | "nodePreview" | "pathValue" | "fieldLabels" | "searchIndex";
+export type QueryKind = "findAnchors" | "resolvePath" | "resolveHover" | "rootValueKind" | "nodePreview" | "pathValue" | "fieldLabels" | "searchIndex" | "directChildren";
 
 export type QueryTargetKind = "key" | "value" | "node";
 
@@ -308,6 +310,7 @@ export interface QueryResult {
     rootValueKind?: string | null;
     nodePreview?: DocumentNodePreview | null;
     pathValue?: DocumentPathValue | null;
+    directChildren?: DocumentDirectChild[];
     fieldLabels?: string[];
     searchItems?: DocumentSearchItem[];
 }

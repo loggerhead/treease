@@ -1,6 +1,7 @@
 import type {
   DocumentNodePreview,
   DocumentPathValue,
+  DocumentDirectChild,
   QueryResult,
   SnapshotId,
   SnapshotReadResult,
@@ -15,7 +16,7 @@ export type RootValueKind = 'string' | 'int' | 'float' | 'boolean' | 'null' | 'o
 export async function querySnapshotProjection(options: {
   documentKey: string;
   snapshotId: SnapshotId | null;
-  queryKind: 'rootValueKind' | 'nodePreview' | 'pathValue' | 'fieldLabels';
+  queryKind: 'rootValueKind' | 'nodePreview' | 'pathValue' | 'directChildren' | 'fieldLabels';
   path?: PathSeg[];
 }): Promise<SnapshotReadResult<QueryResult>> {
   if (!options.documentKey || options.snapshotId == null) return { status: 'snapshotNotReady' };
@@ -54,6 +55,16 @@ export async function queryPathValue(options: {
   const result = await querySnapshotProjection({ ...options, queryKind: 'pathValue' });
   if (result.status !== 'ready') return result;
   return { status: 'ready', data: result.data.pathValue ?? null };
+}
+
+export async function queryDirectChildren(options: {
+  documentKey: string;
+  snapshotId: SnapshotId | null;
+  path: PathSeg[];
+}): Promise<SnapshotReadResult<DocumentDirectChild[]>> {
+  const result = await querySnapshotProjection({ ...options, queryKind: 'directChildren' });
+  if (result.status !== 'ready') return result;
+  return { status: 'ready', data: result.data.directChildren ?? [] };
 }
 
 export async function queryFieldLabels(options: {

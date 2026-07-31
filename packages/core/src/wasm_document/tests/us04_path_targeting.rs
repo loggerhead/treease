@@ -1,4 +1,5 @@
 use super::*;
+use crate::document::protocol::DocumentDirectChild;
 
 const COMPLEX_JSON_FIXTURE: &str = "test/fixtures/json/complex.1.json";
 const COMPLEX_LONG_KEY: &str = "we___are___such___stuff___as___dreams___are___made___on___and___our___little___life___is___rounded___with___sleep";
@@ -217,6 +218,33 @@ fn wasm_document_query_snapshot_returns_lightweight_projections() {
         SnapshotReadResult::SnapshotNotReady => panic!("snapshot should be ready"),
     };
     assert_eq!(root.root_value_kind.as_deref(), Some("object"));
+
+    let direct_children = query_snapshot_impl(QuerySnapshotRequest {
+        document_key: "query-projections".to_owned(),
+        snapshot_id: snapshot_id.0 as u32,
+        query_kind: QueryKind::DirectChildren as u8,
+        has_path: true,
+        path_pattern: "$.items".to_owned(),
+        span_start: 0,
+        span_end: 0,
+        target: QueryTargetKind::Value,
+    })
+    .expect("direct children query should execute");
+    let direct_children = match direct_children {
+        SnapshotReadResult::Ready { data } => data.direct_children,
+        SnapshotReadResult::SnapshotNotReady => panic!("snapshot should be ready"),
+    };
+    assert_eq!(direct_children.len(), 2);
+    assert!(matches!(
+        direct_children.first(),
+        Some(DocumentDirectChild::Index {
+            index: 0,
+            preview,
+            value_type,
+            is_container: false,
+            ..
+        }) if preview == "true" && value_type == "boolean"
+    ));
 
     let path_value = query_snapshot_impl(QuerySnapshotRequest {
         document_key: "query-projections".to_owned(),
@@ -720,7 +748,8 @@ fn wasm_document_plan_repeated_path_cases_cover_object_and_nested_sequences() {
                 key_seg("name"),
             ],
             next_value: "c",
-            expected_source: "groups:\n  - items:\n      - name: a\n  - items:\n      - name: 'c'\n",
+            expected_source:
+                "groups:\n  - items:\n      - name: a\n  - items:\n      - name: 'c'\n",
         },
         RepeatedCase {
             language: "toml",

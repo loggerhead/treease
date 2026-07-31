@@ -5,15 +5,15 @@ use std::path::{Path, PathBuf};
 use treease_core::core::DocumentTextEdit;
 use treease_core::document::{
     AdvanceInput, CommitMode, DocumentAnalysisPayload, DocumentAnchor, DocumentDiagnostic,
-    DocumentEvent, DocumentFormattingSettings, DocumentInputPlan, DocumentJobKind,
-    DocumentJobSettings, DocumentJobSpec, DocumentNodePreview, DocumentParserSettings,
-    DocumentPathValue, DocumentSearchItem, DocumentTreeNode, EventBatch, GraphBezierArgsData,
-    GraphBoxArgs, GraphCellData, GraphDelta, GraphEdgeData, GraphEdgeRemoved, GraphNodeData,
-    GraphPathSeg, GraphRowData, GraphTableData, GraphTextArgs, GraphValueEditFallbackReason,
-    GraphValueEditPlan, GraphValueEditPlanMode, GraphValueEditRequest, JobTerminal, LayoutPatch,
-    OutputPlan, ParseFailed, ProjectionDelta, ProjectionRequest, QueryKind, QueryResult,
-    QueryTargetKind, SemanticTokensPayload, SnapshotId, SnapshotQuery, SnapshotReadResult,
-    SnapshotReady, TableCellPatchData, TablePatch,
+    DocumentDirectChild, DocumentEvent, DocumentFormattingSettings, DocumentInputPlan,
+    DocumentJobKind, DocumentJobSettings, DocumentJobSpec, DocumentNodePreview,
+    DocumentParserSettings, DocumentPathValue, DocumentSearchItem, DocumentTreeNode, EventBatch,
+    GraphBezierArgsData, GraphBoxArgs, GraphCellData, GraphDelta, GraphEdgeData, GraphEdgeRemoved,
+    GraphNodeData, GraphPathSeg, GraphRowData, GraphTableData, GraphTextArgs,
+    GraphValueEditFallbackReason, GraphValueEditPlan, GraphValueEditPlanMode,
+    GraphValueEditRequest, JobTerminal, LayoutPatch, OutputPlan, ParseFailed, ProjectionDelta,
+    ProjectionRequest, QueryKind, QueryResult, QueryTargetKind, SemanticTokensPayload, SnapshotId,
+    SnapshotQuery, SnapshotReadResult, SnapshotReady, TableCellPatchData, TablePatch,
 };
 use tsify::Tsify;
 
@@ -56,6 +56,7 @@ fn declaration_list() -> Vec<&'static str> {
         <DocumentTreeNode as Tsify>::DECL,
         <DocumentNodePreview as Tsify>::DECL,
         <DocumentPathValue as Tsify>::DECL,
+        <DocumentDirectChild as Tsify>::DECL,
         <DocumentSearchItem as Tsify>::DECL,
         <DocumentAnalysisPayload as Tsify>::DECL,
         <ProjectionDelta as Tsify>::DECL,

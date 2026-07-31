@@ -614,6 +614,7 @@ pub enum QueryKind {
     PathValue,
     FieldLabels,
     SearchIndex,
+    DirectChildren,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -663,6 +664,8 @@ pub struct QueryResult {
     pub node_preview: Option<DocumentNodePreview>,
     #[serde(default, rename = "pathValue")]
     pub path_value: Option<DocumentPathValue>,
+    #[serde(default, rename = "directChildren")]
+    pub direct_children: Vec<DocumentDirectChild>,
     #[serde(default, rename = "fieldLabels")]
     pub field_labels: Vec<String>,
     #[serde(default, rename = "searchItems")]
@@ -696,6 +699,34 @@ pub struct DocumentPathValue {
     pub display_text: String,
     /// Semantic-token projection from the same snapshot and source span.
     pub semantic_tokens: SemanticTokensPayload,
+}
+
+/// One immediate child of a structured value, shaped for column navigation.
+/// This deliberately excludes graph geometry: callers only need a single column.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(Tsify))]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum DocumentDirectChild {
+    Key {
+        key: String,
+        preview: String,
+        #[serde(rename = "valueType")]
+        value_type: String,
+        #[serde(rename = "semType")]
+        sem_type: i32,
+        #[serde(rename = "isContainer")]
+        is_container: bool,
+    },
+    Index {
+        index: u32,
+        preview: String,
+        #[serde(rename = "valueType")]
+        value_type: String,
+        #[serde(rename = "semType")]
+        sem_type: i32,
+        #[serde(rename = "isContainer")]
+        is_container: bool,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

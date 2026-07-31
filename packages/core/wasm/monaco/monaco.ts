@@ -24,6 +24,7 @@ export type {
   CommitMode,
   DocumentAnalysisPayload,
   DocumentAnchor,
+  DocumentDirectChild,
   DocumentDiagnostic,
   DocumentEvent,
   DocumentFormattingSettings,

@@ -5,27 +5,22 @@ import { PathSegTag } from '@core-wasm/index';
 
 const mocks = vi.hoisted(() => ({
   queryPathValue: vi.fn(),
-  cacheClear: vi.fn(),
-  prepareGraph: vi.fn(),
+  queryDirectChildren: vi.fn(),
 }));
 
 vi.mock('../../../services/SnapshotProjectionService', () => ({
   queryPathValue: mocks.queryPathValue,
+  queryDirectChildren: mocks.queryDirectChildren,
 }));
 
 vi.mock('../column-navigator-graph', () => ({
-  createColumnNavigatorGraphCache: () => ({
-    clear: mocks.cacheClear,
-    prepareGraph: mocks.prepareGraph,
-  }),
-  buildColumnNavigatorColumnItems: (graph: { items?: unknown[] }) => graph.items ?? [],
+  buildColumnNavigatorDirectItems: (_path: unknown, children: unknown[]) => children,
   formatColumnNavigatorPath: (path: Array<{ key?: string; index?: number }>) =>
     path.length ? `$.${path.map((segment) => segment.key ?? `[${segment.index}]`).join('.')}` : '$',
   shouldOpenColumnNavigatorContent: (value: { valueType?: string; displayText?: string }) =>
     (value.valueType !== 'object' && value.valueType !== 'array') ||
     value.displayText === '{}' ||
     value.displayText === '[]',
-  buildColumnNavigatorRenderSignature: () => 'render-config',
 }));
 
 import { buildWorkspacePathPrefixes, createColumnNavigatorController } from './controller';
@@ -74,12 +69,9 @@ function installDocument(values: Record<string, ReturnType<typeof readyPathValue
   mocks.queryPathValue.mockImplementation(async ({ path }: { path: Array<{ key?: string }> }) =>
     values[pathKey(path)] ?? { status: 'ready', data: null },
   );
-  mocks.prepareGraph.mockImplementation(async (path: Array<{ key?: string }>) => ({
-    path,
-    pathKey: pathKey(path),
-    nodes: [],
-    edges: [],
-    items: items[pathKey(path)] ?? [],
+  mocks.queryDirectChildren.mockImplementation(async ({ path }: { path: Array<{ key?: string }> }) => ({
+    status: 'ready',
+    data: items[pathKey(path)] ?? [],
   }));
 }
 
@@ -87,16 +79,13 @@ function createController(overrides: Record<string, unknown> = {}) {
   const states: any[] = [];
   const controller = createColumnNavigatorController({
     defaultHeightPx: 220,
-    getActiveSnapshotId: () => 'snapshot-active' as any,
     getWorkspaceSnapshotId: () => 'snapshot-workspace' as any,
     getDocumentKey: () => 'document-1',
     getLanguageId: () => 'json' as any,
     getRevision: () => 1,
-    getRenderConfig: () => ({}) as any,
     getEnableNest: () => false,
     getReadonly: () => false,
     getShellHeight: () => 800,
-    inferGraphPaths: vi.fn(),
     clearSearchHighlight: vi.fn(),
     clearActiveGraphSelection: vi.fn(),
     emitReveal: vi.fn(),
@@ -258,6 +247,43 @@ describe('path-driven column navigator controller', () => {
     expect(controller.getActivePath()).toEqual(keyPath('alpha'));
   });
 
+  it('moves through every sibling while coalescing their graph reveals', async () => {
+    installDocument(
+      {
+        '': readyPathValue('object', '{3}'),
+        alpha: readyPathValue('number', '1'),
+        beta: readyPathValue('number', '2'),
+        gamma: readyPathValue('number', '3'),
+      },
+      {
+        '': [
+          item(keyPath('alpha'), 'number'),
+          item(keyPath('beta'), 'number'),
+          item(keyPath('gamma'), 'number'),
+        ],
+      },
+    );
+    const emitReveal = vi.fn();
+    const { controller, states } = createController({ emitReveal });
+    await controller.openPath(keyPath('alpha'));
+    emitReveal.mockClear();
+    const stateCountBeforeMoves = states.length;
+
+    vi.useFakeTimers();
+    try {
+      const moves = Array.from({ length: 30 }, () => controller.moveSibling(1));
+      await Promise.all(moves);
+      expect(states.slice(stateCountBeforeMoves).filter((state) => state.isLoading)).toHaveLength(30);
+      expect(emitReveal).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(48);
+    } finally {
+      vi.useRealTimers();
+    }
+
+    expect(controller.getActivePath()).toEqual(keyPath('alpha'));
+    expect(emitReveal).toHaveBeenCalledOnce();
+  });
+
   it('binds subtree text to the detail editor while the selected container keeps its column', async () => {
     installDocument(
       {
@@ -414,8 +440,9 @@ describe('path-driven column navigator controller', () => {
       if (pathKey(path) === 'a') return staleLeaf.promise;
       return readyPathValue('number', '2');
     });
-    mocks.prepareGraph.mockResolvedValue({
-      items: [item(keyPath('a'), 'number'), item(keyPath('b'), 'number')],
+    mocks.queryDirectChildren.mockResolvedValue({
+      status: 'ready',
+      data: [item(keyPath('a'), 'number'), item(keyPath('b'), 'number')],
     });
     const { controller } = createController();
 
@@ -435,7 +462,7 @@ describe('path-driven column navigator controller', () => {
       if (pathKey(path) === 'slow') return pending.promise;
       return readyPathValue('number', '1');
     });
-    mocks.prepareGraph.mockResolvedValue({ items: [item(keyPath('slow'), 'number')] });
+    mocks.queryDirectChildren.mockResolvedValue({ status: 'ready', data: [item(keyPath('slow'), 'number')] });
     const { controller } = createController();
 
     const navigation = controller.openPath(keyPath('slow'));
@@ -467,27 +494,23 @@ describe('path-driven column navigator controller', () => {
       graphAppliedRevision: 2,
       snapshotId: 2 as any,
       enableNest: false,
-      renderConfig: {} as any,
     });
 
     expect(controller.getChain().at(-1)?.content?.sourceText).toBe('"external"');
-    expect(mocks.cacheClear).toHaveBeenCalled();
+    expect(mocks.queryDirectChildren).toHaveBeenCalled();
   });
 
-  it('refreshes projection state when render configuration or nesting changes', async () => {
+  it('refreshes projection state when nesting changes', async () => {
     installDocument(
       { '': readyPathValue('object', '{1}'), value: readyPathValue('string', '"old"') },
       { '': [item(keyPath('value'), 'string')] },
     );
-    let renderConfig = {};
     let enableNest = false;
     const { controller } = createController({
-      getRenderConfig: () => renderConfig as any,
       getEnableNest: () => enableNest,
     });
     await controller.openPath(keyPath('value'));
-    mocks.cacheClear.mockClear();
-    renderConfig = { changed: true };
+    mocks.queryDirectChildren.mockClear();
     enableNest = true;
 
     await controller.syncProjection({
@@ -497,10 +520,9 @@ describe('path-driven column navigator controller', () => {
       graphAppliedRevision: 1,
       snapshotId: 1 as any,
       enableNest,
-      renderConfig: renderConfig as any,
     });
 
-    expect(mocks.cacheClear).toHaveBeenCalledOnce();
+    expect(mocks.queryDirectChildren).toHaveBeenCalled();
   });
 
   it('clamps divider height to the shell bounds and clears drag state on release', () => {

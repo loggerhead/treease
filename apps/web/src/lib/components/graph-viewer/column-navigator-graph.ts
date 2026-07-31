@@ -1,3 +1,4 @@
+import { PathSegTag, type DocumentDirectChild } from '@core-wasm/index';
 import { serializePath } from '../../../shared/document-anchor-utils';
 import { callSharedWasmWorker } from '../../wasm/wasm-worker-singleton';
 import type { DocumentProjectionDelta, SnapshotId, SnapshotReadResult } from '@core-wasm/index';
@@ -71,6 +72,28 @@ export function shouldOpenColumnNavigatorContent(value: {
 export function buildWorkspacePathKey(path: PathSeg[]): string {
   if (!path.length) return '';
   return path.map((segment) => (isPathSegKey(segment) ? `k:${pathSegKeyValue(segment)}` : `i:${segment.index}`)).join('|');
+}
+
+/** Maps the lightweight snapshot query into one navigator column without graph layout. */
+export function buildColumnNavigatorDirectItems(
+  containerPath: PathSeg[],
+  children: DocumentDirectChild[],
+): ColumnNavigatorColumnItem[] {
+  return children.map((child) => {
+    const segment: PathSeg = child.kind === 'key'
+      ? { tag: PathSegTag.KEY, key: child.key as PathSeg['key'], index: 0 }
+      : { tag: PathSegTag.INDEX, key: '' as PathSeg['key'], index: child.index };
+    const path = [...containerPath, segment];
+    return {
+      path,
+      pathKey: buildPathKey(path),
+      label: child.kind === 'key' ? child.key : `${child.index}`,
+      preview: child.preview,
+      valueType: child.valueType as ValueType,
+      semType: child.semType,
+      isContainer: child.isContainer,
+    };
+  }).filter((item): item is ColumnNavigatorColumnItem => Boolean(item.pathKey));
 }
 
 function pathsEqual(left: PathSeg[], right: PathSeg[]): boolean {

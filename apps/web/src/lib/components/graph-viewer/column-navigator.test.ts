@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildColumnNavigatorColumnItems,
+  buildColumnNavigatorDirectItems,
   formatColumnNavigatorPath,
   normalizeWorkspaceGraphEdgeRows,
   rebaseColumnNavigatorPath,
@@ -142,6 +143,34 @@ describe('formatColumnNavigatorPath', () => {
         keySeg('duration'),
       ]),
     ).toBe('agent_steps[0].steps[6].basic_info.duration');
+  });
+});
+
+describe('buildColumnNavigatorDirectItems', () => {
+  it('builds a column directly from snapshot children without graph cells', () => {
+    expect(buildColumnNavigatorDirectItems([keySeg('messages')], [
+      { kind: 'index', index: 0, preview: '{2}', valueType: 'object', semType: 7, isContainer: true },
+      { kind: 'index', index: 1, preview: '{}', valueType: 'object', semType: 7, isContainer: false },
+    ])).toEqual([
+      {
+        path: [keySeg('messages'), indexSeg(0)],
+        pathKey: 'k:messages|i:0',
+        label: '0',
+        preview: '{2}',
+        valueType: 'object',
+        semType: 7,
+        isContainer: true,
+      },
+      {
+        path: [keySeg('messages'), indexSeg(1)],
+        pathKey: 'k:messages|i:1',
+        label: '1',
+        preview: '{}',
+        valueType: 'object',
+        semType: 7,
+        isContainer: false,
+      },
+    ]);
   });
 });
 

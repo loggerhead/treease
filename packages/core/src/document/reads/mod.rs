@@ -1,8 +1,9 @@
 use std::collections::BTreeSet;
 
 use super::protocol::{
-    DocumentAnchor, DocumentNodePreview, DocumentPathValue, DocumentSearchItem, ProjectionDelta,
-    QueryKind, QueryResult, QueryTargetKind, SemanticTokensPayload, SnapshotQuery,
+    DocumentAnchor, DocumentDirectChild, DocumentNodePreview, DocumentPathValue,
+    DocumentSearchItem, ProjectionDelta, QueryKind, QueryResult, QueryTargetKind,
+    SemanticTokensPayload, SnapshotQuery,
 };
 use super::snapshot::{AnalysisBundle, DocumentSnapshot};
 use crate::formats::DecodedDocument;
@@ -72,6 +73,14 @@ pub(crate) fn query_snapshot(snapshot: &DocumentSnapshot, query: &SnapshotQuery)
             .and_then(|path| path_value_for_path(analysis, document, path))
             .map(|path_value| QueryResult {
                 path_value: Some(path_value),
+                ..Default::default()
+            })
+            .unwrap_or_default(),
+        QueryKind::DirectChildren => query
+            .path_pattern
+            .as_deref()
+            .map(|path| QueryResult {
+                direct_children: direct_children_for_path(document, path),
                 ..Default::default()
             })
             .unwrap_or_default(),
@@ -273,6 +282,93 @@ fn node_value_type(node: &TreeNode) -> String {
     match node_value_kind(node).as_str() {
         "int" | "float" => "number".to_owned(),
         other => other.to_owned(),
+    }
+}
+
+fn direct_child_preview(store: &TreeStore, node_id: NodeId, node: &TreeNode) -> String {
+    match node.kind {
+        TreeNodeKind::Mapping => {
+            let count = node.content.len() / 2;
+            if count == 0 {
+                "{}".to_owned()
+            } else {
+                format!("{{{count}}}")
+            }
+        }
+        TreeNodeKind::Sequence => {
+            let count = node.content.len();
+            if count == 0 {
+                "[]".to_owned()
+            } else {
+                format!("[{count}]")
+            }
+        }
+        TreeNodeKind::Scalar | TreeNodeKind::Alias | TreeNodeKind::Unknown => {
+            store.value_string_for(node_id).unwrap_or_default()
+        }
+    }
+}
+
+fn direct_child_fields(
+    store: &TreeStore,
+    node_id: NodeId,
+    node: &TreeNode,
+) -> (String, String, i32, bool) {
+    (
+        direct_child_preview(store, node_id, node),
+        node_value_type(node),
+        super::snapshot::sem_type_code(node.resolved_sem_type()),
+        matches!(node.kind, TreeNodeKind::Mapping | TreeNodeKind::Sequence)
+            && !node.content.is_empty(),
+    )
+}
+
+fn direct_children_for_path(
+    document: &DecodedDocument,
+    path_pattern: &str,
+) -> Vec<DocumentDirectChild> {
+    let Some(node_id) = node_id_for_path(document, path_pattern, false) else {
+        return Vec::new();
+    };
+    let Some(node) = document.store.get(node_id) else {
+        return Vec::new();
+    };
+    match node.kind {
+        TreeNodeKind::Mapping => node
+            .content
+            .chunks_exact(2)
+            .filter_map(|pair| {
+                let key = document.store.value_string_for(pair[0]).ok()?;
+                let value = document.store.get(pair[1])?;
+                let (preview, value_type, sem_type, is_container) =
+                    direct_child_fields(&document.store, pair[1], value);
+                Some(DocumentDirectChild::Key {
+                    key,
+                    preview,
+                    value_type,
+                    sem_type,
+                    is_container,
+                })
+            })
+            .collect(),
+        TreeNodeKind::Sequence => node
+            .content
+            .iter()
+            .enumerate()
+            .filter_map(|(index, child_id)| {
+                let value = document.store.get(*child_id)?;
+                let (preview, value_type, sem_type, is_container) =
+                    direct_child_fields(&document.store, *child_id, value);
+                Some(DocumentDirectChild::Index {
+                    index: u32::try_from(index).ok()?,
+                    preview,
+                    value_type,
+                    sem_type,
+                    is_container,
+                })
+            })
+            .collect(),
+        TreeNodeKind::Scalar | TreeNodeKind::Alias | TreeNodeKind::Unknown => Vec::new(),
     }
 }
 
