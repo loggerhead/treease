@@ -3,8 +3,54 @@ import {
   type FileAccessGrant,
   type WorkspaceHost,
   type WorkspaceOpenFileOptions,
+  type WorkspaceSession,
   type WorkspaceSaveTextOptions,
 } from './contract';
+
+const WORKSPACE_DB_NAME = 'treease-workspace';
+const WORKSPACE_DB_VERSION = 1;
+const WORKSPACE_STORE_NAME = 'sessions';
+const WORKSPACE_SESSION_KEY = 'current';
+
+type StoredWorkspaceSession = {
+  id: string;
+  session: WorkspaceSession;
+};
+
+function openWorkspaceDatabase(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(WORKSPACE_DB_NAME, WORKSPACE_DB_VERSION);
+    request.onupgradeneeded = () => {
+      request.result.createObjectStore(WORKSPACE_STORE_NAME, { keyPath: 'id' });
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error ?? new Error('Failed to open workspace database.'));
+  });
+}
+
+async function saveBrowserWorkspaceSession(session: WorkspaceSession): Promise<void> {
+  const database = await openWorkspaceDatabase();
+  await new Promise<void>((resolve, reject) => {
+    const transaction = database.transaction(WORKSPACE_STORE_NAME, 'readwrite');
+    transaction.objectStore(WORKSPACE_STORE_NAME).put({ id: WORKSPACE_SESSION_KEY, session } satisfies StoredWorkspaceSession);
+    transaction.oncomplete = () => resolve();
+    transaction.onerror = () => reject(transaction.error ?? new Error('Failed to save workspace session.'));
+    transaction.onabort = () => reject(transaction.error ?? new Error('Workspace session save was aborted.'));
+  });
+  database.close();
+}
+
+async function loadBrowserWorkspaceSession(): Promise<WorkspaceSession | null> {
+  const database = await openWorkspaceDatabase();
+  const stored = await new Promise<StoredWorkspaceSession | undefined>((resolve, reject) => {
+    const transaction = database.transaction(WORKSPACE_STORE_NAME, 'readonly');
+    const request = transaction.objectStore(WORKSPACE_STORE_NAME).get(WORKSPACE_SESSION_KEY);
+    request.onsuccess = () => resolve(request.result as StoredWorkspaceSession | undefined);
+    request.onerror = () => reject(request.error ?? new Error('Failed to load workspace session.'));
+  });
+  database.close();
+  return stored?.session ?? null;
+}
 
 function chooseBrowserFile(options: WorkspaceOpenFileOptions): Promise<File | null> {
   return new Promise((resolve) => {
@@ -57,11 +103,11 @@ export const browserWorkspaceHost: WorkspaceHost = {
   async takeStartupFiles() {
     return [];
   },
-  async saveSession() {
-    throw new WorkspaceHostUnavailableError('Desktop workspace session persistence');
+  async saveSession(session) {
+    await saveBrowserWorkspaceSession(session);
   },
   async loadSession() {
-    throw new WorkspaceHostUnavailableError('Desktop workspace session persistence');
+    return loadBrowserWorkspaceSession();
   },
   async onCommand() {
     return () => {};

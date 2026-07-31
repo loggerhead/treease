@@ -61,6 +61,7 @@
   import { importFormatOptions, supportedEditorLanguageSet, editorLanguageFallback, findSupportedLanguageByExtension, type SupportedEditorLanguageId } from '../../lib/monaco/language-support';
   import { computeSynchronizedRuntimeLoading, type RuntimeStateEventDetail } from '../../lib/runtime-loading';
   import { getActiveDocumentText } from '../../lib/store/active-document-authority';
+  import { getLanguageExample } from '../../lib/monaco/language-examples';
   import { breadcrumbTargetForPath, isPathSegIndex, pathSegKeyValue, type PathSeg } from '../../lib/store/tree-path';
   import { PathSegTag } from '@core-wasm/index';
   import { markPreviewCompleted, markPreviewRequested } from '../../lib/test-bridge/runtime-readiness';
@@ -1111,6 +1112,7 @@
           name: tab.name,
           languageId: tab.languageId,
           sourceText: tab.sourceText,
+          origin: tab.origin,
           savedText: tab.savedText,
           linkedFileName: tab.fileLinkedDocument?.name,
         }] : [];
@@ -1124,7 +1126,7 @@
     sessionSaveTimer = setTimeout(() => {
       void (async () => {
         const host = await workspaceHost;
-        if (host.surface === 'desktop') await host.saveSession(sessionFromWorkspace());
+        await host.saveSession(sessionFromWorkspace());
       })();
     }, 300);
   }
@@ -1136,17 +1138,24 @@
       await editorRef.ensureReady();
       const [first, ...remaining] = session.tabs;
       const firstLanguage = languageForFileName(`recovery.${first.languageId}`);
-      await editorRef.replaceActiveFromFile({ text: first.sourceText, languageId: firstLanguage });
+      const firstOrigin = first.origin ?? (first.sourceText === getLanguageExample(firstLanguage) ? 'example' : 'user');
+      await editorRef.replaceActiveFromFile({ text: first.sourceText, languageId: firstLanguage, origin: firstOrigin });
       const firstTab = activeWorkspaceTab();
       if (firstTab) {
         editorRef.renameDocument(firstTab.id, first.name);
-        updateWorkspaceTab(firstTab.id, { name: first.name, sourceText: first.sourceText, savedText: first.savedText });
+        updateWorkspaceTab(firstTab.id, {
+          name: first.name,
+          sourceText: first.sourceText,
+          savedText: first.savedText,
+          origin: firstOrigin,
+        });
       }
       for (const tab of remaining) {
         editorRef.openDocument({
           name: tab.name,
           text: tab.sourceText,
           languageId: languageForFileName(`recovery.${tab.languageId}`),
+          origin: tab.origin ?? 'user',
         });
       }
       await tick();
@@ -1283,9 +1292,9 @@
       const host = await workspaceHost;
       showTabDirty = host.surface === 'desktop';
       if (shareID.present) return;
+      const session = await host.loadSession();
+      if (session) await restoreWorkspaceSession(session);
       if (host.surface === 'desktop') {
-        const session = await host.loadSession();
-        if (session) await restoreWorkspaceSession(session);
         for (const file of await host.takeStartupFiles()) await openWorkspaceFile(file);
         await handleDesktopDeepLinks(await host.getInitialDeepLinks());
         stopWorkspaceCommands = await host.onCommand((command) => void handleWorkspaceCommand(command));
@@ -1412,6 +1421,7 @@
               enableRevealSync={syncScrollEnabled}
               {synchronizedRuntimeLoading}
               runBidirectionalEdit={runEditorFullEditUsage}
+              onRequestImportFile={handleRequestImportFile}
               on:reveal={handleEditorReveal}
               on:runtime-state={handleEditorRuntimeEvent}
               onScroll={handleEditorScroll}
@@ -1654,6 +1664,7 @@
       enableRevealSync={syncScrollEnabled}
       {synchronizedRuntimeLoading}
       runBidirectionalEdit={runEditorFullEditUsage}
+      onRequestImportFile={handleRequestImportFile}
       on:reveal={handleEditorReveal}
       on:runtime-state={handleEditorRuntimeEvent}
       onScroll={handleEditorScroll}

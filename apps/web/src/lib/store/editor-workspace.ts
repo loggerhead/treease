@@ -4,6 +4,7 @@ import type { DiagnosticItem, TempModel } from './diagnostics-store';
 import type { FullEditUiState } from './full-edit-ui-store';
 import type { GraphHighlightState } from './graph-selection-store';
 import type { PathSeg } from './tree-path';
+import type { DocumentOrigin } from '../document-origin';
 
 export type EditorPaneId = 'left' | 'right';
 export type EditorWorkspaceTabRole = 'primary' | 'sidecar' | 'background';
@@ -21,6 +22,7 @@ export type EditorWorkspaceTab = {
   documentKey: string;
   languageId: SupportedEditorLanguageId;
   sourceText: string;
+  origin?: DocumentOrigin;
   revision: number;
   graphAppliedRevision: number;
   snapshotId: SnapshotId | null;
@@ -53,6 +55,7 @@ export type WorkspaceEditorTabInput = {
   documentKey: string;
   languageId: SupportedEditorLanguageId;
   sourceText: string;
+  origin?: DocumentOrigin;
   revision?: number;
   graphAppliedRevision?: number;
   snapshotId?: SnapshotId | null;
@@ -73,6 +76,7 @@ export type EditorWorkspaceTabPatch = {
   documentKey?: string;
   languageId?: SupportedEditorLanguageId;
   sourceText?: string;
+  origin?: DocumentOrigin;
   revision?: number;
   graphAppliedRevision?: number;
   snapshotId?: SnapshotId | null;
@@ -194,6 +198,7 @@ function createEditorTabFromInput(
     documentKey: input.documentKey,
     languageId: input.languageId,
     sourceText: input.sourceText,
+    origin: input.origin ?? existing?.origin ?? 'user',
     revision: input.revision ?? existing?.revision ?? 0,
     graphAppliedRevision: input.graphAppliedRevision ?? existing?.graphAppliedRevision ?? 0,
     snapshotId: input.snapshotId !== undefined ? input.snapshotId : existing?.snapshotId ?? null,
@@ -425,6 +430,7 @@ export function ensureSidecarTab(
     documentKey: sidecarDocumentKey(input.id),
     languageId: input.languageId,
     sourceText: input.sourceText,
+    origin: 'user',
     revision: 0,
     graphAppliedRevision: 0,
     snapshotId: null,
@@ -517,6 +523,7 @@ export function updateWorkspaceTab(
     documentKey: current.documentKey,
     languageId: patch.languageId ?? current.languageId,
     sourceText: patch.sourceText ?? current.sourceText,
+    origin: patch.origin ?? current.origin,
     revision: patch.revision ?? current.revision,
     graphAppliedRevision: patch.graphAppliedRevision ?? current.graphAppliedRevision,
     snapshotId: nextSnapshotId,

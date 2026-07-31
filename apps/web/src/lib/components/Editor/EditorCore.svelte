@@ -38,6 +38,7 @@
   import { getLanguageExample } from '../../monaco/language-examples';
   import {
     editorLanguageFallback,
+    importFormatOptions,
     supportedEditorLanguageSet,
     type SupportedEditorLanguageId,
   } from '../../monaco/language-support';
@@ -76,6 +77,7 @@
   import { monacoChangesToDocumentTextEdits, type MonacoTextChange } from '../../../shared/document-text-edits';
   import { serializePath } from '../../../shared/document-anchor-utils';
   import { createTreeaseMonacoEditorOptions } from './editor-options';
+  import type { DocumentOrigin } from '../../document-origin';
 
   export let tabSummaries: TabSummary[] = [];
   export let activeTabId = '';
@@ -83,6 +85,7 @@
   export let enableRevealSync = true;
   export let synchronizedRuntimeLoading = false;
   export let runBidirectionalEdit: <T>(source: string, execute: () => Promise<T>, reason?: string) => Promise<T> = async (_source, execute) => execute();
+  export let onRequestImportFile: (payload: { sourceFormat: string; targetFormat: string; accept: string[] }) => Promise<void> = async () => {};
 
   type QueuedWholeDocumentReplacement = {
     text: string;
@@ -106,6 +109,8 @@
   let languageUnsub: (() => void) | null = null;
   let tempModelUnsub: (() => void) | null = null;
   let jsonBlockSelectionUnsub: (() => void) | null = null;
+  let placeholderWidget: Monaco.editor.IContentWidget | null = null;
+  let placeholderVisible = false;
 
   let languageIdValue: SupportedEditorLanguageId = editorLanguageFallback;
   let shouldSuppressLanguageExample = false;
@@ -276,6 +281,87 @@
   const maxTabs = EDITOR_CONFIG.maxTabs;
   const initialCode = getLanguageExample('json');
 
+  function updateEditorPlaceholder(): void {
+    if (!editor || !model) return;
+    const shouldShow = model.getValue().trim() === '';
+
+    if (!shouldShow) {
+      if (placeholderWidget) {
+        editor.removeContentWidget(placeholderWidget);
+        placeholderWidget = null;
+      }
+      placeholderVisible = false;
+      return;
+    }
+
+    if (placeholderWidget) {
+      placeholderVisible = true;
+      return;
+    }
+
+    placeholderWidget = {
+        getId: () => 'treease-editor-placeholder',
+        getDomNode: () => {
+          const root = document.createElement('div');
+          root.className = 'treease-editor-placeholder';
+
+          const title = document.createElement('div');
+          title.textContent = 'Start typing, or open a file';
+          root.appendChild(title);
+
+          const openFileRow = document.createElement('div');
+          openFileRow.className = 'treease-editor-placeholder__row';
+          const openFile = document.createElement('button');
+          openFile.type = 'button';
+          openFile.className = 'treease-editor-placeholder__link';
+          openFile.textContent = 'Choose a file or drag one into this editor';
+          openFile.addEventListener('click', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            void onRequestImportFile({
+              sourceFormat: languageIdValue,
+              targetFormat: languageIdValue,
+              accept: importFormatOptions.find((option) => option.id === languageIdValue)?.extensions ?? [],
+            });
+          });
+          openFileRow.appendChild(openFile);
+          root.appendChild(openFileRow);
+
+          const exampleRow = document.createElement('div');
+          exampleRow.className = 'treease-editor-placeholder__row';
+          const loadExample = document.createElement('button');
+          loadExample.type = 'button';
+          loadExample.className = 'treease-editor-placeholder__link';
+          loadExample.textContent = 'Load an example file';
+          loadExample.addEventListener('click', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            const example = getLanguageExample(languageIdValue);
+            if (!example) return;
+            setActiveTabOrigin('example');
+            queueWholeDocumentReplacement(example, {
+              sourceWritebackPolicy: 'intake',
+              formatSourceOnClose: false,
+              shouldResolveLanguage: false,
+              markUserInput: false,
+            });
+            editor?.focus();
+          });
+          exampleRow.appendChild(loadExample);
+          root.appendChild(exampleRow);
+          return root;
+        },
+        getPosition: () => ({
+          position: { lineNumber: 1, column: 1 },
+          preference: [monaco.editor.ContentWidgetPositionPreference.EXACT],
+        }),
+        suppressMouseDown: true,
+    };
+    editor.addContentWidget(placeholderWidget);
+
+    placeholderVisible = true;
+  }
+
   let tabManager: TabManager;
   let dropZone: EditorDropZone;
 
@@ -291,7 +377,20 @@
   function markActiveTabUserInput(value: boolean): void {
     const manager = tabManager as TabManager | undefined;
     const activeId = manager?.getActiveTabId();
-    if (activeId) userInputByTabId.set(activeId, value);
+    if (activeId) {
+      userInputByTabId.set(activeId, value);
+      if (value) setActiveTabOrigin('user');
+    }
+  }
+
+  function setActiveTabOrigin(origin: DocumentOrigin): void {
+    const manager = tabManager as TabManager | undefined;
+    const activeId = manager?.getActiveTabId();
+    if (activeId) {
+      userInputByTabId.set(activeId, origin !== 'example');
+      updateWorkspaceTab(activeId, { origin });
+      updateEditorPlaceholder();
+    }
   }
 
   function guardImportInProgress(): boolean {
@@ -519,6 +618,7 @@
       model,
       ...editorOptions,
     });
+    updateEditorPlaceholder();
     cleanupSourceEditorTestHook = attachMonacoTestHook(
       {
         getDomNode: () => editor?.getDomNode() ?? null,
@@ -597,6 +697,7 @@
     editor.onDidChangeModelContent((event) => {
       const activeModel = model;
       if (!activeModel) return;
+      updateEditorPlaceholder();
       const previousLength = lastModelLength;
       const previousText = lastModelText;
       const nextText = activeModel.getValue();
@@ -1017,6 +1118,7 @@
       name: tab.name,
       documentKey: tab.documentKey,
       languageId: tab.languageId,
+      origin: tab.origin,
       sourceText: tab.model.getValue(),
       revision: workspaceTab?.revision ?? (isActiveEditorTab ? editorRevisionValue : 0),
       graphAppliedRevision: workspaceTab?.graphAppliedRevision ?? (isActiveEditorTab ? $graphAppliedRevision : 0),
@@ -1046,6 +1148,8 @@
     model = tab.model;
     setModelDocumentKey(model, tab.documentKey);
     editor.setModel(tab.model);
+    placeholderVisible = false;
+    updateEditorPlaceholder();
     syncColorViewportState('model');
     lastModelLength = tab.model.getValue().length;
     lastModelText = tab.model.getValue();
@@ -1110,13 +1214,14 @@
     name: string;
     text: string;
     languageId: SupportedEditorLanguageId;
+    origin?: DocumentOrigin;
     fileLinkedDocument?: { grantId: string; name: string };
   }): string | null {
     if (guardImportInProgress() || !monaco) return null;
-    const tab = tabManager.addTab(payload.languageId, payload.text);
+    const tab = tabManager.addTab(payload.languageId, payload.text, payload.origin ?? 'import');
     if (!tab) return null;
     tabManager.setTabName(tab.id, payload.name);
-    userInputByTabId.set(tab.id, false);
+    userInputByTabId.set(tab.id, true);
     addWorkspaceTabFromEditor({
       ...workspacePayloadForTab(tab),
       name: payload.name,
@@ -1127,12 +1232,16 @@
     return tab.id;
   }
 
-  export async function replaceActiveFromFile(payload: { text: string; languageId: SupportedEditorLanguageId }): Promise<void> {
+  export async function replaceActiveFromFile(payload: {
+    text: string;
+    languageId: SupportedEditorLanguageId;
+    origin?: DocumentOrigin;
+  }): Promise<void> {
     if (!model || !monaco) return;
     suppressNextWholeDocumentAutoGuess = true;
     setLanguageIdWithoutExample(payload.languageId);
     setEditorValue(payload.text);
-    markActiveTabUserInput(false);
+    setActiveTabOrigin(payload.origin ?? 'import');
   }
 
   export function replaceDocumentFromFile(payload: { tabId: string; text: string; languageId: SupportedEditorLanguageId }): void {
@@ -1141,7 +1250,8 @@
     monaco.editor.setModelLanguage(tab.model, payload.languageId);
     tab.model.setValue(payload.text);
     tabManager.updateTabLanguage(tab.id, payload.languageId);
-    userInputByTabId.set(tab.id, false);
+    userInputByTabId.set(tab.id, true);
+    updateWorkspaceTab(tab.id, { origin: 'import', languageId: payload.languageId, sourceText: payload.text });
   }
 
   export function renameDocument(tabId: string, name: string): void {
@@ -1543,6 +1653,10 @@
     editorFullEditController.dispose();
     cleanupSourceEditorTestHook?.();
     cleanupSourceEditorTestHook = null;
+    if (editor && placeholderWidget) {
+      editor.removeContentWidget(placeholderWidget);
+      placeholderWidget = null;
+    }
     if (editor) {
       editor.dispose();
       editor = null;
@@ -1615,3 +1729,45 @@
   />
   <TabManager bind:this={tabManager} {monaco} {maxTabs} initialLanguageId={languageIdValue} {initialCode} />
 </div>
+
+<style>
+  :global(.treease-editor-placeholder) {
+    color: #7b8794;
+    font: 13px/20px ui-monospace, SFMono-Regular, Menlo, monospace;
+    pointer-events: auto;
+    white-space: nowrap;
+  }
+
+  :global(.treease-editor-placeholder__link) {
+    padding: 1px 3px;
+    border: 0;
+    border-radius: 3px;
+    background: transparent;
+    color: var(--accent);
+    cursor: pointer;
+    font: inherit;
+    text-decoration: underline;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 2px;
+  }
+
+  :global(.treease-editor-placeholder__row) {
+    display: flex;
+    align-items: baseline;
+    gap: 7px;
+  }
+
+  :global(.treease-editor-placeholder__row::before) {
+    width: 6px;
+    height: 6px;
+    flex: 0 0 6px;
+    border-radius: 999px;
+    background: var(--accent);
+    content: '';
+  }
+
+  :global(.treease-editor-placeholder__link:hover),
+  :global(.treease-editor-placeholder__link:focus-visible) {
+    background: color-mix(in srgb, var(--accent) 10%, transparent);
+  }
+</style>

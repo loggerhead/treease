@@ -6,7 +6,8 @@
   import type { EditorModelWithDocumentKey, EditorTab, TabSummary } from './types';
   import { EDITOR_CONFIG } from '../../config/constants';
   import { ensureModelDocumentKey, rotateModelDocumentKey } from './document-key';
-  import { createDefaultTabName } from './tab-name';
+import { createDefaultTabName } from './tab-name';
+import type { DocumentOrigin } from '../../document-origin';
 
   export let monaco: typeof Monaco;
   export let maxTabs = EDITOR_CONFIG.maxTabs;
@@ -40,7 +41,7 @@
     };
   }
 
-  function createTab(languageId: SupportedEditorLanguageId, text: string): EditorTab {
+  function createTab(languageId: SupportedEditorLanguageId, text: string, origin: DocumentOrigin): EditorTab {
     const id = `tab-${Date.now()}-${tabCounter}`;
     const name = createDefaultTabName(tabCounter);
     tabCounter += 1;
@@ -48,7 +49,7 @@
     tempModels.set(id, createTempModel());
     const model = monaco.editor.createModel(text, languageId, uri) as EditorModelWithDocumentKey;
     const documentKey = ensureModelDocumentKey(model, id);
-    return { id, name, languageId, documentKey, model };
+    return { id, name, languageId, origin, documentKey, model };
   }
 
   function syncTabSummaries(): void {
@@ -56,15 +57,15 @@
   }
 
   export function initTabs(): EditorTab {
-    const firstTab = createTab(initialLanguageId, initialCode);
+    const firstTab = createTab(initialLanguageId, initialCode, 'example');
     tabs = [firstTab];
     syncTabSummaries();
     return firstTab;
   }
 
-  export function addTab(languageId: SupportedEditorLanguageId, text: string): EditorTab | null {
+  export function addTab(languageId: SupportedEditorLanguageId, text: string, origin: DocumentOrigin = 'example'): EditorTab | null {
     if (tabs.length >= maxTabs) return null;
-    const tab = createTab(languageId, text);
+    const tab = createTab(languageId, text, origin);
     tabs = [...tabs, tab];
     syncTabSummaries();
     dispatch('tabAdd', { tab });
@@ -82,7 +83,7 @@
     syncTabSummaries();
 
     if (nextTabs.length === 0) {
-      const fallback = createTab(fallbackLanguageId, fallbackText);
+      const fallback = createTab(fallbackLanguageId, fallbackText, 'example');
       tabs = [fallback];
       syncTabSummaries();
       return fallback;

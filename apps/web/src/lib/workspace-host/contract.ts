@@ -28,6 +28,7 @@ export type WorkspaceSession = {
     name: string;
     languageId: string;
     sourceText: string;
+    origin?: 'example' | 'user' | 'import';
     savedText?: string;
     linkedFileName?: string;
   }>;

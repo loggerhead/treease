@@ -55,6 +55,7 @@ function createPrimaryTab(): EditorWorkspaceTab {
     documentKey: '',
     languageId: editorLanguageFallback,
     sourceText: '',
+    origin: 'example',
     revision: 0,
     graphAppliedRevision: 0,
     snapshotId: null,

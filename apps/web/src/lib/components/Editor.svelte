@@ -13,6 +13,7 @@
   export let enableRevealSync = true;
   export let synchronizedRuntimeLoading = false;
   export let runBidirectionalEdit: <T>(source: string, execute: () => Promise<T>, reason?: string) => Promise<T> = async (_source, execute) => execute();
+  export let onRequestImportFile: (payload: { sourceFormat: string; targetFormat: string; accept: string[] }) => Promise<void> = async () => {};
 
   const dispatch = createEventDispatcher<{ reveal: unknown; 'runtime-state': RuntimeStateEventDetail }>();
 
@@ -74,12 +75,13 @@
     name: string;
     text: string;
     languageId: SupportedEditorLanguageId;
+    origin?: 'example' | 'user' | 'import';
     fileLinkedDocument?: { grantId: string; name: string };
   }) {
     return editorCore?.openDocument(payload);
   }
 
-  export function replaceActiveFromFile(payload: { text: string; languageId: SupportedEditorLanguageId }) {
+  export function replaceActiveFromFile(payload: { text: string; languageId: SupportedEditorLanguageId; origin?: 'example' | 'user' | 'import' }) {
     return editorCore?.replaceActiveFromFile(payload);
   }
 
@@ -170,6 +172,7 @@
   {enableRevealSync}
   {synchronizedRuntimeLoading}
   {runBidirectionalEdit}
+  {onRequestImportFile}
   {onScroll}
   on:reveal={handleReveal}
   on:runtime-state={handleRuntimeState}
