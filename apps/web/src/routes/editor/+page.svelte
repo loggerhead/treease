@@ -1294,6 +1294,7 @@
     if (resetRequested) {
       void (async () => {
         try {
+          await settingsStore.closePersistence();
           const host = await workspaceHost;
           if (host.surface === 'desktop') await resetBrowserLocalState();
           await host.resetLocalState();

@@ -22,6 +22,7 @@ import { handleError } from '../utils/error-handler';
 const DB_NAME = 'treease-settings';
 const STORE_NAME = 'settings';
 const SETTINGS_KEY = 'user';
+let settingsDbPromise: ReturnType<typeof openDB> | null = null;
 
 export type SettingsStatus = 'idle' | 'loading' | 'ready' | 'error';
 
@@ -38,13 +39,36 @@ const initialSettingsState: SettingsState = {
 };
 
 async function getDb() {
-  return openDB(DB_NAME, 1, {
-    upgrade(db) {
-      if (!db.objectStoreNames.contains(STORE_NAME)) {
-        db.createObjectStore(STORE_NAME);
+  if (!settingsDbPromise) {
+    const dbPromise = openDB(DB_NAME, 1, {
+      upgrade(db) {
+        if (!db.objectStoreNames.contains(STORE_NAME)) {
+          db.createObjectStore(STORE_NAME);
+        }
       }
-    }
-  });
+    });
+    settingsDbPromise = dbPromise;
+    void dbPromise.then((db) => {
+      db.onversionchange = () => {
+        db.close();
+        if (settingsDbPromise === dbPromise) settingsDbPromise = null;
+      };
+    }).catch(() => {
+      if (settingsDbPromise === dbPromise) settingsDbPromise = null;
+    });
+  }
+  return settingsDbPromise;
+}
+
+async function closePersistence(): Promise<void> {
+  const dbPromise = settingsDbPromise;
+  settingsDbPromise = null;
+  if (!dbPromise) return;
+  try {
+    (await dbPromise).close();
+  } catch {
+    // The connection failure is handled by the operation that opened it.
+  }
 }
 
 const internalStore = writable<SettingsState>(initialSettingsState);
@@ -80,6 +104,7 @@ function migrateLegacySettingsDocument(document: SettingsDocument): SettingsDocu
 function createSettingsStore() {
   return {
     subscribe: internalStore.subscribe,
+    closePersistence,
     actions: {
       setLoading: () => internalStore.update(s => ({ ...s, status: 'loading' })),
       setReady: () => internalStore.update(s => ({ ...s, status: 'ready' })),
