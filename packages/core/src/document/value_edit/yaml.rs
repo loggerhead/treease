@@ -2,8 +2,8 @@ use crate::tree::TreeNode;
 use crate::wasm_types::PathSpan;
 
 use super::scalar::{
-    ScalarGraphValueEditPlanner, ScalarGraphValueEditRules,
-    normalize_default_scalar_graph_edit_span,
+    normalize_default_scalar_graph_edit_span, ScalarGraphValueEditPlanner,
+    ScalarGraphValueEditRules,
 };
 
 static PLANNER: ScalarGraphValueEditPlanner<YamlGraphValueEditRules> =

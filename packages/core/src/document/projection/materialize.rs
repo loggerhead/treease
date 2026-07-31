@@ -1,12 +1,11 @@
 use crate::{
     core::{
-        CoreError, SemType,
         incremental_edit::{
-            DocumentTextEdit, apply_delta, apply_edit_to_source, apply_edits_to_tree_and_source,
+            apply_delta, apply_edit_to_source, apply_edits_to_tree_and_source,
             collect_subtree_node_ids, edit_byte_range, find_affected_node_id_for_edit,
-            find_reparse_boundary_id,
+            find_reparse_boundary_id, DocumentTextEdit,
         },
-        parse_scalar_edit_replacement,
+        parse_scalar_edit_replacement, CoreError, SemType,
     },
     formats::DecodedDocument,
     stream::{self, DecodeOptions},
@@ -27,12 +26,12 @@ use super::super::input::ByteStream;
 use super::super::protocol::{DocumentInputPlan, JobTerminal, OutputPlan};
 use super::super::runtime::store_snapshot_for_document;
 use super::super::snapshot::{
-    AnalysisBundle, DecodedAnalysisArtifacts, DecodedSpanAuthority, DocumentSnapshot,
-    GraphProjection, IncrementalState, annotate_decoded_document_spans, build_analysis_from_shared,
-    build_analysis_shared, build_decoded_analysis, build_decoded_analysis_from_owned_artifacts,
+    annotate_decoded_document_spans, build_analysis_from_shared, build_analysis_shared,
+    build_decoded_analysis, build_decoded_analysis_from_owned_artifacts,
     build_decoded_analysis_with_artifacts, build_decoded_analysis_with_prepared_tree,
     build_lightweight_analysis_shared, diagnostics_for_decoded_source,
-    generic_parse_failed_diagnostics,
+    generic_parse_failed_diagnostics, AnalysisBundle, DecodedAnalysisArtifacts,
+    DecodedSpanAuthority, DocumentSnapshot, GraphProjection, IncrementalState,
 };
 
 /// Result of a single materialize operation.
@@ -1845,21 +1844,19 @@ mod tests {
             .document
             .as_ref()
             .expect("csv header edit should still decode after fallback");
-        assert!(
-            updated_document
-                .store
-                .nodes()
-                .iter()
-                .enumerate()
-                .any(|(index, node)| {
-                    node.kind == TreeNodeKind::Scalar
-                        && node.is_map_key
-                        && updated_document
-                            .store
-                            .value_for(crate::tree::NodeId::from_index(index))
-                            .is_ok_and(|value| value == "Area")
-                })
-        );
+        assert!(updated_document
+            .store
+            .nodes()
+            .iter()
+            .enumerate()
+            .any(|(index, node)| {
+                node.kind == TreeNodeKind::Scalar
+                    && node.is_map_key
+                    && updated_document
+                        .store
+                        .value_for(crate::tree::NodeId::from_index(index))
+                        .is_ok_and(|value| value == "Area")
+            }));
     }
 
     #[test]

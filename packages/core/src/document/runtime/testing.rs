@@ -478,14 +478,12 @@ mod tests {
             },
         );
         assert!(matches!(invalid_query, SnapshotReadResult::Ready { .. }));
-        assert!(
-            runtime
-                .build_hover_subgraph_projection(&ProjectionRequest {
-                    snapshot_id,
-                    path: "$.missing".to_owned(),
-                })
-                .is_err()
-        );
+        assert!(runtime
+            .build_hover_subgraph_projection(&ProjectionRequest {
+                snapshot_id,
+                path: "$.missing".to_owned(),
+            })
+            .is_err());
         let invalid_plan = runtime.plan_graph_value_edit(&edit_request(
             document_key,
             snapshot_id,

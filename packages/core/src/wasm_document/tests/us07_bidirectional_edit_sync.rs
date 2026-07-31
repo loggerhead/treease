@@ -1137,7 +1137,8 @@ fn wasm_document_plan_then_apply_key_edit_covers_nested_and_quoted_supported_cas
             source: "{\"profile\": {\"oldKey\": \"value\", \"role\": \"owner\"}, \"count\": 1}",
             path: vec![key_seg("profile"), key_seg("oldKey")],
             next_key: "new key",
-            expected_source: "{\"profile\": {'new key': \"value\", \"role\": \"owner\"}, \"count\": 1}",
+            expected_source:
+                "{\"profile\": {'new key': \"value\", \"role\": \"owner\"}, \"count\": 1}",
         },
         KeyCase {
             language: "javascript",

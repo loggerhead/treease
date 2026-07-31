@@ -1,6 +1,6 @@
 use super::job::entry::DocumentJobHandle;
 use super::projection::{
-    MaterializeBaseContext, MaterializeResult, materialize, materialize_with_base_context,
+    materialize, materialize_with_base_context, MaterializeBaseContext, MaterializeResult,
 };
 use super::protocol::{DocumentInputPlan, DocumentJobKind, OutputPlan};
 use super::runtime::DocumentRuntime;

@@ -4,8 +4,8 @@ use super::protocol::{
     SnapshotQuery,
 };
 use crate::analysis::document_analysis::{
-    DocumentAnalysisDemand, analyze_decoded_document_with_prepared_tree_and_demand,
-    analyze_document_internal_with_demand, encode_document_value_json,
+    analyze_decoded_document_with_prepared_tree_and_demand, analyze_document_internal_with_demand,
+    encode_document_value_json, DocumentAnalysisDemand,
 };
 use crate::analysis::line_index::LineIndex;
 use crate::analysis::span_index::StructuralSpanIndex;

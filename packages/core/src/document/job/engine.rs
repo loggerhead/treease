@@ -537,12 +537,10 @@ mod tests {
             .snapshot(snapshot_id)
             .expect("snapshot should be committed");
         assert_eq!(snapshot.analysis.as_ref().unwrap().source, source);
-        assert!(
-            snapshot
-                .incremental
-                .as_ref()
-                .is_some_and(|state| state.can_resume)
-        );
+        assert!(snapshot
+            .incremental
+            .as_ref()
+            .is_some_and(|state| state.can_resume));
     }
 
     #[test]
@@ -2196,12 +2194,10 @@ mod tests {
             first.analysis.document.as_ref(),
             first.incremental.as_ref(),
         );
-        assert!(
-            second
-                .incremental
-                .as_ref()
-                .is_some_and(|state| state.can_resume)
-        );
+        assert!(second
+            .incremental
+            .as_ref()
+            .is_some_and(|state| state.can_resume));
 
         let second_source = r#"{"root":{"a":3,"b":2}}"#;
         let b_start = second_source
@@ -2228,12 +2224,10 @@ mod tests {
             second.incremental.as_ref(),
         );
 
-        assert!(
-            third
-                .incremental
-                .as_ref()
-                .is_some_and(|state| state.can_resume)
-        );
+        assert!(third
+            .incremental
+            .as_ref()
+            .is_some_and(|state| state.can_resume));
         assert_eq!(third.analysis.value_json, r#"{"root":{"a":3,"b":4}}"#);
         assert_eq!(third.graph.as_ref().map(|g| g.clear), Some(false));
     }

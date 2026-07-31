@@ -2,7 +2,7 @@ use crate::document::snapshot;
 use crate::document::stream_state::{CommitEventsError, StreamState};
 
 use super::super::materialization::{
-    MaterializationOutcome, materialize_job, validate_snapshot_ready_outputs,
+    materialize_job, validate_snapshot_ready_outputs, MaterializationOutcome,
 };
 use super::super::projection::{is_blank_source, materialize};
 use super::super::protocol::{CommitMode, DocumentInputPlan};

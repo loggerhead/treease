@@ -1,9 +1,9 @@
 use crate::analysis::LineIndex;
 use crate::graph::streaming_graph_projector::StreamingGraphProjector;
-use crate::language::{StreamKind, stream_kind_for_language};
+use crate::language::{stream_kind_for_language, StreamKind};
 use crate::stream::streaming_events::{Meta, StreamingEvent};
-use crate::stream::streaming_json::SourceRewrite;
 use crate::stream::streaming_json::streaming_parse::clamp_offset_to_u32;
+use crate::stream::streaming_json::SourceRewrite;
 use crate::stream::tree_builder::Builder;
 
 #[derive(Debug, Default)]

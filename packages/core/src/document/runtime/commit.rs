@@ -1,7 +1,7 @@
 use super::super::job::entry::{DocumentJobHandle, JobEntry};
 use super::super::protocol::{CommitMode, DocumentEvent, EventBatch, JobTerminal, SnapshotId};
 use super::super::snapshot::DocumentSnapshot;
-use super::{DocumentRuntime, with_global_document_runtime, with_global_document_runtime_mut};
+use super::{with_global_document_runtime, with_global_document_runtime_mut, DocumentRuntime};
 
 impl DocumentRuntime {
     pub fn close_job_terminal(
