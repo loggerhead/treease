@@ -68,6 +68,7 @@ export type WorkspaceHost = {
   takeStartupFiles(): Promise<WorkspaceOpenedFile[]>;
   saveSession(session: WorkspaceSession): Promise<void>;
   loadSession(): Promise<WorkspaceSession | null>;
+  resetLocalState(): Promise<void>;
   onCommand(onCommand: (command: WorkspaceCommand) => void): Promise<() => void>;
   storeRefreshToken(refreshToken: string): Promise<void>;
   hasRefreshToken(): Promise<boolean>;

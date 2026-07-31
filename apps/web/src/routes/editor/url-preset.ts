@@ -70,6 +70,11 @@ function readLastQueryValue(searchParams: URLSearchParams, key: string): RawQuer
   return { present: true, value: values[values.length - 1] ?? '' };
 }
 
+export function isEditorResetRequested(search: string): boolean {
+  const searchParams = new URLSearchParams(search.startsWith('?') ? search.slice(1) : search);
+  return searchParams.get('reset') === '1';
+}
+
 function normalizeBooleanValue(raw: RawQueryValue, key: string, ignored: string[]): boolean | null {
   if (!raw.present || raw.value == null || raw.value === '') return null;
   const normalized = raw.value.trim().toLowerCase();

@@ -517,6 +517,61 @@ async fn load_workspace_session(app: AppHandle) -> Result<Option<serde_json::Val
 }
 
 #[tauri::command]
+async fn reset_application_data(
+    app: AppHandle,
+    state: State<'_, FileAccessState>,
+) -> Result<(), String> {
+    {
+        let mut grants = state
+            .grants
+            .lock()
+            .map_err(|_| "File access state is unavailable.".to_owned())?;
+        grants.clear();
+        let mut recent = state
+            .recent
+            .lock()
+            .map_err(|_| "Recent file state is unavailable.".to_owned())?;
+        recent.clear();
+        let mut startup_files = state
+            .startup_files
+            .lock()
+            .map_err(|_| "Startup file state is unavailable.".to_owned())?;
+        startup_files.clear();
+        let mut watchers = state
+            .watchers
+            .lock()
+            .map_err(|_| "File watcher state is unavailable.".to_owned())?;
+        watchers.clear();
+    }
+
+    let directory = app
+        .path()
+        .app_data_dir()
+        .map_err(|error| format!("Cannot resolve the application data directory: {error}"))?;
+    if directory.exists() {
+        for entry in fs::read_dir(&directory)
+            .map_err(|error| format!("Cannot read application data: {error}"))?
+        {
+            let path = entry
+                .map_err(|error| format!("Cannot read application data entry: {error}"))?
+                .path();
+            if path.is_dir() {
+                fs::remove_dir_all(&path)
+                    .map_err(|error| format!("Cannot clear application data: {error}"))?;
+            } else {
+                fs::remove_file(&path)
+                    .map_err(|error| format!("Cannot clear application data: {error}"))?;
+            }
+        }
+    }
+
+    clear_refresh_token().await?;
+    let menu = create_application_menu(&app, &state).map_err(|error| error.to_string())?;
+    app.set_menu(menu).map_err(|error| error.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
 async fn open_external_url(app: AppHandle, url: String) -> Result<(), String> {
     let parsed = url
         .parse::<tauri::Url>()
@@ -658,6 +713,7 @@ fn run() -> Result<(), tauri::Error> {
             clear_recent_files,
             save_workspace_session,
             load_workspace_session,
+            reset_application_data,
             open_external_url,
             store_refresh_token,
             has_refresh_token,

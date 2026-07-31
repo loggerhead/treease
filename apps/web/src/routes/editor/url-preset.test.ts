@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest';
 
-import { canExecuteUrlCommandForLanguage, resolveEditorUrlPreset, summarizeEditorUrlPresetWarnings } from './url-preset';
+import { canExecuteUrlCommandForLanguage, isEditorResetRequested, resolveEditorUrlPreset, summarizeEditorUrlPresetWarnings } from './url-preset';
+
+describe('editor reset URL', () => {
+  it('only recognizes reset=1', () => {
+    expect(isEditorResetRequested('?reset=1&text=%7B%7D')).toBe(true);
+    expect(isEditorResetRequested('?reset=0')).toBe(false);
+    expect(isEditorResetRequested('?text=%7B%7D')).toBe(false);
+  });
+});
 
 describe('editor url preset', () => {
   it('recognizes and validates shareID as a formal URL input', () => {

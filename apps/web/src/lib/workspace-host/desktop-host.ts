@@ -76,6 +76,9 @@ export const desktopWorkspaceHost: WorkspaceHost = {
   async loadSession() {
     return invoke<WorkspaceSession | null>('load_workspace_session');
   },
+  async resetLocalState() {
+    await invoke('reset_application_data');
+  },
   async onCommand(onCommand) {
     return listen<WorkspaceCommand>('workspace-command', (event) => onCommand(event.payload));
   },

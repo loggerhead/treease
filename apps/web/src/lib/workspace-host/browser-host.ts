@@ -6,12 +6,12 @@ import {
   type WorkspaceSession,
   type WorkspaceSaveTextOptions,
 } from './contract';
+import { resetBrowserLocalState } from './browser-storage';
 
 const WORKSPACE_DB_NAME = 'treease-workspace';
 const WORKSPACE_DB_VERSION = 1;
 const WORKSPACE_STORE_NAME = 'sessions';
 const WORKSPACE_SESSION_KEY = 'current';
-
 type StoredWorkspaceSession = {
   id: string;
   session: WorkspaceSession;
@@ -108,6 +108,9 @@ export const browserWorkspaceHost: WorkspaceHost = {
   },
   async loadSession() {
     return loadBrowserWorkspaceSession();
+  },
+  async resetLocalState() {
+    await resetBrowserLocalState();
   },
   async onCommand() {
     return () => {};

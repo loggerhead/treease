@@ -39,6 +39,7 @@
   import { prepareStructGenerationSource } from './struct-generation-controller';
   import {
     canExecuteUrlCommandForLanguage,
+    isEditorResetRequested,
     resolveEditorUrlPreset,
     summarizeEditorUrlPresetWarnings,
     type EditorUrlActionCommandId,
@@ -66,6 +67,7 @@
   import { PathSegTag } from '@core-wasm/index';
   import { markPreviewCompleted, markPreviewRequested } from '../../lib/test-bridge/runtime-readiness';
   import { setTreeaseUrlPresetState } from '../../lib/test-bridge/window-treease';
+  import { resetBrowserLocalState } from '../../lib/workspace-host/browser-storage';
   import type { DiffPlan } from '../../lib/graph/diff-plan';
   import type { ColumnNavigatorState } from '../../lib/components/graph-viewer/column-navigator/types';
   import { serializePath } from '../../shared/document-anchor-utils';
@@ -1162,7 +1164,7 @@
       const restored = getWorkspaceState().tabOrder;
       const active = restored[Math.min(session.activeTabIndex, restored.length - 1)];
       if (active) editorRef.activateTab(active);
-      toast.info('Recovered the previous desktop workspace as local drafts.');
+      toast.info('Recovered the previous workspace as local drafts.');
     } finally {
       sessionRestoring = false;
     }
@@ -1283,6 +1285,26 @@
       : 'minmax(0, 1fr)';
 
   onMount(() => {
+    const resetRequested = isEditorResetRequested(window.location.search);
+    if (resetRequested) {
+      void (async () => {
+        try {
+          const host = await workspaceHost;
+          if (host.surface === 'desktop') await resetBrowserLocalState();
+          await host.resetLocalState();
+          await settingsStore.reset();
+          syncSplitLayoutState(createSplitLayoutState(DEFAULT_EDITOR_SPLIT_RATIO));
+          layoutReady = true;
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          layoutReady = true;
+          console.error('[editor] failed to reset local application state', { error: message });
+          toast.error(`Editor reset failed: ${message}`);
+        }
+      })();
+      return;
+    }
+
     urlPreset ??= resolveEditorUrlPreset(window.location.search);
     const shareID = urlPreset.shareID;
     let stopWorkspaceSession: (() => void) | null = null;
