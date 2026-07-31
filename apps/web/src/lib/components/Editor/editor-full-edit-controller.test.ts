@@ -1078,6 +1078,12 @@ describe('editor-full-edit-controller', () => {
       text: '{ "incremental": true }',
       reason: 'tab-reactivate',
     });
+    await controller.runFullEditSessionToTerminal({
+      language: 'json' as any,
+      text: '{ "restored": true }',
+      reason: 'whole-document-replacement',
+      skipUsageMetering: true,
+    });
 
     expect(runBidirectionalEdit).toHaveBeenCalledTimes(1);
     expect(runBidirectionalEdit).toHaveBeenCalledWith('{ "full": true }', expect.any(Function), 'whole-document-replacement');

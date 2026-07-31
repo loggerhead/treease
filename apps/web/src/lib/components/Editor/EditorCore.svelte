@@ -93,6 +93,7 @@
     formatSourceOnClose?: boolean;
     shouldResolveLanguage?: boolean;
     markUserInput?: boolean;
+    skipUsageMetering?: boolean;
   };
 
   const dispatch = createEventDispatcher<{ 'runtime-state': RuntimeStateEventDetail }>();
@@ -756,6 +757,7 @@
           queuedReplacement?.shouldResolveLanguage ??
           (!shouldSkipWholeDocumentAutoGuess && wholeDocumentReplacement.text.trim().length >= 8);
         const shouldMarkUserInput = queuedReplacement?.markUserInput ?? true;
+        const skipUsageMetering = queuedReplacement?.skipUsageMetering ?? false;
         prepareFullEditStream({
           documentKey: documentKeyValue,
           revision: preparedRevision,
@@ -798,6 +800,7 @@
               formatSourceOnClose,
               documentKey: documentKeyValue,
               isFresh: isReplacementCurrent,
+              skipUsageMetering,
             });
           },
         })
@@ -1236,11 +1239,12 @@
     text: string;
     languageId: SupportedEditorLanguageId;
     origin?: DocumentOrigin;
+    skipUsageMetering?: boolean;
   }): Promise<void> {
     if (!model || !monaco) return;
     suppressNextWholeDocumentAutoGuess = true;
     setLanguageIdWithoutExample(payload.languageId);
-    setEditorValue(payload.text);
+    queueWholeDocumentReplacement(payload.text, { skipUsageMetering: payload.skipUsageMetering });
     setActiveTabOrigin(payload.origin ?? 'import');
   }
 

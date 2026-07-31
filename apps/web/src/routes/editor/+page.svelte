@@ -1141,7 +1141,12 @@
       const [first, ...remaining] = session.tabs;
       const firstLanguage = languageForFileName(`recovery.${first.languageId}`);
       const firstOrigin = first.origin ?? (first.sourceText === getLanguageExample(firstLanguage) ? 'example' : 'user');
-      await editorRef.replaceActiveFromFile({ text: first.sourceText, languageId: firstLanguage, origin: firstOrigin });
+      await editorRef.replaceActiveFromFile({
+        text: first.sourceText,
+        languageId: firstLanguage,
+        origin: firstOrigin,
+        skipUsageMetering: true,
+      });
       const firstTab = activeWorkspaceTab();
       if (firstTab) {
         editorRef.renameDocument(firstTab.id, first.name);

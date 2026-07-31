@@ -81,7 +81,12 @@
     return editorCore?.openDocument(payload);
   }
 
-  export function replaceActiveFromFile(payload: { text: string; languageId: SupportedEditorLanguageId; origin?: 'example' | 'user' | 'import' }) {
+  export function replaceActiveFromFile(payload: {
+    text: string;
+    languageId: SupportedEditorLanguageId;
+    origin?: 'example' | 'user' | 'import';
+    skipUsageMetering?: boolean;
+  }) {
     return editorCore?.replaceActiveFromFile(payload);
   }
 
