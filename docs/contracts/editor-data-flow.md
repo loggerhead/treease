@@ -188,6 +188,26 @@ Empty-text commit
   → View Runtime
 ```
 
+### 6. First mutation of a shared draft
+
+A shared draft enters the same primary-document path; share promotion never becomes a second document-write path. Direct Monaco input changes `Editor Model` synchronously and starts promotion beside the existing `Commit Transaction`. A command that can wait promotes only after quota, result, freshness, and no-op checks, immediately before its canonical `Editor Model` mutation.
+
+```text
+Direct input
+  → Editor Model
+  ├→ Commit Transaction → Document Runtime
+  └→ Share workspace promotion → workspace/session persistence only
+
+Command mutation
+  → quota / planner / conversion / freshness
+  → Share workspace promotion
+  → Editor Model
+  → Commit Transaction
+  → Document Runtime
+```
+
+`Commit Transaction` does not depend on share lifecycle or `WorkspaceHost`. See [Share Workspace Contract](./share-workspace.md) for promotion and persistence authority.
+
 ## Primary-Document Data-Flow Checklist
 
 - Does current text land in `Editor Model` first?

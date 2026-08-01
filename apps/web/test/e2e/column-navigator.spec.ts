@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { expect, test } from './fixtures';
 import {
   applyMonacoEdits,
@@ -15,6 +16,8 @@ import {
   waitForImportSettled,
   waitForColumnNavigatorSettled,
 } from './utils';
+
+const fooFixture = readFileSync(new URL('../../../../foo.json', import.meta.url), 'utf8');
 
 const semanticPalette = {
   map: '#9b1c31',
@@ -218,6 +221,84 @@ test('column navigator column detail editor uses monaco editor and syncs edits b
   await expect
     .poll(async () => getMonacoValue(page, 'column-navigator-content:k:rows|i:0'), { timeout: 5_000 })
     .toBe('{"title":"one","done":false}');
+});
+
+test('foo lane_name detail edit repaints only the affected graph region', async ({ page }) => {
+  await page.goto('/editor');
+  await waitForEditorReady(page);
+  await setEditorContent(page, { sourceText: fooFixture, language: 'json' });
+  await waitForGraphRendered(page, 30_000);
+
+  const rootItem = (await readGraphClickProbes(page)).find(
+    (probe) => probe.target === 'value' && probe.path.length === 1 && probe.path[0] === '[1]' && probe.coord,
+  );
+  expect(rootItem, 'foo root array item probe').toBeTruthy();
+  if (!rootItem?.coord) throw new Error('foo root array item probe is missing a coordinate');
+  await clickGraphProbeAt(page, rootItem.coord);
+  await waitForColumnNavigatorSettled(page, 'i:1', 30_000);
+
+  const workspace = page.getByTestId('column-navigator-graph');
+  await workspace.locator('[data-column-navigator-item-path-key="i:1|k:value"]').click();
+  await waitForColumnNavigatorSettled(page, 'i:1|k:value', 30_000);
+  await workspace.locator('[data-column-navigator-item-path-key="i:1|k:value|k:lane_name"]').click();
+  await waitForColumnNavigatorSettled(page, 'i:1|k:value|k:lane_name', 30_000);
+
+  const hookId = 'column-navigator-content:i:1|k:value|k:lane_name';
+  await expect.poll(() => getMonacoValue(page, hookId), { timeout: 10_000 }).toBe('"ppe_test"');
+
+  await page.evaluate(() => {
+    const refs = window._treease?.graph.refs as { leafer?: { forceRender?: (...args: unknown[]) => void } } | undefined;
+    const leafer = refs?.leafer;
+    if (!leafer?.forceRender) throw new Error('Leafer forceRender is unavailable');
+    const original = leafer.forceRender.bind(leafer);
+    const calls: unknown[] = [];
+    leafer.forceRender = (...args: unknown[]) => {
+      calls.push(args[0] ?? null);
+      original(...args);
+    };
+    Object.assign(window, { __treeaseForceRenderCalls: calls });
+  });
+
+  await setMonacoValue(page, hookId, 'ppe_test_next');
+  await expect
+    .poll(async () => {
+      const source = JSON.parse((await readEditorState(page)).sourceText);
+      return source[1]?.value?.lane_name;
+    }, { timeout: 30_000 })
+    .toBe('ppe_test_next');
+  await waitForGraphRendered(page, 30_000);
+
+  const renderState = await page.evaluate(() => {
+    const graph = window._treease?.graph.getLastGraphData();
+    const nodes = (graph?.nodes ?? []) as Array<{ boxArgs: { x: number; y: number; width: number; height: number } }>;
+    const graphBounds = nodes.reduce(
+      (bounds, node) => ({
+        left: Math.min(bounds.left, node.boxArgs.x),
+        top: Math.min(bounds.top, node.boxArgs.y),
+        right: Math.max(bounds.right, node.boxArgs.x + node.boxArgs.width),
+        bottom: Math.max(bounds.bottom, node.boxArgs.y + node.boxArgs.height),
+      }),
+      { left: Number.POSITIVE_INFINITY, top: Number.POSITIVE_INFINITY, right: Number.NEGATIVE_INFINITY, bottom: Number.NEGATIVE_INFINITY },
+    );
+    return {
+      calls: (window as unknown as { __treeaseForceRenderCalls?: unknown[] }).__treeaseForceRenderCalls ?? [],
+      readiness: window._treease?.graph.getRuntimeReadiness(),
+      graphBounds,
+    };
+  });
+  expect(renderState.readiness?.graph.settled).toBe(true);
+  const dirtyBounds = renderState.calls.filter(
+    (bounds): bounds is { left: number; top: number; width: number; height: number } =>
+      bounds != null && typeof bounds === 'object',
+  );
+  expect(dirtyBounds.length).toBeGreaterThan(0);
+  expect(
+    dirtyBounds.some(
+      (bounds) =>
+        bounds.width < renderState.graphBounds.right - renderState.graphBounds.left ||
+        bounds.height < renderState.graphBounds.bottom - renderState.graphBounds.top,
+    ),
+  ).toBe(true);
 });
 
 test('column navigator highlights null roots and keeps string editing caret stable', async ({ page }) => {

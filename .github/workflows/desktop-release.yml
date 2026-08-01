@@ -13,7 +13,31 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  prepare-web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/setup-rust
+      - uses: ./.github/actions/setup-web
+        with:
+          zig-version: 0.16.0
+      - name: Pin wasm-pack
+        run: cargo install wasm-pack --version 0.15.0 --locked
+      - name: Generate desktop WASM package
+        run: pnpm --dir apps/web wasm:bindgen
+      - name: Generate language support
+        run: pnpm --dir apps/web wasm:language-support
+      - name: Validate desktop WASM package
+        run: pnpm --dir apps/web wasm:validate
+      - uses: actions/upload-artifact@v6
+        with:
+          name: desktop-wasm-package
+          path: packages/core/wasm/pkg
+          if-no-files-found: error
+          retention-days: 1
+
   release:
+    needs: [prepare-web]
     strategy:
       fail-fast: false
       matrix:
@@ -26,6 +50,7 @@ jobs:
     env:
       TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
       TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+      TREEASE_SKIP_WASM_BINDGEN: "1"
       # No paid Apple certificate is used for the Developer Preview build.
       APPLE_SIGNING_IDENTITY: "-"
     steps:
@@ -37,49 +62,16 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
+      - uses: actions/download-artifact@v8
+        with:
+          name: desktop-wasm-package
+          path: packages/core/wasm/pkg
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.runner == 'macos-latest' && 'aarch64-apple-darwin' || '' }}
-      - name: Install WebAssembly target
-        run: rustup target add wasm32-unknown-unknown
-      - name: Install wasm-pack
-        run: cargo install wasm-pack --version 0.15.0 --locked
-      - name: Install Zig on macOS
-        if: matrix.runner == 'macos-latest'
-        shell: bash
-        run: |
-          set -euo pipefail
-          version=0.16.0
-          install_dir="$RUNNER_TEMP/zig-$version"
-          archive="$RUNNER_TEMP/zig-$version.tar.xz"
-          curl -fsSL "https://ziglang.org/download/$version/zig-aarch64-macos-$version.tar.xz" -o "$archive"
-          rm -rf "$install_dir"
-          mkdir -p "$install_dir"
-          tar -xJf "$archive" --strip-components=1 -C "$install_dir"
-          echo "$install_dir" >> "$GITHUB_PATH"
-          "$install_dir/zig" version
-      - name: Install Zig on Windows
-        if: matrix.runner == 'windows-latest'
-        shell: pwsh
-        run: |
-          $version = '0.16.0'
-          $archive = Join-Path $env:RUNNER_TEMP "zig-$version.zip"
-          $installRoot = Join-Path $env:RUNNER_TEMP "zig-$version"
-          Invoke-WebRequest "https://ziglang.org/download/$version/zig-x86_64-windows-$version.zip" -OutFile $archive
-          if (Test-Path $installRoot) { Remove-Item $installRoot -Recurse -Force }
-          Expand-Archive $archive -DestinationPath $env:RUNNER_TEMP
-          Move-Item (Join-Path $env:RUNNER_TEMP "zig-x86_64-windows-$version") $installRoot
-          Add-Content $env:GITHUB_PATH $installRoot
-          & (Join-Path $installRoot 'zig.exe') version
-      - name: Use Bash Zig wrapper on Windows
-        if: matrix.runner == 'windows-latest'
-        shell: pwsh
-        run: |
-          Add-Content $env:GITHUB_ENV "CC_wasm32_unknown_unknown=cmd /c $env:GITHUB_WORKSPACE/scripts/zig-wasm32-cc.cmd"
-          Add-Content $env:GITHUB_ENV "AR_wasm32_unknown_unknown=cmd /c $env:GITHUB_WORKSPACE/scripts/wasm32-ar.cmd"
       - uses: swatinem/rust-cache@v2
         with:
-          workspaces: apps/desktop/src-tauri -> target
+          workspaces: . -> target
       - run: pnpm install --frozen-lockfile
       - name: Run Windows desktop E2E
         if: matrix.runner == 'windows-latest'

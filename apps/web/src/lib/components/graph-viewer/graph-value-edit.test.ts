@@ -153,6 +153,78 @@ describe('graph-value-edit', () => {
     expect(runBidirectionalEditMock).toHaveBeenCalledWith('foo.json:1', expect.any(Function));
   });
 
+  it('promotes only inside the quota-approved apply step and before writing the editor', async () => {
+    const canonicalNode = scalarNode('next-value');
+    mocked.callSharedWasmWorker.mockImplementation(async (type: string) => {
+      if (type === 'parseValueForPath') return canonicalNode;
+      if (type === 'planGraphValueEdit') {
+        return { mode: 'edits', edits: [{ startByte: 8, oldEndByte: 15, newEndByte: 20, text: '"next-value"' }], text: '{}', tree: canonicalNode, value: 'next-value' };
+      }
+      throw new Error(`unexpected worker call: ${type}`);
+    });
+    const order: string[] = [];
+    const model = { getVersionId: () => 1 };
+    const controller = createGraphValueEditController({
+      getCurrentData: () => null,
+      getSourceText: () => '{"name":"current"}',
+      getDocumentKey: () => 'doc-key',
+      getLanguageId: () => 'json',
+      getEnableNest: () => true,
+      getEditorIO: () => ({ context: 'editor', getModel: () => model as any, applyTextEdits: () => { order.push('write'); return true; } } as any),
+      getEditorRevision: () => 7,
+      getActiveSnapshotId: () => 42,
+      resolveTreePathByPosition: vi.fn(async () => []),
+      nextTreeStateToken: () => 1,
+      publishTreeState: vi.fn(() => true),
+      emitEditorMutation: vi.fn(),
+      updateActiveTempModel: vi.fn(),
+      dispatchGraphEditEvent: vi.fn(),
+      runBidirectionalEdit: async (_documentKey, execute) => { order.push('quota'); return execute(); },
+      beforeApplyMutation: async () => { order.push('promote'); return true; },
+      handleError: vi.fn(),
+    });
+
+    await expect(controller.applyGraphEdit({ path: [{ key: 'name' }], valueType: 'string' } as any, 'value', 'next-value')).resolves.toBe(true);
+    expect(order).toEqual(['quota', 'promote', 'write']);
+  });
+
+  it('does not promote or write when the quota gate rejects execution', async () => {
+    const canonicalNode = scalarNode('next-value');
+    mocked.callSharedWasmWorker.mockImplementation(async (type: string) => {
+      if (type === 'parseValueForPath') return canonicalNode;
+      if (type === 'planGraphValueEdit') {
+        return { mode: 'replace', reason: 'graph-edit-not-single-range', text: '{}', tree: canonicalNode, value: 'next-value' };
+      }
+      throw new Error(`unexpected worker call: ${type}`);
+    });
+    const beforeApplyMutation = vi.fn(async () => true);
+    const emitEditorMutation = vi.fn();
+    const model = { getVersionId: () => 1 };
+    const controller = createGraphValueEditController({
+      getCurrentData: () => null,
+      getSourceText: () => '{"name":"current"}',
+      getDocumentKey: () => 'doc-key',
+      getLanguageId: () => 'json',
+      getEnableNest: () => true,
+      getEditorIO: () => ({ context: 'editor', getModel: () => model as any, applyTextEdits: vi.fn() } as any),
+      getEditorRevision: () => 7,
+      getActiveSnapshotId: () => 42,
+      resolveTreePathByPosition: vi.fn(async () => []),
+      nextTreeStateToken: () => 1,
+      publishTreeState: vi.fn(() => true),
+      emitEditorMutation,
+      updateActiveTempModel: vi.fn(),
+      dispatchGraphEditEvent: vi.fn(),
+      runBidirectionalEdit: async <T>() => false as T,
+      beforeApplyMutation,
+      handleError: vi.fn(),
+    });
+
+    await expect(controller.applyGraphEdit({ path: [{ key: 'name' }], valueType: 'string' } as any, 'value', 'next-value')).resolves.toBe(false);
+    expect(beforeApplyMutation).not.toHaveBeenCalled();
+    expect(emitEditorMutation).not.toHaveBeenCalled();
+  });
+
   it('treats string value edits as snapshot-bound parsed replacements', async () => {
     const canonicalNode = scalarNode('next-value');
     mocked.callSharedWasmWorker.mockImplementation(async (type: string, payload: any) => {

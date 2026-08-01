@@ -20,7 +20,7 @@
   import { settings, settingsStore } from '../settings/settings-store';
   import { shouldShowGraphRuntimeLoading, type RuntimeStateEventDetail } from '../runtime-loading';
   import { callSharedWasmWorker } from '../wasm/wasm-worker-singleton';
-  import { getWorkspaceSnapshotId } from '../store/workspace-store';
+  import { getWorkspaceSnapshotId, getWorkspaceState } from '../store/workspace-store';
   import { getFullEditDocumentJobSession } from '../graph-stream/full-edit-document-job-session';
   import {
     buildReadablePath,
@@ -142,6 +142,7 @@
     PointerEvent as LeaferPointerEvent,
     Leafer,
   } from 'leafer-ui';
+  import type { SharedWorkspaceMutationTarget } from '../share/share-workspace-lifecycle';
 
   type LeaferAppOrLeafer = LeaferApp | Leafer;
   export let enableRevealSync = true;
@@ -149,6 +150,7 @@
   export let readonly = false;
   export let onFileDrop: (event: globalThis.DragEvent) => void | Promise<void> = () => {};
   export let onEntitlementBlocked: (block: UsageBlock) => void = () => {};
+  export let ensureSharedWorkspacePromoted: (target: SharedWorkspaceMutationTarget) => Promise<boolean> = async () => true;
 
   const MINIMAP_WIDTH = 220;
   const MINIMAP_HEIGHT = 150;
@@ -538,6 +540,26 @@
       execute,
       onBlocked: onEntitlementBlocked,
     }),
+    beforeApplyMutation: ({ documentKey, model }) => {
+      const workspace = getWorkspaceState();
+      const tabId = workspace.activeTabId;
+      return ensureSharedWorkspacePromoted({
+        tabId,
+        documentKey,
+        readDocumentKey: () => getWorkspaceState().tabsById[tabId]?.documentKey ?? '',
+        readText: () => model.getValue(),
+        isCurrent: () => {
+          const current = getWorkspaceState();
+          return (
+            !model.isDisposed() &&
+            current.activeTabId === tabId &&
+            current.tabsById[tabId]?.documentKey === documentKey &&
+            editorIOValue?.context === 'editor' &&
+            editorIOValue.getModel() === model
+          );
+        },
+      });
+    },
     handleError,
   });
   const hasActiveEdit = graphEditAdapter.hasActiveEdit;

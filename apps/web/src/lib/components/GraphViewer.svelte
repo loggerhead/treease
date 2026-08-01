@@ -5,6 +5,7 @@
   import type { UsageBlock } from '../billing/entitlement-gate';
   import type { PathSeg } from '../store/tree-path';
   import type { ColumnNavigatorState } from './graph-viewer/column-navigator/types';
+  import type { SharedWorkspaceMutationTarget } from '../share/share-workspace-lifecycle';
   import GraphViewRuntime from './GraphViewRuntime.svelte';
 
   type GraphSearchTarget = 'node' | 'key' | 'value';
@@ -22,6 +23,7 @@
   export let readonly = false;
   export let onFileDrop: (event: DragEvent) => void | Promise<void> = () => {};
   export let onEntitlementBlocked: (block: UsageBlock) => void = () => {};
+  export let ensureSharedWorkspacePromoted: (target: SharedWorkspaceMutationTarget) => Promise<boolean> = async () => true;
 
   const dispatch = createEventDispatcher<{
     reveal: unknown;
@@ -89,6 +91,7 @@
   {readonly}
   {onFileDrop}
   {onEntitlementBlocked}
+  {ensureSharedWorkspacePromoted}
   on:reveal={(event) => dispatch('reveal', event.detail)}
   on:runtime-state={(event) => dispatch('runtime-state', event.detail)}
   on:column-navigator-state={(event) => dispatch('column-navigator-state', event.detail)}

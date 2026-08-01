@@ -4,12 +4,15 @@
   import type { DiffPlan } from '../graph/diff-plan';
   import type { SupportedEditorLanguageId } from '../monaco/language-support';
   import type { RuntimeStateEventDetail } from '../runtime-loading';
+  import type { SharedWorkspaceMutationTarget } from '../share/share-workspace-lifecycle';
   import EditorCore from './Editor/EditorCore.svelte';
   export let onScroll: (payload: { scrollTop: number; scrollLeft: number }) => void = () => {};
   export let enableRevealSync = true;
   export let synchronizedRuntimeLoading = false;
   export let runBidirectionalEdit: <T>(source: string, execute: () => Promise<T>, reason?: string) => Promise<T> = async (_source, execute) => execute();
   export let onRequestImportFile: (payload: { sourceFormat: string; targetFormat: string; accept: string[] }) => Promise<void> = async () => {};
+  export let onDirectDraftMutation: (target: SharedWorkspaceMutationTarget) => void = () => {};
+  export let ensureSharedWorkspacePromoted: (target: SharedWorkspaceMutationTarget) => Promise<boolean> = async () => true;
 
   const dispatch = createEventDispatcher<{ reveal: unknown; 'runtime-state': RuntimeStateEventDetail }>();
 
@@ -167,6 +170,8 @@
   {enableRevealSync}
   {synchronizedRuntimeLoading}
   {runBidirectionalEdit}
+  {onDirectDraftMutation}
+  {ensureSharedWorkspacePromoted}
   {onRequestImportFile}
   {onScroll}
   on:reveal={handleReveal}

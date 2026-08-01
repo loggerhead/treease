@@ -8,7 +8,9 @@ function ports(calls: string[]) {
   return {
     editor: {
       async ensureReady() { calls.push('editor.ready'); },
-      async replaceActiveFromFile() { calls.push('editor.write'); },
+      async replaceActiveFromFile(payload: { skipUsageMetering?: boolean }) {
+        calls.push(`editor.write.${payload.skipUsageMetering ? 'unmetered' : 'metered'}`);
+      },
       async waitForIdle() { calls.push('editor.idle'); },
       restoreViewportAnchor() { calls.push('left.viewport'); },
       restoreSelection() { calls.push('selection'); },
@@ -28,7 +30,7 @@ describe('share restore', () => {
       type: 'compare',
       payload: { schemaVersion: 1, left: { text: '{"left":1}', languageId: 'json' }, right: { text: '{"right":2}', languageId: 'yaml' }, actions: [{ type: 'compare' }, { type: 'viewport_changed', payload: { left: { topLine: 24, scrollLeft: 0 }, right: { topLine: 31, scrollLeft: 0 } } }], interaction },
     }, { ...ports(calls), setViewMode: (mode) => calls.push(`mode.${mode}`), clearCompareState: () => calls.push('compare.clear'), restoreTreePath: () => true, restoreGraphFocus: async () => true, waitForGraphReady: async () => true, restoreColumnNavigator: async () => true, reportNavigationWarning: () => calls.push('warning') });
-    expect(calls).toEqual(['editor.ready', 'editor.write', 'editor.idle', 'mode.text', 'right.write', 'compare', 'left.viewport', 'right.viewport']);
+    expect(calls).toEqual(['editor.ready', 'editor.write.unmetered', 'editor.idle', 'mode.text', 'right.write', 'compare', 'left.viewport', 'right.viewport']);
   });
 
   it('restores a left-only snapshot without starting compare or creating a right editor', async () => {
@@ -37,7 +39,7 @@ describe('share restore', () => {
       type: 'text_snapshot',
       payload: { schemaVersion: 1, left: { text: '{"left":1}', languageId: 'json' }, right: null, layout: { viewMode: 'graph', activePane: 'left' }, interaction },
     }, { ...ports(calls), setViewMode: (mode) => calls.push(`mode.${mode}`), clearCompareState: () => calls.push('compare.clear'), restoreTreePath: () => true, restoreGraphFocus: async () => true, waitForGraphReady: async () => true, restoreColumnNavigator: async () => true, reportNavigationWarning: () => calls.push('warning') });
-    expect(calls).toEqual(['editor.ready', 'editor.write', 'editor.idle', 'compare.clear', 'mode.graph']);
+    expect(calls).toEqual(['editor.ready', 'editor.write.unmetered', 'editor.idle', 'compare.clear', 'mode.graph']);
   });
 
   it('restores the source selection before graph focus', async () => {
@@ -46,7 +48,7 @@ describe('share restore', () => {
       type: 'text_snapshot',
       payload: { schemaVersion: 1, left: { text: '{"left":1}', languageId: 'json' }, right: null, layout: { viewMode: 'graph', activePane: 'left' }, interaction: { treePath: [], focus: { type: 'graph', path: [{ type: 'key', key: 'left' }], target: 'value', editorSelection: { startLine: 1, startColumn: 2, endLine: 1, endColumn: 6 } }, columnNavigator: { activePath: [] } } },
     }, { ...ports(calls), setViewMode: (mode) => calls.push(`mode.${mode}`), clearCompareState: () => calls.push('compare.clear'), restoreTreePath: () => true, restoreGraphFocus: async () => { calls.push('graph.focus'); return true; }, waitForGraphReady: async () => { calls.push('graph.ready'); return true; }, restoreColumnNavigator: async () => true, reportNavigationWarning: () => calls.push('warning') });
-    expect(calls).toEqual(['editor.ready', 'editor.write', 'editor.idle', 'compare.clear', 'mode.graph', 'selection', 'graph.ready', 'graph.focus']);
+    expect(calls).toEqual(['editor.ready', 'editor.write.unmetered', 'editor.idle', 'compare.clear', 'mode.graph', 'selection', 'graph.ready', 'graph.focus']);
   });
 
   it('reports graph focus restoration when the runtime cannot resolve the target', async () => {

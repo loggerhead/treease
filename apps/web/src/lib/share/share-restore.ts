@@ -2,7 +2,11 @@ import type { EditorSelection, ShareResource, ViewportAnchor } from './share-res
 
 type EditorPort = {
   ensureReady(): Promise<void>;
-  replaceActiveFromFile(payload: { text: string; languageId: ShareResource['payload']['left']['languageId'] }): Promise<void>;
+  replaceActiveFromFile(payload: {
+    text: string;
+    languageId: ShareResource['payload']['left']['languageId'];
+    skipUsageMetering?: boolean;
+  }): Promise<void>;
   waitForIdle(): Promise<void>;
   restoreViewportAnchor(anchor: ViewportAnchor): void;
   restoreSelection(selection: EditorSelection): void;
@@ -33,7 +37,13 @@ export async function restoreShareResource(resource: ShareResource, ports: {
   reportNavigationWarning(): void;
 }): Promise<void> {
   await ports.editor.ensureReady();
-  await ports.editor.replaceActiveFromFile({ text: resource.payload.left.text, languageId: resource.payload.left.languageId });
+  // Opening a public share is read-only restoration, not a user-initiated
+  // whole-document edit. It must not consume graph-edit or large-file quota.
+  await ports.editor.replaceActiveFromFile({
+    text: resource.payload.left.text,
+    languageId: resource.payload.left.languageId,
+    skipUsageMetering: true,
+  });
   await ports.editor.waitForIdle();
   if (resource.type === 'text_snapshot') {
     ports.clearCompareState();

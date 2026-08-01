@@ -8,6 +8,7 @@ import type { PathSeg } from '../../store/tree-path';
 import { clearGraphSelectionAfterEdit } from '../GraphViewer.graph-highlight';
 import { callSharedWasmWorker } from '../../wasm/wasm-worker-singleton';
 import type { TreeNode } from '@core-wasm/index'
+import type * as Monaco from 'monaco-editor';
 import type { LeaferEditor, LeaferText } from './model';
 import { resolveCellPath } from './graph-anchor-index';
 import { createFreshnessScope } from '../../guards/freshness-scope';
@@ -89,6 +90,12 @@ export type GraphValueEditControllerDeps = {
   updateActiveTempModel: (updater: (current: any) => any) => void;
   dispatchGraphEditEvent: (type: GraphEditEventType, detail: unknown) => void;
   runBidirectionalEdit?: <T>(documentKey: string, execute: () => Promise<T>) => Promise<T>;
+  beforeApplyMutation?: (target: {
+    documentKey: string;
+    revision: number;
+    languageId: SupportedEditorLanguageId;
+    model: Monaco.editor.ITextModel;
+  }) => Promise<boolean>;
   handleError: (
     error: unknown,
     context: { component: string; operation: string; metadata?: Record<string, unknown> },
@@ -277,6 +284,14 @@ export function createGraphValueEditController(deps: GraphValueEditControllerDep
       return false;
     }
     const apply = async (): Promise<boolean> => {
+      if (!freshness.isCurrent()) return false;
+      if (deps.beforeApplyMutation && !(await deps.beforeApplyMutation({
+        documentKey: deps.getDocumentKey(),
+        revision: deps.getEditorRevision(),
+        languageId: deps.getLanguageId(),
+        model: editorIO.getModel(),
+      }))) return false;
+      if (!freshness.isCurrent()) return false;
       if (planned.mode === 'replace') {
         const graphEditFallback = {
           reason: planned.reason,

@@ -251,6 +251,53 @@ describe('editor-full-edit-controller', () => {
     );
   });
 
+  it('awaits shared-workspace promotion before rotating identity or writing a changed draft', async () => {
+    const order: string[] = [];
+    const options = createOptions({
+      beforeDocumentMutation: vi.fn(async () => { order.push('promote'); return true; }),
+      setActiveTabDocumentKey: vi.fn(() => { order.push('identity'); }),
+      setEditorValueForFullEdit: vi.fn(() => { order.push('write'); return true; }),
+    });
+    const controller = createEditorFullEditController(options as any);
+
+    await controller.startFullEditSession({
+      language: 'json',
+      text: '{"changed":true}',
+      reason: 'whole-document-replacement',
+    });
+
+    expect(order.slice(0, 3)).toEqual(['promote', 'identity', 'write']);
+  });
+
+  it('does not mutate the document when shared-workspace promotion fails', async () => {
+    const options = createOptions({ beforeDocumentMutation: vi.fn(async () => false) });
+    const controller = createEditorFullEditController(options as any);
+
+    await expect(controller.startFullEditSession({
+      language: 'json',
+      text: '{"changed":true}',
+      reason: 'whole-document-replacement',
+    })).resolves.toBe(0);
+
+    expect(options.setActiveTabDocumentKey).not.toHaveBeenCalled();
+    expect(options.setEditorValueForFullEdit).not.toHaveBeenCalled();
+    expect(mockStartReadableDocumentJobSessionForGraph).not.toHaveBeenCalled();
+  });
+
+  it('does not invoke shared-workspace promotion for a no-op draft', async () => {
+    const beforeDocumentMutation = vi.fn(async () => true);
+    const options = createOptions({ beforeDocumentMutation });
+    const controller = createEditorFullEditController(options as any);
+
+    await controller.startFullEditSession({
+      language: 'json',
+      text: '{"a":1}',
+      reason: 'whole-document-replacement',
+    });
+
+    expect(beforeDocumentMutation).not.toHaveBeenCalled();
+  });
+
   it('tab reactivation rebuilds with the correct reason', async () => {
     const options = createOptions();
     const controller = createEditorFullEditController(options as any);

@@ -206,6 +206,7 @@ Do not edit it by hand; run `pnpm docs:map:gen`.
   - H3: 3. Primary-document semantic read
   - H3: 4. Runtime result enters visible state
   - H3: 5. Blank / whitespace close
+  - H3: 6. First mutation of a shared draft
   - H2: Primary-Document Data-Flow Checklist
 
 ## contracts/layout.md
@@ -249,6 +250,24 @@ Do not edit it by hand; run `pnpm docs:map:gen`.
   - H3: Geometry Consistency
   - H2: VI. Explicit Errors
   - H2: Checklist
+
+## contracts/share-workspace.md
+
+- Route: /contracts/share-workspace
+- Headings:
+  - H1: Share Workspace Contract
+  - H2: Scope
+  - H2: Authority
+  - H2: Lifecycle
+  - H2: Share Restore
+  - H2: First Draft Mutation
+  - H3: Direct Editor input
+  - H3: Command mutations
+  - H2: Canonical Topology Promotion
+  - H2: Persistence
+  - H2: Concurrency and Cleanup
+  - H2: Error Classes
+  - H2: Verification Checklist
 
 ## contracts/stream-pipeline.md
 
@@ -358,26 +377,6 @@ Do not edit it by hand; run `pnpm docs:map:gen`.
   - H2: Risk Markers
   - H2: Remaining Boundaries
 
-## json-hero.md
-
-- Route: /json-hero
-- Headings:
-  - H1: Column Navigator
-  - H2: Goal
-  - H2: Scope
-  - H2: Core Model: Path-driven Columns
-  - H3: Navigation rules
-  - H2: Default Expansion
-  - H2: Leaf Nodes and Right-side Detail Editor
-  - H2: Scrolling and Layout
-  - H2: Interaction Rules
-  - H3: Keyboard focus boundary
-  - H2: Treease Integration
-  - H2: State Requirements
-  - H2: Acceptance Criteria
-  - H2: Implementation Notes
-  - H2: Verification
-
 ## references/supported-syntax-and-operators.md
 
 - Route: /references/supported-syntax-and-operators
@@ -412,6 +411,111 @@ Do not edit it by hand; run `pnpm docs:map:gen`.
   - H2: Common YAML Subset
   - H2: Outside the Common Subset
   - H2: Current Failure-Set Classification
+
+## share-workspace-fork-design.md
+
+- Route: /share-workspace-fork-design
+- Headings:
+  - H1: Share Workspace Fork Implementation Design
+  - H2: Background
+  - H2: Design Choices
+  - H3: Page-level orchestration
+  - H3: Pure topology transition
+  - H3: Separate mutation seams
+  - H3: Persistence after authority publication
+  - H2: Migration Steps
+  - H2: Verification Plan
+  - H3: Unit
+  - H3: Integration
+  - H3: End-to-end
+  - H2: Removal Gate
+
+## tab-lifecycle-unification-plan.md
+
+- Route: /tab-lifecycle-unification-plan
+- Headings:
+  - H1: /goal：统一编辑器 Tab 生命周期
+  - H2: Browser 恢复数据的产品与隐私语义
+  - H2: 目标
+  - H2: 必须达成的架构结果
+  - H2: 状态转换契约
+  - H3: Create
+  - H3: Activate
+  - H3: Close inactive left tab
+  - H3: Close active left tab with another left tab remaining
+  - H3: Close last left tab
+  - H2: 不可违反的边界
+  - H2: 会话启动契约
+  - H2: 实施顺序
+  - H2: 验收标准
+  - H2: 必须验证的行为
+  - H3: Unit
+  - H3: Integration
+  - H3: End-to-end
+
+## tab-scoped-document-operation-lifecycle-plan.md
+
+- Route: /tab-scoped-document-operation-lifecycle-plan
+- Headings:
+  - H1: /goal：按 Tab 收敛编辑器文档操作生命周期
+  - H2: 目标
+  - H2: 产品语义
+  - H3: Switch
+  - H3: Reactivate
+  - H3: Close
+  - H3: Same-tab supersede
+  - H3: Different tabs
+  - H2: 状态所有权
+  - H3: Workspace tab state
+  - H3: Tab operation runtime
+  - H3: Active projection
+  - H2: 稳定文档操作目标
+  - H3: Document freshness
+  - H3: Visible freshness
+  - H2: Commit Transaction 契约
+  - H2: DocumentJob 与 Graph attachment 所有权
+  - H2: Targeted whole-document replacement
+  - H2: Format command 契约
+  - H2: Editor interaction 投影
+  - H2: Sidecar 边界
+  - H2: 明确不做
+  - H2: 实施顺序
+  - H2: 验收标准
+  - H2: 必须验证的行为
+  - H3: Unit
+  - H3: Integration
+  - H3: End-to-end
+  - H2: 验证命令
+
+## tab-state-and-operation-lifecycle-handoff.md
+
+- Route: /tab-state-and-operation-lifecycle-handoff
+- Headings:
+  - H1: Tab 状态与文档操作生命周期交接设计
+  - H2: 背景
+  - H2: 目标
+  - H3: 非目标
+  - H2: 关键数据流和设计决策
+  - H3: 1. 状态按对象归属，而不是按组件归属
+  - H3: 2. 文档语言保持单向数据流
+  - H3: 3. 布局状态形成独立闭环
+  - H3: 4. 每个异步操作捕获稳定文档目标
+  - H3: 5. 分离 document freshness 与 visible freshness
+  - H3: 6. 操作和取消所有权按 Tab 收敛
+  - H3: 7. Whole-document replacement 只有一个目标化入口
+  - H3: 8. 模块职责与依赖方向
+  - H2: 状态规则与约束
+  - H3: Authority 规则
+  - H3: 状态建模规则
+  - H3: 转换与异步规则
+  - H3: 模块与清理规则
+  - H2: 关键执行计划
+  - H3: 阶段一：建立状态分类与失败反馈
+  - H3: 阶段二：收敛 authority 与 active projection
+  - H3: 阶段三：建立按 Tab 的 operation runtime
+  - H3: 阶段四：统一文档替换与命令落地
+  - H3: 阶段五：清理、契约更新与验收
+  - H2: 完成判定
 
 ## user-stories.md
 

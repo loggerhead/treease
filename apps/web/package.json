@@ -39,6 +39,7 @@
     "wasm:sync": "pnpm wasm:language-support && pnpm wasm:build && pnpm wasm:copy",
     "wasm:bindgen": "node ./scripts/wasm-bindgen.mjs",
     "wasm:bindgen:check": "node ./scripts/wasm-bindgen-check.mjs",
+    "wasm:validate": "node ./scripts/validate-wasm.mjs",
     "bench:graph-stream": "node ./scripts/graph-stream-benchmark.mjs",
     "test": "pnpm test:unit && pnpm test:e2e:core",
     "test:all": "pnpm test:unit && pnpm test:integration && pnpm test:e2e && pnpm test:e2e:fixtures",

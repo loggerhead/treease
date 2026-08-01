@@ -26,6 +26,13 @@ const mockStreamUpdateHandler = vi.hoisted(() => ({
       nodeMap.set(node.renderHandle, node);
     for (const node of delta.nodesUpdated ?? [])
       nodeMap.set(node.renderHandle, node);
+    state.edges = (state.edges ?? []).filter(
+      (edge: any) =>
+        !(delta.edgesRemoved ?? []).some(
+          (removed: any) => JSON.stringify(removed) === JSON.stringify(edge),
+        ),
+    );
+    state.edges = [...state.edges, ...(delta.edgesAdded ?? [])];
     for (const patch of delta.layoutPatches ?? []) {
       const nodeId =
         patch.render_handle ??
@@ -85,6 +92,13 @@ const mockStreamUpdateHandler = vi.hoisted(() => ({
       nodeMap.set(node.renderHandle, node);
     for (const node of delta.nodesUpdated ?? [])
       nodeMap.set(node.renderHandle, node);
+    state.edges = (state.edges ?? []).filter(
+      (edge: any) =>
+        !(delta.edgesRemoved ?? []).some(
+          (removed: any) => JSON.stringify(removed) === JSON.stringify(edge),
+        ),
+    );
+    state.edges = [...state.edges, ...(delta.edgesAdded ?? [])];
     for (const patch of delta.layoutPatches ?? []) {
       const nodeId =
         patch.render_handle ??
@@ -136,6 +150,15 @@ const mockRenderState = vi.hoisted(() => ({
   lastEditable: undefined as boolean | undefined,
 }));
 
+const dirtyRegionState = vi.hoisted(() => ({
+  marks: [] as unknown[],
+}));
+
+const sceneFrameState = vi.hoisted(() => ({
+  visibleNodeIds: new Set<number>(),
+  presentedFrames: [] as number[][],
+}));
+
 vi.mock("../../graph/StreamUpdateHandler", () => mockStreamUpdateHandler);
 
 vi.mock('@treease/graph-viewer-runtime', async (importOriginal) => ({
@@ -143,7 +166,9 @@ vi.mock('@treease/graph-viewer-runtime', async (importOriginal) => ({
   ...renderKernelMocks,
   createGraphDirtyRegion: vi.fn(() => ({
     reset: vi.fn(),
-    mark: vi.fn(),
+    mark: vi.fn((rect: unknown) => {
+      if (rect) dirtyRegionState.marks.push(rect);
+    }),
     flush: vi.fn(),
     getCurrent: vi.fn(() => null),
   })),
@@ -238,9 +263,14 @@ const renderKernelMocks = vi.hoisted(() => ({
         width: node.boxArgs.width,
         height: node.boxArgs.height,
         cornerRadius: node.boxArgs.cornerRadius,
-        removeAll: vi.fn(),
-        remove: vi.fn(),
+        removeAll: vi.fn(() => {
+          sceneFrameState.visibleNodeIds.delete(node.renderHandle);
+        }),
+        remove: vi.fn(() => {
+          sceneFrameState.visibleNodeIds.delete(node.renderHandle);
+        }),
       };
+      sceneFrameState.visibleNodeIds.add(node.renderHandle);
       const metaText = {
         kind: "initial-meta",
         nodeId: node.renderHandle,
@@ -286,6 +316,25 @@ function createNode(id: number, x: number) {
     table: {
       headerHeight: 24,
       rows: [],
+    },
+  } as any;
+}
+
+function createEdge(fromRenderHandle: number, toRenderHandle: number) {
+  return {
+    fromRenderHandle,
+    fromRow: 0,
+    toRenderHandle,
+    toRow: 0,
+    bezierArgs: {
+      fromX: fromRenderHandle * 10,
+      fromY: 20,
+      c1x: fromRenderHandle * 10 + 10,
+      c1y: 20,
+      c2x: toRenderHandle * 10 - 10,
+      c2y: 40,
+      toX: toRenderHandle * 10,
+      toY: 40,
     },
   } as any;
 }
@@ -336,7 +385,11 @@ function createDeps(options?: {
   class MockText extends MockBox {}
   class MockPen extends MockBox {}
 
-  const updateLeafer = vi.fn();
+  const updateLeafer = vi.fn(() => {
+    sceneFrameState.presentedFrames.push(
+      [...sceneFrameState.visibleNodeIds].sort((left, right) => left - right),
+    );
+  });
   const leafer = {
     zoomLayer: { x: 0, y: 0 },
   };
@@ -425,6 +478,9 @@ describe("graph-scene-runtime", () => {
     mockRenderState.renderCount = 0;
     mockRenderState.patchCount = 0;
     mockRenderState.lastEditable = undefined;
+    dirtyRegionState.marks = [];
+    sceneFrameState.visibleNodeIds.clear();
+    sceneFrameState.presentedFrames = [];
     vi.stubGlobal("requestAnimationFrame", ((
       callback: FrameRequestCallback,
     ) => {
@@ -630,7 +686,11 @@ describe("graph-scene-runtime", () => {
     useControlledSceneTimers();
     try {
       const { runtime } = createDeps();
-      runtime.replaceAll({ nodes: [createNode(1, 20)], edges: [] });
+      runtime.replaceAll({
+        nodes: [createNode(1, 20), createNode(2, 260), createNode(3, 500)],
+        edges: [],
+      });
+      dirtyRegionState.marks = [];
       mockRenderState.patchCount = 0;
 
       await flushSceneFrame(
@@ -643,7 +703,7 @@ describe("graph-scene-runtime", () => {
           edgesRemoved: [],
           tableCellPatches: [
             {
-              tableRenderHandle: 1,
+              tableRenderHandle: 2,
               rowIndex: 0,
               columnIndex: 0,
               cell: { text: "ada" },
@@ -654,6 +714,154 @@ describe("graph-scene-runtime", () => {
       flushBufferedNodes();
 
       expect(mockRenderState.patchCount).toBe(1);
+      expect(dirtyRegionState.marks).toHaveLength(2);
+      expect(dirtyRegionState.marks.every((rect: any) => rect.left === 260)).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not flicker the presented graph when editing one detail-editor table cell", async () => {
+    useControlledSceneTimers();
+    try {
+      const { runtime } = createDeps();
+      runtime.replaceAll({
+        nodes: [createNode(1, 20), createNode(2, 260), createNode(3, 500)],
+        edges: [],
+      });
+      dirtyRegionState.marks = [];
+      sceneFrameState.presentedFrames = [];
+      const presentedNodeIdsBeforeEdit = new Set(
+        sceneFrameState.visibleNodeIds,
+      );
+      expect(presentedNodeIdsBeforeEdit).toEqual(new Set([1, 2, 3]));
+
+      await flushSceneFrame(
+        runtime.applyGraphDelta({
+          clear: 0,
+          nodesAdded: [],
+          nodesUpdated: [createNode(2, 300)],
+          nodesRemoved: [],
+          edgesAdded: [],
+          edgesRemoved: [],
+          tableCellPatches: [],
+          layoutPatches: [],
+        } as any),
+      );
+      flushBufferedNodes();
+
+      expect(dirtyRegionState.marks).toHaveLength(2);
+      expect(dirtyRegionState.marks.map((rect: any) => rect.left)).toEqual([260, 300]);
+      expect(sceneFrameState.presentedFrames).toEqual([[1, 2, 3]]);
+      expect(sceneFrameState.presentedFrames.every((frame) =>
+        frame.every((nodeId) => presentedNodeIdsBeforeEdit.has(nodeId)) &&
+        frame.length === presentedNodeIdsBeforeEdit.size,
+      )).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("dirties only old and new geometry for an affected edge", async () => {
+    useControlledSceneTimers();
+    try {
+      const { runtime } = createDeps();
+      runtime.replaceAll({
+        nodes: [createNode(1, 20), createNode(2, 260), createNode(3, 500)],
+        edges: [],
+      });
+      dirtyRegionState.marks = [];
+      const edge = createEdge(1, 2);
+
+      await flushSceneFrame(
+        runtime.applyGraphDelta({
+          clear: 0,
+          nodesAdded: [],
+          nodesUpdated: [],
+          nodesRemoved: [],
+          edgesAdded: [edge],
+          edgesRemoved: [],
+          tableCellPatches: [],
+          layoutPatches: [],
+        } as any),
+      );
+      flushBufferedNodes();
+
+      expect(dirtyRegionState.marks).toHaveLength(1);
+      expect(dirtyRegionState.marks[0]).toMatchObject({ left: 10, top: 20, width: 10, height: 20 });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("dirties old and new geometry for a declared layout patch only", async () => {
+    useControlledSceneTimers();
+    try {
+      const { runtime } = createDeps();
+      runtime.replaceAll({
+        nodes: [createNode(1, 20), createNode(2, 260), createNode(3, 500)],
+        edges: [],
+      });
+      dirtyRegionState.marks = [];
+
+      await flushSceneFrame(
+        runtime.applyGraphDelta({
+          clear: 0,
+          nodesAdded: [],
+          nodesUpdated: [],
+          nodesRemoved: [],
+          edgesAdded: [],
+          edgesRemoved: [],
+          tableCellPatches: [],
+          layoutPatches: [
+            { kind: "nodeBoundsUpdated", renderHandle: 2, boxArgs: { x: 320, y: 20, width: 200, height: 80, cornerRadius: 8 } },
+          ],
+        } as any),
+      );
+      flushBufferedNodes();
+
+      expect(dirtyRegionState.marks.map((rect: any) => rect.left)).toEqual([260, 320]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("coalesces same-frame incremental dirty regions as an affected-node union", async () => {
+    useControlledSceneTimers();
+    try {
+      const { runtime } = createDeps();
+      runtime.replaceAll({
+        nodes: [createNode(1, 20), createNode(2, 260), createNode(3, 500)],
+        edges: [],
+      });
+      dirtyRegionState.marks = [];
+
+      const first = runtime.applyGraphDelta({
+        clear: 0,
+        nodesAdded: [],
+        nodesUpdated: [createNode(2, 300)],
+        nodesRemoved: [],
+        edgesAdded: [],
+        edgesRemoved: [],
+        tableCellPatches: [],
+        layoutPatches: [],
+      } as any);
+      const second = runtime.applyGraphDelta({
+        clear: 0,
+        nodesAdded: [],
+        nodesUpdated: [createNode(3, 540)],
+        nodesRemoved: [],
+        edgesAdded: [],
+        edgesRemoved: [],
+        tableCellPatches: [],
+        layoutPatches: [],
+      } as any);
+
+      await flushSceneFrame(first);
+      await second;
+      flushBufferedNodes();
+
+      expect(dirtyRegionState.marks.map((rect: any) => rect.left)).toEqual([260, 300, 500, 540]);
     } finally {
       vi.useRealTimers();
     }

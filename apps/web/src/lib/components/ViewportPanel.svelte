@@ -41,6 +41,7 @@
   import EntitlementOverlay from './EntitlementOverlay.svelte'
   import type { PricingUsageNotice } from './PricingPlanGrid.svelte'
   import type { BillingPriceId, PricingPlan } from '$lib/config/pricing'
+  import type { SharedWorkspaceMutationTarget } from '../share/share-workspace-lifecycle'
 
   type PricingPlanGridComponent = typeof import('./PricingPlanGrid.svelte').default
 
@@ -64,6 +65,7 @@
   export let pricingActionLabel: (plan: PricingPlan) => string = (plan) => plan.ctaLabel
   export let onEntitlementBlocked: (block: UsageBlock) => void = () => {}
   export let onFileDrop: (event: DragEvent) => void | Promise<void> = () => {}
+  export let ensureSharedWorkspacePromoted: (target: SharedWorkspaceMutationTarget) => Promise<boolean> = async () => true
 
   type DiffResponse = {
     mode: 'tree' | 'text'
@@ -594,6 +596,7 @@
       readonly={readonlyGraph}
       {onFileDrop}
       onEntitlementBlocked={handleEntitlementBlocked}
+      {ensureSharedWorkspacePromoted}
       on:reveal={handleGraphReveal}
       on:runtime-state={handleGraphViewerRuntimeState}
       on:column-navigator-state={(event) => onColumnNavigatorState(event.detail)}

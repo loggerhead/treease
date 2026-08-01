@@ -14,8 +14,12 @@ function run(args, env) {
   });
 }
 
-run(["wasm:bindgen:check"]);
-run(["wasm:sync"]);
+if (process.env.TREEASE_SKIP_WASM_BINDGEN === "1") {
+  run(["wasm:validate"]);
+} else {
+  run(["wasm:bindgen:check"]);
+  run(["wasm:sync"]);
+}
 run(["sitemap:generate"]);
 run(["exec", "node", "./scripts/with-build-lock.mjs", "vp", "build"], {
   ...process.env,

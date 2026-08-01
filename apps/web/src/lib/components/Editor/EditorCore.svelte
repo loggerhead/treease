@@ -82,12 +82,15 @@
   import { serializePath } from '../../../shared/document-anchor-utils';
   import { createTreeaseMonacoEditorOptions } from './editor-options';
   import type { DocumentOrigin } from '../../document-origin';
+  import type { SharedWorkspaceMutationTarget } from '../../share/share-workspace-lifecycle';
 
   export let onScroll: (payload: { scrollTop: number; scrollLeft: number }) => void = () => {};
   export let enableRevealSync = true;
   export let synchronizedRuntimeLoading = false;
   export let runBidirectionalEdit: <T>(source: string, execute: () => Promise<T>, reason?: string) => Promise<T> = async (_source, execute) => execute();
   export let onRequestImportFile: (payload: { sourceFormat: string; targetFormat: string; accept: string[] }) => Promise<void> = async () => {};
+  export let onDirectDraftMutation: (target: SharedWorkspaceMutationTarget) => void = () => {};
+  export let ensureSharedWorkspacePromoted: (target: SharedWorkspaceMutationTarget) => Promise<boolean> = async () => true;
 
   type WholeDocumentReplacementOptions = {
     sourceWritebackPolicy?: 'intake' | 'submitted';
@@ -160,6 +163,27 @@
   function setModelDocumentKey(target: Monaco.editor.ITextModel | null, documentKey: string): void {
     if (!target || !documentKey) return;
     (target as EditorModelWithDocumentKey).__treeaseDocumentKey = documentKey;
+  }
+
+  function sharedMutationTarget(
+    tabId: string,
+    targetModel: Monaco.editor.ITextModel,
+    documentKey: string,
+  ): SharedWorkspaceMutationTarget {
+    return {
+      tabId,
+      documentKey,
+      readDocumentKey: () => getWorkspaceState().tabsById[tabId]?.documentKey ?? '',
+      readText: () => targetModel.getValue(),
+      isCurrent: () => {
+        const tab = getWorkspaceState().tabsById[tabId];
+        return (
+          !targetModel.isDisposed() &&
+          tabRuntime?.get(tabId) === targetModel &&
+          Boolean(tab)
+        );
+      },
+    };
   }
 
   function syncLastModelSnapshot(): string {
@@ -524,6 +548,11 @@
         void editorAnalysisController.updateTreePath(position, { syncGraphHighlight: true });
       },
       runBidirectionalEdit,
+      beforeDocumentMutation: ({ model: targetModel }) => {
+        const tab = getWorkspaceState().tabsById[tabId];
+        if (!tab || tabRuntime?.get(tabId) !== targetModel) return Promise.resolve(false);
+        return ensureSharedWorkspacePromoted(sharedMutationTarget(tabId, targetModel, tab.documentKey));
+      },
     });
     fullEditControllersByTabId.set(tabId, controller);
     return controller;
@@ -854,6 +883,11 @@
           return;
         }
         activeFullEditController.cancelImportStream();
+      }
+      const mutationTabId = getWorkspaceState().activeTabId;
+      const mutationDocumentKey = getWorkspaceState().tabsById[mutationTabId]?.documentKey ?? '';
+      if (changes.length > 0 && !isFlush && nextText !== previousText && mutationDocumentKey) {
+        onDirectDraftMutation(sharedMutationTarget(mutationTabId, activeModel, mutationDocumentKey));
       }
       if (diffDecorations || diffBlankZoneIds.length > 0) {
         clearDiffPlan();
@@ -1189,6 +1223,19 @@
     }
 
     const isVisible = isTabActive(target.tabId, target.model);
+    if (!(await ensureSharedWorkspacePromoted(sharedMutationTarget(target.tabId, target.model, target.documentKey)))) {
+      return false;
+    }
+    const currentTab = getWorkspaceState().tabsById[target.tabId];
+    if (
+      !currentTab ||
+      tabRuntime?.get(target.tabId) !== target.model ||
+      currentTab.documentKey !== target.documentKey ||
+      currentTab.languageId !== target.languageId ||
+      currentTab.revision !== target.revision
+    ) {
+      return false;
+    }
     programmaticWholeDocumentReplacementByTabId.set(target.tabId, { model: target.model, text: value });
     target.model.setValue(value);
     if (!isVisible) programmaticWholeDocumentReplacementByTabId.delete(target.tabId);

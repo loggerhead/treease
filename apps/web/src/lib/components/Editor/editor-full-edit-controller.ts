@@ -148,6 +148,12 @@ type CreateEditorFullEditControllerOptions = {
   ) => Promise<void>;
   triggerGraphSync: (position: Monaco.IPosition) => void;
   runBidirectionalEdit?: <T>(source: string, execute: () => Promise<T>, reason: FullEditReason) => Promise<T>;
+  beforeDocumentMutation?: (target: {
+    model: Monaco.editor.ITextModel;
+    text: string;
+    language: SupportedEditorLanguageId;
+    reason: FullEditReason;
+  }) => Promise<boolean>;
 };
 
 export function createEditorFullEditController(options: CreateEditorFullEditControllerOptions) {
@@ -498,11 +504,26 @@ export function createEditorFullEditController(options: CreateEditorFullEditCont
     documentKey?: string;
     documentTransitioned?: boolean;
     isFresh?: () => boolean;
+    nextText: string;
   }): Promise<FullEditSession | null> {
     const model = options.getModel();
     const monaco = options.getMonaco();
     const editor = options.getEditor();
     if (!model || !monaco) return null;
+    if (params.isFresh && !params.isFresh()) return null;
+    const changesDraft = model.getValue() !== params.nextText || options.getLanguageId() !== params.language;
+    if (
+      changesDraft &&
+      options.beforeDocumentMutation &&
+      !(await options.beforeDocumentMutation({
+        model,
+        text: params.nextText,
+        language: params.language,
+        reason: params.reason,
+      }))
+    ) {
+      return null;
+    }
     if (params.isFresh && !params.isFresh()) return null;
     if (importSession?.active) {
       cancelImportStream();
@@ -592,6 +613,7 @@ export function createEditorFullEditController(options: CreateEditorFullEditCont
       sourceWritebackPolicy: 'intake',
       formatSourceOnClose: true,
       editorFlushByteThreshold: selectImportEditorFlushByteThreshold(totalBytes),
+      nextText: '',
     });
     if (!session) return null;
     const changed = options.setEditorValueForFullEdit('');
@@ -708,6 +730,7 @@ export function createEditorFullEditController(options: CreateEditorFullEditCont
       documentKey: params.documentKey,
       documentTransitioned: params.documentTransitioned,
       isFresh: params.isFresh,
+      nextText: params.text,
     });
     if (!session) return null;
     if (params.isFresh && !params.isFresh()) {

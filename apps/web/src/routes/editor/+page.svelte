@@ -111,6 +111,12 @@
   } from '../../lib/services/treease-server';
   import { createShareResource as createResourceFromState, type ShareInteraction, type SharePathSegment, type ShareResource } from '../../lib/share/share-resource';
   import { restoreShareResource } from '../../lib/share/share-restore';
+  import {
+    createSharedWorkspaceLifecycle,
+    type SharedWorkspaceLifecycle,
+    type SharedWorkspaceMutationTarget,
+  } from '../../lib/share/share-workspace-lifecycle';
+  import { workspaceSessionFromWorkspace } from '../../lib/workspace-host/workspace-session';
   import type { WorkspaceCommand, WorkspaceSession } from '../../lib/workspace-host';
 
   const LARGE_FILE_PROCESSING_THRESHOLD_BYTES = 256 * 1024;
@@ -187,6 +193,8 @@
   let autoSaveTimer: ReturnType<typeof setTimeout> | null = null;
   let sessionSaveTimer: ReturnType<typeof setTimeout> | null = null;
   let sessionRestoring = false;
+  let stopWorkspaceSession: (() => void) | null = null;
+  let sharedWorkspaceLifecycle: SharedWorkspaceLifecycle | null = null;
   let lastMirroredViewerText = '';
   let lastTrackedGraphViewRevision = -1;
   let shareLoadError = '';
@@ -370,7 +378,9 @@
         restoreColumnNavigator: async (activePath) => await viewerRef.restoreColumnNavigatorPath(fromSharePath(activePath)),
         reportNavigationWarning: () => toast.warning('The shared document opened, but part of its saved navigation could not be restored.'),
       });
+      sharedWorkspaceLifecycle?.completeRestore();
     } catch (error) {
+      sharedWorkspaceLifecycle?.failRestore(error);
       shareLoadError = error instanceof Error ? error.message : 'Unable to load shared content.';
       clearCompareState();
     } finally {
@@ -1127,22 +1137,7 @@
   }
 
   function sessionFromWorkspace(): WorkspaceSession {
-    const workspace = getWorkspaceState();
-    return {
-      version: 1,
-      activeTabIndex: Math.max(0, workspace.tabOrder.indexOf(workspace.activeTabId)),
-      tabs: workspace.tabOrder.flatMap((tabId) => {
-        const tab = workspace.tabsById[tabId];
-        return tab && tab.role !== 'sidecar' ? [{
-          name: tab.name,
-          languageId: tab.languageId,
-          sourceText: tab.sourceText,
-          origin: tab.origin,
-          savedText: tab.savedText,
-          linkedFileName: tab.fileLinkedDocument?.name,
-        }] : [];
-      }),
-    };
+    return workspaceSessionFromWorkspace(getWorkspaceState());
   }
 
   function scheduleWorkspaceSessionSave(): void {
@@ -1154,6 +1149,35 @@
         await host.saveSession(sessionFromWorkspace());
       })();
     }, 300);
+  }
+
+  function enableWorkspaceSessionPersistence(): void {
+    if (stopWorkspaceSession) return;
+    let initialProjection = true;
+    stopWorkspaceSession = editorWorkspace.subscribe(() => {
+      if (initialProjection) {
+        initialProjection = false;
+        return;
+      }
+      scheduleWorkspaceSessionSave();
+    });
+    // Persist the latest projection once after attaching. Direct typing may
+    // continue while the first promote save is in flight.
+    scheduleWorkspaceSessionSave();
+  }
+
+  function observeSharedDraftMutation(target: SharedWorkspaceMutationTarget): void {
+    sharedWorkspaceLifecycle?.observeDirectDraftMutation(target);
+  }
+
+  function ensureSharedWorkspacePromoted(target: SharedWorkspaceMutationTarget): Promise<boolean> {
+    return sharedWorkspaceLifecycle?.ensurePromoted(target) ?? Promise.resolve(true);
+  }
+
+  function clearShareUrlAfterPromotion(): void {
+    const url = new URL(window.location.href);
+    url.searchParams.delete('shareID');
+    window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`);
   }
 
   /**
@@ -1381,14 +1405,28 @@
     urlPreset ??= resolveEditorUrlPreset(window.location.search);
     const shareID = urlPreset.shareID;
     bootstrapFreshWorkspace();
-    let stopWorkspaceSession: (() => void) | null = null;
     let stopWorkspaceCommands: (() => void) | null = null;
     let stopDeepLinks: (() => void) | null = null;
     void (async () => {
       const host = await workspaceHost;
       showTabDirty = host.surface === 'desktop';
       if (shareID.present) {
+        sharedWorkspaceLifecycle = createSharedWorkspaceLifecycle({
+          loadSession: () => host.loadSession(),
+          saveSession: (session) => host.saveSession(session),
+          getWorkspace: getWorkspaceState,
+          publishWorkspace: setWorkspaceState,
+          onTopologyPublished: () => {
+            clearShareUrlAfterPromotion();
+            workspaceCommandReady = true;
+          },
+          enableSessionPersistence: enableWorkspaceSessionPersistence,
+          reportError: (message) => toast.error(message),
+        });
+        sharedWorkspaceLifecycle.beginRestore();
         workspaceBootstrapReady = true;
+        resolveWorkspaceBootstrap?.();
+        resolveWorkspaceBootstrap = null;
         return;
       }
       const session = await host.loadSession();
@@ -1412,7 +1450,7 @@
           toast.error(`Desktop deep link failed: ${message}`);
         }));
       }
-      stopWorkspaceSession = editorWorkspace.subscribe(() => scheduleWorkspaceSessionSave());
+      enableWorkspaceSessionPersistence();
       scheduleWorkspaceSessionSave();
       workspaceCommandReady = true;
     })().catch((error) => {
@@ -1462,6 +1500,9 @@
       window.removeEventListener('resize', handleResize);
       stopDroppedFiles?.();
       stopWorkspaceSession?.();
+      stopWorkspaceSession = null;
+      sharedWorkspaceLifecycle?.dispose();
+      sharedWorkspaceLifecycle = null;
       stopWorkspaceCommands?.();
       stopDeepLinks?.();
       window.removeEventListener('blur', saveOnFocusChange);
@@ -1531,6 +1572,8 @@
                 enableRevealSync={syncScrollEnabled}
                 {synchronizedRuntimeLoading}
                 runBidirectionalEdit={runEditorFullEditUsage}
+                onDirectDraftMutation={observeSharedDraftMutation}
+                {ensureSharedWorkspacePromoted}
                 onRequestImportFile={handleRequestImportFile}
                 on:reveal={handleEditorReveal}
                 on:runtime-state={handleEditorRuntimeEvent}
@@ -1675,6 +1718,7 @@
             onApplyDiff={handleApplyDiff}
             onSwap={handleSwapEditors}
             onFileDrop={(event) => editorRef?.handleFileDrop(event)}
+            {ensureSharedWorkspacePromoted}
             {pricingPlanGridComponent}
             pricingUsageNotice={null}
             onPricingSelectPlan={(priceId) => void handleAiQuotaUpgrade(priceId)}
@@ -1774,6 +1818,8 @@
       enableRevealSync={syncScrollEnabled}
       {synchronizedRuntimeLoading}
       runBidirectionalEdit={runEditorFullEditUsage}
+      onDirectDraftMutation={observeSharedDraftMutation}
+      {ensureSharedWorkspacePromoted}
       onRequestImportFile={handleRequestImportFile}
       on:reveal={handleEditorReveal}
       on:runtime-state={handleEditorRuntimeEvent}

@@ -29,6 +29,7 @@ import { renderGraphEdges, renderGraphNode } from '@treease/graph-viewer-runtime
 import {
   computeProjection,
   createGraphModel,
+  graphEdgeKey,
   type GraphModel,
   type GraphProjection,
   type MaterializationIntent,
@@ -164,6 +165,7 @@ type PendingStreamPatch = {
   nodeIds: Set<number>;
   tablePatchNodeIds: Set<number>;
   tablePatchModes: Map<number, TablePatchMode>;
+  edgeKeys: Set<string>;
   edgeChange: boolean;
 };
 
@@ -219,6 +221,21 @@ function tablePatchMode(tablePatch: unknown): TablePatchMode {
   return "structure";
 }
 
+function edgeKey(edge: unknown): string | null {
+  const record = asRecord(edge);
+  if (!record) return null;
+  if (
+    typeof record.fromRenderHandle !== "number" ||
+    typeof record.fromRow !== "number" ||
+    typeof record.toRenderHandle !== "number" ||
+    typeof record.toRow !== "number" ||
+    !asRecord(record.bezierArgs)
+  ) {
+    return null;
+  }
+  return graphEdgeKey(edge as GraphEdge);
+}
+
 function markTablePatch(
   patch: PendingStreamPatch,
   handle: number,
@@ -238,11 +255,20 @@ function createPendingStreamPatch(delta: GraphSceneDelta): PendingStreamPatch {
     nodeIds: new Set<number>(),
     tablePatchNodeIds: new Set<number>(),
     tablePatchModes: new Map<number, TablePatchMode>(),
+    edgeKeys: new Set<string>(),
     edgeChange:
       (delta.edgesAdded?.length ?? 0) > 0 ||
       (delta.edgesRemoved?.length ?? 0) > 0,
   };
   if (!patch.clear) {
+    delta.edgesAdded.forEach((edge) => {
+      const key = edgeKey(edge);
+      if (key) patch.edgeKeys.add(key);
+    });
+    delta.edgesRemoved.forEach((edge) => {
+      const key = edgeKey(edge);
+      if (key) patch.edgeKeys.add(key);
+    });
     delta.nodesRemoved.forEach((nodeId) => {
       if (typeof nodeId === "number") patch.nodeIds.add(nodeId);
     });
@@ -284,6 +310,7 @@ function mergePendingStreamPatch(
     target.nodeIds.clear();
     target.tablePatchNodeIds.clear();
     target.tablePatchModes.clear();
+    target.edgeKeys.clear();
     target.edgeChange = true;
     return;
   }
@@ -297,6 +324,7 @@ function mergePendingStreamPatch(
       mergeTablePatchMode(target.tablePatchModes.get(nodeId), mode),
     );
   });
+  next.edgeKeys.forEach((edgeKeyValue) => target.edgeKeys.add(edgeKeyValue));
   target.edgeChange ||= next.edgeChange;
 }
 
@@ -642,6 +670,60 @@ export function createGraphSceneRuntime(deps: GraphSceneRuntimeDeps) {
     if (!graphData?.nodes?.length) return;
     graphData.nodes.forEach((node) => {
       markNodeDirty(node);
+    });
+  }
+
+  function toEdgeDirtyRect(
+    edge: GraphEdge | null | undefined,
+  ): GraphDirtyRegionRect | null {
+    if (!edge) return null;
+    const curve = edge.bezierArgs;
+    const xs = [curve.fromX, curve.c1x, curve.c2x, curve.toX];
+    const ys = [curve.fromY, curve.c1y, curve.c2y, curve.toY];
+    if (![...xs, ...ys].every(Number.isFinite)) return null;
+    const left = Math.min(...xs);
+    const top = Math.min(...ys);
+    return {
+      left,
+      top,
+      width: Math.max(0, Math.max(...xs) - left),
+      height: Math.max(0, Math.max(...ys) - top),
+    };
+  }
+
+  function markEdgeDirty(edge: GraphEdge | null | undefined): void {
+    dirtyRegion.mark(toEdgeDirtyRect(edge));
+  }
+
+  function markIncrementalPatchDirty(
+    patch: PendingStreamPatch,
+    previousModel: GraphModel | null,
+    nextModel: GraphModel,
+  ): void {
+    patch.nodeIds.forEach((nodeId) => {
+      markNodeDirty(previousModel?.nodeById.get(nodeId));
+      markNodeDirty(nextModel.nodeById.get(nodeId));
+    });
+
+    if (!patch.edgeChange) return;
+
+    const edgeKeys = new Set(patch.edgeKeys);
+    patch.nodeIds.forEach((nodeId) => {
+      previousModel?.edges.forEach((edge) => {
+        if (edge.fromRenderHandle === nodeId || edge.toRenderHandle === nodeId) {
+          edgeKeys.add(graphEdgeKey(edge));
+        }
+      });
+      nextModel.edges.forEach((edge) => {
+        if (edge.fromRenderHandle === nodeId || edge.toRenderHandle === nodeId) {
+          edgeKeys.add(graphEdgeKey(edge));
+        }
+      });
+    });
+
+    edgeKeys.forEach((key) => {
+      markEdgeDirty(previousModel?.edgeByKey.get(key));
+      markEdgeDirty(nextModel.edgeByKey.get(key));
     });
   }
 
@@ -1008,7 +1090,9 @@ export function createGraphSceneRuntime(deps: GraphSceneRuntimeDeps) {
       return;
     }
     // Incremental: nodes already have paths from Core delta, skip O(G+E) inferGraphPaths.
+    const previousModel = graphModel;
     publishGraphModel(graphData);
+    if (graphModel) markIncrementalPatchDirty(patch, previousModel, graphModel);
     const nodeById = new Map(
       graphData.nodes.map((node) => [node.renderHandle, node]),
     );
@@ -1020,7 +1104,6 @@ export function createGraphSceneRuntime(deps: GraphSceneRuntimeDeps) {
           patch.tablePatchModes.get(nodeId) ?? "content",
         );
     });
-    markViewDirty(graphData);
     submitProjection(true);
     performance.mark("pipeline:flush-stream-patch:end");
     performance.measure(
