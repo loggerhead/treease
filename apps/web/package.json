@@ -1,7 +1,7 @@
 {
   "name": "treease-web",
   "private": true,
-  "version": "1.2.1",
+  "version": "1.2.2",
   "type": "module",
   "madge": {
     "detectiveOptions": {
@@ -15,7 +15,7 @@
     "assets:r2:check": "node ./scripts/check-r2-assets.mjs",
     "assets:tinify:png": "node ./scripts/tinify-pngs.mjs",
     "content:changelog": "node ./scripts/generate-changelog.mjs",
-    "sitemap:generate": "node ./scripts/generate-sitemap.mjs",
+    "sitemap:generate": "node ../../scripts/generate-sitemap.mjs",
     "dev": "node ./scripts/wasm-dev.mjs",
     "dev:vite": "WASM_VERSION=$(node ./scripts/wasm-version.mjs) vp dev",
     "dev:desktop:vite": "TREEASE_WORKSPACE_SURFACE=desktop WASM_VERSION=$(node ./scripts/wasm-version.mjs) vp dev --host localhost --port 1420",
@@ -48,7 +48,8 @@
     "test:coverage": "vp test --coverage",
     "test:e2e": "pnpm build:e2e && playwright test test/e2e",
     "test:e2e:headed": "pnpm test:e2e --headed",
-    "test:e2e:fixtures": "playwright test --config playwright.config.fixtures.ts",
+    "test:e2e:fixtures": "pnpm build:e2e && pnpm test:e2e:fixtures:run",
+    "test:e2e:fixtures:run": "playwright test --config playwright.config.fixtures.ts",
     "test:e2e:fixtures:headed": "pnpm test:e2e:fixtures --headed",
     "test:e2e:core": "pnpm build:e2e && pnpm test:e2e:core:run",
     "test:e2e:core:run": "playwright test --config playwright.config.core.ts",

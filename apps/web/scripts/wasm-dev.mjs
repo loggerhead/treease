@@ -66,7 +66,7 @@ async function removeGeneratedStaticWasmFiles(staticDir) {
 }
 
 async function buildOnce() {
-  if (!copyOnly) runBindgen({ optimize: false });
+  if (!copyOnly) await runBindgen({ optimize: false });
   if (!existsSync(rustWasmOut)) {
     throw new Error(`missing Rust wasm output: ${rustWasmOut}`);
   }

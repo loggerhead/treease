@@ -5087,7 +5087,7 @@ checksum = "009994f150cc0cd50ff54917d5bc8bffe8cad10ca10d81c34da2ec421ae61782"
 
 [[package]]
 name = "treease-cli"
-version = "1.2.2"
+version = "1.2.3"
 dependencies = [
  "clap",
  "dirs",
@@ -5099,7 +5099,7 @@ dependencies = [
 
 [[package]]
 name = "treease-core"
-version = "1.2.1"
+version = "1.2.2"
 dependencies = [
  "insta",
  "regex",
@@ -5118,7 +5118,7 @@ dependencies = [
 
 [[package]]
 name = "treease-desktop"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "keyring",
  "notify",

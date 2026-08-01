@@ -1,222 +1,205 @@
+import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const here = path.dirname(fileURLToPath(import.meta.url));
-const rootDir = path.resolve(here, '..');
+const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const args = parseArgs();
+const bumpPart = args.part;
 
-const targets = parseTargets();
-const bumpPart = parsePart();
-
-if (targets.size === 0) {
-  fail('No target specified. Use --targets core,cli,web');
-}
-
-const cliManifestPath = path.resolve(rootDir, 'apps', 'cli', 'Cargo.toml');
-const coreManifestPath = path.resolve(rootDir, 'packages', 'core', 'Cargo.toml');
-const webManifestPath = path.resolve(rootDir, 'apps', 'web', 'package.json');
-const currentVersions = {
-  web: readPackageVersion(webManifestPath),
+const TARGETS = {
+  core: {
+    tag: 'v[0-9]*',
+    paths: ['packages/core/'],
+    version: () => readTomlStringValue(readFile('packages/core/Cargo.toml'), 'package', 'version'),
+  },
+  web: {
+    tag: 'v[0-9]*',
+    paths: ['apps/web/', 'packages/core/', 'packages/api-contracts/', 'packages/share-protocol/', 'packages/graph-viewer-runtime/'],
+    version: () => readPackageVersion('apps/web/package.json'),
+  },
+  cli: {
+    tag: 'cli-v[0-9]*',
+    paths: ['apps/cli/', 'packages/core/'],
+    version: () => readTomlStringValue(readFile('apps/cli/Cargo.toml'), 'package', 'version'),
+  },
+  desktop: {
+    tag: 'desktop-v[0-9]*',
+    paths: ['apps/desktop/', 'apps/web/', 'packages/core/', 'packages/api-contracts/', 'packages/share-protocol/', 'packages/graph-viewer-runtime/'],
+    version: () => readPackageVersion('apps/desktop/package.json'),
+  },
+  extension: {
+    tag: 'extension-v[0-9]*',
+    paths: ['apps/extension/', 'packages/graph-viewer-runtime/'],
+    version: () => readPackageVersion('apps/extension/package.json'),
+  },
 };
-let coreContent = null;
-let cliContent = null;
-let coreVersion = null;
 
-if (targets.has('core') || targets.has('cli')) {
-  coreContent = readFileSync(coreManifestPath, 'utf8');
-  coreVersion = readTomlStringValue(coreContent, 'package', 'version');
-  currentVersions.core = coreVersion;
+const targetTags = new Map();
+const targets = args.targets ?? resolveTargets();
+if (targets.size === 0) {
+  fail('No release artifact changed since its latest tag.');
 }
 
-if (targets.has('cli')) {
-  cliContent = readFileSync(cliManifestPath, 'utf8');
-  currentVersions.cli = readTomlStringValue(cliContent, 'package', 'version');
+const currentVersions = Object.fromEntries([...targets].map((target) => [target, TARGETS[target].version()]));
+const nextVersions = Object.fromEntries(
+  [...targets].map((target) => [target, nextVersion(target, currentVersions[target])])
+);
+
+const updates = buildUpdates(targets, nextVersions);
+if (args.check) {
+  for (const target of targets) {
+    console.log(`would bump ${target}: ${currentVersions[target]} -> ${nextVersions[target]}`);
+  }
+  for (const update of updates) {
+    console.log(`would update ${update.file}`);
+  }
+  process.exit(0);
+}
+
+for (const update of updates) {
+  writeFileSync(path.resolve(rootDir, update.file), update.contents);
+}
+for (const target of targets) {
+  console.log(`bumped ${target}: ${currentVersions[target]} -> ${nextVersions[target]}`);
+}
+
+function resolveTargets() {
+  const resolved = new Set();
+  for (const [target, definition] of Object.entries(TARGETS)) {
+    const tag = latestTag(definition.tag);
+    if (!tag) {
+      console.warn(`${target}: no release tag matches ${definition.tag}; skipping un-released artifact`);
+      continue;
+    }
+    const changedFiles = git('diff', '--name-only', tag, '--').split('\n').filter(Boolean);
+    if (changedFiles.some((file) => definition.paths.some((prefix) => file.startsWith(prefix)))) {
+      resolved.add(target);
+      targetTags.set(target, tag);
+      console.log(`${target}: ${tag}..working tree changed`);
+    }
+  }
+  return resolved;
+}
+
+function nextVersion(target, currentVersion) {
+  const tag = targetTags.get(target) ?? latestTag(TARGETS[target].tag);
+  const tagVersion = tag?.match(/(\d+\.\d+\.\d+)$/)?.[1];
+  if (!tagVersion) return bumpSemver(currentVersion, bumpPart);
+  const expected = bumpSemver(tagVersion, bumpPart);
+  return currentVersion === expected ? currentVersion : bumpSemver(currentVersion, bumpPart);
+}
+
+function buildUpdates(targets, nextVersions) {
+  const updates = [];
   if (targets.has('core')) {
-    const currentCliDep = readInlineDependencyVersion(cliContent, 'treease-core');
-    if (currentCliDep !== coreVersion) {
-      fail(`apps/cli/Cargo.toml currently depends on treease-core ${currentCliDep}, expected ${coreVersion}`);
+    const corePath = 'packages/core/Cargo.toml';
+    const coreContent = updateTomlField(readFile(corePath), 'package', 'version', nextVersions.core);
+    updates.push({ file: corePath, contents: coreContent });
+
+    const wasmPath = 'packages/core/wasm/pkg/package.json';
+    if (existsSync(path.resolve(rootDir, wasmPath))) {
+      const pkg = JSON.parse(readFile(wasmPath));
+      pkg.version = nextVersions.core;
+      pkg.name = readTomlStringValue(coreContent, 'package', 'name');
+      updates.push({ file: wasmPath, contents: `${JSON.stringify(pkg, null, 2)}\n` });
     }
   }
-}
 
-const nextVersions = {};
-for (const target of targets) {
-  nextVersions[target] = bumpSemver(currentVersions[target], bumpPart);
-}
-
-if (targets.has('core')) {
-  const coreManifest = coreManifestPath;
-  const updatedCore = updateTomlVersion(coreContent, 'package', 'version', nextVersions.core);
-  writeFileSync(coreManifest, updatedCore);
-
-  const coreWasmPackageJson = path.resolve(rootDir, 'packages', 'core', 'wasm', 'pkg', 'package.json');
-  if (existsSync(coreWasmPackageJson)) {
-    const coreWasmPackage = readFileSync(coreWasmPackageJson, 'utf8');
-    const normalizedName = readTomlStringValue(coreContent, 'package', 'name');
-    const pkg = JSON.parse(coreWasmPackage);
-    pkg.version = nextVersions.core;
-    if (pkg.name !== normalizedName) {
-      pkg.name = normalizedName;
-    }
-    writeFileSync(coreWasmPackageJson, `${JSON.stringify(pkg, null, 2)}\n`);
-  } else {
-    console.warn(`Skip missing generated file: packages/core/wasm/pkg/package.json`);
+  if (targets.has('web')) {
+    updates.push({ file: 'apps/web/package.json', contents: updateJsonField(readFile('apps/web/package.json'), 'version', nextVersions.web) });
   }
-}
 
-if (targets.has('cli')) {
-  const cliManifest = cliManifestPath;
-  const nextCliCoreVersion = targets.has('core') ? nextVersions.core : coreVersion;
-  const withCliVersion = updateTomlVersion(cliContent, 'package', 'version', nextVersions.cli);
-  const withDependency = updateTomlDependencyVersion(withCliVersion, 'dependencies', 'treease-core', nextCliCoreVersion);
-  writeFileSync(cliManifest, withDependency);
-}
-
-if (targets.has('web')) {
-  const updatedWeb = updateJsonField(
-    readFileSync(webManifestPath, 'utf8'),
-    'version',
-    nextVersions.web
-  );
-  writeFileSync(webManifestPath, updatedWeb);
-}
-
-if (targets.has('cli') && targets.has('core')) {
-  if (nextVersions.core !== nextVersions.cli) {
-    console.log(`bumped core to ${nextVersions.core}, cli to ${nextVersions.cli}`);
-    console.log(`set apps/cli/Cargo.toml treease-core dependency to ${nextVersions.core}`);
-  } else {
-    console.log(`bumped core and cli to ${nextVersions.core}`);
+  if (targets.has('cli')) {
+    const cliPath = 'apps/cli/Cargo.toml';
+    let cliContent = readFile(cliPath);
+    cliContent = updateTomlField(cliContent, 'package', 'version', nextVersions.cli);
+    const coreVersion = nextVersions.core ?? readTomlStringValue(readFile('packages/core/Cargo.toml'), 'package', 'version');
+    cliContent = updateTomlDependencyVersion(cliContent, 'dependencies', 'treease-core', coreVersion);
+    updates.push({ file: cliPath, contents: cliContent });
   }
-}
 
-for (const target of targets) {
-  const targetVersion = nextVersions[target];
-  console.log(`bumped ${target}: ${currentVersions[target]} -> ${targetVersion}`);
-}
-
-function bumpSemver(value, part) {
-  const match = value.match(/^(\d+)\.(\d+)\.(\d+)$/);
-  if (!match) {
-    fail(`invalid semver: ${value}`);
+  if (targets.has('desktop')) {
+    updates.push({ file: 'apps/desktop/package.json', contents: updateJsonField(readFile('apps/desktop/package.json'), 'version', nextVersions.desktop) });
+    updates.push({ file: 'apps/desktop/src-tauri/Cargo.toml', contents: updateTomlField(readFile('apps/desktop/src-tauri/Cargo.toml'), 'package', 'version', nextVersions.desktop) });
+    updates.push({ file: 'apps/desktop/src-tauri/tauri.conf.json', contents: updateJsonField(readFile('apps/desktop/src-tauri/tauri.conf.json'), 'version', nextVersions.desktop) });
   }
-  let [major, minor, patch] = match.slice(1).map(Number);
-  if (part === 'major') {
-    major += 1;
-    minor = 0;
-    patch = 0;
-  } else if (part === 'minor') {
-    minor += 1;
-    patch = 0;
-  } else {
-    patch += 1;
+
+  if (targets.has('extension')) {
+    updates.push({ file: 'apps/extension/package.json', contents: updateJsonField(readFile('apps/extension/package.json'), 'version', nextVersions.extension) });
+    updates.push({ file: 'apps/extension/public/manifest.json', contents: updateJsonField(readFile('apps/extension/public/manifest.json'), 'version', nextVersions.extension) });
   }
-  return `${major}.${minor}.${patch}`;
+
+  const rustVersions = new Map([
+    ['core', ['treease-core', nextVersions.core]],
+    ['cli', ['treease-cli', nextVersions.cli]],
+    ['desktop', ['treease-desktop', nextVersions.desktop]],
+  ]);
+  let lockContents = null;
+  for (const [target, [packageName, version]] of rustVersions) {
+    if (!targets.has(target)) continue;
+    lockContents ??= readFile('Cargo.lock');
+    lockContents = updateLockPackageVersion(lockContents, packageName, version);
+  }
+  if (lockContents !== null) updates.push({ file: 'Cargo.lock', contents: lockContents });
+  return updates;
 }
 
-function parseTargets() {
-  const targets = new Set();
-  const args = process.argv.slice(2);
-  for (let i = 0; i < args.length; i += 1) {
-    const arg = args[i];
-    if (arg === '--') {
-      continue;
-    }
-    if (arg === '--targets') {
-      const value = args[i + 1];
-      if (!value) fail('missing value for --targets');
-      appendTargets(value, targets);
-      i += 1;
-      continue;
-    }
-    if (arg.startsWith('--targets=')) {
-      appendTargets(arg.slice('--targets='.length), targets);
-      continue;
-    }
-    if (arg === '--target') {
-      const value = args[i + 1];
-      if (!value) fail('missing value for --target');
-      appendTargets(value, targets);
-      i += 1;
-      continue;
-    }
-    if (arg === '--part') {
-      i += 1;
-      continue;
-    }
-    if (arg.startsWith('--part=')) {
-      continue;
-    }
-    if (arg === '--help' || arg === '-h') {
+function latestTag(pattern) {
+  const tags = git('tag', '--list', pattern, '--sort=-version:refname').split('\n').filter(Boolean);
+  return tags[0] ?? null;
+}
+
+function git(...command) {
+  return execFileSync('git', command, { cwd: rootDir, encoding: 'utf8' }).trim();
+}
+
+function parseArgs() {
+  const parsed = { check: false, targets: null, part: 'patch' };
+  const argv = process.argv.slice(2);
+  for (let i = 0; i < argv.length; i += 1) {
+    const arg = argv[i];
+    if (arg === '--check') parsed.check = true;
+    else if (arg === '--part') parsed.part = argv[++i];
+    else if (arg.startsWith('--part=')) parsed.part = arg.slice('--part='.length);
+    else if (arg === '--targets') parsed.targets = parseTargetList(argv[++i]);
+    else if (arg.startsWith('--targets=')) parsed.targets = parseTargetList(arg.slice('--targets='.length));
+    else if (arg === '--help' || arg === '-h') {
       printHelp();
       process.exit(0);
-    }
-    fail(`Unknown argument: ${arg}`);
+    } else fail(`unknown argument ${arg}`);
+  }
+  if (!['patch', 'minor', 'major'].includes(parsed.part)) fail('only --part patch|minor|major are supported');
+  return parsed;
+}
+
+function parseTargetList(value) {
+  if (!value) fail('missing value for --targets');
+  const targets = new Set(value.split(',').map((item) => item.trim()).filter(Boolean));
+  for (const target of targets) {
+    if (!TARGETS[target]) fail(`unknown target ${target}, expected ${Object.keys(TARGETS).join(',')}`);
   }
   return targets;
 }
 
-function appendTargets(value, targets) {
-  const allowed = new Set(['core', 'cli', 'web']);
-  for (const item of value.split(',')) {
-    const target = item.trim();
-    if (!target) continue;
-    if (!allowed.has(target)) {
-      fail(`unknown target ${target}, expected one of core,cli,web`);
-    }
-    targets.add(target);
-  }
+function readFile(relativePath) {
+  return readFileSync(path.resolve(rootDir, relativePath), 'utf8');
 }
 
-function parsePart() {
-  const args = process.argv.slice(2);
-  let part = 'patch';
-  for (let i = 0; i < args.length; i += 1) {
-    const arg = args[i];
-    if (arg === '--') {
-      continue;
-    }
-    if (arg === '--part') {
-      const value = args[i + 1];
-      if (!value) fail('missing value for --part');
-      part = value;
-      break;
-    }
-    if (arg.startsWith('--part=')) {
-      part = arg.slice('--part='.length);
-      break;
-    }
-  }
-  if (!['patch', 'minor', 'major'].includes(part)) {
-    fail('only --part patch|minor|major are supported');
-  }
-  return part;
-}
-
-function readPackageVersion(manifestPath) {
-  const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
-  const version = manifest.version;
-  if (!/^\d+\.\d+\.\d+$/.test(version)) {
-    fail(`invalid web package version ${version} in ${path.relative(rootDir, manifestPath)}`);
-  }
+function readPackageVersion(relativePath) {
+  const version = JSON.parse(readFile(relativePath)).version;
+  if (!/^\d+\.\d+\.\d+$/.test(version)) fail(`invalid version ${version} in ${relativePath}`);
   return version;
 }
 
-function readInlineDependencyVersion(contents, dependencyName) {
-  const dependencies = getTomlSection(contents, 'dependencies');
-  const dependencyPattern = new RegExp(
-    `^\\s*${escapeRegExp(dependencyName)}\\s*=\\s*\\{[^\\n}]*\\bversion\\s*=\\s*"([^"]+)"[^\\n}]*\\}\\s*$`,
-    'm'
-  );
-  const match = dependencies.match(dependencyPattern);
-  if (!match) {
-    fail(`missing ${dependencyName} inline dependency version`);
-  }
-  return match[1];
-}
-
-function updateTomlVersion(contents, sectionName, key, nextVersion) {
-  return updateTomlField(contents, sectionName, key, nextVersion);
+function bumpSemver(value, part) {
+  const match = value.match(/^(\d+)\.(\d+)\.(\d+)$/);
+  if (!match) fail(`invalid semver: ${value}`);
+  let [major, minor, patch] = match.slice(1).map(Number);
+  if (part === 'major') [major, minor, patch] = [major + 1, 0, 0];
+  else if (part === 'minor') [major, minor, patch] = [major, minor + 1, 0];
+  else patch += 1;
+  return `${major}.${minor}.${patch}`;
 }
 
 function updateTomlField(contents, sectionName, key, nextValue) {
@@ -225,92 +208,71 @@ function updateTomlField(contents, sectionName, key, nextValue) {
   let updated = false;
   const next = lines.map((line) => {
     const sectionMatch = line.match(/^\[([^\]]+)\]/);
-    if (sectionMatch) {
-      section = sectionMatch[1];
-      return line;
-    }
+    if (sectionMatch) section = sectionMatch[1];
     if (section === sectionName) {
       const match = line.match(new RegExp(`^(\\s*)${escapeRegExp(key)}\\s*=\\s*"`));
       if (match) {
         updated = true;
-        return `${match[1]}${key} = "${nextValue.trim()}"`;
+        return `${match[1]}${key} = "${nextValue}"`;
       }
     }
     return line;
   });
-  if (!updated) {
-    fail(`failed to update ${sectionName}.${key}`);
-  }
-  return `${next.join('\n')}\n`;
+  if (!updated) fail(`failed to update ${sectionName}.${key}`);
+  return `${next.join('\n').replace(/\n+$/, '')}\n`;
 }
 
 function updateTomlDependencyVersion(contents, sectionName, dependencyName, nextVersion) {
   const lines = contents.split(/\r?\n/);
   let section = null;
   let updated = false;
-  const escapedDependency = escapeRegExp(dependencyName);
-  const keyRe = new RegExp(`^(\\s*)${escapedDependency}\\s*=\\s*\\{([^}]*)\\}$`);
-  const depRe = new RegExp(`(\\s*${escapedDependency}\\s*=\\s*\\{[^}]*\\bversion\\s*=\\s*")([^"]+)(")`);
-
+  const dependency = escapeRegExp(dependencyName);
+  const entry = new RegExp(`^(\\s*)${dependency}\\s*=\\s*\\{([^}]*)\\}$`);
+  const version = new RegExp(`(\\bversion\\s*=\\s*")([^"]+)(")`);
   const next = lines.map((line) => {
     const sectionMatch = line.match(/^\[([^\]]+)\]/);
-    if (sectionMatch) {
-      section = sectionMatch[1];
-      return line;
-    }
-    if (section === sectionName && keyRe.test(line)) {
-      const match = line.match(depRe);
-      if (!match) {
-        fail(`unable to parse dependency entry for ${dependencyName}`);
-      }
+    if (sectionMatch) section = sectionMatch[1];
+    if (section === sectionName && entry.test(line)) {
+      if (!version.test(line)) fail(`unable to parse dependency entry for ${dependencyName}`);
       updated = true;
-      return line.replace(depRe, `$1${nextVersion}$3`);
+      return line.replace(version, `$1${nextVersion}$3`);
     }
     return line;
   });
-  if (!updated) {
-    fail(`failed to update dependency ${dependencyName} in [${sectionName}]`);
-  }
-  return `${next.join('\n')}\n`;
+  if (!updated) fail(`failed to update dependency ${dependencyName} in [${sectionName}]`);
+  return `${next.join('\n').replace(/\n+$/, '')}\n`;
 }
 
 function updateJsonField(contents, key, nextValue) {
-  const escaped = escapeRegExp(`"${key}"`);
-  const regex = new RegExp(`(${escaped}\\s*:\\s*")([^"]+)(")`);
-  if (!regex.test(contents)) {
-    fail(`failed to update ${key}`);
-  }
+  const regex = new RegExp(`("${escapeRegExp(key)}"\\s*:\\s*")([^"]+)(")`);
+  if (!regex.test(contents)) fail(`failed to update ${key}`);
   return contents.replace(regex, `$1${nextValue}$3`);
+}
+
+function updateLockPackageVersion(contents, packageName, nextVersion) {
+  const packagePattern = new RegExp(`(name = "${escapeRegExp(packageName)}"\\nversion = ")([^"]+)(")`);
+  if (!packagePattern.test(contents)) fail(`missing ${packageName} in Cargo.lock`);
+  return contents.replace(packagePattern, `$1${nextVersion}$3`);
 }
 
 function readTomlStringValue(contents, sectionName, key) {
   const section = getTomlSection(contents, sectionName);
-  const pattern = new RegExp(`^\\s*${escapeRegExp(key)}\\s*=\\s*"([^"]+)"`, 'm');
-  const match = section.match(pattern);
-  if (!match) {
-    fail(`missing ${sectionName}.${key}`);
-  }
+  const match = section.match(new RegExp(`^\\s*${escapeRegExp(key)}\\s*=\\s*"([^"]+)"`, 'm'));
+  if (!match) fail(`missing ${sectionName}.${key}`);
   return match[1];
 }
 
 function getTomlSection(contents, sectionName) {
   const lines = contents.split(/\r?\n/);
   let current = null;
-  const linesInSection = [];
+  const sectionLines = [];
   for (const line of lines) {
     const sectionMatch = line.match(/^\[([^\]]+)\]/);
-    if (sectionMatch) {
-      current = sectionMatch[1];
-      continue;
-    }
-    if (current === sectionName) {
-      linesInSection.push(line);
-    }
+    if (sectionMatch) current = sectionMatch[1];
+    else if (current === sectionName) sectionLines.push(line);
   }
-  if (linesInSection.length === 0) {
-    fail(`missing section [${sectionName}]`);
-  }
-  return linesInSection.join('\n');
+  if (sectionLines.length === 0) fail(`missing section [${sectionName}]`);
+  return sectionLines.join('\n');
 }
 
 function escapeRegExp(value) {
@@ -318,12 +280,9 @@ function escapeRegExp(value) {
 }
 
 function printHelp() {
-  console.log(`Usage: node scripts/bump-version.mjs [--targets core,cli,web] [--part patch|minor|major]`);
-  console.log('Options:');
-  console.log('  --targets <targets>   Comma separated list of components to bump');
-  console.log('  --target <target>     Single target, repeatable');
-  console.log('  --part <level>        patch|minor|major (default: patch)');
-  console.log('  --help                Show this message');
+  console.log('Usage: node scripts/bump-version.mjs [--check] [--part patch|minor|major] [--targets target,...]');
+  console.log('Without --targets, changed artifacts are inferred from each artifact\'s latest release tag.');
+  console.log(`Targets: ${Object.keys(TARGETS).join(', ')}`);
 }
 
 function fail(message) {

@@ -1,6 +1,6 @@
 [package]
 name = "treease-desktop"
-version = "0.2.0"
+version = "0.2.1"
 description = "Treease Desktop Workspace host"
 authors = ["Treease"]
 edition = "2021"

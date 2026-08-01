@@ -12,6 +12,7 @@ const coreDir = path.resolve(rootDir, 'packages', 'core');
 const documentProtocolOutput = path.resolve(coreDir, 'wasm', 'document-protocol.generated.ts');
 const wasmPkgDir = path.resolve(coreDir, 'wasm', 'pkg');
 const wasmBuildDir = path.resolve(coreDir, 'wasm', '.pkg-bindgen');
+const wasmBuildLockPath = path.resolve(rootDir, 'target', '.treease-wasm-bindgen.lock');
 
 export const generatedOutputs = [
   documentProtocolOutput,
@@ -25,7 +26,9 @@ const packageOutputs = generatedOutputs.slice(1);
 
 export const watchedFiles = generatedOutputs;
 
-export function runBindgen({ optimize = true } = {}) {
+export async function runBindgen({ optimize = true } = {}) {
+  const releaseLock = await acquireBuildLock();
+  try {
   const { coreName, coreVersion } = loadCoreReleaseMetadata(rootDir);
 
   // 1. Generate TS types from Rust document protocol
@@ -94,8 +97,43 @@ export function runBindgen({ optimize = true } = {}) {
     fs.copyFileSync(path.resolve(wasmBuildDir, path.basename(output)), output);
   }
   fs.rmSync(wasmBuildDir, { recursive: true, force: true });
+  } finally {
+    releaseLock();
+  }
+}
+
+async function acquireBuildLock() {
+  fs.mkdirSync(path.dirname(wasmBuildLockPath), { recursive: true });
+  while (true) {
+    try {
+      fs.writeFileSync(wasmBuildLockPath, `${process.pid}\n`, { encoding: 'utf8', flag: 'wx' });
+      return () => fs.rmSync(wasmBuildLockPath, { force: true });
+    } catch (error) {
+      if (error?.code !== 'EEXIST') throw error;
+      if (removeDeadBuildLock()) continue;
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+  }
+}
+
+function removeDeadBuildLock() {
+  try {
+    const ownerPid = Number.parseInt(fs.readFileSync(wasmBuildLockPath, 'utf8'), 10);
+    if (!Number.isInteger(ownerPid) || ownerPid <= 0) {
+      fs.rmSync(wasmBuildLockPath, { force: true });
+      return true;
+    }
+    process.kill(ownerPid, 0);
+    return false;
+  } catch (error) {
+    if (error?.code === 'ESRCH' || error?.code === 'ENOENT') {
+      fs.rmSync(wasmBuildLockPath, { force: true });
+      return true;
+    }
+    throw error;
+  }
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  runBindgen();
+  await runBindgen();
 }

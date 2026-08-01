@@ -2,7 +2,7 @@
   "name": "treease-core",
   "type": "module",
   "description": "Core parsing, evaluation, formatting, and graph runtime for Treease",
-  "version": "1.2.1",
+  "version": "1.2.2",
   "license": "SEE LICENSE IN LICENSE",
   "repository": {
     "type": "git",

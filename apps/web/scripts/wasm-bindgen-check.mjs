@@ -11,14 +11,14 @@ try {
   const trackedOutputs = generatedOutputs.filter((filePath) => isTracked(filePath));
   const snapshots = trackedOutputs.map((filePath, index) => {
     const snapshotPath = path.join(tempDir, `${index}-${path.basename(filePath)}`);
-    writeFileSync(snapshotPath, existsSync(filePath) ? readFileSync(filePath, 'utf8') : '');
+    writeFileSync(snapshotPath, existsSync(filePath) ? readNormalized(filePath) : '');
     return { filePath, snapshotPath };
   });
 
-  runBindgen();
+  await runBindgen();
 
   const changed = snapshots.filter(({ filePath, snapshotPath }) => {
-    const next = existsSync(filePath) ? readFileSync(filePath, 'utf8') : '';
+    const next = existsSync(filePath) ? readNormalized(filePath) : '';
     return next !== readFileSync(snapshotPath, 'utf8');
   });
 
@@ -39,6 +39,10 @@ try {
   }
 } finally {
   rmSync(tempDir, { recursive: true, force: true });
+}
+
+function readNormalized(filePath) {
+  return readFileSync(filePath, 'utf8').replace(/\r\n?/g, '\n');
 }
 
 function isTracked(filePath) {
