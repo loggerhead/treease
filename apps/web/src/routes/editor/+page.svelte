@@ -1370,7 +1370,11 @@
     splitLayoutConfig,
   ));
   $: ({ leftPaneCollapsed, rightPaneCollapsed, collapsedControlFlyX } = resolveSplitLayoutMotion(visibleLayoutMode));
-  $: shellRowsClass = showTopBar
+  // The top bar is mounted only after workspace commands are ready. Keep the
+  // grid rows in sync with the actual children so the loading editor occupies
+  // the main row instead of being squeezed into the top-bar row.
+  $: topBarVisible = showTopBar && workspaceCommandReady;
+  $: shellRowsClass = topBarVisible
     ? showBottomBar
       ? 'var(--topbar-height) minmax(0, 1fr) var(--bottombar-height)'
       : 'var(--topbar-height) minmax(0, 1fr)'
