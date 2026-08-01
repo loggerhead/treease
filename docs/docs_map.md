@@ -3,92 +3,6 @@
 This file is generated from `docs/**/*.md` and `docs/**/*.mdx` headings to help agents navigate the documentation tree.
 Do not edit it by hand; run `pnpm docs:map:gen`.
 
-## chrome-extension-json-graph-prd.md
-
-- Route: /chrome-extension-json-graph-prd
-- Headings:
-  - H1: Treease Chrome 扩展：点击 JSON 后在侧边栏展示 Graph
-  - H2: 1. 文档信息
-  - H2: 2. 一句话定义
-  - H2: 3. 背景与问题
-  - H2: 4. 产品目标
-  - H3: 4.1 MVP 目标
-  - H3: 4.2 非目标
-  - H2: 5. 核心用户流程
-  - H2: 6. 用户故事
-  - H3: US-01：点击 JSON 查看 Graph
-  - H3: US-02：保持网页上下文
-  - H3: US-03：本地处理敏感数据
-  - H3: US-04：控制监听范围
-  - H2: 7. 功能需求
-  - H3: 7.1 点击监听
-  - H3: 7.2 DOM 提取策略
-  - H3: 7.3 JSON 检测
-  - H3: 7.4 Side Panel
-  - H3: 7.5 自动打开策略
-  - H2: 8. 权限设计
-  - H3: 8.1 初始权限建议
-  - H3: 8.2 权限与审核解释
-  - H2: 9. 隐私与数据处理
-  - H3: 9.1 数据生命周期
-  - H3: 9.2 默认行为
-  - H3: 9.3 必须准备的合规材料
-  - H2: 10. 技术架构
-  - H2: 11. 失败和边界场景
-  - H2: 12. 性能要求
-  - H2: 13. MVP 验收标准
-  - H3: P0
-  - H3: P1
-  - H3: P2
-  - H2: 14. 成功指标
-  - H2: 15. 主要风险与对策
-  - H3: 风险一：自动打开 Side Panel 不稳定
-  - H3: 风险二：&lt;allurls&gt; 引发用户和审核担忧
-  - H3: 风险三：误读取敏感页面内容
-  - H3: 风险四：点击监听造成性能影响
-  - H3: 风险五：Treease Web 与扩展 Graph 代码重复
-  - H2: 16. 发布与审核策略
-  - H2: 17. 开放问题
-  - H2: 18. 参考资料
-
-## code-preview-share-plan.md
-
-- Route: /code-preview-share-plan
-- Headings:
-  - H1: 结构体生成代码预览与分享链接实施方案
-  - H2: 1. 目标
-  - H2: 2. 当前问题
-  - H2: 3. 设计决策
-  - H3: 3.1 增加独立的右侧模式
-  - H3: 3.2 右侧编辑器按模式分离
-  - H3: 3.3 生成后的交互
-  - H2: 4. 分享协议设计
-  - H3: 4.1 版本策略
-  - H3: 4.2 语言协议
-  - H3: 4.3 布局约束
-  - H3: 4.4 交互状态恢复
-  - H2: 5. Web API 与组件边界
-  - H3: 5.1 ViewportPanel 对外 API
-  - H3: 5.2 ReadonlyCodePreviewEditor
-  - H3: 5.3 语言加载
-  - H2: 6. 分享创建与恢复改动
-  - H3: 6.1 创建分享
-  - H3: 6.2 恢复分享
-  - H2: 7. Server 与存储影响
-  - H2: 8. 实施顺序
-  - H3: 阶段一：协议
-  - H3: 阶段二：只读编辑器
-  - H3: 阶段三：生成流程
-  - H3: 阶段四：分享创建与恢复
-  - H3: 阶段五：清理与文档
-  - H2: 9. 测试要求
-  - H3: 协议测试
-  - H3: Web 单元测试
-  - H3: 手工验收
-  - H2: 10. 验证命令
-  - H2: 11. 完成标准
-  - H2: 12. 相关代码与契约
-
 ## contracts/api-boundary.md
 
 - Route: /contracts/api-boundary
@@ -121,6 +35,30 @@ Do not edit it by hand; run `pnpm docs:map:gen`.
   - H3: 4. Column Navigator column detail editor
   - H2: Column Navigator Entry-Point Constraints
   - H2: Checklist
+
+## contracts/chrome-extension.md
+
+- Route: /contracts/chrome-extension
+- Headings:
+  - H1: Chrome Extension Contract
+  - H2: Product boundary
+  - H2: Data flow
+  - H2: Candidate extraction
+  - H2: Side Panel and permissions
+  - H2: Privacy and retention
+  - H2: Runtime boundary
+
+## contracts/code-preview-share.md
+
+- Route: /contracts/code-preview-share
+- Headings:
+  - H1: Code Preview and Share Contract
+  - H2: Scope
+  - H2: Modes and data
+  - H2: Generation flow
+  - H2: Sharing and restoration
+  - H2: Boundaries
+  - H2: Stable verification
 
 ## contracts/column-navigator.md
 
@@ -207,7 +145,35 @@ Do not edit it by hand; run `pnpm docs:map:gen`.
   - H3: 4. Runtime result enters visible state
   - H3: 5. Blank / whitespace close
   - H3: 6. First mutation of a shared draft
+  - H3: 7. AI and structure-generation previews
   - H2: Primary-Document Data-Flow Checklist
+
+## contracts/editor-operation-lifecycle.md
+
+- Route: /contracts/editor-operation-lifecycle
+- Headings:
+  - H1: Editor Operation Lifecycle Contract
+  - H2: Scope
+  - H2: Ownership
+  - H2: Stable operation target
+  - H2: Freshness
+  - H2: Canonical write path
+  - H2: Whole-document replacement
+  - H2: Format and import behavior
+  - H2: Share and sidecar boundaries
+  - H2: Verification invariants
+
+## contracts/editor-tab-lifecycle.md
+
+- Route: /contracts/editor-tab-lifecycle
+- Headings:
+  - H1: Editor Tab Lifecycle Contract
+  - H2: Scope
+  - H2: Authority and ownership
+  - H2: Topology invariants
+  - H2: Transitions
+  - H2: Session restoration
+  - H2: Boundaries
 
 ## contracts/layout.md
 
@@ -412,110 +378,16 @@ Do not edit it by hand; run `pnpm docs:map:gen`.
   - H2: Outside the Common Subset
   - H2: Current Failure-Set Classification
 
-## share-workspace-fork-design.md
+## testing/desktop-testing.md
 
-- Route: /share-workspace-fork-design
+- Route: /testing/desktop-testing
 - Headings:
-  - H1: Share Workspace Fork Implementation Design
-  - H2: Background
-  - H2: Design Choices
-  - H3: Page-level orchestration
-  - H3: Pure topology transition
-  - H3: Separate mutation seams
-  - H3: Persistence after authority publication
-  - H2: Migration Steps
-  - H2: Verification Plan
-  - H3: Unit
-  - H3: Integration
-  - H3: End-to-end
-  - H2: Removal Gate
-
-## tab-lifecycle-unification-plan.md
-
-- Route: /tab-lifecycle-unification-plan
-- Headings:
-  - H1: /goal：统一编辑器 Tab 生命周期
-  - H2: Browser 恢复数据的产品与隐私语义
-  - H2: 目标
-  - H2: 必须达成的架构结果
-  - H2: 状态转换契约
-  - H3: Create
-  - H3: Activate
-  - H3: Close inactive left tab
-  - H3: Close active left tab with another left tab remaining
-  - H3: Close last left tab
-  - H2: 不可违反的边界
-  - H2: 会话启动契约
-  - H2: 实施顺序
-  - H2: 验收标准
-  - H2: 必须验证的行为
-  - H3: Unit
-  - H3: Integration
-  - H3: End-to-end
-
-## tab-scoped-document-operation-lifecycle-plan.md
-
-- Route: /tab-scoped-document-operation-lifecycle-plan
-- Headings:
-  - H1: /goal：按 Tab 收敛编辑器文档操作生命周期
-  - H2: 目标
-  - H2: 产品语义
-  - H3: Switch
-  - H3: Reactivate
-  - H3: Close
-  - H3: Same-tab supersede
-  - H3: Different tabs
-  - H2: 状态所有权
-  - H3: Workspace tab state
-  - H3: Tab operation runtime
-  - H3: Active projection
-  - H2: 稳定文档操作目标
-  - H3: Document freshness
-  - H3: Visible freshness
-  - H2: Commit Transaction 契约
-  - H2: DocumentJob 与 Graph attachment 所有权
-  - H2: Targeted whole-document replacement
-  - H2: Format command 契约
-  - H2: Editor interaction 投影
-  - H2: Sidecar 边界
-  - H2: 明确不做
-  - H2: 实施顺序
-  - H2: 验收标准
-  - H2: 必须验证的行为
-  - H3: Unit
-  - H3: Integration
-  - H3: End-to-end
-  - H2: 验证命令
-
-## tab-state-and-operation-lifecycle-handoff.md
-
-- Route: /tab-state-and-operation-lifecycle-handoff
-- Headings:
-  - H1: Tab 状态与文档操作生命周期交接设计
-  - H2: 背景
-  - H2: 目标
-  - H3: 非目标
-  - H2: 关键数据流和设计决策
-  - H3: 1. 状态按对象归属，而不是按组件归属
-  - H3: 2. 文档语言保持单向数据流
-  - H3: 3. 布局状态形成独立闭环
-  - H3: 4. 每个异步操作捕获稳定文档目标
-  - H3: 5. 分离 document freshness 与 visible freshness
-  - H3: 6. 操作和取消所有权按 Tab 收敛
-  - H3: 7. Whole-document replacement 只有一个目标化入口
-  - H3: 8. 模块职责与依赖方向
-  - H2: 状态规则与约束
-  - H3: Authority 规则
-  - H3: 状态建模规则
-  - H3: 转换与异步规则
-  - H3: 模块与清理规则
-  - H2: 关键执行计划
-  - H3: 阶段一：建立状态分类与失败反馈
-  - H3: 阶段二：收敛 authority 与 active projection
-  - H3: 阶段三：建立按 Tab 的 operation runtime
-  - H3: 阶段四：统一文档替换与命令落地
-  - H3: 阶段五：清理、契约更新与验收
-  - H2: 完成判定
+  - H1: Desktop Testing Guide
+  - H2: Core Principles
+  - H2: Test Ownership
+  - H2: Test Selection Rules
+  - H2: Maintenance Rules
+  - H2: Local Verification
 
 ## user-stories.md
 
@@ -543,5 +415,6 @@ Do not edit it by hand; run `pnpm docs:map:gen`.
   - H3: US-14 Process Structured Input on the Command Line
   - H3: US-15 Continue the Current Journey After Login
   - H3: US-16 Transform Structured Data with AI Assistance
+  - H3: US-17 Generate a Structure Definition
   - H2: Product Boundaries
   - H2: Maintenance Rules

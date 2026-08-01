@@ -11,7 +11,7 @@ read_when:
 
 A share link represents one browsable document snapshot, not the sharer's complete workspace. This contract owns the stable authority, lifecycle, promotion, persistence, and mutation-entry rules for opening that snapshot and turning it into a local workspace tab.
 
-Implementation sequencing and migration work belong in [Share Workspace Fork Design](../share-workspace-fork-design.md). Primary-document semantics remain owned by [Editor Data Flow Contract](./editor-data-flow.md).
+Primary-document semantics remain owned by [Editor Data Flow Contract](./editor-data-flow.md). This contract intentionally records the stable promotion authority and lifecycle, not its historical implementation sequence.
 
 ## Authority
 

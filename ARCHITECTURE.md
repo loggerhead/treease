@@ -48,6 +48,7 @@ flowchart TB
 
   ApiContracts["packages/api-contracts\npublic HTTP request/response schemas"]
   ShareProtocol["packages/share-protocol\npublic share resource schema"]
+  GraphViewerRuntime["packages/graph-viewer-runtime\nshared graph rendering and interaction runtime"]
   CLI["apps/cli\nstandalone command-line application"]
 
   Worker --> WasmAdapter
@@ -60,6 +61,7 @@ flowchart TB
   WebUI -. HTTPS API .-> ServerApi
   WebUI --> ShareProtocol
   ServerApi --> ShareProtocol
+  WebUI --> GraphViewerRuntime
   CLI --> CoreCapabilities
 ```
 
@@ -67,6 +69,7 @@ flowchart TB
 - `apps/desktop` is the Tauri host for desktop packaging and platform capabilities. Shared UI accesses those capabilities through `Workspace Host`, not through direct Tauri API coupling.
 - The Hosted API is the product-service boundary for accounts, billing, sharing, AI, and usage. Its implementation is maintained outside this repository and does not duplicate parsing, formatting, evaluation, or graph construction.
 - `packages/core` is the sole implementation of document computation. `packages/core/wasm` adapts only its WASM surface, which Web accesses through the Worker.
+- `packages/graph-viewer-runtime` is shared by Web and the extension for graph rendering and interaction only. It consumes already-normalized graph data; it does not own document snapshots, projection normalization, freshness, or Document Runtime authority.
 - `apps/cli` reuses `treease-core` computation while independently owning command-line arguments, I/O, and user-visible CLI contracts.
 
 ## Reading the Diagram
@@ -74,6 +77,7 @@ flowchart TB
 - Solid arrows represent dependency or host relationships; dashed arrows represent generated artifacts or runtime calls. Web never calls internal implementations in `packages/core/src` or the Hosted API repository directly.
 - `packages/api-contracts` is the public HTTP boundary. It contains client-visible schemas only; Server repositories, provider integrations, and billing models remain private implementation details.
 - `packages/share-protocol` owns serialized share resources, while API envelopes and errors belong to `packages/api-contracts`.
+- Web owns the canonical UI projection normalization path. Other UI surfaces consume that normalized shape rather than recreating a weaker normalizer.
 - `packages/core/src/document/protocol.rs` is the sole source of truth for the Document Protocol; `packages/core/wasm/document-protocol.generated.ts` is generated output.
 - `packages/core/src/wasm_document.rs` is the Document Runtime WASM export boundary. `packages/core/src/wasm.rs` and `packages/core/src/wasm/` contain only non-Document-Runtime or compatibility ABI.
 - The Worker is the browser-to-WASM transport, request-correlation, and UI fan-out boundary. See `docs/contracts/document-runtime.md` for Document Runtime authority, freshness, and snapshot semantics.

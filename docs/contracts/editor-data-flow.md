@@ -208,6 +208,20 @@ Command mutation
 
 `Commit Transaction` does not depend on share lifecycle or `WorkspaceHost`. See [Share Workspace Contract](./share-workspace.md) for promotion and persistence authority.
 
+### 7. AI and structure-generation previews
+
+AI yq suggestion and structure-definition generation are asynchronous, read-only requests over a captured active-document context. They may create a right-pane preview but never mutate the source document or advance `Document Runtime` authority.
+
+```text
+captured tab / documentKey / revision / language / source text
+  → AI suggestion or structure-generation request
+  → local preview preparation (when required)
+  → freshness check against the captured context
+  → right-pane preview or captured-context error
+```
+
+Before any success, error, busy-state completion, toast, or viewer-preview landing after an `await`, the operation must verify the captured document context with the View Runtime operation lifecycle. A result from a replaced document, changed revision/language, closed tab, or superseded request is stale and must be discarded; it must not alter the currently visible document or preview.
+
 ## Primary-Document Data-Flow Checklist
 
 - Does current text land in `Editor Model` first?
@@ -216,3 +230,4 @@ Command mutation
 - Does transient JSON block analysis serve only local views rather than impersonating successful primary-document semantics?
 - Does `Workspace Store` only coordinate and bind, rather than reconstruct document semantics?
 - Does `View Runtime` only consume state rather than silently becoming an authority?
+- Do AI and structure-generation callbacks verify their captured document context before they land UI state?

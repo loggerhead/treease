@@ -55,17 +55,22 @@ treease doctor --format json
 
 ### Homebrew
 
-On macOS, install the CLI or Desktop App from the Treease tap:
+On macOS, the Treease tap currently contains a CLI Formula:
 
 ```bash
 brew tap loggerhead/treease
 brew install treease
-brew install --cask treease
 ```
 
-Release automation updates `loggerhead/homebrew-treease` after the crates.io
-or GitHub release completes. Store a token that can dispatch workflows in the
-tap as the `HOMEBREW_TAP_TOKEN` GitHub Actions secret.
+The Desktop Cask is not currently installable from the tap because its release
+checksum is a workflow placeholder; do not run `brew install --cask treease`
+until a release pull request supplies a published asset and checksum.
+
+Release automation dispatches an update request to `loggerhead/homebrew-treease`
+after the crates.io or GitHub release completes. The tap workflow creates an
+update pull request; the Formula or Cask changes take effect only after that PR
+is reviewed and merged. Store a token that can dispatch workflows in the tap as
+the `HOMEBREW_TAP_TOKEN` GitHub Actions secret.
 
 ## Web CLI Configuration
 

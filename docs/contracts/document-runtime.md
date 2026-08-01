@@ -29,6 +29,7 @@ read_when:
 - Every read is snapshot-bound: it accepts `snapshotId`, creates no snapshot, and never falls back from `documentKey` to the latest snapshot.
 - Snapshot-bound reads return either ready data or `snapshotNotReady`; an empty result cannot stand in for the latter.
 - The main graph comes only from job streaming events and `SnapshotReady.mainGraph`.
+- Raw projection deltas are normalized once by the Web shared projection-normalization path before any renderer consumes them. Renderers, including shared graph runtimes and extension surfaces, consume the normalized projection shape and must not fork a partial normalizer.
 
 ## Seams
 

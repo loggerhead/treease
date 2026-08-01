@@ -44,6 +44,7 @@ Treease focuses on a continuous experience: users open content, understand its s
 12. Use `treease` on the command line to process input, inspect output, or update files directly.
 13. Ask AI to turn a natural-language request into a yq transformation, preview the result, and keep the source document unchanged.
 14. Log in from the current page, return to the same work after authentication, and manage the active account from the header.
+15. Generate a typed structure definition from the active document and inspect it as a code preview without replacing the source.
 
 ## User Stories
 
@@ -248,11 +249,23 @@ As an AI-assisted data user, I want to describe the transformation I need in nat
 - User value: Makes common structured-data exploration and transformation tasks accessible to users who know the desired result but do not know the query syntax.
 - Expected experience:
   - The AI input is available from the editor action bar and accepts a concise natural-language instruction.
-  - Treease requires the user to sign in before sending the request and clearly explains when sign-in is needed.
+  - AI suggestions can be requested without signing in; when signed in, usage is associated with the account. The UI explains quota exhaustion and offers sign-in only for account-backed upgrade actions.
   - The current document remains unchanged; the generated result is shown as a preview in the viewer.
   - The generated yq expression is visible so users can understand or reuse the transformation.
   - Empty documents, invalid generated expressions, provider failures, and other processing failures produce clear feedback while preserving the source document.
   - Each successful AI processing request consumes the server-enforced monthly allowance; users can see their AI processing usage and understand when the allowance is exhausted or an upgrade is required.
+
+### US-17 Generate a Structure Definition
+
+As a developer working from structured data, I want to generate a typed structure definition from the active document, so I can reuse its shape in code without replacing the document I am inspecting.
+
+- User behavior: Open Generate structure definition, choose a target language and root type name, and submit while signed in.
+- User expectation: Treease converts a supported non-JSON source to JSON when necessary, sends that source to the authenticated generation endpoint, and shows the generated code in the right-side code preview.
+- User value: Speeds up creation of a starting type or model while retaining the original structured source.
+- Expected experience:
+  - Empty documents and conversion or generation failures display clear feedback without changing the source document.
+  - The generated result stays a code preview; it is not parsed as a new structured document.
+  - If the active document changes while generation is pending, a stale response cannot replace the current preview.
 
 ## Product Boundaries
 

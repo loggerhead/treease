@@ -203,8 +203,10 @@ First commit unfinished
 
 ### Cache rules
 
-- The graph cache stores projection results only for the same `documentKey + snapshotId + revision + renderConfig + enableNest` combination.
-- When that combination changes, invalidate the cache as a whole.
+- `pathValue` and `directChildren` are separate snapshot-bound reads. A path-value read supplies content and value metadata; a direct-children read supplies only the items for a rail column. Neither read rebuilds the main graph.
+- Each cache is keyed by path within its current `documentKey + snapshotId` signature. A changed document key or snapshot id must not reuse either cached promise.
+- `snapshotNotReady` is a distinct result, never an empty path value or an empty child list. The surface must remain loading or retain its last valid state until a ready result or an explicit reset; it must not present not-ready as an empty container.
+- Reset, dispose, or a projection-context change clears both caches and invalidates pending results before a later result can land.
 
 ## Module Architecture
 

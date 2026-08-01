@@ -13,6 +13,7 @@ configuration are maintained separately.
 - Put document parsing, formatting, operators, evaluation, and graph
   construction in `packages/core/`; keep Web presentation and interaction in
   `apps/web/`.
+- For Desktop test changes, follow [`docs/testing/desktop-testing.md`](docs/testing/desktop-testing.md): Web/Core own shared behavior, while Desktop owns stable smoke paths and Desktop-specific boundaries.
 
 ## Local checks
 

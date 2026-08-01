@@ -17,7 +17,7 @@ Treease identifies JSON in the webpage element a user clicks and visualizes it l
 5. Click invalid JSON and an over-1-MB candidate. Confirm the appropriate status when the panel is open.
 6. Pause the current site and confirm clicking JSON no longer changes the panel.
 7. In browser developer tools, confirm the extension makes no network request containing webpage or JSON content.
-8. In a same-origin or cross-origin iframe that Chrome permits the extension to inject into, click JSON and verify the current tab panel updates. Verify a closed Shadow DOM host does not expose its inner text.
+8. Verify a closed Shadow DOM host does not expose its inner text.
 9. Click YAML, TOML, and prose containing an embedded strict JSON object. Confirm each valid Core parse renders locally; JavaScript object literals and invalid JSON report an error rather than being accepted as JSON.
 
 # Release gate
