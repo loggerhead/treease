@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onDestroy, onMount } from 'svelte';
-  import { ChevronDown, Gauge, LogOut, RefreshCw, Settings, Sparkles, User as UserIcon } from 'lucide-svelte';
+  import { ChevronDown, Gauge, Info, LogOut, RefreshCw, Settings, Sparkles, User as UserIcon } from 'lucide-svelte';
   import { toast } from 'svelte-sonner';
   import { trackEvent } from '../analytics/ga4';
   import { authUser, authUserDetails, observeAuthUser } from '../auth/auth-user-store';
@@ -15,6 +15,7 @@
   import { getUsageClientId } from '../billing/client-id';
   import { applyLocalUsage } from '../billing/entitlement-gate';
   import { runBillingCheckout } from '../billing/checkout-flow';
+  import { LARGE_FILE_PROCESSING_INFO } from '../config/large-file';
   import {
     DropdownMenu,
     DropdownMenuContent,
@@ -329,7 +330,15 @@
                 {/if}
               </div>
               <div class="usage-item">
-                <div class="usage-item-label"><span>Large files</span><span>{monthlyLimit(usage.limits.largeFileProcessingRunsMonthly, usage.usage.large_file_processing)}</span></div>
+                <div class="usage-item-label">
+                  <span class="usage-item-label__name">
+                    <span>Large files</span>
+                    <span class="usage-item-info" role="img" aria-label={LARGE_FILE_PROCESSING_INFO} title={LARGE_FILE_PROCESSING_INFO}>
+                      <Info size={12} strokeWidth={2.1} />
+                    </span>
+                  </span>
+                  <span>{monthlyLimit(usage.limits.largeFileProcessingRunsMonthly, usage.usage.large_file_processing)}</span>
+                </div>
                 {#if usagePercent(usage.limits.largeFileProcessingRunsMonthly, usage.usage.large_file_processing) !== null}
                   <div class="usage-progress"><span style={`width: ${usagePercent(usage.limits.largeFileProcessingRunsMonthly, usage.usage.large_file_processing)}%`}></span></div>
                 {/if}
@@ -586,9 +595,30 @@
     font-size: 12px;
   }
 
-  .usage-item-label span:last-child {
+  .usage-item-label > span:last-child {
     flex: 0 0 auto;
     color: #64748b;
+  }
+
+  .usage-item-label__name {
+    display: inline-flex;
+    min-width: 0;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .usage-item-info {
+    display: inline-flex;
+    flex: 0 0 auto;
+    color: #94a3b8;
+    cursor: help;
+    opacity: .85;
+    transition: color 140ms ease, opacity 140ms ease;
+  }
+
+  .usage-item-info:hover {
+    color: #475569;
+    opacity: 1;
   }
 
   .usage-progress {

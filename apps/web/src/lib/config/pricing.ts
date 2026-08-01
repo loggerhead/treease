@@ -1,9 +1,12 @@
+import { LARGE_FILE_PROCESSING_INFO } from './large-file';
+
 export type BillingPriceId = 'monthly' | 'yearly';
 
 export type PricingFeature = {
   label: string;
   emphasis?: string;
   showCheck?: boolean;
+  info?: string;
 };
 
 export type PricingPlan = {
@@ -49,7 +52,11 @@ const proFeatures = [
   { label: 'Structural comparisons' },
   { label: 'Share link validity: up to 365 days', emphasis: 'up to 365 days' },
   { label: 'Bidirectional editing: unlimited', emphasis: 'unlimited' },
-  { label: 'Large-file visualizations and processing: unlimited', emphasis: 'unlimited' },
+  {
+    label: 'Large-file visualizations and processing: unlimited',
+    emphasis: 'unlimited',
+    info: LARGE_FILE_PROCESSING_INFO
+  },
   { label: 'AI processing: up to 100 runs per month', emphasis: 'up to 100 runs per month' }
 ] satisfies PricingFeature[];
 
@@ -75,7 +82,8 @@ export const pricingConfig: { title: string; description: string; plans: Pricing
         { label: 'Bidirectional editing: up to 10 documents per month', emphasis: 'up to 10 documents per month' },
         {
           label: 'Large-file visualizations and processing: up to 3 runs per month',
-          emphasis: 'up to 3 runs per month'
+          emphasis: 'up to 3 runs per month',
+          info: LARGE_FILE_PROCESSING_INFO
         },
         { label: 'AI processing: up to 3 run per month', emphasis: 'up to 3 run per month' }
       ]

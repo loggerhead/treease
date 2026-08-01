@@ -9,6 +9,7 @@
 
 <script lang="ts">
   import NumberFlow from '@number-flow/svelte';
+  import { Info } from 'lucide-svelte';
   import {
     fixedYearlySavingsPercent,
     pricingConfig,
@@ -145,7 +146,14 @@
         <ul>
           {#each plan.features as feature}
             {@const [prefix, emphasis, suffix] = splitFeatureLabel(feature)}
-            <li class:pricing-plan-card__feature--without-check={feature.showCheck === false}>{prefix}{#if emphasis}<mark>{emphasis}</mark>{/if}{suffix}</li>
+            <li class:pricing-plan-card__feature--without-check={feature.showCheck === false}>
+              {prefix}{#if emphasis}<mark>{emphasis}</mark>{/if}{suffix}
+              {#if feature.info}
+                <span class="pricing-plan-card__feature-info" role="img" aria-label={feature.info} title={feature.info}>
+                  <Info size={12} strokeWidth={2.1} />
+                </span>
+              {/if}
+            </li>
           {/each}
         </ul>
       </article>
@@ -192,6 +200,9 @@
   li { position: relative; padding-left: 24px; color: var(--muted, #536273); font-size: 14px; line-height: 1.45; }
   li::before { position: absolute; left: 0; color: var(--accent-strong, #1745b5); content: '✓'; font-weight: 900; }
   .pricing-plan-card__feature--without-check::before { content: none; }
+  .pricing-plan-card__feature-info { display: inline-flex; margin-left: 4px; color: currentColor; cursor: help; opacity: .62; vertical-align: -2px; transition: opacity 140ms ease; }
+  .pricing-plan-card__feature-info:hover { opacity: 1; }
+  .pricing-plan-card--featured .pricing-plan-card__feature-info { color: #93c5fd; }
   mark { padding: 1px 3px; border-radius: 3px; color: var(--accent-strong, #1745b5); background: rgba(45,99,226,.12); font-weight: 700; }
   .pricing-plan-card--free mark { color: inherit; background: transparent; font-weight: inherit; }
   .pricing-plan-card--featured li { color: rgba(226,232,240,.88); }

@@ -21,8 +21,6 @@ jobs:
       - uses: ./.github/actions/setup-web
         with:
           zig-version: 0.16.0
-      - name: Pin wasm-pack
-        run: cargo install wasm-pack --version 0.15.0 --locked
       - name: Generate desktop WASM package
         run: pnpm --dir apps/web wasm:bindgen
       - name: Generate language support

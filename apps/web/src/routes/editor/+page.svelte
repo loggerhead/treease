@@ -119,8 +119,7 @@
   import { workspaceSessionFromWorkspace } from '../../lib/workspace-host/workspace-session';
   import type { WorkspaceCommand, WorkspaceSession } from '../../lib/workspace-host';
   import { createViewRuntimeOperation } from '../../lib/guards/view-runtime-operation';
-
-  const LARGE_FILE_PROCESSING_THRESHOLD_BYTES = 256 * 1024;
+  import { LARGE_FILE_PROCESSING_THRESHOLD_BYTES } from '../../lib/config/large-file';
 
   export let data: PageData;
 
