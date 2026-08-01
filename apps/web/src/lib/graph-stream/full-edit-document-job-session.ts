@@ -26,6 +26,8 @@ export type FullEditDocumentJobSession = {
   streamRunId: string;
   jobHandle: number | null;
   result: Promise<DocumentJobGraphResult>;
+  /** True only while a subscriber can replay every batch emitted by this job. */
+  hasCompleteReplay: () => boolean;
   batches: () => AsyncIterable<EventBatch>;
   cancel: () => Promise<void>;
 };
@@ -97,6 +99,10 @@ class ReadableDocumentJobSession implements FullEditDocumentJobSession {
 
   get jobHandle(): number | null {
     return this.currentJobHandle;
+  }
+
+  hasCompleteReplay(): boolean {
+    return this.replayStartIndex === 0;
   }
 
   async *batches(): AsyncIterable<EventBatch> {

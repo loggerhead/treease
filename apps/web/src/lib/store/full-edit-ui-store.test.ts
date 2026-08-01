@@ -1,36 +1,33 @@
 import { afterEach, describe, expect, it } from 'vitest';
+
 import {
-  beginFullEditStream,
-  finishFullEditStream,
-  getFullEditUiStateRaw,
-  registerFullEditUiCoordinator,
-  resetFullEditUiState,
+  clearJsonBlockSelectionForDocument,
+  getJsonBlockSelectionSnapshot,
+  setJsonBlockSelection,
 } from './full-edit-ui-store';
 
-describe('full-edit UI state ownership', () => {
-  afterEach(() => {
-    registerFullEditUiCoordinator(null);
-    resetFullEditUiState();
-  });
+describe('JSON block selection state', () => {
+  afterEach(() => setJsonBlockSelection(null));
 
-  it('notifies the Workspace coordinator when an owned session finishes', () => {
-    const observedPhases: string[] = [];
-    registerFullEditUiCoordinator({
-      onFullEditUiStateChange: (next) => observedPhases.push(next.phase),
-    });
-
-    beginFullEditStream({
-      sessionId: 'session-1',
-      ownerKey: 'owner-1',
-      documentKey: 'document-1',
+  it('clears only the selection belonging to the requested document', () => {
+    setJsonBlockSelection({
+      sourceDocumentKey: 'document-1',
+      blockDocumentKey: 'block-1',
       revision: 1,
       language: 'json',
-      transportKind: 'memory',
-      reason: 'whole-document-replacement',
+      text: '{"a"',
+      startByte: 0,
+      endByte: 4,
+      startLineNumber: 1,
+      startColumn: 1,
+      endLineNumber: 1,
+      endColumn: 5,
     });
-    finishFullEditStream({ sessionId: 'session-1', ownerKey: 'owner-1' });
 
-    expect(observedPhases).toEqual(['streaming', 'idle']);
-    expect(getFullEditUiStateRaw().phase).toBe('idle');
+    clearJsonBlockSelectionForDocument('document-2');
+    expect(getJsonBlockSelectionSnapshot()?.sourceDocumentKey).toBe('document-1');
+
+    clearJsonBlockSelectionForDocument('document-1');
+    expect(getJsonBlockSelectionSnapshot()).toBeNull();
   });
 });

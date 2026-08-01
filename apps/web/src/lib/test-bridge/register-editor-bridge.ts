@@ -7,7 +7,7 @@ import {
   setLanguageId,
 } from '../store/document-session-store';
 import { getEditorStateSnapshot } from '../store/editor-store';
-import { fullEditUiState } from '../store/full-edit-ui-store';
+import { activeFullEditUiState as fullEditUiState } from '../store/active-full-edit-ui-store';
 import type { PathSeg } from '../store/tree-path';
 import { getWorkspaceState } from '../store/workspace-store';
 import { toWasmPathSeg } from '../../shared/brand-bridge';

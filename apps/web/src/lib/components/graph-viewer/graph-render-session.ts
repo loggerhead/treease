@@ -735,7 +735,6 @@ export function createGraphRenderSession(deps: GraphRenderSessionDeps) {
         sessionId: activeExternalSessionId,
         token: activeRenderToken,
       }),
-      cancelResource: () => session.cancel(),
     });
     activeOperation = operation;
 
@@ -755,14 +754,20 @@ export function createGraphRenderSession(deps: GraphRenderSessionDeps) {
       mode: 'streaming',
     });
     try {
-      await consumeGraphBatchStream({
-        batches: session.batches(),
-        freshness: operation.lifecycle,
-        applyProjectionEvents,
-        onBatch: (batch) => {
-          recordAdvanceBatch(batch);
-        },
-      });
+      // The full-edit controller owns the document job. A graph attachment may
+      // detach or become stale as tabs change, but it must never abort that job.
+      // If the bounded replay no longer contains the beginning, wait for the
+      // terminal canonical render rather than projecting a partial stream.
+      if (session.hasCompleteReplay()) {
+        await consumeGraphBatchStream({
+          batches: session.batches(),
+          freshness: operation.lifecycle,
+          applyProjectionEvents,
+          onBatch: (batch) => {
+            recordAdvanceBatch(batch);
+          },
+        });
+      }
       if (!operation.lifecycle.isCurrent()) return null;
       operation.releaseJobHandle();
 

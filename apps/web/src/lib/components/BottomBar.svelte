@@ -58,12 +58,6 @@
   let copyFeedbackFading = false;
   let treePathCopyTimer: ReturnType<typeof setTimeout> | null = null;
   let treePathFadeTimer: ReturnType<typeof setTimeout> | null = null;
-  let previousLanguage = '';
-  $: if (!previousLanguage) previousLanguage = $languageIdStore;
-  $: if (previousLanguage && previousLanguage !== $languageIdStore) {
-    trackEvent('language_selected', { from: previousLanguage, to: $languageIdStore });
-    previousLanguage = $languageIdStore;
-  }
   $: hasTreePath = ($activeTempModel?.treePath ?? []).length > 0;
   $: treePath = $activeTempModel?.treePath ?? [];
   $: showTreePathbar = graphVisible && hasTreePath;
@@ -122,6 +116,12 @@
     return options.find((option) => option.id === value)?.label ?? value;
   }
 
+  function selectLanguage(value: string): void {
+    if (value === $languageIdStore) return;
+    trackEvent('language_selected', { from: $languageIdStore, to: value });
+    languageIdStore.set(value as typeof $languageIdStore);
+  }
+
 </script>
 
 <footer
@@ -130,7 +130,7 @@
 >
   <div class="flex min-w-0 items-center gap-2 overflow-hidden px-4">
     <div class="inline-flex items-center gap-1">
-      <Select.Root type="single" items={languageItems} bind:value={$languageIdStore}>
+      <Select.Root type="single" items={languageItems} value={$languageIdStore} onValueChange={selectLanguage}>
         <Select.Trigger
           size="sm"
           class="!h-[23px] rounded-[7px] border border-[rgba(15,23,42,0.10)] bg-[var(--panel-bg)] !px-2 !py-0 !text-[12px] !font-medium tracking-[-0.01em] text-[#111827] shadow-none transition-colors hover:border-[rgba(15,23,42,0.16)] focus-visible:ring-0 [&_svg]:size-[13px] [&_svg]:text-[#94a3b8]"

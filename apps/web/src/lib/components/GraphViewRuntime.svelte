@@ -13,7 +13,8 @@
   } from '../store/document-session-store';
   import { activeTempModel, treeState } from '../store/graph-selection-store';
   import { activeDocumentSemanticStateByKey } from '../store/active-document-authority';
-  import { fullEditUiState, jsonBlockSelection } from '../store/full-edit-ui-store';
+  import { jsonBlockSelection } from '../store/full-edit-ui-store';
+  import { activeFullEditUiState as fullEditUiState } from '../store/active-full-edit-ui-store';
 
   import { type GraphViewerConfig } from '../settings/ui-settings';
   import { settings, settingsStore } from '../settings/settings-store';

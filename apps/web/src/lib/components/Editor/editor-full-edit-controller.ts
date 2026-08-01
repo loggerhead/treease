@@ -31,8 +31,9 @@ import {
   type SupportedEditorLanguageId,
 } from '../../monaco/language-support';
 import type { DocumentAnalysisResult } from '../../../shared/worker-protocol/protocol';
-import { createPrimaryFullEditSink, type FullEditSink } from './editor-full-edit-sink';
+import type { FullEditSink } from './editor-full-edit-sink';
 import { trackEvent } from '../../analytics/ga4';
+import { initialFullEditUiState, type FullEditUiState } from '../../store/full-edit-ui-store';
 
 type FullEditReason =
   | 'initial-example'
@@ -116,10 +117,16 @@ type CreateEditorFullEditControllerOptions = {
   getNestEnabled: () => boolean;
   getGraphBuilderConfig: () => BuilderConfig;
   getFullEditUiState: () => any;
+  isDocumentCurrent?: (target: {
+    documentKey: string;
+    language: SupportedEditorLanguageId;
+    revision: number;
+    model: Monaco.editor.ITextModel;
+  }) => boolean;
   fullEditSink?: FullEditSink;
   rotateActiveDocumentKey: () => string;
   setModelDocumentKey: (target: Monaco.editor.ITextModel | null, documentKey: string) => void;
-  setActiveTabDocumentKey?: (documentKey: string) => void;
+  setActiveTabDocumentKey?: (documentKey: string, language: SupportedEditorLanguageId) => void;
   clearSemanticTokensForDocument: (documentKey?: string) => void;
   /** Seeds Core-confirmed tokens immediately after a session clears its prior cache. */
   primeInitialSemanticTokens?: (documentKey: string) => void;
@@ -147,7 +154,48 @@ export function createEditorFullEditController(options: CreateEditorFullEditCont
   let importSession: FullEditSession | null = null;
   let importConversionOperation: ViewRuntimeOperation | null = null;
   let suppressNextWholeDocumentIntake = false;
-  const fullEditSink = options.fullEditSink ?? createPrimaryFullEditSink();
+  // Left tabs and the sidecar provide a target-owned sink. This inert sink is
+  // only for isolated controller tests; it deliberately has no global store.
+  let detachedSinkState: FullEditUiState = initialFullEditUiState;
+  const fullEditSink = options.fullEditSink ?? ({
+    getState: () => detachedSinkState,
+    begin: (payload) => {
+      detachedSinkState = {
+        ...initialFullEditUiState,
+        active: true,
+        sessionId: payload.sessionId,
+        ownerKey: payload.ownerKey,
+        documentKey: payload.documentKey,
+        revision: payload.revision,
+        language: payload.language,
+        phase: 'streaming',
+        sessionKind: 'full-edit',
+        transportKind: payload.transportKind,
+        reason: payload.reason,
+      };
+    },
+    appendChunkMeta: (payload) => {
+      if (detachedSinkState.sessionId !== payload.sessionId || detachedSinkState.ownerKey !== payload.ownerKey) return;
+      detachedSinkState = {
+        ...detachedSinkState,
+        streamSeq: payload.streamSeq,
+        inputByteLength: payload.inputByteLength,
+        byteLength: payload.inputByteLength,
+        modelVersionId: payload.modelVersionId ?? detachedSinkState.modelVersionId,
+      };
+    },
+    markFinalizing: (payload) => {
+      if (detachedSinkState.sessionId !== payload.sessionId || detachedSinkState.ownerKey !== payload.ownerKey) return;
+      detachedSinkState = { ...detachedSinkState, phase: 'finalizing' };
+    },
+    finish: () => {
+      detachedSinkState = initialFullEditUiState;
+    },
+    cancel: () => {
+      detachedSinkState = initialFullEditUiState;
+    },
+    bindSnapshot: () => {},
+  } satisfies FullEditSink);
   const meteredFullEditReasons = new Set<FullEditReason>([
     'import-file',
     'drop-file',
@@ -279,6 +327,7 @@ export function createEditorFullEditController(options: CreateEditorFullEditCont
         revision: session.revision,
         sessionId: session.sessionId,
         model,
+        token: 1,
       },
       () => ({
         documentKey: importSession?.documentKey,
@@ -286,6 +335,12 @@ export function createEditorFullEditController(options: CreateEditorFullEditCont
         revision: importSession?.revision,
         sessionId: importSession?.sessionId,
         model: options.getModel(),
+        token: options.isDocumentCurrent?.({
+          documentKey: session.documentKey,
+          language: session.language,
+          revision: session.revision,
+          model,
+        }) === false ? 0 : 1,
       }),
     );
     const settled = await settleEditorCommitTransaction(
@@ -441,6 +496,7 @@ export function createEditorFullEditController(options: CreateEditorFullEditCont
     formatSourceOnClose: boolean;
     editorFlushByteThreshold?: number;
     documentKey?: string;
+    documentTransitioned?: boolean;
     isFresh?: () => boolean;
   }): Promise<FullEditSession | null> {
     const model = options.getModel();
@@ -452,12 +508,15 @@ export function createEditorFullEditController(options: CreateEditorFullEditCont
       cancelImportStream();
     }
 
+    const nextLanguage = params.language;
     const documentKey = params.documentKey || options.rotateActiveDocumentKey();
-    options.setActiveTabDocumentKey?.(documentKey);
+    if (!params.documentTransitioned) {
+      options.setActiveTabDocumentKey?.(documentKey, params.language);
+    }
+    options.applyImportLanguage(nextLanguage);
     options.setDocumentKey(documentKey);
     options.setModelDocumentKey(model, documentKey);
     const revision = options.commitEditorState();
-    const nextLanguage = params.language;
     if (params.isFresh && !params.isFresh()) return null;
     const beginFreshness = createFreshnessScope(
       { documentKey, languageId: nextLanguage, revision, token: revision, model },
@@ -465,7 +524,11 @@ export function createEditorFullEditController(options: CreateEditorFullEditCont
         documentKey: importSession?.documentKey ?? documentKey,
         languageId: importSession?.language ?? nextLanguage,
         revision: importSession?.revision ?? revision,
-        token: params.isFresh?.() === false ? -1 : revision,
+        token:
+          params.isFresh?.() === false ||
+          options.isDocumentCurrent?.({ documentKey, language: nextLanguage, revision, model }) === false
+            ? -1
+            : revision,
         model: options.getModel(),
       }),
     );
@@ -512,7 +575,6 @@ export function createEditorFullEditController(options: CreateEditorFullEditCont
       transportKind: params.transportKind,
       reason: params.reason,
     });
-    options.applyImportLanguage(nextLanguage);
     editor?.updateOptions({ readOnly: params.editorReadOnly });
     return importSession;
   }
@@ -557,6 +619,7 @@ export function createEditorFullEditController(options: CreateEditorFullEditCont
     sourceWritebackPolicy?: SourceWritebackPolicy;
     formatSourceOnClose?: boolean;
     documentKey?: string;
+    documentTransitioned?: boolean;
     isFresh?: () => boolean;
     skipUsageMetering?: boolean;
   }): Promise<number> {
@@ -589,6 +652,7 @@ export function createEditorFullEditController(options: CreateEditorFullEditCont
     sourceWritebackPolicy?: SourceWritebackPolicy;
     formatSourceOnClose?: boolean;
     documentKey?: string;
+    documentTransitioned?: boolean;
     editorReadOnly?: boolean;
     isFresh?: () => boolean;
     skipUsageMetering?: boolean;
@@ -628,6 +692,7 @@ export function createEditorFullEditController(options: CreateEditorFullEditCont
     sourceWritebackPolicy?: SourceWritebackPolicy;
     formatSourceOnClose?: boolean;
     documentKey?: string;
+    documentTransitioned?: boolean;
     editorReadOnly: boolean;
     isFresh?: () => boolean;
   }): Promise<{ session: FullEditSession; isSessionCurrent: () => boolean } | null> {
@@ -641,6 +706,7 @@ export function createEditorFullEditController(options: CreateEditorFullEditCont
       sourceWritebackPolicy: params.sourceWritebackPolicy ?? 'intake',
       formatSourceOnClose: params.formatSourceOnClose ?? true,
       documentKey: params.documentKey,
+      documentTransitioned: params.documentTransitioned,
       isFresh: params.isFresh,
     });
     if (!session) return null;
@@ -652,6 +718,12 @@ export function createEditorFullEditController(options: CreateEditorFullEditCont
       importSession?.active === true &&
       importSession.sessionId === session.sessionId &&
       importSession.ownerKey === session.ownerKey &&
+      (options.isDocumentCurrent?.({
+        documentKey: session.documentKey,
+        language: session.language,
+        revision: session.revision,
+        model,
+      }) ?? true) &&
       (params.isFresh?.() ?? true);
     session.visibleText = params.text;
     session.hasVisibleFlush = true;
@@ -1018,10 +1090,9 @@ export function createEditorFullEditController(options: CreateEditorFullEditCont
   }
 
   function dispose(): void {
-    if (importSession) {
-      cancelImportTextFlush(importSession);
-    }
-    importSession = null;
+    cancelImportStream();
+    void importConversionOperation?.cancel();
+    importConversionOperation = null;
   }
 
   return {

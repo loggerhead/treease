@@ -5,6 +5,14 @@ import { trackEvent } from '../../analytics/ga4';
 
 type FormatCommandKind = 'format' | 'minify' | 'compact' | 'sort';
 
+export type FormatCommandTarget = {
+  tabId: string;
+  model: Monaco.editor.ITextModel;
+  documentKey: string;
+  revision: number;
+  languageId: SupportedEditorLanguageId;
+};
+
 const formatCommandLabels: Record<FormatCommandKind, string> = {
   format: 'Format',
   minify: 'Minify',
@@ -13,74 +21,81 @@ const formatCommandLabels: Record<FormatCommandKind, string> = {
 };
 
 type CreateEditorFormatControllerOptions = {
-  getModel: () => Monaco.editor.ITextModel | null;
-  getLanguageId: () => SupportedEditorLanguageId;
+  getActiveTarget: () => FormatCommandTarget | null;
   getFormattingOptions: () => unknown;
   getNestEnabled: () => boolean;
-  isImportActive: () => boolean;
+  isImportActive: (target: FormatCommandTarget) => boolean;
+  isTargetCurrent: (target: FormatCommandTarget) => boolean;
+  isTargetVisible: (target: FormatCommandTarget) => boolean;
   callWasmWorker: <T>(method: string, input: unknown) => Promise<T>;
-  replaceWholeDocumentText: (value: string, kind: FormatCommandKind) => boolean;
-  resetEditorCursorToStart: () => void;
+  replaceWholeDocumentText: (target: FormatCommandTarget, value: string, kind: FormatCommandKind) => Promise<boolean> | boolean;
+  resetEditorCursorToStart: (target: FormatCommandTarget) => void;
 };
 
 export function createEditorFormatController(options: CreateEditorFormatControllerOptions) {
-  let formatCommandQueue: Promise<void> = Promise.resolve();
+  const formatCommandQueueByTabId = new Map<string, Promise<void>>();
 
-  async function runFormatCommand(kind: FormatCommandKind): Promise<void> {
-    const activeModel = options.getModel();
-    if (!activeModel) {
-      toast.info('No active editor');
-      trackEvent('format_document', { operation: kind, result: 'failure' });
-      return;
-    }
-    const text = activeModel.getValue();
+  async function runFormatCommand(target: FormatCommandTarget, kind: FormatCommandKind): Promise<void> {
+    if (!options.isTargetCurrent(target)) return;
+    const text = target.model.getValue();
     if (!text.trim()) {
-      toast.info('No content to process');
-      trackEvent('format_document', { operation: kind, language: options.getLanguageId(), result: 'failure' });
+      if (options.isTargetVisible(target)) toast.info('No content to process');
+      trackEvent('format_document', { operation: kind, language: target.languageId, result: 'failure' });
       return;
     }
     const label = formatCommandLabels[kind];
-    const toastId = toast.loading(`${label} queued...`);
+    const toastId = options.isTargetVisible(target) ? toast.loading(`${label} queued...`) : null;
     try {
       const nextText = await options.callWasmWorker<string>(kind, {
-        language: options.getLanguageId(),
+        language: target.languageId,
         text,
         options: { ...(options.getFormattingOptions() as object | null | undefined), nest: options.getNestEnabled() },
       });
-      if (typeof nextText === 'string') {
-        if (nextText !== text) {
-          options.replaceWholeDocumentText(nextText, kind);
-        }
-        options.resetEditorCursorToStart();
+      if (!options.isTargetCurrent(target)) return;
+      if (typeof nextText === 'string' && nextText !== text) {
+        const replaced = await options.replaceWholeDocumentText(target, nextText, kind);
+        if (!replaced) return;
+        if (options.isTargetVisible(target)) options.resetEditorCursorToStart(target);
       }
       if (typeof nextText === 'string' && nextText !== text) {
-        toast.success(`${label} completed`, { id: toastId });
-        trackEvent('format_document', { operation: kind, language: options.getLanguageId(), result: 'success' });
+        if (toastId != null && options.isTargetVisible(target)) toast.success(`${label} completed`, { id: toastId });
+        trackEvent('format_document', { operation: kind, language: target.languageId, result: 'success' });
       } else if (typeof nextText === 'string') {
-        toast.info(`${label} completed (no changes)`, { id: toastId });
-        trackEvent('format_document', { operation: kind, language: options.getLanguageId(), result: 'success' });
+        if (toastId != null && options.isTargetVisible(target)) toast.info(`${label} completed (no changes)`, { id: toastId });
+        trackEvent('format_document', { operation: kind, language: target.languageId, result: 'success' });
       } else {
-        toast.error(`${label} returned unexpected result`, { id: toastId });
-        trackEvent('format_document', { operation: kind, language: options.getLanguageId(), result: 'failure' });
+        if (toastId != null && options.isTargetVisible(target)) toast.error(`${label} returned unexpected result`, { id: toastId });
+        trackEvent('format_document', { operation: kind, language: target.languageId, result: 'failure' });
       }
     } catch (error) {
-      toast.error(`${label} failed`, { id: toastId });
+      if (toastId != null && options.isTargetVisible(target)) toast.error(`${label} failed`, { id: toastId });
       console.error('[editor] format command failed', error);
-      trackEvent('format_document', { operation: kind, language: options.getLanguageId(), result: 'failure' });
+      trackEvent('format_document', { operation: kind, language: target.languageId, result: 'failure' });
     }
   }
 
   function enqueue(kind: FormatCommandKind): Promise<void> {
-    if (options.isImportActive()) {
+    const target = options.getActiveTarget();
+    if (!target) {
+      toast.info('No active editor');
+      trackEvent('format_document', { operation: kind, result: 'failure' });
+      return Promise.resolve();
+    }
+    if (options.isImportActive(target)) {
       toast.info('Import in progress');
       return Promise.resolve();
     }
-    formatCommandQueue = formatCommandQueue
+    const previous = formatCommandQueueByTabId.get(target.tabId) ?? Promise.resolve();
+    const queued = previous
       .catch((error) => {
         console.error('[editor] previous format command failed', error);
       })
-      .then(() => runFormatCommand(kind));
-    return formatCommandQueue;
+      .then(() => runFormatCommand(target, kind));
+    formatCommandQueueByTabId.set(target.tabId, queued);
+    void queued.finally(() => {
+      if (formatCommandQueueByTabId.get(target.tabId) === queued) formatCommandQueueByTabId.delete(target.tabId);
+    });
+    return queued;
   }
 
   function formatActive(): Promise<void> {

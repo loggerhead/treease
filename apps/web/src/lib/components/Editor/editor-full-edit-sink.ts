@@ -1,14 +1,5 @@
 import type { SnapshotId } from '@core-wasm/index';
-import {
-  appendFullEditStreamChunkMeta,
-  beginFullEditStream,
-  cancelFullEditStream,
-  finishFullEditStream,
-  getFullEditUiStateSnapshot,
-  markFullEditStreamFinalizing,
-  type FullEditTransportKind,
-  type FullEditUiState,
-} from '../../store/full-edit-ui-store';
+import { type FullEditTransportKind, type FullEditUiState } from '../../store/full-edit-ui-store';
 import { getWorkspaceTab, updateWorkspaceTab } from '../../store/workspace-store';
 
 type FullEditReason = FullEditUiState['reason'];
@@ -86,20 +77,6 @@ function applyIfCurrent(
   updateWorkspaceTab(tabId, {
     fullEditUiState: nextFullEditUiState,
   });
-}
-
-export function createPrimaryFullEditSink(): FullEditSink {
-  return {
-    getState: () => getFullEditUiStateSnapshot(),
-    begin: (payload) => beginFullEditStream(payload),
-    appendChunkMeta: (payload) => appendFullEditStreamChunkMeta(payload),
-    markFinalizing: (payload) => markFullEditStreamFinalizing(payload),
-    finish: (payload) => finishFullEditStream(payload),
-    cancel: (payload) => cancelFullEditStream(payload),
-    // DocumentSnapshot binding belongs to EditorCommitTransaction's authority
-    // landing. This sink only mirrors Full Edit UI lifecycle.
-    bindSnapshot: () => undefined,
-  };
 }
 
 export function createWorkspaceTabFullEditSink(tabId: string): FullEditSink {

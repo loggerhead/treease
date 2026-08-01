@@ -55,7 +55,7 @@ The visible interaction and rendering state for Editor / Graph.
 
 ### View Runtime Operation Lifecycle
 
-`View Runtime Operation Lifecycle` consolidates freshness, stale-result discard, resource cleanup, and UI landing for asynchronous Web operations. It consumes visible context such as `documentKey`, revision, language, Editor Model, and session, but does not produce or interpret `DocumentSnapshot`.
+`View Runtime Operation Lifecycle` consolidates freshness, stale-result discard, resource cleanup, and UI landing for asynchronous Web operations. It consumes a stable target (`tabId`, `documentKey`, revision, language, resident Editor Model, and operation generation), but does not produce or interpret `DocumentSnapshot`.
 
 ## Core Entity Relationships
 
@@ -111,8 +111,10 @@ The semantics of `DocumentSnapshot`, `SnapshotReady`, `ParseFailed`, and clear a
 ### View Runtime operation lifecycle
 
 - `src/lib/guards/view-runtime-operation.ts` uses `FreshnessScope` to unify multi-stage freshness checks for one asynchronous operation.
-- An operation may land in UI, store, graph scene, or workspace pane only while its current context remains consistent; stale results never overwrite current visible state.
-- Each operation performs stale cleanup at most once. Resources such as cancellable `DocumentJob`s, external full-edit sessions, and Leafer runtimes are released or cancelled in the corresponding operation cleanup.
+- **Document freshness** permits a result to land in its captured Tab only when that Tab, its generation, resident model, document identity, revision, and language still match. Switching Tabs does not make this check fail.
+- **Visible freshness** is stricter: it additionally requires the target Tab and model to be the installed active context. Only visible-fresh results may affect the active Editor, Graph scene, diagnostics, cursor, or toast.
+- Each operation performs stale cleanup at most once. The Tab operation owner cancels its `DocumentJob`; a Graph render attachment owns only its batch consumer and may detach without cancelling that job.
+- A bounded stream replay is not a graph baseline. A late attachment without complete replay waits for the authoritative terminal snapshot and then performs the canonical render.
 - The Rust `Document Runtime` still owns authoritative freshness and the semantics of `DocumentSnapshot`, `SnapshotReady`, `ParseFailed`, and snapshot-bound reads; the Web operation lifecycle only decides whether an old visible result may land.
 - Synchronous readiness / request correlation may retain a local requestId, but must no longer own freshness for asynchronous stale cleanup or UI landing.
 - `FreshnessScope` may still serve local one-shot queries that own no resources and have no terminal UI landing, such as local hover, search, or immediate value parsing. They do not create parallel operation authority or replace the View Runtime operation lifecycle.

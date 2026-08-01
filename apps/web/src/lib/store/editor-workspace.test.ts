@@ -10,6 +10,7 @@ import {
   isWorkspaceTabDirty,
   syncSidecarLanguageFromPrimary,
   syncWorkspaceEditorTab,
+  transitionWorkspaceTabDocument,
   updateWorkspaceTab,
   type EditorWorkspaceTab,
 } from './editor-workspace';
@@ -110,6 +111,69 @@ describe('editor-workspace', () => {
     expect(isWorkspaceTabDirty(linked)).toBe(false);
     expect(isWorkspaceTabDirty(dirty.tabsById[linked.id])).toBe(true);
     expect(dirty.tabsById[linked.id].fileLinkedDocument).toEqual({ grantId: 'file-1', name: 'config.json' });
+  });
+
+  it('replaces an inactive left document only through an identity-checked transition', () => {
+    const workspace = addWorkspaceTab(createEditorWorkspaceState(tab()), {
+      id: 'tab-second',
+      name: 'Untitled 2',
+      documentKey: 'tab-second:0',
+      languageId: 'yaml' as any,
+      sourceText: 'name: second\n',
+      revision: 4,
+      snapshotId: 9,
+    });
+    const withBinding = {
+      ...workspace,
+      snapshotBindingsByDocumentKey: {
+        ...workspace.snapshotBindingsByDocumentKey,
+        'tab-second:0': { documentKey: 'tab-second:0', revision: 4, snapshotId: 9 },
+      },
+    };
+
+    const next = transitionWorkspaceTabDocument(withBinding, {
+      tabId: 'tab-second',
+      expected: { documentKey: 'tab-second:0', languageId: 'yaml' as any, revision: 4 },
+      next: { documentKey: 'tab-second:1', languageId: 'json' as any, revision: 5, sourceText: '{"second":true}' },
+    });
+
+    expect(next?.tabsById['tab-second']).toMatchObject({
+      documentKey: 'tab-second:1',
+      languageId: 'json',
+      revision: 5,
+      sourceText: '{"second":true}',
+      snapshotId: null,
+    });
+    expect(next?.snapshotBindingsByDocumentKey['tab-second:0']).toBeUndefined();
+    expect(next?.activeTabId).toBe('tab-primary');
+  });
+
+  it('rejects a target document transition with stale identity or a sidecar target', () => {
+    const workspace = ensureSidecarTab(createEditorWorkspaceState(tab()), {
+      id: 'tab-sidecar',
+      name: 'Right Editor',
+      languageId: 'json' as any,
+      sourceText: '{}',
+    });
+    const transition = {
+      expected: { documentKey: 'tab-primary:0', languageId: 'json' as any, revision: 1 },
+      next: { documentKey: 'tab-primary:1', languageId: 'json' as any, revision: 2, sourceText: '{}' },
+    };
+
+    expect(transitionWorkspaceTabDocument(workspace, { tabId: 'tab-primary', ...transition })).not.toBeNull();
+    expect(
+      transitionWorkspaceTabDocument(workspace, {
+        tabId: 'tab-sidecar',
+        ...transition,
+      }),
+    ).toBeNull();
+    expect(
+      transitionWorkspaceTabDocument(workspace, {
+        tabId: 'tab-primary',
+        expected: { ...transition.expected, revision: 2 },
+        next: transition.next,
+      }),
+    ).toBeNull();
   });
 
   it('activates a background tab as the only primary tab', () => {

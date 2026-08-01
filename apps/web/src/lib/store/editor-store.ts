@@ -1,6 +1,7 @@
 export * from './document-session-store';
 export * from './graph-selection-store';
 export * from './full-edit-ui-store';
+export { activeFullEditUiState as fullEditUiState } from './active-full-edit-ui-store';
 export * from './workspace-store';
 export * from './diagnostics-store';
 export { getEditorStateSnapshot, resetEditorState } from './editor-store-internal';

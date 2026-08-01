@@ -79,6 +79,7 @@ describe('full-edit-document-job-session', () => {
     }
 
     expect(result.snapshotId).toBe(9);
+    expect(session.hasCompleteReplay()).toBe(true);
     expect(replayed).toHaveLength(3);
     expect(replayed[1]?.events[0]).toMatchObject({ type: 'projectionDelta' });
     expect(mockWorkerCall).toHaveBeenNthCalledWith(1, 'startDocumentJob', expect.objectContaining({
@@ -145,6 +146,7 @@ describe('full-edit-document-job-session', () => {
     for await (const batch of session.batches()) replayed.push(batch);
 
     expect(replayed.length).toBeLessThanOrEqual(8);
+    expect(session.hasCompleteReplay()).toBe(false);
     expect(replayed.at(-1)?.events.at(-1)).toMatchObject({ type: 'snapshotReady', snapshotId: 10 });
   });
 

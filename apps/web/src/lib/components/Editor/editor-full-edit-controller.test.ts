@@ -263,7 +263,6 @@ describe('editor-full-edit-controller', () => {
 
     expect(revision).toBe(5);
     expect(options.setEditorValueForFullEdit).toHaveBeenCalledWith('foo: bar\n');
-    expect(editorStore.get().fullEditUiState.reason).toBe('tab-reactivate');
   });
 
   it('whole-document replacement records the correct reason', async () => {
@@ -283,6 +282,22 @@ describe('editor-full-edit-controller', () => {
     );
   });
 
+  it('uses an already-transitioned document target without rotating it again', async () => {
+    const options = createOptions();
+    const controller = createEditorFullEditController(options as any);
+
+    await controller.startFullEditSession({
+      language: 'json',
+      text: '{"targeted":true}',
+      reason: 'whole-document-replacement',
+      documentKey: 'doc-targeted',
+      documentTransitioned: true,
+    });
+
+    expect(options.setActiveTabDocumentKey).not.toHaveBeenCalled();
+    expect(options.setDocumentKey).toHaveBeenCalledWith('doc-targeted');
+  });
+
   it('startFullEditSession returns 0 when model is missing', async () => {
     const options = createOptions({ getModel: () => null });
     const controller = createEditorFullEditController(options as any);
@@ -295,6 +310,22 @@ describe('editor-full-edit-controller', () => {
 
     expect(revision).toBe(0);
     expect(mockStartDocumentJobForGraph).not.toHaveBeenCalled();
+  });
+
+  it('does not start a session when its captured document target is stale', async () => {
+    const options = createOptions({
+      isDocumentCurrent: vi.fn(() => false),
+    });
+    const controller = createEditorFullEditController(options as any);
+
+    const revision = await controller.startFullEditSession({
+      language: 'json',
+      text: '{"stale":true}',
+      reason: 'whole-document-replacement',
+    });
+
+    expect(revision).toBe(0);
+    expect(mockStartReadableDocumentJobSessionForGraph).not.toHaveBeenCalled();
   });
 
   for (const languageCase of [

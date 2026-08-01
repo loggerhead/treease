@@ -18,17 +18,16 @@
   } from '../../store/document-session-store';
   import { activeTempModel, treeState, type GraphHighlightTarget } from '../../store/graph-selection-store';
   import {
-    cancelPreparedFullEditStream,
-    fullEditUiState,
-    getFullEditUiStateSnapshot,
+    initialFullEditUiState,
     jsonBlockSelection,
-    prepareFullEditStream,
     type JsonBlockSelection,
   } from '../../store/full-edit-ui-store';
+  import { activeFullEditUiState as fullEditUiState, getActiveFullEditUiState } from '../../store/active-full-edit-ui-store';
   import {
     getWorkspaceRawState,
     getWorkspaceState,
     setWorkspaceState,
+    transitionWorkspaceTabDocument,
     updateWorkspaceTab,
   } from '../../store/workspace-store';
   import type { PathSeg } from '../../store/tree-path';
@@ -62,8 +61,9 @@
   import { ensureModelDocumentKey } from './document-key';
   import { registerEditorHoverPreview } from './editor-hover';
   import { createEditorAnalysisController } from './editor-analysis-controller';
-  import { createEditorFormatController } from './editor-format-controller';
+  import { createEditorFormatController, type FormatCommandTarget } from './editor-format-controller';
   import { createEditorFullEditController } from './editor-full-edit-controller';
+  import { createWorkspaceTabFullEditSink } from './editor-full-edit-sink';
   import { resolveLanguageSwitchPolicy } from './language-switch-policy';
   import { createEditorRuntimeController } from './editor-runtime-controller';
   import { commitEditorTabTextChange } from './editor-tab-edit-commit';
@@ -89,8 +89,7 @@
   export let runBidirectionalEdit: <T>(source: string, execute: () => Promise<T>, reason?: string) => Promise<T> = async (_source, execute) => execute();
   export let onRequestImportFile: (payload: { sourceFormat: string; targetFormat: string; accept: string[] }) => Promise<void> = async () => {};
 
-  type QueuedWholeDocumentReplacement = {
-    text: string;
+  type WholeDocumentReplacementOptions = {
     sourceWritebackPolicy?: 'intake' | 'submitted';
     formatSourceOnClose?: boolean;
     shouldResolveLanguage?: boolean;
@@ -128,7 +127,10 @@
   let wholeDocumentReplacementToken = 0;
   let formattingOptionsValue;
   let suppressNextWholeDocumentAutoGuess = false;
-  let queuedWholeDocumentReplacement: QueuedWholeDocumentReplacement | null = null;
+  const programmaticWholeDocumentReplacementByTabId = new Map<
+    string,
+    { model: Monaco.editor.ITextModel; text: string }
+  >();
   let editorRevisionValue = 0;
   const userInputByTabId = new Map<string, boolean>();
   let refreshSemanticTokensForLanguage: (languageId?: string) => void = () => {};
@@ -252,24 +254,7 @@
   const callWasmWorkerFromEditor = <T>(method: string, input: unknown) =>
     callSharedWasmWorker<T>(method as any, input);
 
-  function rotateActiveDocumentKey(): string {
-    const activeId = getWorkspaceState().activeTabId;
-    const tab = getWorkspaceState().tabsById[activeId];
-    const activeModel = tabRuntime?.get(activeId);
-    if (tab && activeModel) {
-      const rotated = `${tab.documentKey}:${Date.now()}`;
-      activeModel.__treeaseDocumentKey = rotated;
-      updateWorkspaceTab(activeId, { documentKey: rotated });
-      documentKeyStore.set(rotated);
-      return rotated;
-    }
-    const fallback = ensureModelDocumentKey(model);
-    documentKeyStore.set(fallback);
-    return fallback;
-  }
-
   let fullEditUiStateValue = $fullEditUiState;
-  let queuedProgrammaticSourceText: string | null = null;
   $: fullEditUiStateValue = $fullEditUiState;
 
   const treePathLanguages = supportedEditorLanguageSet;
@@ -368,8 +353,186 @@
   }
 
   let tabRuntime: EditorTabRuntime;
+  const fullEditControllersByTabId = new Map<string, ReturnType<typeof createEditorFullEditController>>();
   let tabSequence = 1;
   let dropZone: EditorDropZone;
+
+  function isTabActive(tabId: string, target: Monaco.editor.ITextModel | null = null): boolean {
+    return getWorkspaceState().activeTabId === tabId && (!target || (model === target && editor?.getModel() === target));
+  }
+
+  function prepareTabFullEditUi(tabId: string, payload: {
+    documentKey: string;
+    revision: number;
+    language: SupportedEditorLanguageId;
+    reason: 'whole-document-replacement';
+  }): void {
+    updateWorkspaceTab(tabId, {
+      fullEditUiState: {
+        ...initialFullEditUiState,
+        active: true,
+        documentKey: payload.documentKey,
+        revision: payload.revision,
+        language: payload.language,
+        phase: 'preparing',
+        sessionKind: 'full-edit',
+        transportKind: 'memory',
+        reason: payload.reason,
+      },
+    });
+  }
+
+  function cancelPreparedTabFullEditUi(tabId: string, documentKey: string, revision: number): void {
+    const current = getWorkspaceState().tabsById[tabId]?.fullEditUiState;
+    if (
+      !current?.active ||
+      current.phase !== 'preparing' ||
+      current.documentKey !== documentKey ||
+      current.revision !== revision
+    ) {
+      return;
+    }
+    updateWorkspaceTab(tabId, { fullEditUiState: initialFullEditUiState });
+  }
+
+  function updateTabSourceText(tabId: string, value: string): void {
+    updateWorkspaceTab(tabId, { sourceText: value });
+    if (isTabActive(tabId)) sourceText.set(value);
+  }
+
+  function transitionTabDocumentForOperation(
+    tabId: string,
+    documentKey: string,
+    language: SupportedEditorLanguageId,
+  ): number {
+    const workspace = getWorkspaceState();
+    const tab = workspace.tabsById[tabId];
+    const targetModel = tabRuntime?.get(tabId) ?? null;
+    if (!tab || tab.role === 'sidecar') return 0;
+    const revision = tab.revision + 1;
+    const transitioned = transitionWorkspaceTabDocument({
+      tabId,
+      expected: { documentKey: tab.documentKey, languageId: tab.languageId, revision: tab.revision },
+      next: {
+        documentKey,
+        languageId: language,
+        revision,
+        sourceText: targetModel?.getValue() ?? tab.sourceText,
+      },
+    });
+    if (!transitioned) return 0;
+    setModelDocumentKey(targetModel, documentKey);
+    if (isTabActive(tabId, targetModel)) documentKeyStore.set(documentKey);
+    return revision;
+  }
+
+  function setTabOperationLanguage(tabId: string, language: SupportedEditorLanguageId): void {
+    const workspace = getWorkspaceState();
+    const tab = workspace.tabsById[tabId];
+    const targetModel = tabRuntime?.get(tabId) ?? null;
+    if (!tab || tab.role === 'sidecar' || tab.languageId === language) return;
+    if (isTabActive(tabId, targetModel)) {
+      setLanguageIdWithoutExample(language);
+    } else {
+      transitionWorkspaceTabDocument({
+        tabId,
+        expected: { documentKey: tab.documentKey, languageId: tab.languageId, revision: tab.revision },
+        next: { documentKey: tab.documentKey, languageId: language, revision: tab.revision, sourceText: tab.sourceText },
+      });
+      if (monaco && targetModel) monaco.editor.setModelLanguage(targetModel, language);
+    }
+  }
+
+  function getFullEditController(tabId: string) {
+    const existing = fullEditControllersByTabId.get(tabId);
+    if (existing) return existing;
+    const fullEditSink = createWorkspaceTabFullEditSink(tabId);
+    const controller = createEditorFullEditController({
+      getModel: () => tabRuntime?.get(tabId) ?? null,
+      getEditor: () => {
+        const target = tabRuntime?.get(tabId) ?? null;
+        return isTabActive(tabId, target) ? editor : null;
+      },
+      getMonaco: () => monaco,
+      getLanguageId: () => getWorkspaceState().tabsById[tabId]?.languageId ?? editorLanguageFallback,
+      getNestEnabled,
+      getGraphBuilderConfig: () => buildGraphStreamBuilderConfig($settings.viewer.graphViewer),
+      getFullEditUiState: fullEditSink.getState,
+      isDocumentCurrent: (target) => {
+        const tab = getWorkspaceState().tabsById[tabId];
+        return (
+          tabRuntime?.get(tabId) === target.model &&
+          tab?.documentKey === target.documentKey &&
+          tab.languageId === target.language &&
+          tab.revision === target.revision
+        );
+      },
+      fullEditSink,
+      rotateActiveDocumentKey: () => {
+        const tab = getWorkspaceState().tabsById[tabId];
+        return tab ? `${tab.documentKey}:${Date.now()}` : '';
+      },
+      setModelDocumentKey,
+      setActiveTabDocumentKey: (documentKey, language) => {
+        transitionTabDocumentForOperation(tabId, documentKey, language);
+      },
+      clearSemanticTokensForDocument: clearDocumentSemanticTokens,
+      setEditorValue: (value) => {
+        const target = tabRuntime?.get(tabId) ?? null;
+        if (!target || target.getValue() === value) return false;
+        target.setValue(value);
+        updateTabSourceText(tabId, value);
+        return true;
+      },
+      setEditorValueForFullEdit: (value) => {
+        const target = tabRuntime?.get(tabId) ?? null;
+        if (!target) return false;
+        const changed = target.getValue() !== value;
+        if (isTabActive(tabId, target)) isStoreUpdateSuppressed = true;
+        if (changed) target.setValue(value);
+        updateTabSourceText(tabId, value);
+        if (isTabActive(tabId, target)) {
+          syncLastModelSnapshot();
+          releaseStoreUpdateSuppression();
+        }
+        return changed;
+      },
+      setSourceText: (value) => updateTabSourceText(tabId, value),
+      setDocumentKey: (documentKey) => {
+        const target = tabRuntime?.get(tabId) ?? null;
+        setModelDocumentKey(target, documentKey);
+        if (isTabActive(tabId, target)) documentKeyStore.set(documentKey);
+      },
+      applyImportLanguage: (language) => setTabOperationLanguage(tabId, language),
+      getFormattingOptions: () => formattingOptionsValue,
+      callWasmWorker: callWasmWorkerFromEditor,
+      updateActiveTempModel: (updater) => {
+        const tab = getWorkspaceState().tabsById[tabId];
+        if (!tab) return;
+        const next = updater(tab.tempModel);
+        if (isTabActive(tabId)) activeTempModel.set(next);
+        else updateWorkspaceTab(tabId, { tempModel: next });
+      },
+      commitEditorState: () => getWorkspaceState().tabsById[tabId]?.revision ?? 0,
+      applyGraphAnalysis: async (requestModel, requestLanguage, requestDocumentKey, revision, analysis) => {
+        if (!isTabActive(tabId, requestModel)) return;
+        await editorAnalysisController.applyGraphAnalysis(requestModel, requestLanguage, requestDocumentKey, revision, analysis);
+      },
+      triggerGraphSync: (position) => {
+        const target = tabRuntime?.get(tabId) ?? null;
+        if (!isTabActive(tabId, target) || !position) return;
+        void editorAnalysisController.updateTreePath(position, { syncGraphHighlight: true });
+      },
+      runBidirectionalEdit,
+    });
+    fullEditControllersByTabId.set(tabId, controller);
+    return controller;
+  }
+
+  function getActiveFullEditController() {
+    const tabId = getWorkspaceState().activeTabId;
+    return tabId ? getFullEditController(tabId) : null;
+  }
 
   function activeTabHasUserInput(language: SupportedEditorLanguageId): boolean {
     const activeId = getWorkspaceState().activeTabId;
@@ -396,14 +559,6 @@
     }
   }
 
-  function guardImportInProgress(): boolean {
-    return editorFullEditController.isImportActive();
-  }
-
-  function showImportBlockedToast(): void {
-    toast.info('Import in progress');
-  }
-
   const editorAnalysisController = createEditorAnalysisController({
     getMonaco: () => monaco,
     getEditor: () => editor,
@@ -412,7 +567,7 @@
     getLanguageId: () => languageIdValue,
     getNestEnabled,
     getEditorRevision: () => $editorRevision,
-    isImportActive: () => editorFullEditController.isImportActive(),
+    isImportActive: () => getActiveFullEditController()?.isImportActive() ?? false,
     getSourceText: () => model?.getValue() ?? '',
     getJsonBlockSelection: () => jsonBlockSelectionValue,
     setJsonBlockSelection: (selection) => jsonBlockSelection.set(selection),
@@ -426,70 +581,42 @@
     markCursorPathSettled,
   });
 
-  const editorFullEditController = createEditorFullEditController({
-    getModel: () => model,
-    getEditor: () => editor,
-    getMonaco: () => monaco,
-    getLanguageId: () => languageIdValue,
-    getNestEnabled,
-    getGraphBuilderConfig: () => buildGraphStreamBuilderConfig($settings.viewer.graphViewer),
-    getFullEditUiState: () => fullEditUiStateValue,
-    getFormattingOptions: () => formattingOptionsValue,
-    callWasmWorker: callWasmWorkerFromEditor,
-    rotateActiveDocumentKey,
-    setModelDocumentKey,
-    setActiveTabDocumentKey: (documentKey) => {
-      const activeId = getWorkspaceState().activeTabId;
-      if (activeId) {
-        const activeModel = tabRuntime?.get(activeId);
-        if (activeModel) activeModel.__treeaseDocumentKey = documentKey;
-        updateWorkspaceTab(activeId, { documentKey });
-      }
-    },
-    clearSemanticTokensForDocument: clearDocumentSemanticTokens,
-    setEditorValue,
-    setEditorValueForFullEdit,
-    setSourceText: (value) => sourceText.set(value),
-    setDocumentKey: (documentKey) => documentKeyStore.set(documentKey),
-    applyImportLanguage: setLanguageIdWithoutExample,
-    updateActiveTempModel: updateCurrentTempModel,
-    commitEditorState,
-    applyGraphAnalysis: (requestModel, requestLanguage, requestDocumentKey, revision, analysis) =>
-      editorAnalysisController.applyGraphAnalysis(
-        requestModel,
-        requestLanguage,
-        requestDocumentKey,
-        revision,
-        analysis,
-      ),
-    triggerGraphSync: (position) => {
-      if (!position) return;
-      void editorAnalysisController.updateTreePath(position, { syncGraphHighlight: true });
-    },
-    runBidirectionalEdit,
-  });
-
   const editorFormatController = createEditorFormatController({
-    getModel: () => model,
-    getLanguageId: () => languageIdValue,
+    getActiveTarget: () => {
+      const tabId = getWorkspaceState().activeTabId;
+      const tab = getWorkspaceState().tabsById[tabId];
+      const target = tabRuntime?.get(tabId) ?? null;
+      if (!tab || !target) return null;
+      return { tabId, model: target, documentKey: tab.documentKey, revision: tab.revision, languageId: tab.languageId };
+    },
     getFormattingOptions: () => formattingOptionsValue,
     getNestEnabled,
-    isImportActive: () => editorFullEditController.isImportActive(),
+    isImportActive: (target) => getFullEditController(target.tabId).isImportActive(),
+    isTargetCurrent: (target) => {
+      const tab = getWorkspaceState().tabsById[target.tabId];
+      return (
+        tabRuntime?.get(target.tabId) === target.model &&
+        tab?.documentKey === target.documentKey &&
+        tab.languageId === target.languageId &&
+        tab.revision === target.revision
+      );
+    },
+    isTargetVisible: (target) => isTabActive(target.tabId, target.model),
     callWasmWorker: callWasmWorkerFromEditor,
-    replaceWholeDocumentText: (value, kind) =>
-      queueWholeDocumentReplacement(value, {
+    replaceWholeDocumentText: (target, value, kind) =>
+      replaceWholeDocumentTextForTarget(target, value, {
         sourceWritebackPolicy: 'intake',
         formatSourceOnClose: kind === 'sort',
         shouldResolveLanguage: false,
         markUserInput: true,
       }),
-    resetEditorCursorToStart,
+    resetEditorCursorToStart: () => resetEditorCursorToStart(),
   });
 
   const editorRuntimeController = createEditorRuntimeController({
     getSettings: () => $settings,
     getThemeName: () => themeName,
-    isImportActive: () => editorFullEditController.isImportActive(),
+    isImportActive: () => getActiveFullEditController()?.isImportActive() ?? false,
     callWasmWorker: callWasmWorkerFromEditor,
     getWorkerClient: () => getSharedWasmWorkerClient(),
     setMonaco: (value) => {
@@ -588,7 +715,7 @@
           lastModelLength = languageSwitchPolicy.text.length;
           lastModelText = languageSwitchPolicy.text;
           markActiveTabUserInput(languageSwitchPolicy.kind === 'preserve-input');
-          void editorFullEditController.startFullEditSession({
+          void getActiveFullEditController()?.startFullEditSession({
             language: languageSwitchPolicy.language,
             text: languageSwitchPolicy.text,
             reason: languageSwitchPolicy.reason,
@@ -672,7 +799,7 @@
     if (!editor || !model) return;
     const activeModel = model;
     updateDocumentColorViewport(activeModel, editor.getVisibleRanges());
-    if (editorFullEditController.isImportActive()) return;
+    if (getActiveFullEditController()?.isImportActive()) return;
     clearColorViewportRefresh();
     colorViewportRefreshHandle = setTimeout(() => {
       colorViewportRefreshHandle = null;
@@ -712,13 +839,21 @@
       syncColorViewportState('content');
       isStoreUpdateSuppressed = true;
       notifyCompareEdit();
-      if (editorFullEditController.isImportActive()) {
-        if (editorFullEditController.isActiveSessionText(nextText)) {
+      const programmaticReplacement = programmaticWholeDocumentReplacementByTabId.get(getWorkspaceState().activeTabId);
+      if (programmaticReplacement?.model === activeModel && programmaticReplacement.text === nextText) {
+        programmaticWholeDocumentReplacementByTabId.delete(getWorkspaceState().activeTabId);
+        syncLastModelSnapshot();
+        releaseStoreUpdateSuppression();
+        return;
+      }
+      const activeFullEditController = getActiveFullEditController();
+      if (activeFullEditController?.isImportActive()) {
+        if (activeFullEditController.isActiveSessionText(nextText)) {
           syncLastModelSnapshot();
           releaseStoreUpdateSuppression();
           return;
         }
-        editorFullEditController.cancelImportStream();
+        activeFullEditController.cancelImportStream();
       }
       if (diffDecorations || diffBlankZoneIds.length > 0) {
         clearDiffPlan();
@@ -735,16 +870,20 @@
       lastModelText = nextText;
       const shouldRotateDocumentKey = Boolean(wholeDocumentReplacement);
       if (shouldRotateDocumentKey) {
-        rotateActiveDocumentKey();
-        if (editorFullEditController.suppressNextWholeDocumentIntake()) {
+        const targetTabId = getWorkspaceState().activeTabId;
+        const targetTab = getWorkspaceState().tabsById[targetTabId];
+        const targetDocumentKey = targetTab ? `${targetTab.documentKey}:${Date.now()}` : '';
+        const transitionedRevision = targetTab
+          ? transitionTabDocumentForOperation(targetTabId, targetDocumentKey, targetTab.languageId)
+          : 0;
+        if (!transitionedRevision) {
           releaseStoreUpdateSuppression();
           return;
         }
-        const queuedReplacement =
-          queuedWholeDocumentReplacement && queuedWholeDocumentReplacement.text === nextText
-            ? queuedWholeDocumentReplacement
-            : null;
-        queuedWholeDocumentReplacement = null;
+        if (activeFullEditController?.suppressNextWholeDocumentIntake()) {
+          releaseStoreUpdateSuppression();
+          return;
+        }
         activeTempModel.update((current) => ({
           ...current,
           treePath: [],
@@ -754,20 +893,18 @@
         const documentKeyValue = getDocumentKey();
         const requestModel = activeModel;
         const currentLanguage = languageIdValue;
-        const preparedRevision = editorRevisionValue;
+        const preparedRevision = transitionedRevision;
         const replacementToken = ++wholeDocumentReplacementToken;
-        const sourceWritebackPolicy = queuedReplacement?.sourceWritebackPolicy ?? 'intake';
-        const formatSourceOnClose = queuedReplacement?.formatSourceOnClose ?? true;
+        const sourceWritebackPolicy = 'intake';
+        const formatSourceOnClose = true;
         const shouldResolveLanguage =
-          queuedReplacement?.shouldResolveLanguage ??
-          (!shouldSkipWholeDocumentAutoGuess && wholeDocumentReplacement.text.trim().length >= 8);
-        const shouldMarkUserInput = queuedReplacement?.markUserInput ?? true;
-        const skipUsageMetering = queuedReplacement?.skipUsageMetering ?? false;
-        prepareFullEditStream({
+          !shouldSkipWholeDocumentAutoGuess && wholeDocumentReplacement.text.trim().length >= 8;
+        const shouldMarkUserInput = true;
+        const skipUsageMetering = false;
+        prepareTabFullEditUi(targetTabId, {
           documentKey: documentKeyValue,
           revision: preparedRevision,
           language: currentLanguage,
-          transportKind: 'memory',
           reason: 'whole-document-replacement',
         });
         const replacementFreshness = createFreshnessScope(
@@ -778,8 +915,8 @@
           },
           () => ({
             token: wholeDocumentReplacementToken,
-            model,
-            documentKey: getDocumentKey(),
+            model: tabRuntime?.get(targetTabId) ?? null,
+            documentKey: getWorkspaceState().tabsById[targetTabId]?.documentKey ?? '',
           }),
         );
         const isReplacementCurrent = replacementFreshness.isCurrent;
@@ -793,17 +930,23 @@
           },
           isStillCurrent: isReplacementCurrent,
           onDetectedLanguage: (language) => {
-            if (language !== currentLanguage) toast.success(`Detected ${language.toUpperCase()} input`);
+            if (language !== currentLanguage && isTabActive(targetTabId, requestModel)) {
+              toast.success(`Detected ${language.toUpperCase()} input`);
+            }
           },
           commitWholeDocumentReplacement: async (language) => {
-            if (shouldMarkUserInput) markActiveTabUserInput(true);
-            await editorFullEditController.startFullEditSession({
+            if (shouldMarkUserInput) {
+              userInputByTabId.set(targetTabId, true);
+              updateWorkspaceTab(targetTabId, { origin: 'user' });
+            }
+            await getFullEditController(targetTabId).startFullEditSession({
               language,
               text: nextText,
               reason: 'whole-document-replacement',
               sourceWritebackPolicy,
               formatSourceOnClose,
               documentKey: documentKeyValue,
+              documentTransitioned: true,
               isFresh: isReplacementCurrent,
               skipUsageMetering,
             });
@@ -813,15 +956,16 @@
             if (!isReplacementCurrent()) return;
             const message = error instanceof Error ? error.message : String(error);
             console.error('[editor] whole-document replacement failed', error);
-            activeTempModel.update((current) => ({ ...current, error: message }));
-            toast.error('Graph rebuild failed');
+            const targetTab = getWorkspaceState().tabsById[targetTabId];
+            if (targetTab) {
+              const nextTempModel = { ...targetTab.tempModel, error: message };
+              if (isTabActive(targetTabId, requestModel)) activeTempModel.set(nextTempModel);
+              else updateWorkspaceTab(targetTabId, { tempModel: nextTempModel });
+            }
+            if (isTabActive(targetTabId, requestModel)) toast.error('Graph rebuild failed');
           })
           .finally(() => {
-            cancelPreparedFullEditStream({
-              documentKey: documentKeyValue,
-              revision: preparedRevision,
-              reason: 'whole-document-replacement',
-            });
+            cancelPreparedTabFullEditUi(targetTabId, documentKeyValue, preparedRevision);
           });
         releaseStoreUpdateSuppression();
         return;
@@ -899,7 +1043,7 @@
   function bindStoreSubscriptions() {
     storeUnsub = sourceText.subscribe((value) => {
       if (!model || isStoreUpdateSuppressed) return;
-      if (getFullEditUiStateSnapshot().active) return;
+      if (getActiveFullEditUiState().active) return;
       if (value !== model.getValue()) {
         model.setValue(value);
       }
@@ -988,10 +1132,6 @@
     if (value === previousValue) {
       return false;
     }
-    if (fullEditUiStateValue.active) {
-      queuedProgrammaticSourceText = value;
-      return true;
-    }
     if (model) {
       model.setValue(value);
       return true;
@@ -1017,17 +1157,58 @@
 
   function queueWholeDocumentReplacement(
     value: string,
-    options: Omit<QueuedWholeDocumentReplacement, 'text'> = {},
+    options: WholeDocumentReplacementOptions = {},
   ): boolean {
-    queuedWholeDocumentReplacement = {
-      text: value,
-      ...options,
-    };
-    const changed = setEditorValue(value);
-    if (!changed) {
-      queuedWholeDocumentReplacement = null;
+    const tabId = getWorkspaceState().activeTabId;
+    const tab = getWorkspaceState().tabsById[tabId];
+    const target = tabRuntime?.get(tabId) ?? null;
+    if (!tab || !target) return setEditorValue(value);
+    if (target.getValue() === value) return false;
+    void replaceWholeDocumentTextForTarget(
+      { tabId, model: target, documentKey: tab.documentKey, revision: tab.revision, languageId: tab.languageId },
+      value,
+      options,
+    );
+    return true;
+  }
+
+  async function replaceWholeDocumentTextForTarget(
+    target: FormatCommandTarget,
+    value: string,
+    options: WholeDocumentReplacementOptions,
+  ): Promise<boolean> {
+    const tab = getWorkspaceState().tabsById[target.tabId];
+    if (
+      !tab ||
+      tabRuntime?.get(target.tabId) !== target.model ||
+      tab.documentKey !== target.documentKey ||
+      tab.languageId !== target.languageId ||
+      tab.revision !== target.revision
+    ) {
+      return false;
     }
-    return changed;
+
+    const isVisible = isTabActive(target.tabId, target.model);
+    programmaticWholeDocumentReplacementByTabId.set(target.tabId, { model: target.model, text: value });
+    target.model.setValue(value);
+    if (!isVisible) programmaticWholeDocumentReplacementByTabId.delete(target.tabId);
+
+    const nextDocumentKey = `${target.documentKey}:${Date.now()}`;
+    const revision = await getFullEditController(target.tabId).startFullEditSession({
+      language: target.languageId,
+      text: value,
+      reason: 'whole-document-replacement',
+      sourceWritebackPolicy: options.sourceWritebackPolicy,
+      formatSourceOnClose: options.formatSourceOnClose,
+      documentKey: nextDocumentKey,
+      isFresh: () => tabRuntime?.get(target.tabId) === target.model && !target.model.isDisposed(),
+      skipUsageMetering: options.skipUsageMetering,
+    });
+    if (revision > 0 && options.markUserInput) {
+      userInputByTabId.set(target.tabId, true);
+      updateWorkspaceTab(target.tabId, { origin: 'user' });
+    }
+    return revision > 0;
   }
 
   function clearJsonBlockDecoration(): void {
@@ -1141,22 +1322,30 @@
     options: { awaitSnapshotReady?: boolean; editorReadOnly?: boolean } = {},
   ): Promise<boolean> {
     const requestModel = installed.model;
+    const controller = getFullEditController(tab.id);
+    if (controller.isImportActive()) {
+      releaseStoreUpdateSuppression();
+      return true;
+    }
     const fullEditRequest = {
       language: tab.languageId,
       text: installed.text,
       reason,
       editorReadOnly: options.editorReadOnly ?? false,
-      isFresh: () => model === requestModel && requestModel.getValue() === installed.text,
+      // Tab activation changes only the visible projection. The operation is
+      // still current while its resident model belongs to this tab, even when
+      // another tab is active.
+      isFresh: () => tabRuntime?.get(tab.id) === requestModel && !requestModel.isDisposed(),
     };
     try {
       if (options.awaitSnapshotReady) {
-        const outcome = await editorFullEditController.runFullEditSessionToTerminal(fullEditRequest);
+        const outcome = await controller.runFullEditSessionToTerminal(fullEditRequest);
         if (outcome.status !== 'completed' || outcome.snapshotId == null) {
           editor.updateOptions({ readOnly: true });
           throw new Error(`Initial document did not produce SnapshotReady: ${outcome.status}`);
         }
       } else {
-        void editorFullEditController.startFullEditSession(fullEditRequest);
+        void controller.startFullEditSession(fullEditRequest);
       }
       return true;
     } finally {
@@ -1176,10 +1365,6 @@
   }
 
   export function addTab() {
-    if (guardImportInProgress()) {
-      showImportBlockedToast();
-      return;
-    }
     if (!monaco) return;
     const id = `tab-${Date.now()}-${tabSequence++}`;
     const transition = createWorkspaceTabTransition(getWorkspaceRawState(), { id, name: `Untitled ${tabSequence}`, documentKey: `${id}:0`, languageId: languageIdValue, sourceText: '', origin: 'user' });
@@ -1201,10 +1386,6 @@
     origin?: DocumentOrigin;
     fileLinkedDocument?: { grantId: string; name: string };
   }): string | null {
-    if (guardImportInProgress()) {
-      showImportBlockedToast();
-      return null;
-    }
     if (!monaco) return null;
     const id = `tab-${Date.now()}-${tabSequence++}`;
     const transition = createWorkspaceTabTransition(getWorkspaceRawState(), { id, name: payload.name, documentKey: `${id}:0`, languageId: payload.languageId, sourceText: payload.text, origin: payload.origin ?? 'import', fileLinkedDocument: payload.fileLinkedDocument, savedText: payload.fileLinkedDocument ? payload.text : undefined });
@@ -1247,15 +1428,15 @@
   }
 
   export function closeTab(id: string) {
-    if (guardImportInProgress()) {
-      showImportBlockedToast();
-      return;
-    }
     const workspace = getWorkspaceRawState();
     const wasActive = workspace.activeTabId === id || workspace.primaryTabId === id || workspace.paneTabIds.left === id;
     const blankId = `tab-${Date.now()}-${tabSequence++}`;
     const transition = closeWorkspaceTabTransition(workspace, id, { id: blankId, documentKey: `${blankId}:0`, name: `Untitled ${tabSequence}`, languageId: languageIdValue });
     if (!transition) return;
+    // Invalidate the closed tab synchronously before its model leaves the
+    // runtime. The controller owns its Job/RAF/conversion cleanup.
+    fullEditControllersByTabId.get(id)?.dispose();
+    fullEditControllersByTabId.delete(id);
     userInputByTabId.delete(id);
     const nextTab = transition.workspace.tabsById[transition.effect.tabId];
     if (!nextTab) return;
@@ -1274,7 +1455,6 @@
   }
 
   export function activateTab(id: string) {
-    if (guardImportInProgress()) return;
     const transition = activateWorkspaceTabTransition(getWorkspaceRawState(), id);
     const tab = transition?.workspace.tabsById[id];
     if (tab && transition) {
@@ -1371,7 +1551,7 @@
   }
 
   export function cancelImportStream(): void {
-    editorFullEditController.cancelImportStream();
+    getActiveFullEditController()?.cancelImportStream();
   }
 
   export async function importStream(
@@ -1380,7 +1560,7 @@
     targetLanguage: SupportedEditorLanguageId = languageIdValue,
   ): Promise<void> {
     markActiveTabUserInput(true);
-    await editorFullEditController.importStream(file, sourceLanguage, 'import-file', targetLanguage);
+    await getActiveFullEditController()?.importStream(file, sourceLanguage, 'import-file', targetLanguage);
   }
 
   export async function importAs(targetFormat: string, text: string, sourceFormat: string) {
@@ -1556,7 +1736,7 @@
     if ((event.dataTransfer?.files?.length ?? 0) > 0) {
       markActiveTabUserInput(true);
     }
-    await editorFullEditController.handleDrop(event);
+    await getActiveFullEditController()?.handleDrop(event);
   }
 
   export async function handleFileDrop(event: DragEvent): Promise<void> {
@@ -1635,7 +1815,7 @@
           getDocumentKey,
           getLanguageId: () => languageIdValue,
           getNestEnabled: () => $settings.parser.enableNest,
-          isImportActive: () => editorFullEditController.isImportActive(),
+          isImportActive: () => getActiveFullEditController()?.isImportActive() ?? false,
         });
       }
       bindStoreSubscriptions();
@@ -1658,7 +1838,8 @@
     editorRuntimeToken += 1;
     clearColorViewportRefresh();
     editorIO.set(null);
-    editorFullEditController.dispose();
+    for (const controller of fullEditControllersByTabId.values()) controller.dispose();
+    fullEditControllersByTabId.clear();
     cleanupSourceEditorTestHook?.();
     cleanupSourceEditorTestHook = null;
     if (editor && placeholderWidget) {
@@ -1699,14 +1880,6 @@
     editorRuntimeController.applyTheme(monaco);
   }
 
-  $: if (!fullEditUiStateValue.active && queuedProgrammaticSourceText !== null) {
-    const nextValue = queuedProgrammaticSourceText;
-    queuedProgrammaticSourceText = null;
-    if (nextValue !== getDocumentSessionState().sourceText) {
-      sourceText.set(nextValue);
-    }
-  }
-
   export async function ensureReady(): Promise<void> {
     while (!editor || !model || !editorRuntimeReady) {
       await new Promise<void>((resolve) => setTimeout(resolve, 16));
@@ -1715,7 +1888,7 @@
 
   export async function waitForIdle(): Promise<void> {
     await ensureReady();
-    while (editorFullEditController.isImportActive() || fullEditUiStateValue.active) {
+    while ((getActiveFullEditController()?.isImportActive() ?? false) || fullEditUiStateValue.active) {
       await new Promise<void>((resolve) => setTimeout(resolve, 16));
     }
   }

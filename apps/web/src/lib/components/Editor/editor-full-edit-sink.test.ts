@@ -4,7 +4,7 @@ import {
   getWorkspaceSnapshotId,
 } from '../../store/workspace-store';
 import { editorStore, type FullEditUiState } from '../../store/editor-store-internal';
-import { createPrimaryFullEditSink, createWorkspaceTabFullEditSink } from './editor-full-edit-sink';
+import { createWorkspaceTabFullEditSink } from './editor-full-edit-sink';
 
 const primaryTabId = 'tab-primary';
 const sidecarTabId = 'tab-sidecar';
@@ -32,28 +32,6 @@ describe('editor-full-edit-sink', () => {
       id: sidecarTabId,
       name: 'Right Editor',
       sourceText: '{}',
-    });
-  });
-
-  it('primary sink publishes to legacy fullEditUiState', () => {
-    const sink = createPrimaryFullEditSink();
-
-    sink.begin({
-      sessionId: 'primary-doc:1',
-      ownerKey: 'inmemory://model/tab-primary',
-      documentKey: primaryDocumentKey,
-      revision: 1,
-      language: 'json',
-      transportKind: 'memory',
-      reason: 'whole-document-replacement',
-    });
-
-    expect(editorStore.get().fullEditUiState).toMatchObject({
-      active: true,
-      sessionId: 'primary-doc:1',
-      documentKey: primaryDocumentKey,
-      revision: 1,
-      phase: 'streaming',
     });
   });
 
@@ -221,17 +199,7 @@ describe('editor-full-edit-sink', () => {
   });
 
   it('sidecar bindSnapshot mirrors an already-authoritative snapshot without owning workspace binding', () => {
-    const primarySink = createPrimaryFullEditSink();
     const sidecarSink = createWorkspaceTabFullEditSink(sidecarTabId);
-    primarySink.begin({
-      sessionId: 'primary-doc:1',
-      ownerKey: 'inmemory://model/tab-primary',
-      documentKey: primaryDocumentKey,
-      revision: 1,
-      language: 'json',
-      transportKind: 'memory',
-      reason: 'whole-document-replacement',
-    });
     const legacyBeforeBind = editorStore.get().fullEditUiState;
 
     sidecarSink.bindSnapshot({
@@ -253,17 +221,7 @@ describe('editor-full-edit-sink', () => {
   });
 
   it('sidecar bindSnapshot ignores foreign documentKey without binding the primary document snapshot', () => {
-    const primarySink = createPrimaryFullEditSink();
     const sidecarSink = createWorkspaceTabFullEditSink(sidecarTabId);
-    primarySink.begin({
-      sessionId: 'primary-doc:1',
-      ownerKey: 'inmemory://model/tab-primary',
-      documentKey: primaryDocumentKey,
-      revision: 1,
-      language: 'json',
-      transportKind: 'memory',
-      reason: 'whole-document-replacement',
-    });
     const legacyBeforeBind = editorStore.get().fullEditUiState;
     const sidecarBeforeBind = editorStore.get().workspace.tabsById[sidecarTabId];
 

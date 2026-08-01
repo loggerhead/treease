@@ -22,11 +22,13 @@ import {
   removeDetachedSidecarTab,
   summarizeWorkspaceTabs,
   syncSidecarLanguageFromPrimary,
+  transitionWorkspaceTabDocument as transitionWorkspaceTabDocumentState,
   updateWorkspaceTab as patchWorkspaceTab,
   type EditorWorkspaceState,
   type EditorWorkspaceTab,
   type EditorWorkspaceTabPatch,
   type EditorWorkspaceTabSummary,
+  type TargetDocumentTransition,
   type WorkspaceEditorTabInput,
 } from './editor-workspace';
 
@@ -223,6 +225,14 @@ export function updateWorkspaceTab(tabId: string, patch: EditorWorkspaceTabPatch
   const isSidecarTab = workspace.tabsById[tabId]?.role === 'sidecar';
   const { languageId: _ignoredLanguageId, ...patchWithoutLanguage } = patch;
   setWorkspaceState(patchWorkspaceTab(workspace, tabId, isSidecarTab ? patch : patchWithoutLanguage));
+}
+
+/** Applies an identity-checked document replacement to one left tab. */
+export function transitionWorkspaceTabDocument(transition: TargetDocumentTransition): boolean {
+  const next = transitionWorkspaceTabDocumentState(getAuthorityWorkspaceState(), transition);
+  if (!next) return false;
+  setWorkspaceState(next);
+  return true;
 }
 
 export function bindWorkspaceSnapshot(payload: {

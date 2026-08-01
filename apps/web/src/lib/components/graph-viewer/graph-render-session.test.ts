@@ -515,6 +515,7 @@ describe('graph-render-session coordinator', () => {
       chunkSize: 32,
       streamRunId: 'session-1',
       jobHandle: null,
+      hasCompleteReplay: () => true,
       result: Promise.resolve({
         batch: mergedBatch,
         analysis: { documentKey: 'test-key', language: 'json', tree: { kind: 10, semType: 1, tag: '', value: '', children: [] }, value: { a: 1 }, diagnostics: [], semanticTokens: new ArrayBuffer(0), semanticTokenVersion: 1, sourceByteLength: 9 },
@@ -569,6 +570,47 @@ describe('graph-render-session coordinator', () => {
     );
     expect(renderResult?.edges).toHaveLength(1);
     expect(renderResult?.edges[0]?.bezierArgs?.toX).toBe(1572);
+    await coordinator.dispose();
+    expect(session.cancel).not.toHaveBeenCalled();
+  });
+
+  it('waits for the terminal render when an external session replay is incomplete', async () => {
+    const finalBatch = closeCompletedBatch(13, {
+      mainGraph: projectionDelta(true, graphDataWithParentChildEdge(1600)),
+    });
+    const batches = vi.fn(async function* () {
+      throw new Error('a partial replay must not be projected');
+    });
+    const session = {
+      sessionId: 'session-partial',
+      documentKey: 'test-key',
+      language: 'json',
+      revision: 5,
+      totalBytes: 64,
+      streamRunId: 'session-partial',
+      jobHandle: null,
+      hasCompleteReplay: () => false,
+      batches,
+      result: Promise.resolve({
+        batch: finalBatch,
+        analysis: { documentKey: 'test-key', language: 'json', tree: { kind: 10, semType: 1, tag: '', value: '', children: [] }, value: { a: 1 }, diagnostics: [], semanticTokens: new ArrayBuffer(0), semanticTokenVersion: 1, sourceByteLength: 9 },
+        jobHandle: 13,
+        snapshotId: 13,
+      }),
+      cancel: vi.fn(async () => {}),
+    };
+    const deps = createDeps();
+    const coordinator = createGraphRenderSession(deps as any);
+    coordinator.attachSceneBridge(createSceneBridge());
+
+    await coordinator.attachExternalDocumentJobSession(session as any);
+
+    expect(batches).not.toHaveBeenCalled();
+    expect(deps.onStreamFinalRedraw).toHaveBeenCalledWith(
+      'streaming',
+      5,
+      expect.objectContaining({ snapshotId: 13 }),
+    );
   });
 
   it('renderDocumentGraph publishes final analysis from snapshot events', async () => {

@@ -3,7 +3,7 @@ import type * as Monaco from 'monaco-editor';
 import { derived, get, writable, type Readable } from 'svelte/store';
 
 import { editorLanguageFallback, type SupportedEditorLanguageId } from '../monaco/language-support';
-import { initialFullEditUiState } from './full-edit-ui-store';
+import { initialFullEditUiState } from './full-edit-ui-state';
 import { initialTempModel } from './graph-selection-store';
 import {
   createEditorWorkspaceState,

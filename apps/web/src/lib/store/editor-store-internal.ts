@@ -64,25 +64,14 @@ import {
 import { resetActiveDocumentAuthority } from './active-document-authority';
 import {
   clearJsonBlockSelectionForDocument,
-  completeFullEditStreamUi,
-  fullEditUiState as fullEditUiStateWritable,
-  fullEditUiStateStore,
-  getFullEditUiStateRaw,
-  getFullEditUiStateSnapshot,
   getJsonBlockSelectionRaw,
   getJsonBlockSelectionSnapshot,
   initialFullEditUiState,
   jsonBlockSelection as jsonBlockSelectionWritable,
   jsonBlockSelectionStore,
-  finishFullEditStream as finishPublicFullEditStream,
-  markFullEditStreamFinalizing,
-  markFullEditStreamSettled,
-  registerFullEditUiCoordinator,
-  resetFullEditUiState,
-  setFullEditUiState,
   setJsonBlockSelection,
-  cancelFullEditStream as cancelPublicFullEditStream,
 } from './full-edit-ui-store';
+import { activeFullEditUiState as fullEditUiStateProjection, getActiveFullEditUiState } from './active-full-edit-ui-store';
 import {
   getActiveTempModelRaw,
   getActiveTempModelSnapshot,
@@ -123,25 +112,6 @@ const initialEditorState: EditorState = {
   workspace: initialWorkspaceState,
 };
 
-registerFullEditUiCoordinator({
-  onFullEditUiStateChange: (next) => {
-    workspaceStore.update((workspace) => {
-      const primaryTab = workspace.tabsById[workspace.primaryTabId];
-      if (!primaryTab) return workspace;
-      return {
-        ...workspace,
-        tabsById: {
-          ...workspace.tabsById,
-          [primaryTab.id]: {
-            ...primaryTab,
-            fullEditUiState: next,
-          },
-        },
-      };
-    });
-  },
-});
-
 registerGraphSelectionCoordinator({
   onTempModelChange: (next) => {
     workspaceStore.update((workspace) => {
@@ -166,7 +136,6 @@ registerWorkspaceCoordinator({
     const primaryTab = next.tabsById[next.primaryTabId];
     if (!primaryTab) return;
     setTempModelState(primaryTab.tempModel);
-    setFullEditUiState(primaryTab.fullEditUiState);
   },
 });
 
@@ -175,7 +144,7 @@ function getRawEditorState(): EditorState {
     ...get(documentSessionStore),
     editorMutation: getEditorMutationRawState(),
     treeState: getTreeStateRaw(),
-    fullEditUiState: getFullEditUiStateRaw(),
+    fullEditUiState: getActiveFullEditUiState(),
     jsonBlockSelection: getJsonBlockSelectionRaw(),
     tempModel: getActiveTempModelRaw(),
     workspace: getWorkspaceRawState(),
@@ -212,8 +181,10 @@ function setRawEditorState(state: EditorState): void {
   if (get(treeSyncStore) !== state.treeState) {
     setTreeStateState(state.treeState);
   }
-  if (get(fullEditUiStateStore) !== state.fullEditUiState) {
-    fullEditUiStateStore.set(state.fullEditUiState);
+  if (getActiveFullEditUiState() !== state.fullEditUiState) {
+    updateWorkspaceTabState(getWorkspaceRawState().primaryTabId, {
+      fullEditUiState: cloneFullEditUiStateForWrite(state.fullEditUiState),
+    });
   }
   if (get(jsonBlockSelectionStore) !== state.jsonBlockSelection) {
     jsonBlockSelectionStore.set(state.jsonBlockSelection);
@@ -240,7 +211,7 @@ const internalStore = derived(
     documentSessionEditorIOStore,
     documentSessionEditorMutationStore,
     treeSyncStore,
-    fullEditUiStateWritable,
+    fullEditUiStateProjection,
     jsonBlockSelectionWritable,
     tempModelStore,
     workspaceStore,
@@ -683,7 +654,6 @@ function createEditorStore() {
       setFullEditUiState: (fullEditUiState: FullEditUiState) => {
         const nextFullEditUiState = cloneFullEditUiStateForWrite(fullEditUiState);
         updateState((s) => {
-          setFullEditUiState(nextFullEditUiState);
           return mirrorPrimaryWorkspaceTab(
             { ...s, fullEditUiState: nextFullEditUiState },
             { fullEditUiState: nextFullEditUiState },
@@ -742,7 +712,6 @@ function createEditorStore() {
             reason: payload.reason,
             phase: 'preparing',
           });
-          setFullEditUiState(fullEditUiState);
           return setPrimaryFullEditUiState(s, fullEditUiState, graphAppliedRevision);
         }),
       cancelPreparedFullEditStream: (payload: {
@@ -761,7 +730,6 @@ function createEditorStore() {
             current.reason !== payload.reason
           )
             return s;
-          setFullEditUiState(initialFullEditUiState);
           return setPrimaryFullEditUiState(s, initialFullEditUiState);
         }),
       beginFullEditStream: (payload: {
@@ -785,7 +753,6 @@ function createEditorStore() {
             reason: payload.reason,
             phase: 'streaming',
           });
-          setFullEditUiState(fullEditUiState);
           return setPrimaryFullEditUiState(s, fullEditUiState, graphAppliedRevision);
         }),
       appendFullEditStreamChunkMeta: (payload: {
@@ -812,31 +779,26 @@ function createEditorStore() {
         ),
       markFullEditStreamFinalizing: (payload: FullEditOwnerPayload) =>
         updateState((s) => {
-          markFullEditStreamFinalizing(payload);
           return updateOwnedFullEditUiState(s, payload, (current) =>
             current.phase === 'streaming' ? { ...current, phase: 'finalizing' } : null,
           );
         }),
       markFullEditStreamSettled: (payload: FullEditOwnerPayload) =>
         updateState((s) => {
-          markFullEditStreamSettled(payload);
           return updateOwnedFullEditUiState(s, payload, (current) =>
             current.phase === 'finalizing' ? { ...current, phase: 'settled' } : null,
           );
         }),
       completeFullEditStreamUi: (payload: FullEditOwnerPayload) =>
         updateState((s) => {
-          completeFullEditStreamUi(payload);
           return updateOwnedFullEditUiState(s, payload, (current) => ({ ...current, phase: 'idle' }));
         }),
       finishFullEditStream: (payload: FullEditOwnerPayload) =>
         updateState((s) => {
-          finishPublicFullEditStream(payload);
           return updateOwnedFullEditUiState(s, payload, () => initialFullEditUiState);
         }),
       cancelFullEditStream: (payload: FullEditOwnerPayload) =>
         updateState((s) => {
-          cancelPublicFullEditStream(payload);
           return updateOwnedFullEditUiState(s, payload, () => initialFullEditUiState);
         }),
       updateTempModel: (partial: Partial<TempModel>) =>
@@ -908,6 +870,7 @@ export {
   previousSourceText,
   sourceText,
 } from './document-session-store';
-export { fullEditUiState, jsonBlockSelection } from './full-edit-ui-store';
+export { activeFullEditUiState as fullEditUiState } from './active-full-edit-ui-store';
+export { jsonBlockSelection } from './full-edit-ui-store';
 export { activeTempModel, treeState } from './graph-selection-store';
 export { editorWorkspace } from './workspace-store';

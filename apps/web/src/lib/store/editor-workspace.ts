@@ -1,7 +1,7 @@
 import type { SnapshotId } from '@core-wasm/index';
 import type { SupportedEditorLanguageId } from '../monaco/language-support';
 import type { DiagnosticItem, TempModel } from './diagnostics-store';
-import type { FullEditUiState } from './full-edit-ui-store';
+import type { FullEditUiState } from './full-edit-ui-state';
 import type { GraphHighlightState } from './graph-selection-store';
 import type { PathSeg } from './tree-path';
 import type { DocumentOrigin } from '../document-origin';
@@ -87,6 +87,18 @@ export type EditorWorkspaceTabPatch = {
   fullEditUiState?: FullEditUiState;
   fileLinkedDocument?: FileLinkedDocument;
   savedText?: string;
+};
+
+/**
+ * The only pure transition allowed to replace a left document's identity.
+ * Ordinary workspace patches intentionally cannot alter documentKey or an
+ * inactive left tab's language, because those fields bind Document Runtime
+ * results to a specific document generation.
+ */
+export type TargetDocumentTransition = {
+  tabId: string;
+  expected: Pick<EditorWorkspaceTab, 'documentKey' | 'languageId' | 'revision'>;
+  next: Pick<EditorWorkspaceTab, 'documentKey' | 'languageId' | 'revision' | 'sourceText'>;
 };
 
 function sidecarDocumentKey(tabId: string): string {
@@ -580,6 +592,47 @@ export function updateWorkspaceTab(
       ...workspace.tabsById,
       [tabId]: nextTab,
     },
+  };
+}
+
+export function transitionWorkspaceTabDocument(
+  workspace: EditorWorkspaceState,
+  transition: TargetDocumentTransition,
+): EditorWorkspaceState | null {
+  const current = workspace.tabsById[transition.tabId];
+  if (
+    !current ||
+    current.role === 'sidecar' ||
+    current.documentKey !== transition.expected.documentKey ||
+    current.languageId !== transition.expected.languageId ||
+    current.revision !== transition.expected.revision ||
+    (current.documentKey === transition.next.documentKey &&
+      current.languageId === transition.next.languageId &&
+      current.sourceText === transition.next.sourceText &&
+      current.revision === transition.next.revision)
+  ) {
+    return null;
+  }
+
+  const nextTab: EditorWorkspaceTab = {
+    ...current,
+    documentKey: transition.next.documentKey,
+    languageId: transition.next.languageId,
+    sourceText: transition.next.sourceText,
+    revision: transition.next.revision,
+    graphAppliedRevision: Math.min(current.graphAppliedRevision, Math.max(0, transition.next.revision - 1)),
+    snapshotId: null,
+  };
+  const snapshotBindingsByDocumentKey = { ...workspace.snapshotBindingsByDocumentKey };
+  delete snapshotBindingsByDocumentKey[current.documentKey];
+
+  return {
+    ...workspace,
+    tabsById: {
+      ...workspace.tabsById,
+      [current.id]: nextTab,
+    },
+    snapshotBindingsByDocumentKey,
   };
 }
 
