@@ -128,7 +128,7 @@
   class="grid h-[var(--bottombar-height)] min-w-0 border-t border-[var(--border-strong)] bg-[var(--bottombar-bg)] text-[12px] text-[var(--text-muted)]"
   style:grid-template-columns={`${editorWidthPx}px minmax(0, 1fr)`}
 >
-  <div class="flex min-w-0 items-center gap-2 overflow-hidden px-4">
+  <div class="flex min-w-0 items-center gap-2 overflow-visible px-4">
     <div class="inline-flex items-center gap-1">
       <Select.Root type="single" items={languageItems} value={$languageIdStore} onValueChange={selectLanguage}>
         <Select.Trigger

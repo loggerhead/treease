@@ -32,7 +32,7 @@ function createSemanticTokenColors(colors: SemanticTypeColors) {
   return Object.fromEntries(TOKEN_TYPES.map((tokenType) => [tokenType, resolveTokenColor(tokenType, colors)])) as Record<TokenType, string>;
 }
 
-function createLexicalTokenRules(colors: SemanticTypeColors) {
+function createLexicalTokenRules(_colors: SemanticTypeColors) {
   const pendingSemanticColor = neutralSyntaxColors.operator.slice(1);
   return [
     // Lexical tokenizers cannot distinguish null from boolean or int from float in every

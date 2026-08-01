@@ -21,7 +21,9 @@ if (process.env.TREEASE_SKIP_WASM_BINDGEN === "1") {
   run(["wasm:sync"]);
 }
 run(["sitemap:generate"]);
-run(["exec", "node", "./scripts/with-build-lock.mjs", "vp", "build"], {
+const buildArgs = ["exec", "node", "./scripts/with-build-lock.mjs", "vp", "build"];
+if (process.env.TREEASE_WDIO_TEST === "1") buildArgs.push("--mode", "test");
+run(buildArgs, {
   ...process.env,
   TREEASE_WORKSPACE_SURFACE: "desktop",
   WASM_VERSION: execFileSync(

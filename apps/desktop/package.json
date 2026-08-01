@@ -9,7 +9,7 @@
     "build": "tauri build",
     "check": "tauri build --debug --no-bundle",
     "test:policy": "node --test test/desktop-policy.test.mjs",
-    "build:e2e": "cross-env TREEASE_WDIO_TEST=1 tauri build --debug --no-bundle --config src-tauri/tauri.wdio.conf.json",
+    "build:e2e": "cross-env TREEASE_WDIO_TEST=1 tauri build --debug --no-bundle --config src-tauri/tauri.wdio.conf.json && node -e \"const fs=require('node:fs'),path=require('node:path'); const name=process.platform==='win32'?'Treease.exe':'Treease'; const source=path.resolve('../../target/debug',name); const target=path.resolve('src-tauri/target/debug',name); fs.mkdirSync(path.dirname(target),{recursive:true}); fs.copyFileSync(source,target); fs.chmodSync(target,0o755);\"",
     "test:e2e": "pnpm build:e2e && wdio run wdio.conf.mjs"
   },
   "devDependencies": {

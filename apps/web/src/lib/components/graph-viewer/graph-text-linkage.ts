@@ -521,7 +521,6 @@ export function createGraphTextLinkageController(
     options?: RevealOptions,
   ): boolean {
     const cellBoxByPathMap = deps.getCellBoxByPathMap();
-    const nodeBoxMap = deps.getNodeBoxMap();
     if (!path || path.length === 0) return false;
     const { renderHandle, node } = resolveNodeForPath(path);
     let entry = getCellEntry(cellBoxByPathMap, path);

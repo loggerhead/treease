@@ -2,9 +2,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const directory = path.dirname(fileURLToPath(import.meta.url));
-// The repository uses a top-level Cargo workspace, so Cargo writes desktop
-// binaries to the repository root target directory rather than src-tauri/target.
-const application = path.join(directory, '..', '..', 'target', 'debug', 'Treease');
+const application = path.join(directory, 'src-tauri', 'target', 'debug', 'Treease');
 
 export const config = {
   runner: 'local',

@@ -1,5 +1,5 @@
 import type { SnapshotId } from '@core-wasm/index';
-import { writable, get, derived, type Writable, type Readable } from 'svelte/store';
+import { get, derived } from 'svelte/store';
 import { type SupportedEditorLanguageId } from '../monaco/language-support';
 import type { PathSeg } from './tree-path';
 import {
@@ -32,7 +32,6 @@ import {
 } from './document-session-store';
 import {
   syncSidecarLanguageFromPrimary,
-  type EditorWorkspaceState,
   type EditorWorkspaceTab,
   type EditorWorkspaceTabPatch,
   type WorkspaceEditorTabInput,
@@ -43,9 +42,7 @@ import {
   bindWorkspaceSnapshot as bindWorkspaceSnapshotState,
   clearWorkspaceSnapshotBinding,
   cloneWorkspaceStateForRead,
-  cloneWorkspaceStateForWrite,
   closeWorkspaceTabTransitionFromEditor as closeWorkspaceTabInWorkspace,
-  editorWorkspace,
   ensureDetachedSidecarWorkspaceTab,
   ensureSidecarWorkspaceTab,
   getWorkspaceRawState,
@@ -65,7 +62,6 @@ import { resetActiveDocumentAuthority } from './active-document-authority';
 import {
   clearJsonBlockSelectionForDocument,
   getJsonBlockSelectionRaw,
-  getJsonBlockSelectionSnapshot,
   initialFullEditUiState,
   jsonBlockSelection as jsonBlockSelectionWritable,
   jsonBlockSelectionStore,
@@ -74,9 +70,7 @@ import {
 import { activeFullEditUiState as fullEditUiStateProjection, getActiveFullEditUiState } from './active-full-edit-ui-store';
 import {
   getActiveTempModelRaw,
-  getActiveTempModelSnapshot,
   getTreeStateRaw,
-  getTreeStateSnapshot,
   initialTempModel,
   initialTreeState,
   registerGraphSelectionCoordinator,
@@ -87,7 +81,6 @@ import {
 } from './graph-selection-store';
 import type {
   DiagnosticItem,
-  DocumentSessionState,
   EditorIO,
   EditorMutation,
   EditorMutationEnvelope,
@@ -461,21 +454,6 @@ function cloneJsonBlockSelectionForWrite(jsonBlockSelection: JsonBlockSelection 
   return { ...jsonBlockSelection };
 }
 
-function cloneEditorMutationForWrite(mutation: EditorMutation): EditorMutation {
-  return {
-    ...mutation,
-    payload: {
-      ...mutation.payload,
-      graphEditFallback: mutation.payload.graphEditFallback
-        ? {
-            ...mutation.payload.graphEditFallback,
-            path: clonePathSegs(mutation.payload.graphEditFallback.path),
-          }
-        : undefined,
-    },
-  };
-}
-
 function cloneTempModelForWrite(tempModel: TempModel): TempModel {
   return baseCloneTempModelForRead(tempModel);
 }
@@ -563,39 +541,6 @@ function cloneEditorStateForRead(state: EditorState): EditorState {
     jsonBlockSelection: cloneJsonBlockSelectionForRead(state.jsonBlockSelection),
     workspace: cloneWorkspaceStateForRead(state.workspace),
   };
-}
-
-function cloneFieldValue<K extends keyof EditorState>(key: K, value: EditorState[K]): EditorState[K] {
-  if (key === 'workspace') return cloneWorkspaceStateForRead(value as EditorWorkspaceState) as EditorState[K];
-  if (key === 'tempModel') return cloneTempModelForRead(value as TempModel) as EditorState[K];
-  if (key === 'fullEditUiState') return cloneFullEditUiStateForRead(value as FullEditUiState) as EditorState[K];
-  if (key === 'treeState') return cloneTreeStateForRead(value as TreeSyncState) as EditorState[K];
-  if (key === 'jsonBlockSelection') {
-    return cloneJsonBlockSelectionForRead(value as JsonBlockSelection | null) as EditorState[K];
-  }
-  if (key === 'editorMutation') {
-    return cloneEditorMutationForRead(value as EditorMutationEnvelope | null) as EditorState[K];
-  }
-  return value;
-}
-
-function cloneFieldValueForUpdate<K extends keyof EditorState>(key: K, value: EditorState[K]): EditorState[K] {
-  if (key === 'workspace') return cloneWorkspaceStateForWrite(value as EditorWorkspaceState) as EditorState[K];
-  if (key === 'tempModel') return baseCloneTempModelForRead(value as TempModel) as EditorState[K];
-  if (key === 'fullEditUiState') return { ...(value as FullEditUiState) } as EditorState[K];
-  if (key === 'treeState') return cloneTreeStateForWrite(value as TreeSyncState) as EditorState[K];
-  if (key === 'jsonBlockSelection') {
-    return cloneJsonBlockSelectionForWrite(value as JsonBlockSelection | null) as EditorState[K];
-  }
-  if (key === 'editorMutation') {
-    const editorMutationValue = value as EditorMutationEnvelope | null;
-    if (!editorMutationValue) return editorMutationValue as EditorState[K];
-    return {
-      ...editorMutationValue,
-      mutation: cloneEditorMutationForWrite(editorMutationValue.mutation),
-    } as EditorState[K];
-  }
-  return value;
 }
 
 /**
@@ -833,30 +778,6 @@ export function getEditorStateSnapshot(): EditorState {
 
 export function resetEditorState(): void {
   editorStore.reset();
-}
-
-function createFieldStore<K extends keyof EditorState>(
-  key: K,
-  setter: (value: EditorState[K]) => void,
-): Writable<EditorState[K]> {
-  return {
-    subscribe: (run: (value: EditorState[K]) => void) => {
-      let initialized = false;
-      let currentRaw: EditorState[K] | undefined;
-      return internalStore.subscribe(($s) => {
-        const nextRaw = $s[key];
-        if (initialized && Object.is(nextRaw, currentRaw)) return;
-        initialized = true;
-        currentRaw = nextRaw;
-        run(cloneFieldValue(key, nextRaw));
-      });
-    },
-    set: setter,
-    update: (fn: (value: EditorState[K]) => EditorState[K]) => {
-      const current = cloneFieldValueForUpdate(key, getRawEditorState()[key]);
-      setter(fn(current));
-    },
-  };
 }
 
 export {

@@ -337,7 +337,7 @@ describe('createDocumentColorRegistrar', () => {
 
     const provider = providers.get('json');
     const filler = 'a'.repeat(50_000);
-    const text = `{\"color\":\"${filler}#4f46e5\"}`;
+    const text = `{"color":"${filler}#4f46e5"}`;
     const colorStart = text.indexOf('#4f46e5');
     const colorEnd = colorStart + '#4f46e5'.length;
     const valueStart = text.indexOf('"', text.indexOf(':') + 1);

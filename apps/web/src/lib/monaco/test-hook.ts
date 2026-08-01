@@ -24,7 +24,7 @@ type TestHookEditor = {
 type TokenizeFn = (text: string, languageId: string) => Array<{ offset: number; type: string; language: string }>[];
 
 function shouldAttachMonacoTestHook() {
-  return import.meta.env.DEV || import.meta.env.MODE === 'test';
+  return import.meta.env.DEV || import.meta.env.MODE === 'test' || import.meta.env.PUBLIC_WDIO_TEST === '1';
 }
 
 export function attachMonacoTestHook(editor: TestHookEditor, hookId: string, tokenize?: TokenizeFn) {

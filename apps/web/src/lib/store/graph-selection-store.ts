@@ -2,10 +2,7 @@ import { get, writable, type Writable } from 'svelte/store';
 
 import type {
   GraphHighlightState,
-  GraphHighlightTarget,
   TempModel,
-  TreeSelectionSource,
-  TreeSyncSource,
   TreeSyncState,
 } from './editor-store-types';
 import type { PathSeg } from './tree-path';

@@ -8,6 +8,10 @@
   export let type: 'website' | 'article' = 'website';
   export let robots: string | null = null;
   export let jsonLd: readonly string[] = [];
+
+  function renderJsonLd(item: string): string {
+    return '<script type="application/ld+json">' + item + '</' + 'script>';
+  }
 </script>
 
 <svelte:head>
@@ -27,6 +31,6 @@
   <meta name="twitter:description" content={description} />
   <meta name="twitter:image" content={image} />
   {#each jsonLd as item}
-    {@html `<script type="application/ld+json">${item}</script>`}
+    {@html renderJsonLd(item)}
   {/each}
 </svelte:head>

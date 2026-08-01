@@ -12,7 +12,7 @@
   const testRuntime = import.meta.env.MODE === 'test';
   const productionRuntime = import.meta.env.PROD || import.meta.env.SIMULATE_PROD;
 
-  if (typeof window !== 'undefined' && (import.meta.env.DEV || testRuntime)) {
+  if (typeof window !== 'undefined' && (import.meta.env.DEV || testRuntime || import.meta.env.PUBLIC_WDIO_TEST === '1')) {
     installTestBridge();
   }
 

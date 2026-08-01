@@ -11,7 +11,7 @@ import {
   setAuthorityEditorIO,
 } from './active-document-authority';
 import type { PathSeg } from './tree-path';
-import type { DocumentSessionState, EditorIO, EditorIoContext, EditorMutation, EditorMutationEnvelope } from './editor-store-types';
+import type { DocumentSessionState, EditorIO, EditorMutation, EditorMutationEnvelope } from './editor-store-types';
 
 function clonePathSegs(path: PathSeg[]) {
   return path.map((segment) => ({ ...segment }));

@@ -136,6 +136,28 @@ test('command search supports shortcut toggle, execute, and outside-click close'
   await expect(page.locator('.command-search-list')).toHaveCount(0);
 });
 
+test('command search keeps its popover inside the viewport at compact heights', async ({ page }) => {
+  await page.setViewportSize({ width: 542, height: 298 });
+  await page.goto('/editor');
+  await waitForEditorReady(page);
+
+  const commandInput = page.getByRole('textbox', { name: 'Search command', exact: true });
+  await commandInput.click();
+  const commandList = page.locator('.command-search-list');
+  await expect(commandList).toHaveCount(1);
+
+  const bounds = await commandList.evaluate((list) => {
+    let panel: HTMLElement | null = list.parentElement;
+    while (panel && getComputedStyle(panel).position !== 'absolute') panel = panel.parentElement;
+    if (!panel) throw new Error('command search panel missing');
+    const rect = panel.getBoundingClientRect();
+    return { top: rect.top, bottom: rect.bottom, viewportHeight: window.innerHeight };
+  });
+
+  expect(bounds.top).toBeGreaterThanOrEqual(0);
+  expect(bounds.bottom).toBeLessThanOrEqual(bounds.viewportHeight);
+});
+
 test('graph search supports shortcut open, keyboard selection, and escape close', async ({ page }) => {
   await page.goto('/editor');
   await waitForEditorReady(page);

@@ -286,6 +286,10 @@ export function createColumnNavigatorController(deps: ColumnNavigatorControllerD
           status: 'ready',
         });
       } catch (error) {
+        // Snapshot registration can briefly lag behind the graph milestone.
+        // Let the navigation operation retain its loading state so the next
+        // projection refresh retries without reporting an application error.
+        if (error instanceof SnapshotNotReadyError) throw error;
         deps.handleError(error, {
           component: 'GraphViewer',
           operation: 'buildColumnNavigatorColumn',

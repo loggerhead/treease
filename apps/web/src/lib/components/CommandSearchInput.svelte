@@ -106,7 +106,7 @@
   inputAriaLabel="Search command"
   inputTestId="command-search-input"
   shortcut="⌘ K"
-  panelClass="absolute left-0 bottom-[calc(100%+8px)] z-40 w-[280px]"
+  panelClass="absolute left-0 bottom-[calc(100%+8px)] z-40 max-h-[calc(100dvh-var(--bottombar-height)-8px)] w-[280px]"
   commandClassName="rounded-[10px] border-[rgba(15,23,42,0.10)] shadow-[0_12px_28px_rgba(15,23,42,0.10)] bg-[var(--panel-bg)]"
   inputClassName="h-[23px] rounded-[7px] border border-[rgba(15,23,42,0.10)] bg-[var(--panel-bg)] px-2 text-[#6b7280] transition-colors hover:border-[rgba(15,23,42,0.16)] focus-within:border-[rgba(15,23,42,0.16)]"
   listClassName="command-search-list"

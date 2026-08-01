@@ -132,7 +132,7 @@ describe('graph-value-edit', () => {
     const controller = createGraphValueEditController({
       getCurrentData: () => ({ name: 'current' }),
       getSourceText: () => '{"name":"current"}',
-      getDocumentKey: () => 'foo.json:1',
+      getDocumentKey: () => 'prompt_diff_events.1.json:1',
       getLanguageId: () => 'json',
       getEnableNest: () => true,
       getEditorIO: () => ({ context: 'editor', getModel: () => model as any, applyTextEdits: vi.fn(() => true) } as any),
@@ -150,7 +150,7 @@ describe('graph-value-edit', () => {
 
     await expect(controller.applyGraphEdit({ path: [{ key: 'name' }], valueType: 'string' } as any, 'value', 'next-value')).resolves.toBe(true);
 
-    expect(runBidirectionalEditMock).toHaveBeenCalledWith('foo.json:1', expect.any(Function));
+    expect(runBidirectionalEditMock).toHaveBeenCalledWith('prompt_diff_events.1.json:1', expect.any(Function));
   });
 
   it('promotes only inside the quota-approved apply step and before writing the editor', async () => {

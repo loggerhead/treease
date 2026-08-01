@@ -99,7 +99,7 @@ try {
   if (new Set(allIndexes).size !== allIndexes.length || allIndexes.some((index) => !expectedIndexes.includes(index)) || allIndexes.length !== expectedIndexes.length) {
     throw new Error('Every commit index must be assigned exactly once');
   }
-  const chunkByIndex = new Map(assignedIndexes.map((index, chunkIndex) => [index, chunks.findIndex((chunk) => chunk.commitIndexes.includes(index))]));
+  const chunkByIndex = new Map(assignedIndexes.map((index) => [index, chunks.findIndex((chunk) => chunk.commitIndexes.includes(index))]));
   for (const date of new Set(inputCommitRows.map((commit) => commit.date))) {
     const dateChunkIndexes = new Set(inputCommitRows.filter((commit) => commit.date === date && chunkByIndex.has(commit.index)).map((commit) => chunkByIndex.get(commit.index)));
     if (dateChunkIndexes.size > 1) throw new Error(`Commits from ${date} were split across changelog chunks`);

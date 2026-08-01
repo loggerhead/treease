@@ -474,6 +474,32 @@ describe('path-driven column navigator controller', () => {
     expect(controller.getChain()).toEqual([]);
   });
 
+  it('defers transient snapshot-not-ready errors until the next projection refresh', async () => {
+    mocks.queryPathValue.mockImplementation(async ({ path }: { path: Array<{ key?: string }> }) =>
+      path.length ? readyPathValue('string', '"value"') : readyPathValue('object', '{1}'),
+    );
+    mocks.queryDirectChildren.mockResolvedValueOnce({ status: 'snapshotNotReady' });
+    const handleError = vi.fn();
+    const { controller } = createController({ handleError });
+
+    await controller.openPath(keyPath('value'));
+
+    expect(handleError).not.toHaveBeenCalled();
+    expect(controller.getChain().at(-1)?.status).toBe('loading');
+
+    mocks.queryDirectChildren.mockResolvedValue({ status: 'ready', data: [item(keyPath('value'), 'string')] });
+    await controller.syncProjection({
+      documentKey: 'document-1',
+      languageId: 'json' as any,
+      revision: 1,
+      graphAppliedRevision: 1,
+      snapshotId: 'snapshot-workspace' as any,
+      enableNest: false,
+    });
+
+    expect(controller.getChain().at(-1)?.status).toBe('ready');
+  });
+
   it('refreshes active columns and Monaco content when the projection revision changes', async () => {
     let value = '"old"';
     installDocument(

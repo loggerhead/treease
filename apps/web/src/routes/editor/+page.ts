@@ -1,1 +1,1 @@
-export const prerender = false;
+export const prerender = import.meta.env.PUBLIC_WORKSPACE_SURFACE === 'desktop';

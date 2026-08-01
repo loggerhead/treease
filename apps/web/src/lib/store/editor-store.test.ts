@@ -661,7 +661,6 @@ describe('editor-store', () => {
         fullEditUiState: editorStore.get().fullEditUiState,
       });
 
-      const before = editorStore.get();
       editorStore.actions.closeWorkspaceTabFromEditor('tab-second');
 
       const state = editorStore.get();

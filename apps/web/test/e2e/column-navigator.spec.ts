@@ -17,7 +17,10 @@ import {
   waitForColumnNavigatorSettled,
 } from './utils';
 
-const fooFixture = readFileSync(new URL('../../../../foo.json', import.meta.url), 'utf8');
+const promptDiffFixture = readFileSync(
+  new URL('../../../../test/fixtures/json/prompt_diff_events.1.json', import.meta.url),
+  'utf8',
+);
 
 const semanticPalette = {
   map: '#9b1c31',
@@ -223,10 +226,10 @@ test('column navigator column detail editor uses monaco editor and syncs edits b
     .toBe('{"title":"one","done":false}');
 });
 
-test('foo lane_name detail edit repaints only the affected graph region', async ({ page }) => {
+test('prompt diff lane_name detail edit repaints only the affected graph region', async ({ page }) => {
   await page.goto('/editor');
   await waitForEditorReady(page);
-  await setEditorContent(page, { sourceText: fooFixture, language: 'json' });
+  await setEditorContent(page, { sourceText: promptDiffFixture, language: 'json' });
   await waitForGraphRendered(page, 30_000);
 
   const rootItem = (await readGraphClickProbes(page)).find(
@@ -244,7 +247,7 @@ test('foo lane_name detail edit repaints only the affected graph region', async 
   await waitForColumnNavigatorSettled(page, 'i:1|k:value|k:lane_name', 30_000);
 
   const hookId = 'column-navigator-content:i:1|k:value|k:lane_name';
-  await expect.poll(() => getMonacoValue(page, hookId), { timeout: 10_000 }).toBe('"ppe_test"');
+  await expect.poll(() => getMonacoValue(page, hookId), { timeout: 10_000 }).toBe('"zff_fb_jm_nzta"');
 
   await page.evaluate(() => {
     const refs = window._treease?.graph.refs as { leafer?: { forceRender?: (...args: unknown[]) => void } } | undefined;
