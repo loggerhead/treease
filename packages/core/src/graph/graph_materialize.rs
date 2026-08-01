@@ -398,6 +398,13 @@ fn node_shape_presentation(
     if store.get(node_id)?.kind != TreeNodeKind::Sequence {
         return Some(NodeShapePresentation::NonTable);
     }
+    let is_root = topology
+        .root_handle()
+        .and_then(|handle| topology.slot(handle))
+        .is_some_and(|slot| slot.node_id == node_id);
+    if is_root && store.get(node_id)?.content.is_empty() {
+        return Some(NodeShapePresentation::NonTable);
+    }
     match topology.sequence_presentation(node_id) {
         Some(SequencePresentationState::HeaderTable) => Some(NodeShapePresentation::Table(
             SequencePresentation::HeaderTable,

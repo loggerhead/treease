@@ -296,4 +296,20 @@ test.describe('fixture corpus sampling', () => {
       }
     }
   }
+
+  test('root empty containers render as graph nodes', async ({ page }) => {
+    await page.goto('/editor');
+    await waitForEditorReady(page);
+
+    for (const sourceText of ['{}', '[]']) {
+      const nodes = await buildGraphAndGetNodes(page, {
+        sourceText,
+        language: 'json',
+      });
+
+      expect(nodes, `source=${sourceText}`).toHaveLength(1);
+      expect(nodes[0]?.path).toBe('');
+      expect(nodes[0]?.kind).toBe('scalar');
+    }
+  });
 });

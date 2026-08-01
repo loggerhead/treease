@@ -294,7 +294,13 @@ impl StreamingGraphProjector {
         root: NodeId,
         patches: &[TreePatch],
     ) -> Option<ProjectionUpdate> {
-        if self.previous_model.is_none() && contains_pending_header_table_schema(store, root) {
+        let root_is_empty_sequence = store.get(root).is_some_and(|node| {
+            node.kind == crate::tree::TreeNodeKind::Sequence && node.content.is_empty()
+        });
+        if self.previous_model.is_none()
+            && contains_pending_header_table_schema(store, root)
+            && !root_is_empty_sequence
+        {
             return Some(self.ver(GraphDelta::default()));
         }
         let cfg = graph_projection_service::projection_builder_config().to_graph_builder_config();
@@ -1004,6 +1010,26 @@ mod tests {
 
     fn dec(s: &str) -> Vec<crate::stream::streaming_events::StreamingEvent> {
         crate::stream::decode("json", s).unwrap()
+    }
+
+    #[test]
+    fn closed_root_empty_array_emits_a_scalar_style_graph_node() {
+        let mut builder = Builder::new();
+        builder.enable_patches();
+        for event in dec("[]") {
+            builder.push(&event).unwrap();
+        }
+        let patches = builder.take_patches();
+        let (store, root) = builder.tree_ref().unwrap();
+        let mut projector = StreamingGraphProjector::new("json");
+
+        let update = projector
+            .update(store, root, &patches)
+            .expect("closed root array should produce a projection update");
+
+        assert_eq!(update.delta.nodes_added.len(), 1);
+        assert_eq!(update.delta.nodes_added[0].path, Vec::new());
+        assert_eq!(update.delta.nodes_added[0].kind, 0);
     }
 
     fn protocol_edge_key(edge: &crate::document::protocol::GraphEdgeData) -> (u32, i32, u32, i32) {

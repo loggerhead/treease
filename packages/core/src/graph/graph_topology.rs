@@ -660,6 +660,9 @@ impl<'a> PlannerResolver<'a> {
         let node_is_map_key = node.is_map_key;
         let node_builds_child = value_node_builds_child(node);
         if Some(id) == self.root {
+            if node_kind == TreeNodeKind::Sequence && node.content.is_empty() {
+                return GraphRole::GraphNode;
+            }
             return if node_kind == TreeNodeKind::Sequence
                 && matches!(
                     self.sequence_state(id, epoch)
@@ -2245,6 +2248,9 @@ fn planner_role_for(
     let node_is_map_key = node.is_map_key;
     let node_builds_child = value_node_builds_child(node);
     if Some(id) == root {
+        if node_kind == TreeNodeKind::Sequence && node.content.is_empty() {
+            return GraphRole::GraphNode;
+        }
         return if node_kind == TreeNodeKind::Sequence
             && matches!(
                 sequence_state_lookup(id).map(|state| state.presentation),
