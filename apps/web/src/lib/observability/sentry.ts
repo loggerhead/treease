@@ -1,8 +1,11 @@
 import * as Sentry from '@sentry/browser';
 import packageJson from '../../../package.json' with { type: 'json' };
+import { authUser } from '../auth/auth-user-store';
+import { getUsageClientId } from '../billing/client-id';
 
 const dsn = String(import.meta.env.PUBLIC_SENTRY_DSN ?? '').trim();
 const release = `treease-web@${packageJson.version}`;
+const appType = import.meta.env.PUBLIC_WORKSPACE_SURFACE === 'desktop' ? 'desktop' : 'web';
 
 export const sentryEnabled = Boolean(dsn);
 
@@ -23,6 +26,18 @@ if (sentryEnabled) {
       return event;
     },
   });
+
+  Sentry.setTag('app_type', appType);
+  authUser.subscribe((user) => {
+    Sentry.setUser(user ? { id: user.id } : null);
+  });
+  void getUsageClientId()
+    .then((clientId) => {
+      Sentry.setTag('client_id', clientId);
+    })
+    .catch(() => {
+      // Client identity is best-effort and must not affect application startup.
+    });
 }
 
 export function captureFrontendException(

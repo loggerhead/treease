@@ -51,9 +51,12 @@ function filterAllowedBrowserErrors(testInfo: TestInfo, errors: string[]): strin
 
 export const test = base.extend<{ _browserErrorCheck: void }>({
   _browserErrorCheck: [async ({ page }, use, testInfo) => {
-    await page.route('**/v1/usage?**', async (route) => {
+    const fulfillUsageSummary = async (route: import('@playwright/test').Route) => {
       await route.fulfill({ contentType: 'application/json', body: JSON.stringify(usageSummary) });
-    });
+    };
+    await page.route('**/v1/usage?**', fulfillUsageSummary);
+    await page.route('**/v1/usage/events', fulfillUsageSummary);
+    await page.route('**/v1/usage/claim', fulfillUsageSummary);
     const browserErrors: string[] = [];
     const onPageError = (error: Error | unknown) => {
       browserErrors.push(`[pageerror] ${collectPageError(error)}`);
