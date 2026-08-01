@@ -7,7 +7,10 @@ from pathlib import Path
 
 
 def run(root: Path, files: list[str]) -> int:
-    docs_changed = any(path.startswith("docs/") for path in files)
+    docs_changed = any(
+        path.startswith("docs/") and not path.startswith("docs/template/")
+        for path in files
+    )
     docs_script_changed = any(
         path in {
             "scripts/check-docs.mjs",

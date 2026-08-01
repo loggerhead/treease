@@ -20,7 +20,7 @@ Telegraph style. Root rules only. Read scoped `AGENTS.md` before subtree work. r
 - `apps/web/`: editor and graph UI.
 - Hosted API: accounts, billing, sharing, and AI capabilities are maintained outside this repository.
 - `apps/cli/`: standalone CLI crate, acceptance tests, and documentation entry points.
-- Docs: read `docs/AGENTS.md`; use `pnpm docs:list` to select the minimum relevant guide in `docs/contracts/`.
+- Docs: read `docs/AGENTS.md`; use `pnpm docs:list` to select the minimum relevant guide in `docs/contracts/`. Ignore `docs/template/`: it is a private conversation template, not repository guidance.
 
 ## Architecture
 
@@ -87,3 +87,10 @@ Telegraph style. Root rules only. Read scoped `AGENTS.md` before subtree work. r
 - Web: `cd apps/web && pnpm test:unit` / `pnpm test:integration` / `pnpm test:e2e`
 - API boundary: `packages/api-contracts/` and the hosted service are verified in their respective repositories.
 - Protocol or WASM changes: `cd packages/core && cargo run --locked --bin export_document_protocol`, then `cd apps/web && pnpm wasm:bindgen`; run `pnpm wasm:sync` when needed.
+
+## Communication
+
+- Explain things in plain, direct language first. Prefer “the button is covered by another element” over unexplained terms such as “hit-test interception.”
+- Lead with what happened, why it happened, and what it means for the user. Define unavoidable technical terms briefly when they first appear.
+- Separate confirmed facts, hypotheses, and remaining uncertainty. Do not present an investigation summary as if every detail were proven.
+- Keep user-facing explanations concise and concrete. Use examples or analogies when they make the behavior easier to understand, not to add jargon.

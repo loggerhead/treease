@@ -153,6 +153,9 @@ function walkRepo(relativePath, results, options = {}) {
 }
 
 function shouldSkipDir(relativePath) {
+  const normalizedPath = normalizeRelativePath(relativePath);
+  if (normalizedPath === 'docs/template') return true;
+
   const base = path.basename(relativePath);
   return [
     '.git',

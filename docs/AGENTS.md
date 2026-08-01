@@ -23,7 +23,8 @@ Documentation helps an agent make one change with the smallest sufficient contex
 - `summary` and `read_when` belong only on hand-written, agent-discoverable guidance pages. Keep `read_when` to one to three concrete triggers.
 - Do not add frontmatter to `AGENTS.md`, `README*`, `SKILL.md`, operator reference leaves, fixtures, scratch files, or generated artifacts.
 - `pnpm docs:list` is the task-discovery index. It intentionally excludes `docs/operators/`, generated artifacts, and `docs/docs_map.md`; open those paths directly only when the task requires them.
-- `docs/docs_map.md` is the generated heading map. It excludes operator references; regenerate it with `pnpm docs:map:gen` rather than editing it.
+- `docs/template/` contains private conversation templates. It is not repository guidance and must be ignored by agents, documentation checks, and document generators.
+- `docs/docs_map.md` is the generated heading map. It excludes operator references and `docs/template/`; regenerate it with `pnpm docs:map:gen` rather than editing it.
 - Use repository-relative paths. Never place local identity data, absolute local paths, or secrets in documentation.
 
 ## Reading Rules

@@ -676,7 +676,7 @@ test('dropping a medium json file onto source editor completes graph rebuild wit
   expect(revisions.graphAppliedRevision).toBeGreaterThanOrEqual(revisions.editorRevision);
 });
 
-test('dropping a 5MB json file shows source text before import finishes', async ({ page }) => {
+test('dropping a 5MB json file streams source before terminal import settlement and preserves final source', async ({ page }) => {
   await page.goto('/editor');
   await waitForEditorReady(page);
 
@@ -688,23 +688,96 @@ test('dropping a 5MB json file shows source text before import finishes', async 
     mimeType: 'application/json',
   });
 
+  // Capture the import identity after dropFile has handed ownership to the new
+  // import. The identity assertions below distinguish a slow terminal path
+  // from a stale session/revision accidentally completing the test.
+  let importStartedReadiness = await readRuntimeReadiness(page);
+  try {
+    await expect
+      .poll(
+        async () => {
+          importStartedReadiness = await readRuntimeReadiness(page);
+          return Boolean(
+            importStartedReadiness.import.sessionId &&
+              importStartedReadiness.import.requestedRevision > 0 &&
+              !importStartedReadiness.import.settled,
+          );
+        },
+        {
+          timeout: LARGE_IMPORT_FIRST_VISIBLE_BUDGET_MS,
+          message: '5MB import did not enter an active unsettled session after drop',
+        },
+      )
+      .toBe(true);
+  } catch (error) {
+    throw new Error(
+      `5MB import start phase failed; readiness=${JSON.stringify(importStartedReadiness)}; ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+  }
+
+  const importIdentity = {
+    sessionId: importStartedReadiness.import.sessionId,
+    documentKey: importStartedReadiness.documentKey,
+    revision: importStartedReadiness.import.requestedRevision,
+  };
+
   let firstVisibleTextMs = -1;
-  let importWasSettledAtFirstVisible = true;
-  await expect.poll(async () => {
-    const value = await getMonacoValue(page, 'source-editor');
-    if (value.length > 0 && firstVisibleTextMs < 0) {
-      firstVisibleTextMs = Date.now() - startedAt;
-      importWasSettledAtFirstVisible = (await readRuntimeReadiness(page)).import.settled;
-    }
-    return value.length > 0;
-  }, { timeout: LARGE_IMPORT_FIRST_VISIBLE_BUDGET_MS }).toBe(true);
+  let firstVisibleReadiness = importStartedReadiness;
+  await expect
+    .poll(
+      async () => {
+        const value = await getMonacoValue(page, 'source-editor');
+        if (value.length > 0 && firstVisibleTextMs < 0) {
+          firstVisibleTextMs = Date.now() - startedAt;
+          firstVisibleReadiness = await readRuntimeReadiness(page);
+        }
+        return value.length > 0;
+      },
+      {
+        timeout: LARGE_IMPORT_FIRST_VISIBLE_BUDGET_MS,
+        message: '5MB source text did not become visible before the import milestone',
+      },
+    )
+    .toBe(true);
 
+  expect(
+    firstVisibleTextMs,
+    `first visible text exceeded budget: ${firstVisibleTextMs}ms > ${LARGE_IMPORT_FIRST_VISIBLE_BUDGET_MS}ms`,
+  ).toBeLessThanOrEqual(LARGE_IMPORT_FIRST_VISIBLE_BUDGET_MS);
+  expect(firstVisibleReadiness.import.settled).toBe(false);
+  expect(firstVisibleReadiness.import.sessionId).toBe(importIdentity.sessionId);
+  expect(firstVisibleReadiness.documentKey).toBe(importIdentity.documentKey);
+  expect(firstVisibleReadiness.import.requestedRevision).toBe(importIdentity.revision);
 
-  expect(firstVisibleTextMs, `first visible text exceeded budget: ${firstVisibleTextMs}ms > ${LARGE_IMPORT_FIRST_VISIBLE_BUDGET_MS}ms`).toBeGreaterThanOrEqual(0);
-  expect(firstVisibleTextMs, `first visible text exceeded budget: ${firstVisibleTextMs}ms > ${LARGE_IMPORT_FIRST_VISIBLE_BUDGET_MS}ms`).toBeLessThanOrEqual(LARGE_IMPORT_FIRST_VISIBLE_BUDGET_MS);
-  expect(importWasSettledAtFirstVisible).toBe(false);
+  // This is a separate contract from first visibility: the full import must
+  // eventually land and leave Monaco/store with the complete JSON payload.
+  let terminalReadiness = firstVisibleReadiness;
+  const terminalPhaseStartedAt = Date.now();
+  try {
+    await expectSettledJsonSource(page, largeJsonFixtureText);
+    terminalReadiness = await readRuntimeReadiness(page);
+  } catch (error) {
+    terminalReadiness = await readRuntimeReadiness(page);
+    throw new Error(
+      `5MB import terminal phase failed after ${Date.now() - terminalPhaseStartedAt}ms; readiness=${JSON.stringify(
+        terminalReadiness,
+      )}; ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
 
-  await expectSettledJsonSource(page, largeJsonFixtureText);
+  const terminalElapsedMs = Date.now() - terminalPhaseStartedAt;
+  expect(
+    terminalElapsedMs,
+    `terminal import phase exceeded budget: ${terminalElapsedMs}ms > ${SOURCE_DROP_BUDGET_MS}ms`,
+  ).toBeLessThanOrEqual(SOURCE_DROP_BUDGET_MS);
+  expect(terminalReadiness.import.settled).toBe(true);
+  expect(terminalReadiness.documentKey).toBe(importIdentity.documentKey);
+  // The controller clears sessionId after terminal cleanup, so completion is
+  // correlated by document/revision rather than by the now-cleared UI field.
+  expect(terminalReadiness.import.requestedRevision).toBeGreaterThanOrEqual(importIdentity.revision);
+  expect(terminalReadiness.import.completedRevision).toBeGreaterThanOrEqual(importIdentity.revision);
 });
 
 test('dropping the 5MB json fixture completes graph progress without remaining streaming', async ({ page }) => {

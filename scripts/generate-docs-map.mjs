@@ -17,6 +17,7 @@ const EXCLUDED_DIRS = new Set([
   'operators',
   'research',
   'snippets',
+  'template',
 ]);
 const EXCLUDED_FILES = new Set(['AGENTS.md', 'CLAUDE.md', 'docs_map.md']);
 
@@ -147,7 +148,7 @@ function buildMapEntries() {
   const headingLine = [
     '# Treease docs map',
     '',
-    'This file is generated from `docs/**/*.md` and `docs/**/*.mdx` headings to help agents navigate the documentation tree.',
+    'This file is generated from `docs/**/*.md` and `docs/**/*.mdx` headings, excluding the private `docs/template/` conversation templates, to help agents navigate the documentation tree.',
     'Do not edit it by hand; run `pnpm docs:map:gen`.',
     '',
   ];

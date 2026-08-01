@@ -893,6 +893,55 @@ describe('editor-full-edit-controller', () => {
     await importing;
   });
 
+  it('lands streamed terminal completion for the same import session and revision', async () => {
+    const terminal = createDeferred<any>();
+    let capturedInput: any = null;
+    mockStartReadableDocumentJobSessionForGraph.mockImplementationOnce((input: any) => {
+      capturedInput = input;
+      return {
+        sessionId: input.sessionId,
+        documentKey: input.documentKey,
+        language: input.language,
+        revision: input.revision,
+        totalBytes: input.totalBytes ?? 0,
+        chunkSize: input.chunkSize,
+        streamRunId: input.sessionId,
+        jobHandle: 2,
+        result: terminal.promise,
+        batches: async function* () {},
+        cancel: vi.fn(async () => {}),
+      };
+    });
+
+    const options = createOptions();
+    const controller = createEditorFullEditController(options as any);
+    const importing = controller.importStream(createReadableFile(['{"a":1}']) as any, 'json' as any, 'drop-file');
+    await vi.waitFor(() => expect(capturedInput).not.toBeNull());
+
+    const identity = {
+      sessionId: capturedInput.sessionId,
+      documentKey: capturedInput.documentKey,
+      revision: capturedInput.revision,
+    };
+    await capturedInput.onChunk(new TextEncoder().encode('{"a":1}'));
+    expect(options.setSourceText).toHaveBeenCalledWith('{"a":1}');
+
+    terminal.resolve({
+      status: 'snapshotReady',
+      snapshotId: 11,
+      analysis: null,
+      batch: { requestSeq: 1, events: [], terminal: { type: 'completed' } },
+      jobHandle: 2,
+    });
+    await importing;
+
+    expect(mockClearFullEditDocumentJobSession).toHaveBeenCalledWith(
+      identity.sessionId,
+      expect.objectContaining(identity),
+    );
+    expect(editorStore.get().fullEditUiState).toMatchObject({ active: false, phase: 'idle' });
+  });
+
   it('applies graph analysis after a streamed file import completes', async () => {
     mockStartReadableDocumentJobSessionForGraph.mockImplementationOnce((input: any) => ({
       sessionId: input.sessionId,

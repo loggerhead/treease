@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const docsDir = path.join(repoRoot, 'docs');
 
-const excludedDocDirs = new Set(['adr', 'archive', 'generated', 'operators', 'research']);
+const excludedDocDirs = new Set(['adr', 'archive', 'generated', 'operators', 'research', 'template']);
 const excludedDocFiles = new Set(['docs_map.md']);
 const excludedRootFiles = new Set(['AGENTS.md', 'CLAUDE.md', 'README.md', 'README.zh.md', 'guess-failure.md']);
 
