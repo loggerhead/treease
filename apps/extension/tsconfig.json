@@ -11,7 +11,8 @@
     "skipLibCheck": true,
     "baseUrl": ".",
     "paths": {
-      "@core-wasm/*": ["../../packages/core/wasm/*"]
+      "@core-wasm/*": ["../../packages/core/wasm/*"],
+      "@treease-web/*": ["../web/src/*"]
     }
   },
   "include": ["src/**/*.ts", "test/**/*.ts", "vite.config.ts"]

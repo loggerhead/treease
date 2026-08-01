@@ -56,12 +56,15 @@ pub fn divide_scalars(
     if lhs_sem_type == Some(SemType::Int) && rhs_sem_type == Some(SemType::Int) {
         let lhs_parsed = parse_int64_with_fmt(&lhs.value)?;
         let rhs_parsed = parse_int64(&rhs.value)?;
-        if rhs_parsed != 0 && lhs_parsed.value % rhs_parsed == 0 {
+        if rhs_parsed != 0 && lhs_parsed.value.checked_rem(rhs_parsed) == Some(0) {
+            let quotient = lhs_parsed.value.checked_div(rhs_parsed);
+            if let Some(quotient) = quotient {
             target.kind = NodeKind::Scalar;
             target.sem_type = lhs.resolved_sem_type();
             target.tag.clone_from(&lhs.tag);
-            target.value = format_int64_with_fmt(&lhs_parsed.fmt, lhs_parsed.value / rhs_parsed)?;
+            target.value = format_int64_with_fmt(&lhs_parsed.fmt, quotient)?;
             return Ok(());
+            }
         }
     }
 

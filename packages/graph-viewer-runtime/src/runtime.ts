@@ -2,7 +2,7 @@ import { defaultGraphViewerRenderConfig, type GraphViewerRenderConfig } from './
 import { renderGraphEdges, renderGraphNode } from './render-kernel';
 import { createGraphPointerController } from './pointer-controller';
 import type { GraphCell, GraphCellKind, GraphEdge, GraphNode } from './types';
-import { loadGraphViewerRuntime, type LoadedGraphRuntime } from './runtime-loader';
+import { loadGraphViewerRuntime, type LeaferNode, type LeaferRuntimeModules, type LoadedGraphRuntime } from './runtime-loader';
 import { createGraphViewportController } from './viewport-controller';
 
 export type GraphData = { nodes: GraphNode[]; edges: GraphEdge[] };
@@ -14,7 +14,7 @@ export type GraphViewerInteraction = {
   onRuntimeReady?: (runtime: GraphRuntimeHandle) => void;
   onError?: (error: unknown) => void;
 };
-export type GraphRuntimeHandle = { app: unknown; modules: unknown };
+export type GraphRuntimeHandle = { app: LeaferNode; modules: LeaferRuntimeModules };
 export type GraphViewerRuntimeOptions = {
   host: HTMLElement;
   config?: GraphViewerRenderConfig;
@@ -23,26 +23,16 @@ export type GraphViewerRuntimeOptions = {
   reduceDelta?: (current: GraphData, delta: RawGraphDelta) => GraphData;
 };
 
-type LeaferModules = {
-  App: new (config: Record<string, unknown>) => any;
-  Leafer: new (config: Record<string, unknown>) => any;
-  Box: new (config: Record<string, unknown>) => any;
-  Text: new (config: Record<string, unknown>) => any;
-  Pen: new () => any;
-  PointerEvent?: { TAP?: string; CLICK?: string; DOWN?: string; MOVE?: string; UP?: string };
-  MoveEvent?: { BEFORE_MOVE?: string; MOVE?: string };
-};
-
 /** Framework-neutral Leafer graph surface; hosts supply only interaction policy. */
 export class GraphViewerRuntime {
-  private app: any | null = null;
-  private edgeLayer: any | null = null;
-  private nodeLayer: any | null = null;
-  private modules: LeaferModules | null = null;
+  private app: LeaferNode | null = null;
+  private edgeLayer: LeaferNode | null = null;
+  private nodeLayer: LeaferNode | null = null;
+  private modules: LeaferRuntimeModules | null = null;
   private tableRuntimes: Array<{ destroy?: () => void }> = [];
-  private highlightedTargets: any[] = [];
-  private nodeBoxes = new Map<number, any>();
-  private workspaceProbeTarget: any | null = null;
+  private highlightedTargets: LeaferNode[] = [];
+  private nodeBoxes = new Map<number, LeaferNode>();
+  private workspaceProbeTarget: LeaferNode | null = null;
   private graph: GraphData | null = null;
   private lastTargetActivationAt = 0;
   private loadedRuntime: LoadedGraphRuntime | null = null;
@@ -90,7 +80,7 @@ export class GraphViewerRuntime {
       unregisterCellBox: () => {},
       registerRowBox: () => {},
       unregisterRowBox: () => {},
-      registerClickTarget: (target: any, cell: GraphCell, kind: GraphCellKind, nodeKind?: GraphData['nodes'][number]['kind']) => {
+      registerClickTarget: (target: LeaferNode, cell: GraphCell, kind: GraphCellKind, nodeKind?: GraphData['nodes'][number]['kind']) => {
         if (!this.workspaceProbeTarget && (nodeKind === 'object' || nodeKind === 'table')) this.workspaceProbeTarget = target;
         pointerController.bindPointerClick(target, () => {
           this.lastTargetActivationAt = Date.now();
@@ -114,7 +104,7 @@ export class GraphViewerRuntime {
       const result = renderGraphNode({
         node,
         drawContext,
-        registerMetaClickTarget: (target: any, cell: GraphCell) => {
+        registerMetaClickTarget: (target: LeaferNode, cell: GraphCell) => {
           pointerController.bindPointerClick(target, () => {
             this.lastTargetActivationAt = Date.now();
             this.options.interaction?.onActivate?.({ path: cell.path, nodeKind: node.kind, target: 'cell' });
@@ -167,9 +157,12 @@ export class GraphViewerRuntime {
   private async ensureRuntime(): Promise<void> {
     if (this.app || this.disposed) return;
     const loaded = await loadGraphViewerRuntime({ host: this.host, preferApp: false });
-    if (this.disposed) return;
+    if (this.disposed) {
+      loaded.destroy();
+      return;
+    }
     this.loadedRuntime = loaded;
-    this.modules = loaded.modules as LeaferModules;
+    this.modules = loaded.modules;
     this.app = loaded.app;
     this.viewportController = createGraphViewportController({
       getContainer: () => this.host as HTMLDivElement,
@@ -216,12 +209,17 @@ export class GraphViewerRuntime {
     return true;
   }
 
-  highlight(target: GraphHighlightTarget | any): void {
+  highlight(target: GraphHighlightTarget | LeaferNode): void {
     for (const previous of this.highlightedTargets) {
       previous.selected = false;
       previous.selectedStyle = undefined;
     }
-    const renderTarget = typeof target?.renderHandle === 'number' ? this.nodeBoxes.get(target.renderHandle) : target;
+    const renderTarget: LeaferNode | undefined =
+      target && 'add' in target
+        ? target
+        : typeof target?.renderHandle === 'number'
+          ? this.nodeBoxes.get(target.renderHandle)
+          : undefined;
     if (!renderTarget) return;
     this.highlightedTargets = [renderTarget];
     renderTarget.selectedStyle = { stroke: '#84a300', strokeWidth: 2, fill: '#f8ffe1' };
@@ -255,7 +253,9 @@ export class GraphViewerRuntime {
   private publishWorkspaceProbe(): void {
     const target = this.workspaceProbeTarget as { getWorldPointByBox?: (point: { x: number; y: number }) => { x?: number; y?: number } | null; width?: number; height?: number } | null;
     const world = target?.getWorldPointByBox?.({ x: Number(target.width ?? 0) / 2, y: Number(target.height ?? 0) / 2 });
-    const client = world ? this.app?.getClientPointByWorld?.(world) : null;
+    const client = world && Number.isFinite(world.x) && Number.isFinite(world.y)
+      ? this.app?.getClientPointByWorld?.({ x: Number(world.x), y: Number(world.y) })
+      : null;
     const bounds = this.host.getBoundingClientRect();
     if (!client || !Number.isFinite(client.x) || !Number.isFinite(client.y) || bounds.width <= 0 || bounds.height <= 0) return;
     this.host.dataset.treeaseWorkspaceProbe = JSON.stringify({ x: Number(client.x) - bounds.left, y: Number(client.y) - bounds.top });

@@ -1460,14 +1460,28 @@
     setActiveTabOrigin(payload.origin ?? 'import');
   }
 
-  export function replaceDocumentFromFile(payload: { tabId: string; text: string; languageId: SupportedEditorLanguageId }): void {
+  export async function replaceDocumentFromFile(payload: { tabId: string; text: string; languageId: SupportedEditorLanguageId }): Promise<boolean> {
     const tab = getWorkspaceState().tabsById[payload.tabId];
-    if (!tab || !monaco) return;
-    const targetModel = tabRuntime.getOrCreate(tab);
-    monaco.editor.setModelLanguage(targetModel, payload.languageId);
-    targetModel.setValue(payload.text);
-    userInputByTabId.set(tab.id, true);
-    updateWorkspaceTab(tab.id, { origin: 'import', languageId: payload.languageId, sourceText: payload.text });
+    if (!tab || !monaco || !tabRuntime) return false;
+    setTabOperationLanguage(payload.tabId, payload.languageId);
+    const current = getWorkspaceState().tabsById[payload.tabId];
+    const targetModel = current ? tabRuntime.getOrCreate(current) : null;
+    if (!current || !targetModel) return false;
+    return replaceWholeDocumentTextForTarget(
+      {
+        tabId: payload.tabId,
+        model: targetModel,
+        documentKey: current.documentKey,
+        revision: current.revision,
+        languageId: current.languageId,
+      },
+      payload.text,
+      {
+        sourceWritebackPolicy: 'intake',
+        formatSourceOnClose: true,
+        markUserInput: true,
+      },
+    );
   }
 
   export function renameDocument(tabId: string, name: string): void {

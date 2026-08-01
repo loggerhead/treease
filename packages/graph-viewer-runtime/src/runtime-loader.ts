@@ -1,6 +1,49 @@
+export type LeaferView = {
+  parentElement?: Element | null;
+  addEventListener?: (type: string, listener: EventListenerOrEventListenerObject, options?: boolean) => void;
+  removeEventListener?: (type: string, listener: EventListenerOrEventListenerObject, options?: boolean) => void;
+};
+
+export type LeaferNode = {
+  zoomLayer?: LeaferNode;
+  view?: LeaferView;
+  x?: number;
+  y?: number;
+  renderHandle?: number;
+  add: (child: unknown) => void;
+  removeAll: (destroy?: boolean) => void;
+  destroy?: () => void;
+  resize?: (size: { width: number; height: number }) => void;
+  update?: () => void;
+  forceRender?: () => void;
+  getWorldPointByClient?: (point: { x: number; y: number }) => { x: number; y: number } | null;
+  getClientPointByWorld?: (point: { x: number; y: number }) => { x: number; y: number } | null;
+  on?: (event: string, callback: (event?: unknown) => void) => void;
+  selected?: boolean;
+  selectedStyle?: unknown;
+};
+
+type LeaferConstructor = new (config: Record<string, unknown>) => LeaferNode;
+type LeaferPen = {
+  setStyle: (style: { stroke: string; strokeWidth: number }) => void;
+  moveTo: (x: number, y: number) => void;
+  bezierCurveTo: (c1x: number, c1y: number, c2x: number, c2y: number, toX: number, toY: number) => void;
+  remove?: () => void;
+  destroy?: () => void;
+};
+type LeaferEventNames = Record<string, string | undefined>;
+
 export type LeaferRuntimeModules = {
-  App?: any; Leafer: any; Box: any; Text: any; Pen: any;
-  MoveEvent?: any; ZoomEvent?: any; DragEvent?: any; LeaferEvent?: any; PointerEvent?: any;
+  App?: LeaferConstructor;
+  Leafer: LeaferConstructor;
+  Box: LeaferConstructor;
+  Text: LeaferConstructor;
+  Pen: new () => LeaferPen;
+  MoveEvent?: LeaferEventNames;
+  ZoomEvent?: LeaferEventNames;
+  DragEvent?: LeaferEventNames;
+  LeaferEvent?: LeaferEventNames;
+  PointerEvent?: LeaferEventNames;
 };
 
 export type GraphRuntimeLoaderOptions = {
@@ -8,13 +51,13 @@ export type GraphRuntimeLoaderOptions = {
   preload?: () => Promise<void>;
   preferApp?: boolean;
   leaferOptions?: Record<string, unknown>;
-  onResize?: (app: any) => void;
+  onResize?: (app: LeaferNode) => void;
 };
 
 export type LoadedGraphRuntime = {
-  app: any;
+  app: LeaferNode;
   modules: LeaferRuntimeModules;
-  setResizeHandler: (handler: ((app: any) => void) | undefined) => void;
+  setResizeHandler: (handler: ((app: LeaferNode) => void) | undefined) => void;
   destroy: () => void;
 };
 

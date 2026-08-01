@@ -5,11 +5,13 @@ import { defineConfig } from 'vitest/config';
 
 const appDir = path.dirname(fileURLToPath(import.meta.url));
 const coreWasmDir = path.resolve(appDir, '../../packages/core/wasm');
+const webSourceDir = path.resolve(appDir, '../web/src');
 
 export default defineConfig({
   resolve: {
     alias: [
       { find: /^@core-wasm(\/.*)?$/, replacement: `${coreWasmDir}$1` },
+      { find: /^@treease-web\/(.*)$/, replacement: `${webSourceDir}/$1` },
     ],
   },
   build: {

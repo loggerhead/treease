@@ -118,6 +118,7 @@
   } from '../../lib/share/share-workspace-lifecycle';
   import { workspaceSessionFromWorkspace } from '../../lib/workspace-host/workspace-session';
   import type { WorkspaceCommand, WorkspaceSession } from '../../lib/workspace-host';
+  import { createViewRuntimeOperation } from '../../lib/guards/view-runtime-operation';
 
   const LARGE_FILE_PROCESSING_THRESHOLD_BYTES = 256 * 1024;
 
@@ -617,6 +618,20 @@
     return workspace.tabsById[workspace.activeTabId] ?? null;
   }
 
+  function createActivePreviewOperation() {
+    const context = () => {
+      const workspace = getWorkspaceState();
+      const tab = workspace.tabsById[workspace.activeTabId];
+      return {
+        documentKey: tab?.documentKey ?? '',
+        revision: tab?.revision ?? -1,
+        languageId: tab?.languageId ?? '',
+        sessionId: workspace.activeTabId,
+      };
+    };
+    return createViewRuntimeOperation({ captured: context(), getCurrent: context });
+  }
+
   async function openWorkspaceFile(file: Awaited<ReturnType<Awaited<typeof workspaceHost>['openFile']>>): Promise<void> {
     if (!file) return;
     const text = await file.text();
@@ -693,7 +708,7 @@
         };
         return;
       }
-      editorRef?.replaceDocumentFromFile({ tabId, text: opened.text, languageId: tab.languageId });
+      if (!(await editorRef?.replaceDocumentFromFile({ tabId, text: opened.text, languageId: tab.languageId }))) return;
       updateWorkspaceTab(tabId, { sourceText: opened.text, savedText: opened.text });
       toast.info(`Reloaded external changes from ${tab.fileLinkedDocument.name}`);
     });
@@ -717,10 +732,10 @@
     toast.success(`Overwrote external changes in ${tab.fileLinkedDocument.name}`);
   }
 
-  function discardLocalFileChange(): void {
+  async function discardLocalFileChange(): Promise<void> {
     const conflict = externalFileConflict;
     if (!conflict) return;
-    editorRef?.replaceDocumentFromFile({ tabId: conflict.tabId, text: conflict.externalText, languageId: conflict.languageId });
+    if (!(await editorRef?.replaceDocumentFromFile({ tabId: conflict.tabId, text: conflict.externalText, languageId: conflict.languageId }))) return;
     updateWorkspaceTab(conflict.tabId, { sourceText: conflict.externalText, savedText: conflict.externalText });
     externalFileConflict = null;
     toast.info(`Reloaded ${conflict.name}`);
@@ -807,6 +822,7 @@
 
   async function handleSubmitAi(instruction: string) {
     const sourceText = getActiveDocumentText();
+    const operation = createActivePreviewOperation();
     aiInstruction = instruction;
     aiBusy = true;
     aiError = '';
@@ -820,26 +836,31 @@
 
     try {
       const currentPath = get(activeTempModel).treePath;
-      const suggestion = await suggestYq({
+      const suggestion = await operation.step(() => suggestYq({
         instruction,
         editorTextSnapshot: sourceText,
         treePathSet: currentPath.length ? [serializePath(currentPath)] : undefined,
-      });
-      const result = await runYqPreview({
+      }));
+      if (!suggestion) return;
+      const result = await operation.step(() => runYqPreview({
         expression: suggestion.expression,
         text: sourceText,
         language: editorRef?.getActiveLanguage() ?? $languageIdStore,
         formatting: $settings.formatting,
         enableNest: $settings.parser.enableNest,
         callWorker: callSharedWasmWorker,
-      });
+      }));
+      if (!result) return;
       if ('error' in result) {
         aiError = result.error;
         return;
       }
+      if (!operation.isCurrent()) return;
       await showViewerTextPreviewForRevision(result.result, result.previewLanguage, $editorRevision);
+      if (!operation.isCurrent()) return;
       aiSuccess = suggestion.expression;
     } catch (error) {
+      if (!operation.isCurrent()) return;
       if (error instanceof TreeaseServerError && error.code === 'quota_exhausted') {
         aiQuotaExhausted = true;
         aiError = error.message;
@@ -920,6 +941,7 @@
   async function handleSubmitStructGeneration(): Promise<void> {
     const sourceText = getActiveDocumentText() || editorRef?.getActiveText() || '';
     const sourceLanguage = editorRef?.getActiveLanguage() ?? $languageIdStore;
+    const operation = createActivePreviewOperation();
     if (!sourceText.trim()) {
       structGenerationError = 'The active document is empty.';
       return;
@@ -928,20 +950,23 @@
     structGenerationBusy = true;
     structGenerationError = '';
     try {
-      const sourceJson = await prepareStructGenerationSource({
+      const sourceJson = await operation.step(() => prepareStructGenerationSource({
         text: sourceText,
         language: sourceLanguage,
         formatting: $settings.formatting,
         callWorker: callSharedWasmWorker,
-      });
-      const result = await generateStruct({
+      }));
+      if (!sourceJson) return;
+      const result = await operation.step(() => generateStruct({
         sourceJson,
         targetLanguage: structGenerationTarget,
         rootName: structGenerationRootName.trim() || 'Root',
-      });
+      }));
+      if (!result || !operation.isCurrent()) return;
       await showViewerTextPreview(result.code, rightEditorLanguageForStruct(result.language));
+      if (!operation.isCurrent()) return;
     } catch (error) {
-      structGenerationError = error instanceof Error ? error.message : 'Unable to generate the structure definition.';
+      if (operation.isCurrent()) structGenerationError = error instanceof Error ? error.message : 'Unable to generate the structure definition.';
     } finally {
       structGenerationBusy = false;
     }

@@ -68,6 +68,12 @@ type PreparedWorkspace = {
   chain: ColumnNavigatorPaneState[];
 };
 
+class SnapshotNotReadyError extends Error {
+  constructor() {
+    super('Snapshot is not ready for Column Navigator reads.');
+  }
+}
+
 function clonePath(path: PathSeg[]): PathSeg[] {
   return path.map((segment) => ({ ...segment }));
 }
@@ -180,7 +186,8 @@ export function createColumnNavigatorController(deps: ColumnNavigatorControllerD
     if (cached?.signature === signature) return cached.promise;
 
     const promise = queryPathValue({ documentKey: deps.getDocumentKey(), snapshotId, path }).then((pathValue) => {
-      if (pathValue.status !== 'ready' || !pathValue.data) return null;
+      if (pathValue.status === 'snapshotNotReady') throw new SnapshotNotReadyError();
+      if (!pathValue.data) return null;
       const content: ColumnNavigatorContentState = {
         tabId: `column-navigator-content:${pathKey}`,
         tabName: formatColumnNavigatorPath(path),
@@ -206,7 +213,10 @@ export function createColumnNavigatorController(deps: ColumnNavigatorControllerD
     if (cached?.signature === signature) return cached.promise;
 
     const promise = queryDirectChildren({ documentKey: deps.getDocumentKey(), snapshotId, path })
-      .then((result) => result.status === 'ready' ? buildColumnNavigatorDirectItems(path, result.data) : [])
+      .then((result) => {
+        if (result.status === 'snapshotNotReady') throw new SnapshotNotReadyError();
+        return buildColumnNavigatorDirectItems(path, result.data);
+      })
       .catch((error) => {
         if (directChildrenCache.get(pathKey)?.promise === promise) directChildrenCache.delete(pathKey);
         throw error;
@@ -389,6 +399,11 @@ export function createColumnNavigatorController(deps: ColumnNavigatorControllerD
         emitState();
       },
     });
+    if (result.status === 'failed' && result.error instanceof SnapshotNotReadyError) {
+      // Retain the last materialized panes in their loading state. A later
+      // snapshot refresh owns the retry; not-ready is never an empty column.
+      return;
+    }
     if (result.status === 'failed' && navigationOperation === operation) {
       isLoading = false;
       emitState();

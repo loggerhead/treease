@@ -1,6 +1,11 @@
 import wasmUrl from '@core-wasm/pkg/core.wasm?url';
 import { advanceDocumentJob, initWasm, startDocumentJob } from '@core-wasm/index';
-import { applyProjectionDelta, createProjectionState, projectionSnapshot, projectionToRawGraphDelta } from './projection-state';
+import {
+  applyProjectionGraphDelta,
+  createProjectionGraphState,
+  projectionGraphSnapshot,
+  projectionToRawGraphDelta,
+} from '@treease-web/shared/graph-projection-state';
 import type { GraphData, StructuredLanguage } from '../shared/types';
 
 type Request = { id: number; text: string; language: StructuredLanguage };
@@ -20,7 +25,7 @@ const documentJobSettings = {
 async function build(text: string, language: StructuredLanguage): Promise<GraphData> {
   if (!wasmReady) wasmReady = initWasm({ wasmURL: wasmUrl });
   await wasmReady;
-  const stream = createProjectionState();
+  const stream = createProjectionGraphState();
   const started = await startDocumentJob({
     documentKey: `extension-${crypto.randomUUID()}`,
     language,
@@ -33,7 +38,7 @@ async function build(text: string, language: StructuredLanguage): Promise<GraphD
     for (const event of batch.events) {
       if (event.type !== 'projectionDelta') continue;
       const delta = projectionToRawGraphDelta({ clear: event.clear, graphData: event.graphData ?? null });
-      if (delta) applyProjectionDelta(stream, delta);
+      if (delta) applyProjectionGraphDelta(stream, delta);
     }
     const parseFailure = batch.events.find((entry) => entry.type === 'parseFailed');
     if (parseFailure) throw new Error('Treease Core could not parse this document.');
@@ -41,7 +46,7 @@ async function build(text: string, language: StructuredLanguage): Promise<GraphD
   await process(started.batch);
   await process(await advanceDocumentJob({ jobHandle: started.jobHandle, kind: 'textChunk', text }));
   await process(await advanceDocumentJob({ jobHandle: started.jobHandle, kind: 'close' }));
-  const graph = projectionSnapshot(stream);
+  const graph = projectionGraphSnapshot(stream);
   if (graph.nodes.length === 0) throw new Error('Treease Core produced no graph projection.');
   return { nodes: graph.nodes, edges: graph.edges, coreGraphAvailable: true } as GraphData;
 }

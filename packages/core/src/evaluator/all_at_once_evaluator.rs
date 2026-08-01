@@ -1492,21 +1492,30 @@ fn is_upper_case_operation(operation_text: &str) -> bool {
 
 fn add_numbers(lhs: Numeric, rhs: Numeric) -> Numeric {
     match (lhs, rhs) {
-        (Numeric::Int(lhs), Numeric::Int(rhs)) => Numeric::Int(lhs + rhs),
+        (Numeric::Int(lhs), Numeric::Int(rhs)) => lhs
+            .checked_add(rhs)
+            .map(Numeric::Int)
+            .unwrap_or_else(|| Numeric::Float(lhs as f64 + rhs as f64)),
         (lhs, rhs) => Numeric::Float(lhs.as_f64() + rhs.as_f64()),
     }
 }
 
 fn subtract_numbers(lhs: Numeric, rhs: Numeric) -> Numeric {
     match (lhs, rhs) {
-        (Numeric::Int(lhs), Numeric::Int(rhs)) => Numeric::Int(lhs - rhs),
+        (Numeric::Int(lhs), Numeric::Int(rhs)) => lhs
+            .checked_sub(rhs)
+            .map(Numeric::Int)
+            .unwrap_or_else(|| Numeric::Float(lhs as f64 - rhs as f64)),
         (lhs, rhs) => Numeric::Float(lhs.as_f64() - rhs.as_f64()),
     }
 }
 
 fn multiply_numbers(lhs: Numeric, rhs: Numeric) -> Numeric {
     match (lhs, rhs) {
-        (Numeric::Int(lhs), Numeric::Int(rhs)) => Numeric::Int(lhs * rhs),
+        (Numeric::Int(lhs), Numeric::Int(rhs)) => lhs
+            .checked_mul(rhs)
+            .map(Numeric::Int)
+            .unwrap_or_else(|| Numeric::Float(lhs as f64 * rhs as f64)),
         (lhs, rhs) => Numeric::Float(lhs.as_f64() * rhs.as_f64()),
     }
 }
@@ -1516,7 +1525,10 @@ fn divide_numbers(lhs: Numeric, rhs: Numeric) -> Result<Numeric, EvaluationError
         return Err(EvaluationError::DivisionByZero);
     }
     match (lhs, rhs) {
-        (Numeric::Int(lhs), Numeric::Int(rhs)) if lhs % rhs == 0 => Ok(Numeric::Int(lhs / rhs)),
+        (Numeric::Int(lhs), Numeric::Int(rhs)) if lhs.checked_rem(rhs) == Some(0) => lhs
+            .checked_div(rhs)
+            .map(Numeric::Int)
+            .ok_or(EvaluationError::DivisionByZero),
         (lhs, rhs) => Ok(Numeric::Float(lhs.as_f64() / rhs.as_f64())),
     }
 }
@@ -1526,7 +1538,10 @@ fn modulo_numbers(lhs: Numeric, rhs: Numeric) -> Result<Numeric, EvaluationError
         return Err(EvaluationError::DivisionByZero);
     }
     Ok(match (lhs, rhs) {
-        (Numeric::Int(lhs), Numeric::Int(rhs)) => Numeric::Int(lhs % rhs),
+        (Numeric::Int(lhs), Numeric::Int(rhs)) => lhs
+            .checked_rem(rhs)
+            .map(Numeric::Int)
+            .unwrap_or_else(|| Numeric::Float(lhs as f64 % rhs as f64)),
         (lhs, rhs) => Numeric::Float(lhs.as_f64() % rhs.as_f64()),
     })
 }
@@ -1987,6 +2002,15 @@ mod tests {
             .expect("evaluation should succeed");
 
         assert_eq!(value, Value::Number(Numeric::Int(7)));
+    }
+
+    #[test]
+    fn numeric_extremes_promote_to_float_instead_of_panicking() {
+        assert!(matches!(add_numbers(Numeric::Int(i64::MAX), Numeric::Int(1)), Numeric::Float(_)));
+        assert!(matches!(subtract_numbers(Numeric::Int(i64::MIN), Numeric::Int(1)), Numeric::Float(_)));
+        assert!(matches!(multiply_numbers(Numeric::Int(i64::MAX), Numeric::Int(2)), Numeric::Float(_)));
+        assert!(matches!(divide_numbers(Numeric::Int(i64::MIN), Numeric::Int(-1)), Ok(Numeric::Float(_))));
+        assert!(matches!(modulo_numbers(Numeric::Int(i64::MIN), Numeric::Int(-1)), Ok(Numeric::Float(_))));
     }
 
     #[test]
