@@ -1349,8 +1349,11 @@
     tabindex="0"
     role="application"
     aria-label="Graph"
+    data-testid="graph-viewer-dropzone"
     on:pointerdown={handleGraphPointerDown}
     on:keydown={handleGraphKeydown}
+    on:drop={handleFileDrop}
+    on:dragover={handleFileDragOver}
   >
     <!--
       Keep the graph decoration outside Leafer's scene. This node is created once

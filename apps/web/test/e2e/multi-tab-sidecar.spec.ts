@@ -64,6 +64,7 @@ test('left editor tabs preserve text and mirror only the active tab into primary
   await expect.poll(async () => (await leftTabIds(page)).length, { timeout: 5_000 }).toBe(2);
   const [, secondTabId] = await leftTabIds(page);
   await waitForActiveLeftTabReady(page, secondTabId);
+  await expect.poll(async () => getMonacoValue(page, 'source-editor'), { timeout: 5_000 }).toBe('');
 
   await setEditorContent(page, {
     language: 'yaml',
@@ -89,6 +90,24 @@ test('left editor tabs preserve text and mirror only the active tab into primary
   await expect
     .poll(async () => (await readEditorWorkspace(page)).tabsById[firstTabId].languageId, { timeout: 5_000 })
     .toBe('json');
+});
+
+test('tab rename keeps the display width and exposes active editing state', async ({ page }) => {
+  const [tabId] = await leftTabIds(page);
+  const tab = page.locator(`[data-testid="editor-tab"][data-tab-id="${tabId}"]`);
+  const before = await tab.boundingBox();
+  expect(before).not.toBeNull();
+
+  await page.getByTestId(`tab-open-${tabId}`).dblclick();
+  const renameInput = page.getByTestId(`tab-rename-${tabId}`);
+  await expect(renameInput).toBeVisible();
+  await expect(tab).toHaveAttribute('data-active', 'true');
+  await expect(tab).toHaveAttribute('data-renaming', 'true');
+
+  const after = await tab.boundingBox();
+  expect(after).not.toBeNull();
+  expect(after?.width).toBeCloseTo(before?.width ?? 0, 0);
+  await renameInput.press('Escape');
 });
 
 test('immediately closing the active new tab keeps header, editor, and authority on its successor', async ({ page }) => {

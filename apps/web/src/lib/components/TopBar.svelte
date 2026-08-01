@@ -21,6 +21,7 @@
   export let onAddTab: () => void = () => {}
   export let onCloseTab: (id: string) => void = () => {}
   export let onActivateTab: (id: string) => void = () => {}
+  export let onRenameTab: (id: string, name: string) => void = () => {}
   export let formatOptions: Array<{ id: string; label: string; extensions: string[] }> = []
   export let onRequestImportFile: (payload: { sourceFormat: string; targetFormat: string; accept: string[] }) => Promise<void> = async () => {}
   export let onImportFileStream: (payload: { file: File; sourceFormat: string; targetFormat: string; fileName: string }) => void = () => {}
@@ -40,6 +41,8 @@
   let importDropActive = false
   let importAnchor: HTMLDivElement | null = null
   let exportAnchor: HTMLDivElement | null = null
+  let renamingTabId: string | null = null
+  let renamedTabName = ''
 
   const toggleImportPanel = () => {
     importOpen = !importOpen
@@ -49,6 +52,29 @@
   const toggleExportPanel = () => {
     exportOpen = !exportOpen
     importOpen = false
+  }
+
+  const beginTabRename = (tab: { id: string; name: string }) => {
+    onActivateTab(tab.id)
+    renamingTabId = tab.id
+    renamedTabName = tab.name
+  }
+
+  const commitTabRename = (tab: { id: string; name: string }) => {
+    if (renamingTabId !== tab.id) return
+    const name = renamedTabName.trim()
+    if (name && name !== tab.name) onRenameTab(tab.id, name)
+    renamingTabId = null
+    renamedTabName = ''
+  }
+
+  const cancelTabRename = () => {
+    renamingTabId = null
+    renamedTabName = ''
+  }
+
+  function focusRenameInput(node: HTMLInputElement) {
+    queueMicrotask(() => node.focus())
   }
 
   export function openImportPanel(): void {
@@ -139,22 +165,48 @@
       <ButtonGroup.Root class="items-center gap-1.5 overflow-x-auto" data-testid="editor-tab-strip">
         {#each tabs as tab (tab.id)}
           <ButtonGroup.Root
-            class={`inline-flex items-center gap-1 rounded-[6px] border border-transparent bg-transparent px-1.5 py-0.5 text-[var(--text-muted)] transition-[background-color,border-color,color,box-shadow] duration-150 ease-out ${
-              tab.id === activeTabId ? 'border-[var(--border-strong)] bg-[var(--panel-bg)] text-[var(--text-primary)] shadow-[0_1px_2px_rgba(15,23,42,0.04)]' : 'hover:bg-[var(--panel-bg-alt)] hover:text-[var(--text-primary)]'
+            class={`inline-flex items-center gap-1 rounded-[6px] border bg-transparent px-1.5 py-0.5 text-[var(--text-muted)] transition-[background-color,border-color,color,box-shadow] duration-150 ease-out ${
+              tab.id === activeTabId
+                ? 'border-[var(--accent)]/45 bg-[var(--accent)]/[0.08] text-[var(--text-primary)] shadow-[0_1px_2px_rgba(15,23,42,0.06)]'
+                : 'border-transparent hover:bg-[var(--panel-bg-alt)] hover:text-[var(--text-primary)]'
+            } ${
+              renamingTabId === tab.id ? 'border-[var(--accent)] bg-[var(--accent)]/[0.12] ring-2 ring-[var(--accent)]/20' : ''
             }`}
             data-testid="editor-tab"
             data-tab-id={tab.id}
             data-active={tab.id === activeTabId}
+            data-renaming={renamingTabId === tab.id}
           >
-            <button
-              class="text-[11px]"
-              aria-label={`Open ${tab.name}`}
-              title={`Open ${tab.name}`}
-              data-testid={`tab-open-${tab.id}`}
-              on:click={() => onActivateTab(tab.id)}
-            >
-              {showTabDirty && tab.dirty ? `${tab.name} •` : tab.name}
-            </button>
+            {#if renamingTabId === tab.id}
+              <div class="relative min-w-0">
+                <span class="invisible whitespace-pre text-[11px]">
+                  {showTabDirty && tab.dirty ? `${tab.name} •` : tab.name}
+                </span>
+                <input
+                  class="absolute inset-0 min-w-0 w-full bg-transparent p-0 text-[11px] outline-none placeholder:text-[var(--text-muted)]"
+                  aria-label={`Rename ${tab.name}`}
+                  data-testid={`tab-rename-${tab.id}`}
+                  bind:value={renamedTabName}
+                  use:focusRenameInput
+                  on:blur={() => commitTabRename(tab)}
+                  on:keydown={(event) => {
+                    if (event.key === 'Enter') commitTabRename(tab)
+                    if (event.key === 'Escape') cancelTabRename()
+                  }}
+                />
+              </div>
+            {:else}
+              <button
+                class="text-[11px] outline-none focus-visible:underline focus-visible:decoration-[var(--accent)] focus-visible:decoration-2 focus-visible:underline-offset-2"
+                aria-label={`Open ${tab.name}`}
+                title={`Open ${tab.name}`}
+                data-testid={`tab-open-${tab.id}`}
+                on:click={() => onActivateTab(tab.id)}
+                on:dblclick|stopPropagation={() => beginTabRename(tab)}
+              >
+                {showTabDirty && tab.dirty ? `${tab.name} •` : tab.name}
+              </button>
+            {/if}
             <button
               class="inline-flex items-center justify-center p-0.5"
               aria-label={`Close ${tab.name}`}

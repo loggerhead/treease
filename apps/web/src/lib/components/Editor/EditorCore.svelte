@@ -397,9 +397,11 @@
   }
 
   function guardImportInProgress(): boolean {
-    if (!editorFullEditController.isImportActive()) return false;
+    return editorFullEditController.isImportActive();
+  }
+
+  function showImportBlockedToast(): void {
     toast.info('Import in progress');
-    return true;
   }
 
   const editorAnalysisController = createEditorAnalysisController({
@@ -1174,10 +1176,13 @@
   }
 
   export function addTab() {
-    if (guardImportInProgress()) return;
+    if (guardImportInProgress()) {
+      showImportBlockedToast();
+      return;
+    }
     if (!monaco) return;
     const id = `tab-${Date.now()}-${tabSequence++}`;
-    const transition = createWorkspaceTabTransition(getWorkspaceRawState(), { id, name: `Untitled ${tabSequence}`, documentKey: `${id}:0`, languageId: languageIdValue, sourceText: getLanguageExample(languageIdValue), origin: 'example' });
+    const transition = createWorkspaceTabTransition(getWorkspaceRawState(), { id, name: `Untitled ${tabSequence}`, documentKey: `${id}:0`, languageId: languageIdValue, sourceText: '', origin: 'user' });
     const tab = transition?.workspace.tabsById[id];
     if (tab && transition) {
       // Install the model before publishing the new active workspace tab.
@@ -1196,7 +1201,11 @@
     origin?: DocumentOrigin;
     fileLinkedDocument?: { grantId: string; name: string };
   }): string | null {
-    if (guardImportInProgress() || !monaco) return null;
+    if (guardImportInProgress()) {
+      showImportBlockedToast();
+      return null;
+    }
+    if (!monaco) return null;
     const id = `tab-${Date.now()}-${tabSequence++}`;
     const transition = createWorkspaceTabTransition(getWorkspaceRawState(), { id, name: payload.name, documentKey: `${id}:0`, languageId: payload.languageId, sourceText: payload.text, origin: payload.origin ?? 'import', fileLinkedDocument: payload.fileLinkedDocument, savedText: payload.fileLinkedDocument ? payload.text : undefined });
     const tab = transition?.workspace.tabsById[id];
@@ -1238,7 +1247,10 @@
   }
 
   export function closeTab(id: string) {
-    if (guardImportInProgress()) return;
+    if (guardImportInProgress()) {
+      showImportBlockedToast();
+      return;
+    }
     const workspace = getWorkspaceRawState();
     const wasActive = workspace.activeTabId === id || workspace.primaryTabId === id || workspace.paneTabIds.left === id;
     const blankId = `tab-${Date.now()}-${tabSequence++}`;

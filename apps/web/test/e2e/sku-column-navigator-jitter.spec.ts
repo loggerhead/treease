@@ -64,7 +64,7 @@ function greatestViewportFrameStep(samples: ViewportSample[]): number {
   );
 }
 
-test('moves the root graph smoothly during rapid SKU Price navigation', async ({ page }, testInfo) => {
+test('moves the root graph smoothly during rapid alternating SKU Price navigation', async ({ page }, testInfo) => {
   test.setTimeout(60_000);
   testInfo.annotations.push({ type: 'allow-browser-error', description: 'localhost:3000/v1/usage/events' });
   await page.goto(EDITOR_URL);
@@ -98,7 +98,12 @@ test('moves the root graph smoothly during rapid SKU Price navigation', async ({
   await startViewportSampling(page);
   await workspace.evaluate((element) => {
     for (let index = 0; index < 30; index += 1) {
-      element.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+      // Reversing direction defeats the ArrowDown coalescing path and matches
+      // the interaction that makes the whole root graph visibly shake.
+      element.dispatchEvent(new KeyboardEvent('keydown', {
+        key: index % 2 === 0 ? 'ArrowDown' : 'ArrowUp',
+        bubbles: true,
+      }));
     }
   });
   await waitForColumnNavigatorSettled(page, undefined, 20_000);

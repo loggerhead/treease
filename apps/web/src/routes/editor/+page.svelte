@@ -21,9 +21,11 @@
   import { DEFAULT_EDITOR_SPLIT_RATIO } from '../../lib/settings/editor-layout-state';
   import {
     activeTempModel,
+    initialTempModel,
     type GraphHighlightTarget,
     type TreeSelectionSource,
   } from '../../lib/store/graph-selection-store';
+  import { initialFullEditUiState } from '../../lib/store/full-edit-ui-store';
   import {
     languageId as languageIdStore,
     sourceText as sourceTextStore,
@@ -126,6 +128,10 @@
   let activeTabId = '';
   let workspaceBootstrapReady = false;
   let workspaceCommandReady = false;
+  let resolveWorkspaceBootstrap: (() => void) | null = null;
+  const workspaceBootstrapComplete = new Promise<void>((resolve) => {
+    resolveWorkspaceBootstrap = resolve;
+  });
   let scrollSyncLock: 'editor' | 'viewer' | null = null;
   const serverSplitRatio = data.editorSplitRatio;
   let splitLayoutState = createSplitLayoutState(serverSplitRatio ?? DEFAULT_EDITOR_SPLIT_RATIO);
@@ -266,6 +272,7 @@
   async function applyEditorUrlPreset(nextPreset: ResolvedEditorUrlPreset): Promise<void> {
     applyUrlPresetUi(nextPreset);
     setUrlPresetBridgeState(nextPreset);
+    await workspaceBootstrapComplete;
     await tick();
     if (nextPreset.nest !== null) {
       await settingsStore.save({ parser: { enableNest: nextPreset.nest } });
@@ -1202,6 +1209,37 @@
     setWorkspaceState(activeTransition.workspace);
   }
 
+  /**
+   * Establish the product's fresh-workspace document before Monaco mounts.
+   * Restored sessions and URL presets are applied as explicit later transitions;
+   * an empty source is therefore never used as an implicit "first tab" signal.
+   */
+  function bootstrapFreshWorkspace(): void {
+    const current = getWorkspaceState();
+    const currentPrimary = current.tabsById[current.primaryTabId];
+    if (!currentPrimary) throw new Error('Fresh workspace requires a primary tab.');
+    const sourceText = getLanguageExample(editorLanguageFallback);
+    setWorkspaceState(
+      createEditorWorkspaceState({
+        ...currentPrimary,
+        id: 'primary',
+        role: 'primary',
+        name: 'Primary',
+        documentKey: 'primary:0',
+        languageId: editorLanguageFallback,
+        sourceText,
+        origin: 'example',
+        revision: 0,
+        graphAppliedRevision: 0,
+        snapshotId: null,
+        tempModel: { ...initialTempModel, scratchText: sourceText },
+        fullEditUiState: initialFullEditUiState,
+        fileLinkedDocument: undefined,
+        savedText: undefined,
+      }),
+    );
+  }
+
   async function handleDesktopDeepLinks(urls: URL[]): Promise<void> {
     for (const url of urls) {
       if (url.hostname === 'editor') {
@@ -1342,6 +1380,7 @@
 
     urlPreset ??= resolveEditorUrlPreset(window.location.search);
     const shareID = urlPreset.shareID;
+    bootstrapFreshWorkspace();
     let stopWorkspaceSession: (() => void) | null = null;
     let stopWorkspaceCommands: (() => void) | null = null;
     let stopDeepLinks: (() => void) | null = null;
@@ -1362,6 +1401,8 @@
       workspaceBootstrapReady = true;
       await tick();
       await editorRef?.ensureReady();
+      resolveWorkspaceBootstrap?.();
+      resolveWorkspaceBootstrap = null;
       if (host.surface === 'desktop') {
         for (const file of await host.takeStartupFiles()) await openWorkspaceFile(file);
         await handleDesktopDeepLinks(await host.getInitialDeepLinks());

@@ -171,6 +171,11 @@
     rightCompareHighlightCount = sidecarEditor?.applyDiffPlan(plan) ?? 0
   }
 
+  async function waitForDecorationPaint(): Promise<void> {
+    await tick()
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+  }
+
   async function runDiffCompare() {
     if (graphOnly || effectiveViewMode !== 'text') return
     let runGeneration = 0
@@ -206,6 +211,7 @@
         })
         applyRightDiffPlan(plans.right)
         onApplyDiff(plans.left)
+        await waitForDecorationPaint()
       } else {
         clearCompareHighlights()
       }

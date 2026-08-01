@@ -18,6 +18,7 @@ test.describe('public accessibility contract', () => {
   test('keyboard navigation reaches the main content', async ({ page }) => {
     await page.goto('/');
 
+    await page.locator('body').focus();
     await page.keyboard.press('Tab');
     await expect(page.locator('.skip-link')).toBeFocused();
     await page.keyboard.press('Enter');

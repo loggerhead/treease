@@ -12,6 +12,7 @@ import {
   setMonacoValue,
   waitForEditorReady,
   waitForGraphRendered,
+  waitForImportSettled,
   waitForColumnNavigatorSettled,
 } from './utils';
 
@@ -201,16 +202,14 @@ test('column navigator column detail editor uses monaco editor and syncs edits b
       user: { name: 'Bob' },
       rows: [{ title: 'one', done: false }],
     });
+  await page.getByTestId('monaco-source-editor').click();
+  await waitForImportSettled(page);
+  await waitForGraphRendered(page);
 
-  const refreshedProbes = await readGraphClickProbes(page);
-  const rowProbe = refreshedProbes.find(
-    (probe) => probe.isTableCell && probe.path.join('.') === 'rows.[0]' && probe.target !== 'node' && probe.coord,
-  );
-  expect(rowProbe).toBeTruthy();
-  if (!rowProbe?.coord) throw new Error('rows[0] probe missing');
-
-  await clickGraphProbeAt(page, rowProbe.coord);
-  await waitForColumnNavigatorSettled(page, 'k:rows|i:0');
+  await workspace.locator('[data-column-navigator-item-path-key="k:rows"]').click();
+  await expect(workspace.locator('[data-column-navigator-path-key="k:rows"]')).toBeVisible();
+  await workspace.locator('[data-column-navigator-item-path-key="k:rows|i:0"]').click();
+  await expect(workspace.locator('[data-column-navigator-path-key="k:rows|i:0"]')).toBeVisible();
 
   const rowPane = workspace.locator('[data-column-navigator-path-key="k:rows|i:0"]');
   await expect(rowPane.locator('.column-navigator-pane__header')).toHaveCount(0);
