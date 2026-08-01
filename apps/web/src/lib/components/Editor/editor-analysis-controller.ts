@@ -385,6 +385,11 @@ export function createEditorAnalysisController(options: CreateEditorAnalysisCont
           );
         }
       },
+      handleError: (error) => {
+        const message = error instanceof Error ? error.message : String(error);
+        console.error('[editor] tree path analysis failed', error);
+        options.updateActiveTempModel((current) => ({ ...current, error: message }));
+      },
     });
   }
 
@@ -464,6 +469,11 @@ export function createEditorAnalysisController(options: CreateEditorAnalysisCont
           revision,
         });
         await operation.step(() => updateTreePath(options.getEditor()?.getPosition() ?? null, { syncGraphHighlight: false }));
+      },
+      handleError: (error) => {
+        const message = error instanceof Error ? error.message : String(error);
+        console.error('[editor] document analysis apply failed', error);
+        options.updateActiveTempModel((current) => ({ ...current, error: message }));
       },
     });
   }

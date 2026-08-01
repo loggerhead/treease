@@ -1,7 +1,7 @@
 import { expect, test } from './fixtures';
-import { readGraphClickProbes, waitForEditorReady, waitForGraphRendered } from './utils';
+import { readGraphClickProbes, waitForEditorRuntimeReady, waitForGraphRendered } from './utils';
 
-test('editor and graph loading skeletons clear together on first paint', async ({ page }, testInfo) => {
+test('editor runtime readiness is independent from graph loading', async ({ page }, testInfo) => {
   testInfo.annotations.push({
     type: 'allow-browser-error',
     description: 'Failed to load resource: the server responded with a status of 404 (Not Found)',
@@ -69,7 +69,8 @@ test('editor and graph loading skeletons clear together on first paint', async (
   });
 
   await page.goto('/editor');
-  await waitForEditorReady(page);
+  await waitForEditorRuntimeReady(page);
+  await expect(page.getByRole('status', { name: 'Editor loading status' })).toHaveCount(0);
   await waitForGraphRendered(page);
 
   const observation = await page.evaluate(() => {
@@ -85,7 +86,6 @@ test('editor and graph loading skeletons clear together on first paint', async (
   expect(observation).not.toBeNull();
   expect((observation?.samples.length ?? 0) > 0).toBe(true);
   expect(observation?.sawGraphHiddenWhileEditorVisible).toBe(false);
-  expect(observation?.sawEditorHiddenWhileGraphVisible).toBe(false);
   await expect(page.getByTestId('graph-error-message')).toHaveCount(0);
   await expect
     .poll(async () => (await readGraphClickProbes(page)).length, { timeout: 5_000 })

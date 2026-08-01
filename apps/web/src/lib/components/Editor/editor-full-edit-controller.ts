@@ -62,10 +62,6 @@ function isDocumentJobGraphResult(result: ImportIntakeResult): result is Documen
   return 'status' in result && !('resultStatus' in result);
 }
 
-function isCancelledIntakeResult(result: IntakeResult): boolean {
-  return result.status === 'failed' && typeof result.error === 'string' && result.error.startsWith('cancelled:');
-}
-
 function isDiagnosticsOnlyIntakeResult(result: ImportIntakeResult): boolean {
   return (
     (isIntakeResult(result) && result.status === 'diagnosticsOnly') ||
@@ -77,6 +73,11 @@ function isFailedImportIntakeResult(result: ImportIntakeResult): boolean {
   if (isIntakeResult(result)) return result.status === 'failed';
   if (isDocumentJobGraphResult(result)) return result.status !== 'snapshotReady';
   return false;
+}
+
+function isExpectedTerminationError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /stale|cancel|disposed|dispose|tab.+(switch|change)|no longer fresh/i.test(message);
 }
 
 function getImportResultSourceText(result: ImportIntakeResult): string | null {
@@ -838,7 +839,17 @@ export function createEditorFullEditController(options: CreateEditorFullEditCont
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
+      if (isExpectedTerminationError(error) || !isSessionCurrent()) {
+        console.debug('[editor] full-edit session ended before landing', error);
+        return {
+          revision: session.revision,
+          status: 'stale',
+          snapshotId: null,
+          result: null,
+        };
+      }
       options.updateActiveTempModel((current) => ({ ...current, error: message }));
+      console.error('[editor] full-edit session failed', error);
       toast.error('Graph rebuild failed');
       return {
         revision: session.revision,

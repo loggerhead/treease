@@ -26,6 +26,7 @@ type CommitEditorTabTextChangeOptions = {
     revision: number,
     analysis: DocumentAnalysisResult | null,
   ) => Promise<void>;
+  onError?: (error: unknown) => void;
 };
 
 export function commitEditorTabTextChange(options: CommitEditorTabTextChangeOptions): number {
@@ -75,6 +76,8 @@ export function commitEditorTabTextChange(options: CommitEditorTabTextChangeOpti
         ),
     },
   });
-  void (options.runUsage ? options.runUsage(options.nextText, commit) : commit());
+  void (options.runUsage ? options.runUsage(options.nextText, commit) : commit()).catch((error) => {
+    options.onError?.(error);
+  });
   return revision;
 }

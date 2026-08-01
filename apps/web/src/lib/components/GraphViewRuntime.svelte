@@ -168,6 +168,7 @@
   let TextCtor: typeof Text | undefined;
   let PenCtor: typeof Pen | undefined;
   let errorMessage = '';
+  let graphRuntimeRetryToken = 0;
   let graphRuntimeReady = false;
   let showRuntimeLoading = true;
   let renderRuntimeReady = false;
@@ -633,10 +634,16 @@
     };
   }
 
-  function resolveGraphReadinessWaiters(): void {
+  function resolveGraphReadinessWaiters(signals: {
+    graphRuntimeReady: boolean;
+    errorMessage: string;
+    renderRuntimeReady: boolean;
+    editorRevision: number;
+    graphAppliedRevision: number;
+  }): void {
     const interaction = getGraphInteractionState();
-    const ready = graphRuntimeReady && interaction.interactiveReady === true;
-    const failed = Boolean(errorMessage);
+    const ready = signals.graphRuntimeReady && interaction.interactiveReady === true;
+    const failed = Boolean(signals.errorMessage);
     if (!ready && !failed) return;
     graphReadinessWaiters.forEach((waiter) => {
       clearTimeout(waiter.timeout);
@@ -823,7 +830,9 @@
     markGraphRequested,
     resetStreamProgress: () => graphStreamProgressController.reset(),
     onStreamingRenderError: (error) => {
+      const message = error instanceof Error ? error.message : String(error);
       console.error('[GraphViewer] streaming render failed', error);
+      setError(message);
     },
   });
 
@@ -1176,9 +1185,30 @@
 
   function setError(message: string) {
     errorMessage = message;
-    graphSceneController.clear();
+    graphSceneController?.clear?.();
     ensureCanvasHint();
     clearSearchHighlight();
+  }
+
+  async function retryGraph(): Promise<void> {
+    errorMessage = '';
+    graphRuntimeReady = false;
+    graphRuntimeRetryToken += 1;
+    await tick();
+    const ready = await waitForGraphReady();
+    if (!ready || !documentKeyValue || !renderRuntimeReady) return;
+    try {
+      await graphRenderCoordinator.renderDocumentGraph({
+        kind: 'incremental',
+        documentKey: documentKeyValue,
+        language: languageIdValue,
+        text: $sourceText,
+        revision: editorRevisionValue,
+      });
+    } catch (error) {
+      setError(error instanceof Error ? error.message : String(error));
+      console.error('[graph] retry failed', error);
+    }
   }
 
   function resetAppliedGraphHighlightState(options: { clearHighlight?: boolean } = {}): void {
@@ -1202,7 +1232,9 @@
   }
 
   onMount(() => {
-    void refreshUsageGate();
+    void refreshUsageGate().catch((error) => {
+      console.error('[graph] usage gate initialization failed', error);
+    });
   });
 
   onDestroy(() => {
@@ -1241,14 +1273,13 @@
     lastAutoOffset,
   });
 
-  $: {
-    graphRuntimeReady;
-    errorMessage;
-    renderRuntimeReady;
-    editorRevisionValue;
-    $graphAppliedRevision;
-    resolveGraphReadinessWaiters();
-  }
+  $: resolveGraphReadinessWaiters({
+    graphRuntimeReady,
+    errorMessage,
+    renderRuntimeReady,
+    editorRevision: editorRevisionValue,
+    graphAppliedRevision: $graphAppliedRevision,
+  });
 
   $: {
     const shouldResetWorkspace = shouldResetColumnNavigatorForFullEdit(
@@ -1402,6 +1433,7 @@
           (isFullEditProgressActive() && $fullEditUiState?.phase !== 'settled')}
         data-testid="graph-viewer-minimap"
       ></div>
+      {#key graphRuntimeRetryToken}
       <GraphRuntimeHost
         {container}
         {minimapHost}
@@ -1426,6 +1458,7 @@
         minimapWidth={MINIMAP_WIDTH}
         minimapHeight={MINIMAP_HEIGHT}
       />
+      {/key}
     </div>
     {#if showRuntimeLoading}
       <GraphRuntimeLoading />
@@ -1434,10 +1467,19 @@
     {#if errorMessage}
       <div
         data-testid="graph-error-message"
-        class="absolute left-4 top-4 rounded-[10px] border border-[#e2e8f0] bg-white px-3 py-2 text-[12px] text-[#0f172a]
+        class="pointer-events-auto absolute right-4 top-4 z-[3] max-w-[130px] rounded-[10px] border border-[#e2e8f0] bg-white px-3 py-2 text-[12px] text-[#0f172a]
         shadow-[0_8px_24px_rgba(15,23,42,0.12)] font-mono"
+        role="alert"
       >
-        {errorMessage}
+        <p>{errorMessage}</p>
+        <button
+          type="button"
+          class="mt-2 rounded border border-[#cbd5e1] px-2 py-1 text-[11px] font-sans font-medium"
+          data-testid="graph-retry-button"
+          on:click={() => void retryGraph()}
+        >
+          Retry graph
+        </button>
       </div>
     {/if}
   </div>

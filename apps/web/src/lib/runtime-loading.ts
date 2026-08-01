@@ -18,25 +18,22 @@ export function computeSynchronizedRuntimeLoading(input: {
 export function resolveEditorRuntimeOverlay(input: {
   editorRuntimeReady: boolean;
   editorRuntimePhase: string;
-  synchronizedRuntimeLoading: boolean;
+  /** Runtime failures are terminal for this capability, not a page-wide load. */
+  editorRuntimeError?: boolean;
+  // Kept in the input for compatibility with callers; Editor readiness must not
+  // depend on Graph or any other peer runtime.
+  synchronizedRuntimeLoading?: boolean;
 }): { loading: boolean; phase: string } {
-  if (!input.editorRuntimeReady) {
+  if (input.editorRuntimeReady || input.editorRuntimeError) {
     return {
-      loading: true,
-      phase: input.editorRuntimePhase || 'Loading editor runtime...',
-    };
-  }
-
-  if (input.synchronizedRuntimeLoading) {
-    return {
-      loading: true,
-      phase: 'Waiting for graph runtime...',
+      loading: false,
+      phase: input.editorRuntimeError ? input.editorRuntimePhase : '',
     };
   }
 
   return {
-    loading: false,
-    phase: '',
+    loading: true,
+    phase: input.editorRuntimePhase || 'Loading editor runtime...',
   };
 }
 

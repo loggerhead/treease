@@ -133,6 +133,12 @@ type DocumentJobFinalEvent =
 
 const textEncoder = new TextEncoder();
 
+function isExpectedRenderTermination(error: unknown, isCurrent: () => boolean): boolean {
+  if (!isCurrent()) return true;
+  const message = error instanceof Error ? error.message : String(error);
+  return /stale|cancel|disposed|dispose|no longer fresh/i.test(message);
+}
+
 function buildGraphProgressEvent(streamRunId: string, processedBytes: number, totalBytes: number) {
   return {
     event: 'graphProgress',
@@ -517,7 +523,9 @@ export function createGraphRenderSession(deps: GraphRenderSessionDeps) {
       return getSceneBridge().getLastRenderedGraph() ?? emptyRenderResult();
     }
 
+    deps.setErrorMessage('Document analysis failed. Fix the document or retry the graph.');
     markGraphStreamFinal('parse-failed', {
+      errorMessage: 'Document analysis failed. Fix the document or retry the graph.',
       failed: true,
     });
     deps.onStreamFinalAnalysis(
@@ -692,11 +700,18 @@ export function createGraphRenderSession(deps: GraphRenderSessionDeps) {
         freshness: operation.lifecycle,
       });
     } catch (error) {
+      if (isExpectedRenderTermination(error, operation.lifecycle.isCurrent)) {
+        console.debug('[graph] document render ended before landing', error);
+        deps.completeStreamProgress();
+        markGraphStreamDone();
+        return null;
+      }
       deps.handleError(error, {
         component: 'GraphViewer',
         operation: 'renderDocumentGraph',
         metadata: { documentKey: request.documentKey, revision: request.revision },
       });
+      deps.setErrorMessage(error instanceof Error ? error.message : String(error));
       markGraphStreamFinal('exception', {
         errorMessage: error instanceof Error ? error.message : String(error),
         failed: true,
@@ -792,11 +807,18 @@ export function createGraphRenderSession(deps: GraphRenderSessionDeps) {
         freshness: operation.lifecycle,
       });
     } catch (error) {
+      if (isExpectedRenderTermination(error, operation.lifecycle.isCurrent)) {
+        console.debug('[graph] external render ended before landing', error);
+        deps.completeStreamProgress();
+        markGraphStreamDone();
+        return null;
+      }
       deps.handleError(error, {
         component: 'GraphViewer',
         operation: 'attachExternalDocumentJobSession',
         metadata: { documentKey: session.documentKey, revision: session.revision, sessionId: session.sessionId },
       });
+      deps.setErrorMessage(error instanceof Error ? error.message : String(error));
       markGraphStreamFinal('exception', {
         errorMessage: error instanceof Error ? error.message : String(error),
         failed: true,
@@ -956,11 +978,18 @@ export function createGraphRenderSession(deps: GraphRenderSessionDeps) {
       markGraphStreamDone();
       return getSceneBridge().getLastRenderedGraph() ?? emptyRenderResult();
     } catch (error) {
+      if (isExpectedRenderTermination(error, operation.lifecycle.isCurrent)) {
+        console.debug('[graph] JSON block render ended before landing', error);
+        deps.completeStreamProgress();
+        markGraphStreamDone();
+        return null;
+      }
       deps.handleError(error, {
         component: 'GraphViewer',
         operation: 'renderJsonBlockSelection',
         metadata: { blockDocumentKey: selection.blockDocumentKey, revision: selection.revision },
       });
+      deps.setErrorMessage(error instanceof Error ? error.message : String(error));
       markGraphStreamFinal('exception', {
         errorMessage: error instanceof Error ? error.message : String(error),
         failed: true,
@@ -981,12 +1010,4 @@ export function createGraphRenderSession(deps: GraphRenderSessionDeps) {
     dispose,
     getActiveSnapshotId: () => activeSnapshotId,
   };
-}
-
-function extractSnapshotIdFromBatch(batch: EventBatch): SnapshotId | null {
-  for (let index = batch.events.length - 1; index >= 0; index -= 1) {
-    const event = batch.events[index];
-    if (event.type === 'snapshotReady') return event.snapshotId as SnapshotId;
-  }
-  return null;
 }

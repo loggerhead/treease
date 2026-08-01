@@ -578,7 +578,7 @@ describe('graph-render-session coordinator', () => {
     const finalBatch = closeCompletedBatch(13, {
       mainGraph: projectionDelta(true, graphDataWithParentChildEdge(1600)),
     });
-    const batches = vi.fn(async function* () {
+    const batches = vi.fn(() => {
       throw new Error('a partial replay must not be projected');
     });
     const session = {
@@ -1119,7 +1119,7 @@ describe('graph-render-session coordinator', () => {
     expect(deps.publishTreeState).not.toHaveBeenCalled();
     expect(deps.clearTreeState).toHaveBeenCalledWith(1, 'graph', 8, 8);
   });
-  it('renderDocumentGraph keeps parse-failed snapshots in diagnostics flow without raw UI error', async () => {
+  it('renderDocumentGraph exposes parse failure while preserving diagnostics flow', async () => {
     const diagnostics = [{ startLineNumber: 1, startColumn: 1, endLineNumber: 1, endColumn: 2, kind: 1 }];
     mockedCallWorker
       .mockResolvedValueOnce(startJobResult(10))
@@ -1140,7 +1140,7 @@ describe('graph-render-session coordinator', () => {
       revision: 6,
     });
 
-    expect(deps.setErrorMessage).not.toHaveBeenCalled();
+    expect(deps.setErrorMessage).toHaveBeenCalledWith('Document analysis failed. Fix the document or retry the graph.');
     expect(deps.onStreamFinalAnalysis).toHaveBeenCalledWith(
       'test-key',
       'json',
@@ -1151,7 +1151,7 @@ describe('graph-render-session coordinator', () => {
       null,
     );
   });
-  it('renderDocumentGraph does not leak parse-failed raw UI error over a later success for the same revision', async () => {
+  it('renderDocumentGraph keeps parse failure local to the failed revision', async () => {
     let resolveFirstDelta: (() => void) | null = null;
     const firstDeltaApplied = new Promise<void>((resolve) => {
       resolveFirstDelta = resolve;
@@ -1195,7 +1195,7 @@ describe('graph-render-session coordinator', () => {
       revision: 7,
     });
 
-    expect(deps.setErrorMessage).not.toHaveBeenCalled();
+    expect(deps.setErrorMessage).toHaveBeenCalledWith('Document analysis failed. Fix the document or retry the graph.');
 
     resolveFirstDelta?.();
     await firstRender;

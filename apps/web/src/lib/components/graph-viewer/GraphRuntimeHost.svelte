@@ -97,9 +97,13 @@
     void operation.run({
       execute: async ({ step }) => {
         scheduleMeasure();
-        void getSharedWasmWorkerClient().catch(() => {});
+        void getSharedWasmWorkerClient().catch((error) => {
+          // Worker warmup is a Graph/document capability. Keep the error
+          // observable without making it an unhandled page rejection.
+          console.error('[graph] worker warmup failed', error);
+        });
         const runtimeContainer = container;
-        if (!runtimeContainer) return false;
+        if (!runtimeContainer) throw new Error('Graph runtime container is unavailable');
         const loaded = await step(() => loadGraphViewerRuntime({
           host: runtimeContainer,
           preferApp: true,
@@ -112,19 +116,23 @@
         await step(async () => {
           cleanupRuntime();
           loadedRuntime = loaded;
-          LeaferCtor = (mod.App ?? mod.Leafer) as typeof LeaferApp | typeof Leafer;
-          PlainLeaferCtor = mod.Leafer as typeof Leafer | undefined;
-          BoxCtor = mod.Box;
-          TextCtor = mod.Text;
-          PenCtor = mod.Pen;
-          MoveEventCtor = mod.MoveEvent;
-          ZoomEventCtor = mod.ZoomEvent;
-          DragEventCtor = mod.DragEvent;
-          LeaferEventCtor = mod.LeaferEvent;
-          PointerEventCtor = mod.PointerEvent;
-          if (!LeaferCtor || !BoxCtor || !TextCtor || !PenCtor) return;
+          // The loader returns structural runtime values, while the rest of the
+          // web host uses Leafer's concrete types for its component contracts.
+          LeaferCtor = (mod.App ?? mod.Leafer) as unknown as typeof LeaferApp | typeof Leafer;
+          PlainLeaferCtor = mod.Leafer as unknown as typeof Leafer;
+          BoxCtor = mod.Box as unknown as typeof Box;
+          TextCtor = mod.Text as unknown as typeof Text;
+          PenCtor = mod.Pen as unknown as typeof Pen;
+          MoveEventCtor = mod.MoveEvent as unknown as typeof MoveEvent | undefined;
+          ZoomEventCtor = mod.ZoomEvent as unknown as typeof ZoomEvent | undefined;
+          DragEventCtor = mod.DragEvent as unknown as typeof DragEvent | undefined;
+          LeaferEventCtor = mod.LeaferEvent as unknown as typeof LeaferEvent | undefined;
+          PointerEventCtor = mod.PointerEvent as unknown as typeof LeaferPointerEvent | undefined;
+          if (!LeaferCtor || !BoxCtor || !TextCtor || !PenCtor) {
+            throw new Error('Graph runtime constructors are unavailable');
+          }
 
-          leafer = loaded.app as LeaferAppOrLeafer;
+          leafer = loaded.app as unknown as LeaferAppOrLeafer;
           registerViewportEvents(leafer);
           onRuntimeReady({ editor: (leafer as { editor?: unknown } | null)?.editor ?? null });
           minimapRuntimeController.attach({

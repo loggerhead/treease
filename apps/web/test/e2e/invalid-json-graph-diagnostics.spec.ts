@@ -234,7 +234,7 @@ test.describe('invalid json graph diagnostics', () => {
     expect(await readGraphEdgePaths(page)).not.toEqual(expect.arrayContaining([{ from: '', to: '[1].value' }]));
   });
 
-  test('shows one syntax error without leaking raw graph status', async ({ page }) => {
+  test('shows one syntax error with a recoverable graph failure state', async ({ page }) => {
     await page.goto('/editor');
     await waitForEditorReady(page);
 
@@ -252,7 +252,8 @@ test.describe('invalid json graph diagnostics', () => {
     await waitForSyntaxError(page);
 
     await expect(page.getByTestId('graph-diagnostic-syntax-error')).toBeVisible({ timeout: 5_000 });
-    await expect(page.getByTestId('graph-error-message')).toHaveCount(0);
+    await expect(page.getByTestId('graph-error-message')).toBeVisible();
+    await expect(page.getByTestId('graph-retry-button')).toBeVisible();
     await expect(page.getByTestId('tree-path-crumb-0')).toHaveCount(0);
   });
 

@@ -54,7 +54,6 @@
     markCursorPathRequested,
     markCursorPathSettled,
   } from '../../test-bridge/runtime-readiness';
-  import { awaitEditorRuntimeStartupDelay } from '../../test-bridge/runtime-startup-delay';
 
   import EditorDropZone from './EditorDropZone.svelte';
   import { shouldSyncGraphHighlightFromCursorReason } from './EditorCore.graph-highlight';
@@ -657,6 +656,7 @@
   $: editorRevisionValue = $editorRevision;
   $: editorRuntimeOverlay = resolveEditorRuntimeOverlay({
     editorRuntimeReady,
+    editorRuntimeError,
     editorRuntimePhase,
     synchronizedRuntimeLoading,
   });
@@ -749,6 +749,9 @@
             text: languageSwitchPolicy.text,
             reason: languageSwitchPolicy.reason,
             isFresh: () => model === requestModel,
+          }).catch((error) => {
+            const activeTabId = getWorkspaceState().activeTabId;
+            if (model) reportEditorDocumentTaskError(error, activeTabId, model);
           });
         }
       }
@@ -1146,6 +1149,13 @@
           revisionValue,
           analysis,
         ),
+      onError: (error) => {
+        if (isExpectedDocumentTaskTermination(error)) {
+          console.debug('[editor] text commit ended before landing', error);
+          return;
+        }
+        reportEditorDocumentTaskError(error, getWorkspaceState().activeTabId, requestModel);
+      },
     });
   }
 
@@ -1362,6 +1372,31 @@
     return { model, text };
   }
 
+  function isExpectedDocumentTaskTermination(error: unknown): boolean {
+    const message = error instanceof Error ? error.message : String(error);
+    return /stale|cancel|disposed|dispose|tab.+(switch|change)|no longer fresh/i.test(message);
+  }
+
+  function reportEditorDocumentTaskError(
+    error: unknown,
+    tabId: string,
+    requestModel: Monaco.editor.ITextModel,
+  ): void {
+    if (!isExpectedDocumentTaskTermination(error)) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error('[editor] document task failed', { tabId, message, error });
+      const targetTab = getWorkspaceState().tabsById[tabId];
+      if (targetTab) {
+        const nextTempModel = { ...targetTab.tempModel, error: message };
+        if (isTabActive(tabId, requestModel)) activeTempModel.set(nextTempModel);
+        else updateWorkspaceTab(tabId, { tempModel: nextTempModel });
+      }
+      if (isTabActive(tabId, requestModel)) toast.error('Document analysis failed. You can keep editing and retry by editing again.');
+      return;
+    }
+    console.debug('[editor] document task ended before landing', error);
+  }
+
   async function startInstalledActiveTab(
     tab: EditorWorkspaceTab,
     installed: InstalledActiveTab,
@@ -1386,15 +1421,26 @@
     };
     try {
       if (options.awaitSnapshotReady) {
+        // Retained for callers that explicitly need a terminal outcome. Startup
+        // never uses this path: SnapshotReady is not Editor readiness.
         const outcome = await controller.runFullEditSessionToTerminal(fullEditRequest);
         if (outcome.status !== 'completed' || outcome.snapshotId == null) {
-          editor.updateOptions({ readOnly: true });
-          throw new Error(`Initial document did not produce SnapshotReady: ${outcome.status}`);
+          reportEditorDocumentTaskError(
+            new Error(`Document task ended without SnapshotReady: ${outcome.status}`),
+            tab.id,
+            requestModel,
+          );
+          return false;
         }
       } else {
-        void controller.startFullEditSession(fullEditRequest);
+        void controller.startFullEditSession(fullEditRequest).catch((error) => {
+          reportEditorDocumentTaskError(error, tab.id, requestModel);
+        });
       }
       return true;
+    } catch (error) {
+      reportEditorDocumentTaskError(error, tab.id, requestModel);
+      return false;
     } finally {
       releaseStoreUpdateSuppression();
     }
@@ -1408,6 +1454,8 @@
     const installed = installActiveTab(tab);
     if (!installed) return false;
     if (reason === 'initial-example') commitEditorState();
+    // Installing the Monaco model is synchronous. Document intake is deliberately
+    // started independently so a parse/Snapshot failure cannot block editing.
     return startInstalledActiveTab(tab, installed, reason, options);
   }
 
@@ -1797,7 +1845,11 @@
     if ((event.dataTransfer?.files?.length ?? 0) > 0) {
       markActiveTabUserInput(true);
     }
-    await getActiveFullEditController()?.handleDrop(event);
+    try {
+      await getActiveFullEditController()?.handleDrop(event);
+    } catch (error) {
+      if (model) reportEditorDocumentTaskError(error, getWorkspaceState().activeTabId, model);
+    }
   }
 
   export async function handleFileDrop(event: DragEvent): Promise<void> {
@@ -1825,7 +1877,7 @@
   }
 
 
-  onMount(async () => {
+  async function initializeEditorRuntime(): Promise<void> {
     const runtimeToken = ++editorRuntimeToken;
     const freshness = createFreshnessScope({ token: runtimeToken }, () => ({ token: editorRuntimeToken }));
     editorRuntimeReady = false;
@@ -1833,41 +1885,22 @@
     editorRuntimePhase = 'Loading editor runtime...';
 
     try {
-      // ── Phase 1: Monaco shell — editor interactive without WASM ──
+      // Monaco/model/store/interaction are the only Editor readiness gates.
       const shell = await freshness.step(() => editorRuntimeController.initShell());
-      if (!shell) return;
+      if (!shell || !freshness.isCurrent()) return;
 
-      editorRuntimePhase = 'Starting language services...';
       editorRuntimeController.applyTheme(shell.monaco);
       editorRuntimeController.scheduleWorkerWarmup();
-
       const firstTab = initFirstTab();
       bindEditorEvents();
-
-      // ── Phase 2: Language services — async, after WASM loads ──
-      const langServices = await editorRuntimeController.initLanguageServices();
-      if (!freshness.isCurrent()) return;
-
-      const ensureSemanticTokensProvider = langServices.ensureSemanticTokensProvider;
-      refreshSemanticTokensForLanguage = langServices.refreshSemanticTokens;
-      primeSemanticTokensForDocument = langServices.primeSemanticTokens;
-      clearSemanticTokensForDocument = langServices.clearSemanticTokens;
-      const ensureDocumentColorProvider = langServices.ensureDocumentColorProvider;
-      updateDocumentColorViewport = langServices.updateDocumentColorViewport;
-      refreshVisibleDocumentColors = langServices.refreshVisibleDocumentColors;
-
-      // Wire up language services for already-open editor
-      ensureSemanticTokensProvider(languageIdValue);
-      ensureDocumentColorProvider(languageIdValue);
-      setupLanguageSubscription(ensureSemanticTokensProvider, ensureDocumentColorProvider);
-
-      editorRuntimePhase = 'Preparing sample document...';
-      await setActiveTab(firstTab, 'initial-example', {
-        awaitSnapshotReady: true,
-        editorReadOnly: true,
+      bindStoreSubscriptions();
+      void setActiveTab(firstTab, 'initial-example').catch((error) => {
+        if (model) reportEditorDocumentTaskError(error, firstTab.id, model);
       });
 
       if (editor && monaco) {
+        editor.updateOptions({ readOnly: false });
+        hoverPreviewDisposable?.dispose();
         hoverPreviewDisposable = registerEditorHoverPreview({
           monaco,
           editor,
@@ -1879,20 +1912,55 @@
           isImportActive: () => getActiveFullEditController()?.isImportActive() ?? false,
         });
       }
-      bindStoreSubscriptions();
-      await awaitEditorRuntimeStartupDelay();
 
+      // Publish readiness before language services or the first Snapshot settle.
       if (freshness.isCurrent()) {
         editorRuntimeReady = true;
         editorRuntimePhase = '';
       }
+
+      void (async () => {
+        try {
+          const langServices = await editorRuntimeController.initLanguageServices();
+          if (!freshness.isCurrent()) return;
+
+          const ensureSemanticTokensProvider = langServices.ensureSemanticTokensProvider;
+          refreshSemanticTokensForLanguage = langServices.refreshSemanticTokens;
+          primeSemanticTokensForDocument = langServices.primeSemanticTokens;
+          clearSemanticTokensForDocument = langServices.clearSemanticTokens;
+          const ensureDocumentColorProvider = langServices.ensureDocumentColorProvider;
+          updateDocumentColorViewport = langServices.updateDocumentColorViewport;
+          refreshVisibleDocumentColors = langServices.refreshVisibleDocumentColors;
+          ensureSemanticTokensProvider(languageIdValue);
+          ensureDocumentColorProvider(languageIdValue);
+          setupLanguageSubscription(ensureSemanticTokensProvider, ensureDocumentColorProvider);
+        } catch (error) {
+          // Syntax services are optional; Monaco remains editable.
+          console.error('[editor] optional language services failed', error);
+          activeTempModel.update((current) => ({
+            ...current,
+            error: error instanceof Error ? error.message : String(error),
+          }));
+        }
+      })();
     } catch (error) {
       if (freshness.isCurrent()) {
         editorRuntimeError = true;
-        editorRuntimePhase = 'Editor failed to load. Please refresh and try again.';
+        editorRuntimePhase = 'Editor failed to load. Please retry.';
+        console.error('[editor] runtime initialization failed', error);
       }
-      throw error;
+      // Never rethrow from the Svelte lifecycle: this local state is the
+      // boundary and Graph/page-shell failures remain independent.
     }
+  }
+
+  function retryEditorRuntime(): void {
+    if (editorRuntimeReady) return;
+    void initializeEditorRuntime();
+  }
+
+  onMount(() => {
+    void initializeEditorRuntime();
   });
 
   onDestroy(() => {
@@ -1942,7 +2010,7 @@
   }
 
   export async function ensureReady(): Promise<void> {
-    while (!editor || !model || !editorRuntimeReady) {
+    while (!editor || !model || (!editorRuntimeReady && !editorRuntimeError)) {
       await new Promise<void>((resolve) => setTimeout(resolve, 16));
     }
   }
@@ -1963,6 +2031,8 @@
     onPointerDownCapture={handleEditorPointerDownCapture}
     loading={editorRuntimeOverlay.loading}
     loadingPhase={editorRuntimeOverlay.phase}
+    error={editorRuntimeError}
+    onRetry={retryEditorRuntime}
   />
 </div>
 

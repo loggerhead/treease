@@ -42,17 +42,24 @@ describe('runtime-loading', () => {
     ).toBe(false);
   });
 
-  it('keeps the editor skeleton visible with a graph wait phase after the editor runtime is ready', () => {
+  it('does not gate the editor overlay on graph runtime loading', () => {
     expect(
       resolveEditorRuntimeOverlay({
         editorRuntimeReady: true,
         editorRuntimePhase: '',
         synchronizedRuntimeLoading: true,
       }),
-    ).toEqual({
-      loading: true,
-      phase: 'Waiting for graph runtime...',
-    });
+    ).toEqual({ loading: false, phase: '' });
+  });
+
+  it('turns a runtime failure into a visible settled state', () => {
+    expect(
+      resolveEditorRuntimeOverlay({
+        editorRuntimeReady: false,
+        editorRuntimeError: true,
+        editorRuntimePhase: 'Editor failed to load',
+      }),
+    ).toEqual({ loading: false, phase: 'Editor failed to load' });
   });
 
   it('lets graph loading stay visible while a peer runtime is still blocking the shared gate', () => {

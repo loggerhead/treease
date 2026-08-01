@@ -15,6 +15,7 @@ export default defineConfig({
     'invalid-json-graph-diagnostics.spec.ts',
     'graph-render-stale-job-cancellation.spec.ts',
     'trajectory-edge-convergence.spec.ts',
+    'fault-isolation.spec.ts',
   ],
   timeout: CI ? 10_000 : 10_000,
   expect: {

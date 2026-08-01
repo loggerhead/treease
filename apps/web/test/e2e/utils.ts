@@ -466,8 +466,14 @@ export async function dropFile(
   }
 }
 
-export async function waitForEditorReady(page: Page, timeout = DEFAULT_UI_TIMEOUT) {
+export async function waitForEditorRuntimeReady(page: Page, timeout = DEFAULT_UI_TIMEOUT) {
   await waitForMonacoHook(page, 'source-editor', timeout);
+  await expect(page.getByRole('status', { name: 'Editor loading status' })).toHaveCount(0, { timeout });
+  await expect(page.getByTestId('editor-runtime-error')).toHaveCount(0, { timeout });
+}
+
+export async function waitForEditorReady(page: Page, timeout = DEFAULT_UI_TIMEOUT) {
+  await waitForEditorRuntimeReady(page, timeout);
   await expect
     .poll(
       async () => {
