@@ -281,6 +281,25 @@ describe('graph-render-session coordinator', () => {
     });
   });
 
+  it('meters only a topology emitted by the completed authoritative graph', async () => {
+    const onTopologyRendered = vi.fn(async () => {});
+    mockedCallWorker
+      .mockResolvedValueOnce(startJobResult(1))
+      .mockResolvedValueOnce(textChunkBatch())
+      .mockResolvedValueOnce(closeCompletedBatch(1, {
+        mainGraph: { ...projectionDelta(true), topologyBytes: new Uint8Array([0b11010000]) },
+      }));
+
+    const coordinator = createGraphRenderSession(createDeps({ onTopologyRendered }) as any);
+    coordinator.attachSceneBridge(createSceneBridge());
+
+    await coordinator.renderDocumentGraph({
+      kind: 'full-edit', documentKey: 'test-key', language: 'json', text: '{"a":1}', revision: 5,
+    });
+
+    expect(onTopologyRendered).toHaveBeenCalledWith(new Uint8Array([0b11010000]));
+  });
+
   it('renderDocumentGraph consumes SnapshotReady.mainGraph from the close batch', async () => {
     mockedCallWorker
       .mockResolvedValueOnce(startJobResult(1))
@@ -699,7 +718,7 @@ describe('graph-render-session coordinator', () => {
     expect(mockedCallWorker).not.toHaveBeenCalled();
   });
 
-  it('renderDocumentGraph sets error message when snapshotId is missing', async () => {
+  it('renderDocumentGraph logs and hides missing snapshot errors', async () => {
     mockedCallWorker
       .mockResolvedValueOnce(startJobResult(1))
       .mockResolvedValueOnce(textChunkBatch())
@@ -721,7 +740,8 @@ describe('graph-render-session coordinator', () => {
       revision: 5,
     });
 
-    expect(deps.setErrorMessage).toHaveBeenCalledWith('Document analysis did not produce a snapshot');
+    expect(deps.setErrorMessage).not.toHaveBeenCalled();
+    expect(deps.clearErrorMessage).toHaveBeenCalled();
   });
 
   it('ignores cancelled batches from a stale render', async () => {
@@ -869,8 +889,7 @@ describe('graph-render-session coordinator', () => {
       operation: 'renderDocumentGraph',
     }));
   });
-  it('renderDocumentGraph fails when SnapshotReady.mainGraph is missing', async () => {
-    const error = new Error('Document analysis did not produce requested main graph');
+  it('renderDocumentGraph logs and hides missing main graph errors', async () => {
     mockedCallWorker
       .mockResolvedValueOnce(startJobResult(5))
       .mockResolvedValueOnce(textChunkBatch())
@@ -891,10 +910,8 @@ describe('graph-render-session coordinator', () => {
 
     expect(result).toBeNull();
     expect(bridge.replaceRenderedGraph).not.toHaveBeenCalled();
-    expect(deps.handleError).toHaveBeenCalledWith(error, expect.objectContaining({
-      component: 'GraphViewer',
-      operation: 'renderDocumentGraph',
-    }));
+    expect(deps.handleError).not.toHaveBeenCalled();
+    expect(deps.clearErrorMessage).toHaveBeenCalled();
   });
 
   it('renderDocumentGraph clears graph on parse-failed snapshots', async () => {
@@ -1140,7 +1157,8 @@ describe('graph-render-session coordinator', () => {
       revision: 6,
     });
 
-    expect(deps.setErrorMessage).toHaveBeenCalledWith('Document analysis failed. Fix the document or retry the graph.');
+    expect(deps.setErrorMessage).not.toHaveBeenCalled();
+    expect(deps.clearErrorMessage).toHaveBeenCalled();
     expect(deps.onStreamFinalAnalysis).toHaveBeenCalledWith(
       'test-key',
       'json',
@@ -1195,7 +1213,8 @@ describe('graph-render-session coordinator', () => {
       revision: 7,
     });
 
-    expect(deps.setErrorMessage).toHaveBeenCalledWith('Document analysis failed. Fix the document or retry the graph.');
+    expect(deps.setErrorMessage).not.toHaveBeenCalled();
+    expect(deps.clearErrorMessage).toHaveBeenCalled();
 
     resolveFirstDelta?.();
     await firstRender;

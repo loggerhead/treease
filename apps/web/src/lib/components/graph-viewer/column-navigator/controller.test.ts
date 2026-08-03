@@ -133,6 +133,66 @@ describe('path-driven column navigator controller', () => {
     ]);
   });
 
+  it('collapses without discarding the active workspace and expands it again', async () => {
+    installDocument(
+      {
+        '': readyPathValue('object', '{1}'),
+        user: readyPathValue('object', '{1}'),
+        'user.name': readyPathValue('string', '"Alice"'),
+      },
+      {
+        '': [item(keyPath('user'))],
+        user: [item(keyPath('user', 'name'), 'string')],
+      },
+    );
+    const { controller, states } = createController();
+
+    await controller.openPath(keyPath('user', 'name'));
+    controller.collapse();
+
+    expect(states.at(-1)).toMatchObject({ collapsed: true, activePath: keyPath('user', 'name') });
+    expect(controller.getChain()).not.toHaveLength(0);
+
+    controller.expand();
+    expect(states.at(-1)).toMatchObject({ collapsed: false, activePath: keyPath('user', 'name') });
+  });
+
+  it('keeps the navigator collapsed after a pinned close until explicit expansion', async () => {
+    installDocument(
+      {
+        '': readyPathValue('object', '{1}'),
+        first: readyPathValue('object', '{1}'),
+        second: readyPathValue('object', '{1}'),
+      },
+      { '': [item(keyPath('first')), item(keyPath('second'))] },
+    );
+    const { controller, states } = createController();
+
+    await controller.openPath(keyPath('first'));
+    controller.pinCollapsed();
+    await controller.openPath(keyPath('second'));
+
+    expect(controller.getActivePath()).toEqual(keyPath('second'));
+    expect(states.at(-1)?.collapsed).toBe(true);
+    expect(controller.getVisiblePanes()).not.toHaveLength(0);
+
+    controller.expand();
+    expect(controller.getActivePath()).toEqual(keyPath('second'));
+  });
+
+  it('records external paths without expanding or changing the active column workspace', () => {
+    const { controller, states } = createController();
+    const firstPath = keyPath('first');
+    const secondPath = keyPath('second');
+
+    controller.recordExternalPath(firstPath);
+    controller.recordExternalPath(secondPath);
+
+    expect(states.at(-1)).toMatchObject({ collapsed: true, canGoBack: true, canGoForward: false });
+    expect(controller.getActivePath()).toEqual([]);
+    expect(controller.getChain()).toEqual([]);
+  });
+
   it('keeps ancestor columns and replaces every descendant when a sibling wins', async () => {
     installDocument(
       {
@@ -579,7 +639,7 @@ describe('path-driven column navigator controller', () => {
 
     expect(controller.getChain()).toEqual([]);
     expect(controller.getActivePath()).toEqual([]);
-    expect(states.at(-1)).toMatchObject({ open: false, canGoBack: false, canGoForward: false });
+    expect(states.at(-1)).toMatchObject({ collapsed: true, canGoBack: false, canGoForward: false });
   });
 });
 

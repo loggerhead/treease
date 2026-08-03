@@ -1,11 +1,17 @@
 <script lang="ts">
-  export let heading = ''
-  export let className = ''
+	import { Command as CommandPrimitive } from "bits-ui";
+	import { cn } from "$lib/utils";
+
+	let {
+		class: className,
+		children,
+		...restProps
+	}: CommandPrimitive.GroupProps = $props();
 </script>
 
-<div class={`flex flex-col gap-1 ${className}`}>
-  {#if heading}
-    <div class="px-3 pb-1 text-[11px] uppercase tracking-[0.2em] text-[var(--text-muted)]">{heading}</div>
-  {/if}
-  <slot />
-</div>
+<CommandPrimitive.Group
+	class={cn("overflow-hidden p-1 text-foreground", className)}
+	{...restProps}
+>
+	{@render children?.()}
+</CommandPrimitive.Group>

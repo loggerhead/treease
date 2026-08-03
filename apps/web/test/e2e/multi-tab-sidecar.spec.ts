@@ -110,6 +110,28 @@ test('tab rename keeps the display width and exposes active editing state', asyn
   await renameInput.press('Escape');
 });
 
+test('bottom file menu exposes rename and close actions', async ({ page }) => {
+  const [firstTabId] = await leftTabIds(page);
+  await page.getByTestId('editor-tab-switcher').click();
+  await page.getByTestId(`editor-tab-actions-${firstTabId}`).click();
+  await expect(page.getByTestId(`editor-tab-actions-menu-${firstTabId}`)).toBeVisible();
+  await page.getByTestId(`editor-tab-action-rename-${firstTabId}`).click();
+
+  const renameInput = page.getByTestId(`editor-tab-rename-${firstTabId}`);
+  await renameInput.fill('Renamed from file menu');
+  await renameInput.press('Enter');
+  await expect.poll(async () => (await readEditorWorkspace(page)).tabsById[firstTabId]?.name, { timeout: 5_000 }).toBe('Renamed from file menu');
+
+  await page.getByTestId('new-tab-button').click();
+  await expect.poll(async () => (await leftTabIds(page)).length, { timeout: 5_000 }).toBe(2);
+  const [, secondTabId] = await leftTabIds(page);
+  await page.getByTestId('editor-tab-switcher').click();
+  await page.getByTestId(`editor-tab-actions-${secondTabId}`).click();
+  page.once('dialog', (dialog) => void dialog.accept());
+  await page.getByTestId(`editor-tab-action-close-${secondTabId}`).click();
+  await expect.poll(async () => await leftTabIds(page), { timeout: 5_000 }).toEqual([firstTabId]);
+});
+
 test('immediately closing the active new tab keeps header, editor, and authority on its successor', async ({ page }) => {
   await setEditorContent(page, { language: 'json', sourceText: '{"tab":"one"}' });
   const [firstTabId] = await leftTabIds(page);

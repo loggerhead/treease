@@ -9,6 +9,7 @@ class MockBox {
   scaleX = 1;
   scaleY = 1;
   fill = 'transparent';
+  stroke: unknown;
   visible = true;
   children: unknown[] = [];
   removed = false;
@@ -312,6 +313,7 @@ describe('LeaferMinimapPlugin', () => {
     expect(root.y).toBe(0);
     expect(root.scaleX).toBe(1);
     expect(root.scaleY).toBe(1);
+    expect((root.children[0] as MockBox).stroke).toBeUndefined();
 
     plugin.destroy();
   });
@@ -341,6 +343,35 @@ describe('LeaferMinimapPlugin', () => {
     expect(viewport.y).toBeGreaterThanOrEqual(0);
     expect((viewport.x ?? 0) + (viewport.width ?? 0)).toBeLessThanOrEqual(220);
     expect((viewport.y ?? 0) + (viewport.height ?? 0)).toBeLessThanOrEqual(150);
+
+    plugin.destroy();
+  });
+
+  it('does not redraw viewport edges that are outside the minimap', () => {
+    const mountApp = new MockBox();
+    const app = {
+      zoomLayer: { x: 220, y: 180, scaleX: 1, scaleY: 1 },
+      update: vi.fn(),
+      on: vi.fn(),
+      off: vi.fn(),
+    };
+    const plugin = new LeaferMinimapPlugin({
+      app,
+      mountApp,
+      mountContainer: createContainer(220, 150),
+      container: createContainer(800, 600),
+      constructors: { BoxCtor: MockBox, PenCtor: MockPen },
+      getViewData: () => ({ nodes: [{ id: 1, x: 0, y: 0, width: 1000, height: 800 }], edges: [] }),
+    });
+
+    vi.runOnlyPendingTimers();
+
+    const root = mountApp.children[0] as MockBox;
+    const borderLayer = root.children[4] as MockBox;
+    const segments = borderLayer.children as MockBox[];
+    expect(segments).toHaveLength(2);
+    expect(segments.some((segment) => segment.x === 0 && segment.width === 1 && (segment.height ?? 0) > 1)).toBe(false);
+    expect(segments.some((segment) => segment.y === 0 && segment.height === 1 && (segment.width ?? 0) > 1)).toBe(false);
 
     plugin.destroy();
   });

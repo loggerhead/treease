@@ -122,7 +122,7 @@ async function flushUsageEventsInternal(): Promise<void> {
       await recordUsageEvent({
         clientId: event.clientId,
         capability: event.capability,
-        idempotencyKey: event.eventId,
+        idempotencyKey: event.idempotencyKey,
         metadata: { ...event.metadata, createdAt: event.createdAt },
       });
       await db.put('events', { ...event, status: 'uploaded' });

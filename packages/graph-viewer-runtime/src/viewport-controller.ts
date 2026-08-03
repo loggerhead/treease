@@ -34,6 +34,13 @@ type LeaferZoomTransition = {
 
 const GRAPH_REVEAL_TRANSITION_SECONDS = 0.25;
 
+export type GraphViewportState = {
+  x: number;
+  y: number;
+  scaleX: number;
+  scaleY: number;
+};
+
 type GraphViewportRequest = {
   x: number;
   y: number;
@@ -111,18 +118,57 @@ export function createGraphViewportController(options: CreateGraphViewportContro
     handleViewportMove();
   }
 
+  let revealTransitionSettled = Promise.resolve();
+
   function createRevealTransition(): LeaferZoomTransition {
     // Leafer applies an animated zoom asynchronously. Its transition lifecycle
     // is the single source of viewport-change notifications for programmatic
     // reveals, so GraphSceneRuntime can schedule the projection from the
     // actual animated viewport rather than from a guessed delay.
+    let settle!: () => void;
+    revealTransitionSettled = new Promise((resolve) => {
+      settle = resolve;
+    });
     return {
       duration: GRAPH_REVEAL_TRANSITION_SECONDS,
       event: {
         update: handleViewportMove,
-        completed: handleViewportMove,
+        completed: () => {
+          handleViewportMove();
+          settle();
+        },
       },
     };
+  }
+
+  async function waitForRevealTransition(): Promise<void> {
+    await revealTransitionSettled;
+  }
+
+  function getViewportState(): GraphViewportState | null {
+    const leafer = options.getLeafer();
+    if (!leafer?.zoomLayer) return null;
+    const layer = leafer.zoomLayer as LeaferZoomLayer;
+    const { scaleX, scaleY } = getZoomScale(layer);
+    return {
+      x: Number(layer.x ?? 0),
+      y: Number(layer.y ?? 0),
+      scaleX,
+      scaleY,
+    };
+  }
+
+  function restoreViewportState(state: GraphViewportState): void {
+    const leafer = options.getLeafer();
+    if (!leafer?.zoomLayer) return;
+    const layer = leafer.zoomLayer as LeaferZoomLayer;
+    if (![state.x, state.y, state.scaleX, state.scaleY].every(Number.isFinite)) return;
+    layer.scaleX = state.scaleX;
+    layer.scaleY = state.scaleY;
+    layer.x = state.x;
+    layer.y = state.y;
+    leafer.update?.();
+    handleViewportMove();
   }
 
   function moveToWorldViewport(view: GraphViewportRequest): void {
@@ -193,6 +239,9 @@ export function createGraphViewportController(options: CreateGraphViewportContro
     handleViewportMove,
     handleViewportZoom,
     moveToWorldViewport,
+    getViewportState,
+    restoreViewportState,
+    waitForRevealTransition,
     handleCanvasClick,
     registerViewportEvents,
     applyZoom,

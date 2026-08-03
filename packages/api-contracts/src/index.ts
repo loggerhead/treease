@@ -10,22 +10,22 @@ export type BillingCadence = z.infer<typeof billingCadenceSchema>;
 export const billingPriceIdSchema = billingCadenceSchema;
 export type BillingPriceId = z.infer<typeof billingPriceIdSchema>;
 
-export const usageCapabilitySchema = z.enum(['bidirectional_edit', 'large_file_processing', 'ai_suggestion']);
+export const usageCapabilitySchema = z.enum(['graph_view', 'large_file_processing', 'ai_suggestion']);
 export type UsageCapability = z.infer<typeof usageCapabilitySchema>;
 export type RecordedUsageCapability = Exclude<UsageCapability, 'ai_suggestion'>;
 
 export const entitlementLimitSchema = z.discriminatedUnion('kind', [
-  z.object({ kind: z.literal('limited'), limit: z.number().int().nonnegative() }).strict(),
-  z.object({ kind: z.literal('unlimited') }).strict(),
+  z.object({ kind: z.literal('limited'), limit: z.number().int().nonnegative() }).strip(),
+  z.object({ kind: z.literal('unlimited') }).strip(),
 ]);
 export type EntitlementLimit = z.infer<typeof entitlementLimitSchema>;
 
 const usageLimitsSchema = z.object({
-  bidirectionalEditDocumentsMonthly: entitlementLimitSchema,
+  graphViewDocumentsMonthly: entitlementLimitSchema,
   largeFileProcessingRunsMonthly: entitlementLimitSchema,
   aiProcessingMonthly: entitlementLimitSchema,
   shareMaxAgeDays: z.number().int().positive(),
-}).strict();
+}).strip();
 
 export const usageSummarySchema = z.object({
   tier: subscriptionTierSchema,
@@ -33,7 +33,7 @@ export const usageSummarySchema = z.object({
   limits: usageLimitsSchema,
   usage: z.record(z.string(), z.number().nonnegative()),
   requestId: z.string().min(1).optional(),
-}).strict();
+}).strip();
 export type UsageSummary = z.infer<typeof usageSummarySchema>;
 
 const subscriptionStatusSchema = z.enum(['active', 'inactive', 'past_due', 'canceled']);
@@ -61,7 +61,7 @@ export const currentSubscriptionSchema = z.object({
   updatedAt: z.string().datetime({ offset: true }),
   billingManagementAvailable: z.boolean(),
   requestId: z.string().min(1).optional(),
-}).strict().transform((value): CurrentSubscription => ({
+}).strip().transform((value): CurrentSubscription => ({
   ...value,
   billingCadence: value.billingCadence ?? null,
   currentPeriodEnd: value.currentPeriodEnd ?? null,
@@ -72,18 +72,18 @@ export const accountSummarySchema = z.object({
     id: z.string().min(1),
     email: z.email().nullable(),
     avatarUrl: z.string().url().nullable(),
-  }).strict(),
+  }).strip(),
   subscription: currentSubscriptionSchema,
   usage: usageSummarySchema,
   requestId: z.string().min(1).optional(),
-}).strict();
+}).strip();
 export type AccountSummary = z.infer<typeof accountSummarySchema>;
 
 export const billingPlanDefinitionSchema = z.object({
   priceId: billingPriceIdSchema,
   tier: z.literal('pro'),
   cadence: billingCadenceSchema,
-}).strict();
+}).strip();
 export type BillingPlanDefinition = z.infer<typeof billingPlanDefinitionSchema>;
 
 export const billingPlanPriceSchema = z.object({
@@ -92,17 +92,17 @@ export const billingPlanPriceSchema = z.object({
   currency: z.string().min(1),
   interval: z.enum(['day', 'week', 'month', 'year']),
   intervalCount: z.number().int().positive(),
-}).strict();
+}).strip();
 export type BillingPlanPrice = z.infer<typeof billingPlanPriceSchema>;
 
 export const billingCheckoutLinkSchema = z.object({
   priceId: billingPriceIdSchema,
   url: z.url(),
   requestId: z.string().min(1).optional(),
-}).strict();
+}).strip();
 export type BillingCheckoutLink = z.infer<typeof billingCheckoutLinkSchema>;
 
-export const billingPortalLinkSchema = z.object({ url: z.url(), requestId: z.string().min(1).optional() }).strict();
+export const billingPortalLinkSchema = z.object({ url: z.url(), requestId: z.string().min(1).optional() }).strip();
 export type BillingPortalLink = z.infer<typeof billingPortalLinkSchema>;
 
 export const billingPricingPrewarmResponseSchema = z.object({
@@ -110,7 +110,7 @@ export const billingPricingPrewarmResponseSchema = z.object({
   checkouts: z.array(billingCheckoutLinkSchema).nullable(),
   subscription: z.union([currentSubscriptionSchema, z.null()]),
   requestId: z.string().min(1).optional(),
-}).strict();
+}).strip();
 export type BillingPricingPrewarm = z.infer<typeof billingPricingPrewarmResponseSchema>;
 
 export const shareLinkSchema = z.object({
@@ -119,14 +119,14 @@ export const shareLinkSchema = z.object({
   expiresAt: z.string().datetime({ offset: true }),
   createdAt: z.string().datetime({ offset: true }),
   requestId: z.string().min(1).optional(),
-}).strict();
+}).strip();
 export type ShareLink = z.infer<typeof shareLinkSchema>;
 
 export const publicShareResponseSchema = z.object({
   resourceType: z.enum(['compare', 'text_snapshot']),
   resourcePayload: z.unknown(),
   requestId: z.string().min(1).optional(),
-}).strict();
+}).strip();
 export type PublicShareResponse = z.infer<typeof publicShareResponseSchema>;
 
 export const structLanguageIds = [
@@ -150,7 +150,7 @@ export const errorResponseSchema = z.object({
   message: z.string().optional(),
   details: z.unknown().optional(),
   requestId: z.string().optional(),
-}).strict();
+}).strip();
 
 export const createCheckoutLinkSchema = z.object({
   priceId: billingPriceIdSchema,
@@ -169,7 +169,7 @@ export const suggestYqSchema = z.object({
   path: ['editorTextSnapshot'],
 });
 
-export const suggestYqResponseSchema = z.object({ expression: z.string().min(1), requestId: z.string().min(1).optional() }).strict();
+export const suggestYqResponseSchema = z.object({ expression: z.string().min(1), requestId: z.string().min(1).optional() }).strip();
 
 export const structGenerationSchema = z.object({
   sourceJson: z.string().min(2).max(1_000_000),
@@ -180,7 +180,7 @@ export const structGenerationResponseSchema = z.object({
   language: structLanguageSchema,
   code: z.string(),
   requestId: z.string().min(1).optional(),
-}).strict();
+}).strip();
 
 export const createShareSchema = z.object({
   resource: shareResourceSchema,
@@ -188,14 +188,14 @@ export const createShareSchema = z.object({
 }).strict();
 
 export const recordedUsageSchema = z.object({
-  capability: z.enum(['bidirectional_edit', 'large_file_processing']),
+  capability: z.enum(['graph_view', 'large_file_processing']),
   idempotencyKey: z.string().min(1).max(256),
   clientId: z.string().min(1).max(512),
   metadata: z.record(z.string(), z.unknown()).default({}),
 }).strict();
 export const clientQuerySchema = z.object({ clientId: z.string().min(1).max(512).optional() });
 export const claimSchema = z.object({ clientId: z.string().min(1).max(512) }).strict();
-export const claimUsageResponseSchema = z.object({ claimed: z.number().int().nonnegative(), requestId: z.string().min(1).optional() }).strict();
+export const claimUsageResponseSchema = z.object({ claimed: z.number().int().nonnegative(), requestId: z.string().min(1).optional() }).strip();
 
 export const feedbackSubmissionSchema = z.object({
   category: z.enum(['bug', 'feature', 'question']),
@@ -212,7 +212,7 @@ export const feedbackResponseSchema = z.object({
   id: z.string().min(1),
   issueUrl: z.url().nullable(),
   requestId: z.string().min(1).optional(),
-}).strict();
+}).strip();
 
 export type SuggestYqInput = z.infer<typeof suggestYqSchema>;
 export type StructGenerationInput = z.infer<typeof structGenerationSchema>;

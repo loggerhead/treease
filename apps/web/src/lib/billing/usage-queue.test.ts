@@ -6,12 +6,12 @@ describe('usage queue projection', () => {
   it('counts each pending logical event once', () => {
     expect(calculateUsageDelta([
       {
-        eventId: 'a1', clientId: 'client', capability: 'bidirectional_edit',
+        eventId: 'a1', clientId: 'client', capability: 'graph_view',
         periodKey: '2026-07', idempotencyKey: 'document-a', quantity: 1,
         metadata: {}, createdAt: '', status: 'pending',
       },
       {
-        eventId: 'a2', clientId: 'client', capability: 'bidirectional_edit',
+        eventId: 'a2', clientId: 'client', capability: 'graph_view',
         periodKey: '2026-07', idempotencyKey: 'document-a', quantity: 1,
         metadata: {}, createdAt: '', status: 'pending',
       },
@@ -26,7 +26,7 @@ describe('usage queue projection', () => {
         metadata: {}, createdAt: '', status: 'uploaded',
       },
     ], '2026-07')).toEqual({
-      bidirectional_edit: 1,
+      graph_view: 1,
       large_file_processing: 1,
     });
   });

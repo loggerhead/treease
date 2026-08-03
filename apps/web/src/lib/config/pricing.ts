@@ -51,7 +51,7 @@ const proFeatures = [
   { label: 'Trace fields from graph to source' },
   { label: 'Structural comparisons' },
   { label: 'Share link validity: up to 365 days', emphasis: 'up to 365 days' },
-  { label: 'Bidirectional editing: unlimited', emphasis: 'unlimited' },
+  { label: 'Graph views: unlimited', emphasis: 'unlimited' },
   {
     label: 'Large-file visualizations and processing: unlimited',
     emphasis: 'unlimited',
@@ -79,7 +79,7 @@ export const pricingConfig: { title: string; description: string; plans: Pricing
         { label: 'Trace fields from graph to source' },
         { label: 'Structural comparisons' },
         { label: 'Share link validity: up to 7 days', emphasis: 'up to 7 days' },
-        { label: 'Bidirectional editing: up to 10 documents per month', emphasis: 'up to 10 documents per month' },
+        { label: 'Graph views: up to 5 documents per month', emphasis: 'up to 5 documents per month' },
         {
           label: 'Large-file visualizations and processing: up to 3 runs per month',
           emphasis: 'up to 3 runs per month',

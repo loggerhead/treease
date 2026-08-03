@@ -101,16 +101,24 @@ describe('editor-workspace', () => {
     ]);
   });
 
-  it('keeps file linkage per tab and derives dirty state from the saved text', () => {
+  it('keeps file linkage, cloud sync state, and local dirty state independently', () => {
     const linked = tab({
       fileLinkedDocument: { grantId: 'file-1', name: 'config.json' },
       savedText: '{"a":1}',
+      syncStatus: 'synced',
     });
     const dirty = updateWorkspaceTab(createEditorWorkspaceState(linked), linked.id, { sourceText: '{"a":2}' });
 
     expect(isWorkspaceTabDirty(linked)).toBe(false);
     expect(isWorkspaceTabDirty(dirty.tabsById[linked.id])).toBe(true);
     expect(dirty.tabsById[linked.id].fileLinkedDocument).toEqual({ grantId: 'file-1', name: 'config.json' });
+    expect(summarizeWorkspaceTabs(dirty)).toContainEqual({
+      id: linked.id,
+      name: linked.name,
+      languageId: 'json',
+      dirty: true,
+      syncStatus: 'synced',
+    });
   });
 
   it('replaces an inactive left document only through an identity-checked transition', () => {

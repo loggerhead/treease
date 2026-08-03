@@ -1,7 +1,17 @@
 <script lang="ts">
-  export let className = ''
+	import { Command as CommandPrimitive } from "bits-ui";
+	import { cn } from "$lib/utils";
+
+	let {
+		class: className,
+		children,
+		...restProps
+	}: CommandPrimitive.EmptyProps = $props();
 </script>
 
-<div class={`px-3 py-4 text-[12px] text-[var(--text-muted)] ${className}`}>
-  <slot>No results.</slot>
-</div>
+<CommandPrimitive.Empty
+	class={cn("py-6 text-center text-sm", className)}
+	{...restProps}
+>
+	{@render children?.()}
+</CommandPrimitive.Empty>

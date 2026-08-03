@@ -2,8 +2,8 @@
   import { onMount } from 'svelte';
   import { LoaderCircle, RefreshCw, Trash2, Upload, X } from 'lucide-svelte';
   import { toast } from 'svelte-sonner';
-  import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog';
   import { Button } from './ui/button';
+  import Tooltip from './Tooltip.svelte';
   import { authUser, observeAuthUser } from '../auth/auth-user-store';
   import { getFeedbackConsoleLogs } from '../feedback/console-log-buffer';
 
@@ -182,11 +182,10 @@
   }[category];
 </script>
 
-<Dialog bind:open>
-  <DialogContent aria-labelledby="feedback-dialog-title" data-testid="feedback-dialog" class="max-h-[90vh] max-w-2xl gap-6 overflow-y-auto">
-    <DialogHeader>
-      <DialogTitle id="feedback-dialog-title">Send Feedback</DialogTitle>
-    </DialogHeader>
+<section aria-labelledby="feedback-dialog-title" data-testid="feedback-dialog" class="feedback-panel flex max-h-[calc(100vh-16px)] flex-col gap-6 overflow-y-auto">
+    <header>
+      <h2 id="feedback-dialog-title" class="text-lg leading-none font-semibold">Send Feedback</h2>
+    </header>
 
     <div class="flex flex-col gap-5">
         <fieldset class="flex flex-col gap-3 pb-1">
@@ -230,8 +229,8 @@
             <div class="relative overflow-hidden rounded-[9px] border border-[var(--border-muted)] bg-white">
               <img src={screenshot} alt="Screenshot preview" class="max-h-56 w-full object-contain" />
               <div class="absolute right-2 top-2 flex gap-1.5">
-                <Button size="xs" iconOnly={true} aria-label="Retake screenshot" title="Retake screenshot" on:click={scheduleScreenshot}><RefreshCw size={13} /></Button>
-                <Button size="xs" iconOnly={true} aria-label="Delete screenshot" title="Delete screenshot" on:click={removeScreenshot}><Trash2 size={13} /></Button>
+                <Tooltip content="Retake screenshot" side="top"><Button size="xs" iconOnly={true} aria-label="Retake screenshot" on:click={scheduleScreenshot}><RefreshCw size={13} /></Button></Tooltip>
+                <Tooltip content="Delete screenshot" side="top"><Button size="xs" iconOnly={true} aria-label="Delete screenshot" on:click={removeScreenshot}><Trash2 size={13} /></Button></Tooltip>
               </div>
             </div>
           {:else}
@@ -253,12 +252,11 @@
           <p class="rounded-[8px] bg-red-50 px-3 py-2 text-sm text-red-700">{errorMessage}</p>
         {/if}
     </div>
-    <DialogFooter>
+    <footer class="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
       <Button variant="outline" on:click={() => (open = false)}><X size={14} class="mr-1.5" />Cancel</Button>
       <Button disabled={submitBusy || screenshotBusy} on:click={submit}>
         {#if submitBusy}<LoaderCircle size={14} class="mr-1.5 animate-spin" />{/if}
         Submit feedback
       </Button>
-    </DialogFooter>
-  </DialogContent>
-</Dialog>
+    </footer>
+</section>

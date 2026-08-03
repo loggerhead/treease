@@ -73,31 +73,86 @@ async function closePersistence(): Promise<void> {
 
 const internalStore = writable<SettingsState>(initialSettingsState);
 
+function replaceLegacyDefaultColors(
+  colors: Record<string, unknown> | undefined,
+  replacements: Readonly<Record<string, readonly [string | readonly string[], string]>>,
+): Record<string, unknown> | undefined {
+  if (!colors) return colors;
+  let nextColors = colors;
+  for (const [key, [legacy, replacement]] of Object.entries(replacements)) {
+    const legacyValues = Array.isArray(legacy) ? legacy : [legacy];
+    if (!legacyValues.includes(colors[key] as string)) continue;
+    if (nextColors === colors) nextColors = { ...colors };
+    nextColors[key] = replacement;
+  }
+  return nextColors;
+}
+
 function migrateLegacySettingsDocument(document: SettingsDocument): SettingsDocument {
   if (!document || typeof document !== 'object' || Array.isArray(document)) return document;
   const current = document as Record<string, any>;
-  const semanticTypeColors = current.editor?.semanticTypeColors;
-  if (!semanticTypeColors || typeof semanticTypeColors !== 'object') return document;
+  const editor = current.editor as Record<string, any> | undefined;
+  const viewer = current.viewer as Record<string, any> | undefined;
+  const semanticTypeColors = editor?.semanticTypeColors as Record<string, unknown> | undefined;
+  const uiColors = editor?.uiColors as Record<string, unknown> | undefined;
+  const graphViewer = viewer?.graphViewer as Record<string, any> | undefined;
+  const graphColors = graphViewer?.colors as Record<string, any> | undefined;
 
-  let changed = false;
-  const nextSemanticTypeColors = { ...semanticTypeColors };
+  const nextSemanticTypeColors = replaceLegacyDefaultColors(semanticTypeColors, {
+    boolean: ['#a31515', defaultSettings.editor.semanticTypeColors.boolean],
+    nil: ['#d1004d', defaultSettings.editor.semanticTypeColors.nil],
+  });
+  const nextUiColors = replaceLegacyDefaultColors(uiColors, {
+    'editor.background': [['#ffffff', '#fdfcf9'], '#ffffff'],
+    'editor.foreground': [['#0f172a', '#1d2735'], '#294c66'],
+    'editorLineNumber.foreground': [['#64748b', '#9aa4aa'], '#9caebb'],
+    'editorLineNumber.activeForeground': [['#0f172a', '#687181'], '#6d8292'],
+    'editorCursor.foreground': [['#0f172a', '#315c94'], '#286b90'],
+    'editor.selectionBackground': [['#dbeafe', '#eaf0f8'], '#eaf4fb'],
+    'editor.selectionHighlightBackground': [['#dbeafe', '#eaf0f8'], '#eaf4fb'],
+    'editorOverviewRuler.background': [['#ffffff', '#fdfcf9'], '#ffffff'],
+    'editorOverviewRuler.border': [['#e2e8f0', '#d8d9d6'], '#cbd9e3'],
+  });
+  const nextNodeColors = replaceLegacyDefaultColors(graphColors?.node, {
+    background: [['#ffffff', '#fdfcf9'], '#ffffff'],
+    border: [['#00000040', '#bfc2c2'], '#afc4d4'],
+  });
+  const nextTableColors = replaceLegacyDefaultColors(graphColors?.table, {
+    background: [['#ffffff', '#fdfcf9'], '#ffffff'],
+    border: [['#00000040', '#bfc2c2'], '#afc4d4'],
+    headerBackground: [['#f1f5f9', '#f6f5f1'], '#f6f9fb'],
+    headerBorder: [['#00000040', '#bfc2c2'], '#d5e1e9'],
+    rowBackground: [['#ffffff', '#fdfcf9'], '#ffffff'],
+    rowBorder: [['#00000040', '#d8d9d6'], '#e0e8ee'],
+    hoverRowBackground: [['#e6f0ff', '#eaf0f8'], '#eaf4fb'],
+    hoverCellBackground: [['#ffe27a', '#f6e6b8'], '#fff2c8'],
+    trackBackground: [['#f8fafc', '#f6f5f1'], '#f2f6f9'],
+    trackBorder: [['#e2e8f0', '#d8d9d6'], '#cbd9e3'],
+    thumbBackground: [['#cbd5e1', '#bfc2c2'], '#9bb0c0'],
+  });
+  const nextGraphColors = replaceLegacyDefaultColors(graphColors, {
+    textMuted: [['#6b7280', '#687181'], '#74899a'],
+    edge: [['#cbd5e1', '#c7d1de'], '#aec9dc'],
+  });
+  const normalizedGraphColors = nextGraphColors === graphColors && nextNodeColors === graphColors?.node && nextTableColors === graphColors?.table
+    ? graphColors
+    : { ...nextGraphColors, node: nextNodeColors, table: nextTableColors };
+  const normalizedEditor = nextSemanticTypeColors === semanticTypeColors && nextUiColors === uiColors
+    ? editor
+    : {
+      ...editor,
+      ...(nextSemanticTypeColors !== semanticTypeColors ? { semanticTypeColors: nextSemanticTypeColors } : {}),
+      ...(nextUiColors !== uiColors ? { uiColors: nextUiColors } : {}),
+    };
+  const normalizedViewer = normalizedGraphColors === graphColors
+    ? viewer
+    : { ...viewer, graphViewer: { ...graphViewer, colors: normalizedGraphColors } };
 
-  if (semanticTypeColors.boolean === '#a31515') {
-    nextSemanticTypeColors.boolean = defaultSettings.editor.semanticTypeColors.boolean;
-    changed = true;
-  }
-  if (semanticTypeColors.nil === '#d1004d') {
-    nextSemanticTypeColors.nil = defaultSettings.editor.semanticTypeColors.nil;
-    changed = true;
-  }
-  if (!changed) return document;
-
+  if (normalizedEditor === editor && normalizedViewer === viewer) return document;
   return {
     ...current,
-    editor: {
-      ...current.editor,
-      semanticTypeColors: nextSemanticTypeColors,
-    },
+    ...(normalizedEditor !== editor ? { editor: normalizedEditor } : {}),
+    ...(normalizedViewer !== viewer ? { viewer: normalizedViewer } : {}),
   };
 }
 

@@ -88,6 +88,11 @@ export function ensureWindowTreease(): WindowTreease | null {
         if (!fn) missing(`editor.getScroll("${hookId}")`);
         return fn();
       },
+      getVisibleStartLine: (hookId) => {
+        const fn = getEditorHook(hookId).getVisibleStartLine;
+        if (!fn) missing(`editor.getVisibleStartLine("${hookId}")`);
+        return fn();
+      },
       setScroll: (hookId, scrollTop, scrollLeft) => {
         const fn = getEditorHook(hookId).setScroll;
         if (!fn) missing(`editor.setScroll("${hookId}")`);
@@ -116,6 +121,7 @@ export function ensureWindowTreease(): WindowTreease | null {
     },
     graph: {
       getInteractionState: () => getGraphRuntime().getInteractionState?.() ?? null,
+      getViewportState: () => getGraphRuntime().getViewportState?.() ?? null,
       getRuntimeReadiness: () => graphRuntime?.getRuntimeReadiness?.() ?? readRuntimeReadiness(),
       getClickProbeTargets: (scope) => getGraphRuntime().getClickProbeTargets?.(scope) ?? [],
       getHighlightTarget: () => getGraphRuntime().getHighlightTarget?.() ?? null,

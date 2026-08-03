@@ -114,6 +114,48 @@ describe('settings-store', () => {
     expect(state.settings.editor.semanticTypeColors.nil).toBe(defaultSettings.editor.semanticTypeColors.nil);
   });
 
+  it('migrates only legacy visual defaults and keeps custom colors', async () => {
+    mockDbStore['user'] = {
+      editor: {
+        uiColors: {
+          'editor.background': '#ffffff',
+          'editor.foreground': '#123456',
+          'editor.selectionBackground': '#dbeafe',
+        },
+      },
+      viewer: {
+        graphViewer: {
+          colors: {
+            edge: '#cbd5e1',
+            node: { background: '#ffffff', border: '#c0ffee' },
+            table: { headerBackground: '#f1f5f9' },
+          },
+        },
+      },
+    };
+
+    await settingsStore.load();
+
+    expect(settingsStore.get().document).toEqual({
+      editor: {
+        uiColors: {
+          'editor.background': '#ffffff',
+          'editor.foreground': '#123456',
+          'editor.selectionBackground': '#eaf4fb',
+        },
+      },
+      viewer: {
+        graphViewer: {
+          colors: {
+            edge: '#aec9dc',
+            node: { background: '#ffffff', border: '#c0ffee' },
+            table: { headerBackground: '#f6f9fb' }
+          },
+        },
+      },
+    });
+  });
+
   it('load falls back to defaults when db returns nothing', async () => {
     await settingsStore.load();
     const state = settingsStore.get();

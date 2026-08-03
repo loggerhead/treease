@@ -133,8 +133,8 @@ describe('graph-text-linkage', () => {
       }),
     );
 
-    controller.revealSearchResult({ path, target: 'value' });
-    await Promise.resolve();
+    const revealed = await controller.revealPath(path, { target: 'value', navigate: true });
+    if (revealed) controller.emitReveal(path, 'value', 'search');
 
     expect(scrollTableCellAnchorIntoView).toHaveBeenCalledWith({
       nodeId: 9,

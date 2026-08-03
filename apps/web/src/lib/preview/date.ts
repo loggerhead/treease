@@ -1,21 +1,35 @@
 import type { Previewer } from './types';
 import { buildTable } from './utils';
 
-const dateRe = /20\d{2}-[01]\d-[0-3]\d/;
-const timeRe = /[0-2]\d:[0-5]\d:[0-5]\d/;
-const timeZoneRe = /([+-])([0-2]\d):([0-5]\d)/;
-
-function concatRe(re1: RegExp | string, ...rest: Array<RegExp | string>) {
-  const first = typeof re1 === 'string' ? re1 : re1.source;
-  return new RegExp([first, ...rest.map((item) => (typeof item === 'string' ? item : item.source))].join(''));
-}
+const dateRe = /^(20\d{2})-(\d{2})-(\d{2})(?=$|T)/;
+const utcDateTimeRe = /^20\d{2}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\dZ$/;
+const offsetDateTimeRe = /^20\d{2}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d[+-](?:[01]\d|2[0-3]):[0-5]\d$/;
+const timeZoneRe = /([+-])([0-2]\d):([0-5]\d)$/;
 
 function isTimestamp(value: string): boolean {
   return /^1(\d{9}|\d{12})$/.test(value);
 }
 
+function isValidDate(date: Date): boolean {
+  return Number.isFinite(date.getTime());
+}
+
+function isValidCalendarDate(value: string): boolean {
+  const match = value.match(dateRe);
+  if (!match) return false;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  if (month < 1 || month > 12 || day < 1 || day > 31) return false;
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return date.getUTCFullYear() === year
+    && date.getUTCMonth() === month - 1
+    && date.getUTCDate() === day;
+}
+
 function isDate(value: string): boolean {
-  return concatRe('^', dateRe).test(value);
+  if (!isValidCalendarDate(value)) return false;
+  return isValidDate(genDate(value));
 }
 
 function genDate(value: string): Date {
@@ -25,12 +39,12 @@ function genDate(value: string): Date {
   }
   const date = new Date();
   const localOffsetMs = date.getTimezoneOffset() * 60 * 1000;
-  if (concatRe('^', dateRe, 'T', timeRe, 'Z').test(value)) {
+  if (utcDateTimeRe.test(value)) {
     const next = new Date(value.replace(/Z$/, ''));
     return new Date(next.getTime() + localOffsetMs);
   }
-  if (concatRe('^', dateRe, 'T', timeRe, timeZoneRe, '$').test(value)) {
-    const timePart = value.replace(concatRe(timeZoneRe, '$'), '');
+  if (offsetDateTimeRe.test(value)) {
+    const timePart = value.slice(0, -6);
     const utc = new Date(`${timePart}Z`);
     const match = value.match(timeZoneRe);
     if (!match) return utc;
@@ -67,6 +81,7 @@ export const datePreviewer: Previewer = {
   },
   generator: ({ value }) => {
     const next = genDate(value);
+    if (!isValidDate(next)) return null;
     const diffMs = Date.now() - next.getTime();
     return buildTable({
       ISO: next.toISOString(),

@@ -8,6 +8,7 @@
   import EditorCore from './Editor/EditorCore.svelte';
   export let onScroll: (payload: { scrollTop: number; scrollLeft: number }) => void = () => {};
   export let enableRevealSync = true;
+  export let enableScrollRevealSync = false;
   export let synchronizedRuntimeLoading = false;
   export let runBidirectionalEdit: <T>(source: string, execute: () => Promise<T>, reason?: string) => Promise<T> = async (_source, execute) => execute();
   export let onRequestImportFile: (payload: { sourceFormat: string; targetFormat: string; accept: string[] }) => Promise<void> = async () => {};
@@ -168,6 +169,7 @@
 <EditorCore
   bind:this={editorCore}
   {enableRevealSync}
+  {enableScrollRevealSync}
   {synchronizedRuntimeLoading}
   {runBidirectionalEdit}
   {onDirectDraftMutation}

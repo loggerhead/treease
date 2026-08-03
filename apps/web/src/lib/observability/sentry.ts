@@ -6,6 +6,7 @@ import { getUsageClientId } from '../billing/client-id';
 const dsn = String(import.meta.env.PUBLIC_SENTRY_DSN ?? '').trim();
 const release = `treease-web@${packageJson.version}`;
 const appType = import.meta.env.PUBLIC_WORKSPACE_SURFACE === 'desktop' ? 'desktop' : 'web';
+const ignoredDynamicImportError = /Failed to fetch dynamically imported module:\s*https:\/\/treease\.com\/_app\/immutable(?:[/?#]|$)/;
 
 export const sentryEnabled = Boolean(dsn);
 
@@ -16,6 +17,7 @@ if (sentryEnabled) {
     release,
     tracesSampleRate: 0,
     sendDefaultPii: false,
+    ignoreErrors: [ignoredDynamicImportError],
     beforeSend(event) {
       // Never send editor contents, auth headers, or uploaded files as error context.
       if (event.request) {

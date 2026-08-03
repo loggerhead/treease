@@ -11,6 +11,7 @@ use crate::tree::tree_store::TreeStore;
 pub(crate) struct FullGraphBuild {
     pub(crate) model: GraphModel,
     pub(crate) topology: GraphTopology,
+    pub(crate) topology_bytes: Vec<u8>,
     pub(crate) layout_state: LayoutState,
 }
 
@@ -42,7 +43,7 @@ impl FullLayoutAdapter {
         root_path: &[PathSeg],
     ) -> Result<FullGraphBuild, String> {
         let mut topology = GraphTopology::new();
-        let dirty = topology.build_full(store, root, &self.config);
+        let (dirty, topology_bytes) = topology.build_full_with_topology_bytes(store, root, &self.config);
         rewrite_root_path(&mut topology, root_path);
 
         let mut model = GraphModel::default();
@@ -67,6 +68,7 @@ impl FullLayoutAdapter {
         Ok(FullGraphBuild {
             model,
             topology,
+            topology_bytes,
             layout_state,
         })
     }

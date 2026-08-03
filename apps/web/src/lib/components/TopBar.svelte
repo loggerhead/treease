@@ -1,66 +1,60 @@
 <script lang="ts">
-  import { onMount } from 'svelte'
-  import { cubicOut } from 'svelte/easing'
-  import { fly } from 'svelte/transition'
-  import { Plus, X, Upload, Download, BookOpen, MessageCircle, Share2, ArrowRight } from 'lucide-svelte'
-  import { trackEvent } from '../analytics/ga4'
-  import { languageId as languageIdStore } from '../store/document-session-store'
-  import AccountMenu from './AccountMenu.svelte'
-  import * as Select from './ui/select'
-  import * as ButtonGroup from './ui/button-group'
-  import { Button, IconButton } from './ui/button'
-  import type { SupportedEditorLanguageId } from '../monaco/language-support'
-  import { assetUrl, r2Assets } from '$lib/assets'
+  import { MoreHorizontal, Plus, X } from 'lucide-svelte'
+  import type { CommandId } from '../command-registry'
+  import { activeTempModel } from '../store/graph-selection-store'
+  import CommandSearchInput from './CommandSearchInput.svelte'
 
-  export let tabs: Array<{ id: string; name: string; languageId: SupportedEditorLanguageId; dirty?: boolean }> = []
+  export let tabs: Array<{ id: string; name: string; languageId: string; dirty?: boolean }> = []
   export let activeTabId = ''
   export let showTabDirty = false
   export let canAddTab = true
   export let showTabs = true
-  export let showRightActions = true
+  export let placement: 'top' | 'sidebar' = 'top'
   export let onAddTab: () => void = () => {}
   export let onCloseTab: (id: string) => void = () => {}
   export let onActivateTab: (id: string) => void = () => {}
   export let onRenameTab: (id: string, name: string) => void = () => {}
-  export let formatOptions: Array<{ id: string; label: string; extensions: string[] }> = []
-  export let onRequestImportFile: (payload: { sourceFormat: string; targetFormat: string; accept: string[] }) => Promise<void> = async () => {}
-  export let onImportFileStream: (payload: { file: File; sourceFormat: string; targetFormat: string; fileName: string }) => void = () => {}
-  export let onExportPreview: (format: string) => void = () => {}
-  export let onExportDownload: (format: string) => void = () => {}
-  export let onShare: () => void = () => {}
-  export let onFeedback: () => void = () => {}
-  export let onOpenSettings: () => void = () => {}
-  export let onLogin: () => void = () => {}
-  export let onLogout: () => Promise<void> = async () => {}
-  export let onCheckForUpdates: () => Promise<void> = async () => {}
+  export let onCommandExecute: (id: CommandId) => void | Promise<void> = () => {}
+  export let showCommandSearch = true
 
-  let importOpen = false
-  let exportOpen = false
-  let importFormat = 'json'
-  let exportFormat = 'json'
-  let importDropActive = false
-  let importAnchor: HTMLDivElement | null = null
-  let exportAnchor: HTMLDivElement | null = null
   let renamingTabId: string | null = null
   let renamedTabName = ''
+  let commandQuery = ''
+  let tabMenuOpen = false
 
-  const toggleImportPanel = () => {
-    importOpen = !importOpen
-    exportOpen = false
+  $: if ($activeTempModel && $activeTempModel.commandQuery !== commandQuery) commandQuery = $activeTempModel.commandQuery
+  $: directTabs = tabs
+
+  function activateTabFromMenu(id: string) {
+    onActivateTab(id)
+    tabMenuOpen = false
   }
 
-  const toggleExportPanel = () => {
-    exportOpen = !exportOpen
-    importOpen = false
+  function closeTabFromMenu(id: string) {
+    onCloseTab(id)
+    tabMenuOpen = false
   }
 
-  const beginTabRename = (tab: { id: string; name: string }) => {
+  function closeTabMenu() {
+    tabMenuOpen = false
+  }
+
+  function handleWindowKeydown(event: KeyboardEvent) {
+    if (event.key === 'Escape') closeTabMenu()
+  }
+
+  function updateCommandQuery(value: string) {
+    commandQuery = value
+    activeTempModel.update((current) => ({ ...current, commandQuery: value }))
+  }
+
+  function beginTabRename(tab: { id: string; name: string }) {
     onActivateTab(tab.id)
     renamingTabId = tab.id
     renamedTabName = tab.name
   }
 
-  const commitTabRename = (tab: { id: string; name: string }) => {
+  function commitTabRename(tab: { id: string; name: string }) {
     if (renamingTabId !== tab.id) return
     const name = renamedTabName.trim()
     if (name && name !== tab.name) onRenameTab(tab.id, name)
@@ -68,7 +62,7 @@
     renamedTabName = ''
   }
 
-  const cancelTabRename = () => {
+  function cancelTabRename() {
     renamingTabId = null
     renamedTabName = ''
   }
@@ -76,355 +70,259 @@
   function focusRenameInput(node: HTMLInputElement) {
     queueMicrotask(() => node.focus())
   }
-
-  export function openImportPanel(): void {
-    importOpen = true
-    exportOpen = false
-  }
-
-  export function openExportPanel(): void {
-    exportOpen = true
-    importOpen = false
-  }
-
-  const handleImportFile = async (file: File | null | undefined) => {
-    if (!file) return
-    importDropActive = false
-    onImportFileStream({ file, sourceFormat: importFormat, targetFormat: $languageIdStore, fileName: file.name })
-    importOpen = false
-  }
-
-  const requestImportFile = async () => {
-    const accept = formatOptions.find((item) => item.id === importFormat)?.extensions ?? []
-    await onRequestImportFile({ sourceFormat: importFormat, targetFormat: $languageIdStore, accept })
-    importOpen = false
-  }
-
-  $: importConversion = {
-    srcLabel: getFormatLabel(importFormat, formatOptions),
-    dstLabel: getFormatLabel($languageIdStore, formatOptions),
-  }
-  $: exportConversion = {
-    srcLabel: getFormatLabel($languageIdStore, formatOptions),
-    dstLabel: getFormatLabel(exportFormat, formatOptions),
-  }
-
-  /**
-   * Get the display text for a format selector.
-   * @param value Format ID
-   * @param options Format options
-   * @returns Display name, or the ID when no name is available
-   */
-  const getFormatLabel = (value: string, options: Array<{ id: string; label: string }>) => {
-    return options.find((option) => option.id === value)?.label ?? value
-  }
-
-  onMount(() => {
-    const handlePointerDown = (event: PointerEvent) => {
-      const target = event.target as HTMLElement | null
-      const insideSelectOverlay = !!target?.closest('[data-slot="select-content"]')
-
-      if (insideSelectOverlay) return
-
-      if (importOpen && importAnchor && target && !importAnchor.contains(target)) {
-        importOpen = false
-      }
-      if (exportOpen && exportAnchor && target && !exportAnchor.contains(target)) {
-        exportOpen = false
-      }
-    }
-
-    document.addEventListener('pointerdown', handlePointerDown)
-
-    return () => {
-      document.removeEventListener('pointerdown', handlePointerDown)
-    }
-  })
 </script>
 
-<header class="relative grid h-[var(--topbar-height)] grid-cols-[auto_auto_1fr_auto] items-center gap-3 border-b border-[var(--border-strong)] bg-[var(--topbar-bg)] px-3 text-[var(--text-primary)]">
-  <a
-    class="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-[6px] outline-none transition-[background-color,box-shadow] duration-150 hover:bg-[var(--panel-bg-alt)] focus-visible:ring-2 focus-visible:ring-[var(--accent)]/25"
-    aria-label="Treease home"
-    title="Treease home"
-    data-testid="topbar-home-link"
-    href="/"
-  >
-    <img class="h-6 w-6 object-contain" src={assetUrl(r2Assets.treeaseLogo)} alt="Treease logo" />
-  </a>
-  <ButtonGroup.Root variant="segmented-outline" class="min-w-0">
-    <IconButton aria-label="Import" title="Import" data-testid="topbar-import-button" on:click={toggleImportPanel}>
-      <Upload size={13} />
-    </IconButton>
-    <IconButton aria-label="Export" title="Export" data-testid="topbar-export-button" on:click={toggleExportPanel}>
-      <Download size={13} />
-    </IconButton>
-  </ButtonGroup.Root>
-  <div class="min-w-0">
-    {#if showTabs}
-      <ButtonGroup.Root class="items-center gap-1.5 overflow-x-auto" data-testid="editor-tab-strip">
-        {#each tabs as tab (tab.id)}
-          <ButtonGroup.Root
-            class={`inline-flex items-center gap-1 rounded-[6px] border bg-transparent px-1.5 py-0.5 text-[var(--text-muted)] transition-[background-color,border-color,color,box-shadow] duration-150 ease-out ${
-              tab.id === activeTabId
-                ? 'border-[var(--accent)]/45 bg-[var(--accent)]/[0.08] text-[var(--text-primary)] shadow-[0_1px_2px_rgba(15,23,42,0.06)]'
-                : 'border-transparent hover:bg-[var(--panel-bg-alt)] hover:text-[var(--text-primary)]'
-            } ${
-              renamingTabId === tab.id ? 'border-[var(--accent)] bg-[var(--accent)]/[0.12] ring-2 ring-[var(--accent)]/20' : ''
-            }`}
-            data-testid="editor-tab"
-            data-tab-id={tab.id}
-            data-active={tab.id === activeTabId}
-            data-renaming={renamingTabId === tab.id}
-          >
-            {#if renamingTabId === tab.id}
-              <div class="relative min-w-0">
-                <span class="invisible whitespace-pre text-[11px]">
-                  {showTabDirty && tab.dirty ? `${tab.name} •` : tab.name}
-                </span>
-                <input
-                  class="absolute inset-0 min-w-0 w-full bg-transparent p-0 text-[11px] outline-none placeholder:text-[var(--text-muted)]"
-                  aria-label={`Rename ${tab.name}`}
-                  data-testid={`tab-rename-${tab.id}`}
-                  bind:value={renamedTabName}
-                  use:focusRenameInput
-                  on:blur={() => commitTabRename(tab)}
-                  on:keydown={(event) => {
-                    if (event.key === 'Enter') commitTabRename(tab)
-                    if (event.key === 'Escape') cancelTabRename()
-                  }}
-                />
-              </div>
-            {:else}
-              <button
-                class="text-[11px] outline-none focus-visible:underline focus-visible:decoration-[var(--accent)] focus-visible:decoration-2 focus-visible:underline-offset-2"
-                aria-label={`Open ${tab.name}`}
-                title={`Open ${tab.name}`}
-                data-testid={`tab-open-${tab.id}`}
-                on:click={() => onActivateTab(tab.id)}
-                on:dblclick|stopPropagation={() => beginTabRename(tab)}
-              >
-                {showTabDirty && tab.dirty ? `${tab.name} •` : tab.name}
-              </button>
-            {/if}
-            <button
-              class="inline-flex items-center justify-center p-0.5"
-              aria-label={`Close ${tab.name}`}
-              title="Close tab"
-              data-testid={`tab-close-${tab.id}`}
-              on:click={() => onCloseTab(tab.id)}
-            >
-              <X size={10} />
-            </button>
-          </ButtonGroup.Root>
-        {/each}
-        {#if canAddTab}
-          <Button
-            variant="outline"
-            size="xs"
-            iconOnly={true}
-            class="rounded-[6px]"
-            aria-label="New tab"
-            title="New tab"
-            data-testid="new-tab-button"
-            on:click={onAddTab}
-          >
-            <Plus size={12} />
-          </Button>
-        {/if}
-      </ButtonGroup.Root>
-    {/if}
-  </div>
-  <div class="flex items-center justify-end gap-2">
-    {#if showRightActions}
-      <ButtonGroup.Root variant="segmented-outline" class="h-6">
-        <a
-          class="inline-flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center whitespace-nowrap rounded-none border-0 bg-transparent text-[var(--text-primary)] outline-none transition-[color,background-color,border-color,box-shadow] hover:bg-[var(--panel-bg-alt)] hover:text-[var(--accent)] focus-visible:ring-2 focus-visible:ring-[var(--accent)]/25"
-          data-slot="button"
-          data-variant="ghost"
-          data-size="xs"
-          data-icon-only="true"
-          aria-label="Tutorial"
-          title="Tutorial"
-          data-testid="topbar-tutorial-link"
-          href="/tutorial"
-          target="_blank"
-          rel="noopener"
-        >
-          <BookOpen size={12} />
-        </a>
-        <button
-          class="inline-flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center whitespace-nowrap rounded-none border-0 bg-transparent text-[var(--text-primary)] outline-none transition-[color,background-color,border-color,box-shadow] hover:bg-[var(--panel-bg-alt)] hover:text-[var(--accent)] focus-visible:ring-2 focus-visible:ring-[var(--accent)]/25"
-          data-slot="button"
-          data-variant="ghost"
-          data-size="xs"
-          data-icon-only="true"
-          aria-label="Feedback"
-          title="Feedback"
-          data-testid="topbar-feedback-button"
-          type="button"
-          on:click={onFeedback}
-        >
-          <MessageCircle size={12} />
-        </button>
-        <IconButton
-          aria-label="Share"
-          title="Share"
-          on:click={() => {
-            trackEvent('share_started', { surface: 'topbar' });
-            onShare();
-          }}
-        >
-          <Share2 size={12} />
-        </IconButton>
-        <div data-button-group-item>
-          <AccountMenu variant="editor" {onLogin} {onLogout} {onCheckForUpdates} {onOpenSettings} />
-        </div>
-      </ButtonGroup.Root>
-    {/if}
-  </div>
-  {#if importOpen}
-        <div
-          bind:this={importAnchor}
-          class="absolute left-0 top-[var(--topbar-height)] z-30 w-[360px] rounded-b-[16px] border border-[var(--border-muted)] border-t-0 bg-white p-4 shadow-[0_12px_40px_rgba(15,23,42,0.12)]"
-          data-testid="import-panel"
-          style:transform-origin="top left"
-          transition:fly={{ y: -6, duration: 150, opacity: 0.08, easing: cubicOut }}
-        >
-          <div class="text-[18px] font-semibold text-[var(--text-primary)]">Import</div>
-          <div class="mt-3 flex items-center justify-between text-[13px] text-[var(--text-muted)]">
-            <div class="flex items-center gap-2">
-              <span>File type:</span>
-              <div class="relative">
-                <Select.Root
-                  type="single"
-                  items={formatOptions.map((option) => ({ value: option.id, label: option.label }))}
-                  bind:value={importFormat}
-                >
-                  <Select.Trigger
-                    size="sm"
-                    class="rounded-[8px] border border-[var(--border-muted)] bg-white px-2 py-1 text-[13px] text-[var(--text-primary)] shadow-none focus-visible:border-[var(--accent)] focus-visible:shadow-[0_0_0_2px_rgba(56,189,248,0.25)]"
-                  >
-                    <span data-slot="select-value">{getFormatLabel(importFormat, formatOptions)}</span>
-                  </Select.Trigger>
-                  <Select.Content class="min-w-[180px]">
-                    {#each formatOptions as option}
-                      <Select.Item value={option.id} label={option.label} class="text-[13px]" />
-                    {/each}
-                  </Select.Content>
-                </Select.Root>
-              </div>
-            </div>
-            {#if importFormat !== $languageIdStore}
-              <div class="flex items-center gap-1.5 text-[12px] text-[var(--text-muted)]">
-                <span>{importConversion.srcLabel}</span>
-                <ArrowRight size={10} />
-                <span>{importConversion.dstLabel}</span>
-              </div>
-            {/if}
-          </div>
-          <button
-            class={`mt-4 flex h-[160px] w-full flex-col items-center justify-center gap-2 rounded-[12px] border border-dashed text-[13px] text-[var(--text-muted)] transition-[border-color,background-color,box-shadow,color] duration-150 ease-out ${
-              importDropActive
-                ? 'border-[var(--accent)] bg-[#eff6ff] text-[var(--text-primary)] shadow-[0_0_0_1px_rgba(37,99,235,0.08)]'
-                : 'border-[var(--border-muted)] bg-[var(--panel-bg)] hover:border-[var(--accent)]'
-            }`}
-            aria-label="Choose import file"
-            data-testid="import-drop-trigger"
-            on:click={() => void requestImportFile()}
-            on:dragenter={(event) => {
-              event.preventDefault()
-              importDropActive = true
-            }}
-            on:dragover={(event) => {
-              event.preventDefault()
-              importDropActive = true
-            }}
-            on:dragleave={(event) => {
-              event.preventDefault()
-              const nextTarget = event.relatedTarget as Node | null
-              if (!(event.currentTarget as HTMLElement).contains(nextTarget)) {
-                importDropActive = false
-              }
-            }}
-            on:drop={(event) => {
-              event.preventDefault()
-              importDropActive = false
-              const file = event.dataTransfer?.files?.[0]
-              void handleImportFile(file)
-            }}
-          >
-            <span class="text-[12px]">Click here to select file or drop a file right here</span>
-          </button>
-        </div>
+<svelte:window on:keydown={handleWindowKeydown} on:click={closeTabMenu} />
+
+<header class:editor-topbar--sidebar={placement === 'sidebar'} class="editor-topbar" data-testid="editor-topbar">
+  {#if showCommandSearch}
+    <div class="editor-topbar__command">
+      <CommandSearchInput compact value={commandQuery} on:input={(event) => updateCommandQuery(event.detail)} onExecute={onCommandExecute} />
+    </div>
   {/if}
-  {#if exportOpen}
+  {#if showTabs}
+    <div class="editor-topbar__tabs" data-testid="editor-tab-strip">
+      <div class="editor-topbar__tab-list">
+      {#each directTabs as tab (tab.id)}
         <div
-          bind:this={exportAnchor}
-          class="absolute left-0 top-[var(--topbar-height)] z-30 w-[360px] rounded-b-[16px] border border-[var(--border-muted)] border-t-0 bg-white p-4 shadow-[0_12px_40px_rgba(15,23,42,0.12)]"
-          data-testid="export-panel"
-          style:transform-origin="top left"
-          transition:fly={{ y: -6, duration: 150, opacity: 0.08, easing: cubicOut }}
+          class={`editor-tab ${tab.id === activeTabId ? 'editor-tab--active' : ''} ${renamingTabId === tab.id ? 'editor-tab--renaming' : ''}`}
+          data-testid="editor-tab"
+          data-tab-id={tab.id}
+          data-active={tab.id === activeTabId}
+          data-renaming={renamingTabId === tab.id}
         >
-          <div class="text-[18px] font-semibold text-[var(--text-primary)]">Export</div>
-          <div class="mt-3 flex items-center justify-between text-[13px] text-[var(--text-muted)]">
-            <div class="flex items-center gap-2">
-              <span>Export to</span>
-              <div class="relative">
-                <Select.Root
-                  type="single"
-                  items={formatOptions.map((option) => ({ value: option.id, label: option.label }))}
-                  bind:value={exportFormat}
-                >
-                  <Select.Trigger
-                    size="sm"
-                    class="rounded-[8px] border border-[var(--border-muted)] bg-white px-2 py-1 text-[13px] text-[var(--text-primary)] shadow-none focus-visible:border-[var(--accent)] focus-visible:shadow-[0_0_0_2px_rgba(56,189,248,0.25)]"
-                    aria-label="Export format"
-                    data-testid="export-format-trigger"
-                  >
-                    <span data-slot="select-value">{getFormatLabel(exportFormat, formatOptions)}</span>
-                  </Select.Trigger>
-                  <Select.Content class="min-w-[180px]">
-                    {#each formatOptions as option}
-                      <Select.Item value={option.id} label={option.label} class="text-[13px]" />
-                    {/each}
-                  </Select.Content>
-                </Select.Root>
-              </div>
+          {#if renamingTabId === tab.id}
+            <div class="editor-tab__rename-wrap">
+              <span class="editor-tab__measure">{showTabDirty && tab.dirty ? `${tab.name} •` : tab.name}</span>
+              <input
+                class="editor-tab__rename"
+                aria-label={`Rename ${tab.name}`}
+                data-testid={`tab-rename-${tab.id}`}
+                bind:value={renamedTabName}
+                use:focusRenameInput
+                on:blur={() => commitTabRename(tab)}
+                on:keydown={(event) => {
+                  if (event.key === 'Enter') commitTabRename(tab)
+                  if (event.key === 'Escape') cancelTabRename()
+                }}
+              />
             </div>
-            {#if $languageIdStore !== exportFormat}
-              <div class="flex items-center gap-1.5 text-[12px] text-[var(--text-muted)]">
-                <span>{exportConversion.srcLabel}</span>
-                <ArrowRight size={10} />
-                <span>{exportConversion.dstLabel}</span>
-              </div>
-            {/if}
-          </div>
-          <div class="mt-3 flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              class="rounded-[10px] bg-white"
-              aria-label="Download export file"
-              on:click={() => {
-                onExportDownload(exportFormat)
-                exportOpen = false
-              }}
-            >
-              Download
-            </Button>
-            {#if $languageIdStore !== exportFormat}
-              <Button
-                variant="outline"
-                size="sm"
-                class="rounded-[10px]"
-                aria-label="Preview export result"
-                on:click={() => onExportPreview(exportFormat)}
-              >
-                Preview
-              </Button>
-            {/if}
-          </div>
+          {:else}
+            <button
+              class="editor-tab__open"
+              aria-label={`Open ${tab.name}`}
+              title={`Open ${tab.name}`}
+              data-testid={`tab-open-${tab.id}`}
+              on:click={() => onActivateTab(tab.id)}
+              on:dblclick|stopPropagation={() => beginTabRename(tab)}
+            >{showTabDirty && tab.dirty ? `${tab.name} •` : tab.name}</button>
+          {/if}
+          <button
+            class="editor-tab__close"
+            aria-label={`Close ${tab.name}`}
+            title="Close tab"
+            data-testid={`tab-close-${tab.id}`}
+            on:click={() => onCloseTab(tab.id)}
+          ><X size={11} /></button>
         </div>
+      {/each}
+      </div>
+
+      <div class="editor-tab-menu" on:click|stopPropagation>
+          <button
+            class="editor-tab__more"
+            aria-label="Show open tabs"
+            aria-expanded={tabMenuOpen}
+            aria-haspopup="menu"
+            title="Show open tabs"
+            data-testid="tab-menu-button"
+            on:click={() => (tabMenuOpen = !tabMenuOpen)}
+          >
+            <MoreHorizontal size={15} />
+          </button>
+          {#if tabMenuOpen}
+            <div class="editor-tab-menu__popover" role="menu" aria-label="Open tabs" data-testid="tab-menu">
+              <div class="editor-tab-menu__label">OPEN TABS</div>
+              {#each tabs as tab (tab.id)}
+                <div class="editor-tab-menu__item" data-tab-id={tab.id}>
+                  {#if renamingTabId === tab.id}
+                    <div class="editor-tab__rename-wrap">
+                      <span class="editor-tab__measure">{showTabDirty && tab.dirty ? `${tab.name} •` : tab.name}</span>
+                      <input
+                        class="editor-tab__rename"
+                        aria-label={`Rename ${tab.name}`}
+                        data-testid={`tab-rename-${tab.id}`}
+                        bind:value={renamedTabName}
+                        use:focusRenameInput
+                        on:blur={() => commitTabRename(tab)}
+                        on:keydown={(event) => {
+                          if (event.key === 'Enter') commitTabRename(tab)
+                          if (event.key === 'Escape') cancelTabRename()
+                        }}
+                      />
+                    </div>
+                  {:else}
+                    <button
+                      class="editor-tab-menu__open"
+                      role="menuitem"
+                      aria-label={`Open ${tab.name}`}
+                      title={`Open ${tab.name}`}
+                      data-testid={`tab-menu-open-${tab.id}`}
+                      on:click={() => activateTabFromMenu(tab.id)}
+                      on:dblclick|stopPropagation={() => beginTabRename(tab)}
+                    >{showTabDirty && tab.dirty ? `${tab.name} •` : tab.name}</button>
+                  {/if}
+                  <button
+                    class="editor-tab__close"
+                    aria-label={`Close ${tab.name}`}
+                    title="Close tab"
+                    data-testid={`tab-close-${tab.id}`}
+                    on:click={() => closeTabFromMenu(tab.id)}
+                  ><X size={11} /></button>
+                </div>
+              {/each}
+            </div>
+          {/if}
+        </div>
+
+      {#if canAddTab}
+        <button class="editor-tab__new" aria-label="New tab" title="New tab" data-testid="new-tab-button" on:click={onAddTab}>
+          <Plus size={14} />
+        </button>
+      {/if}
+    </div>
   {/if}
 </header>
+
+<style>
+  .editor-topbar {
+    position: relative;
+    z-index: 20;
+    display: flex;
+    min-width: 0;
+    height: var(--topbar-height);
+    align-items: center;
+    gap: 8px;
+    padding: 0 10px;
+    border-bottom: 1px solid var(--border-strong);
+    background: var(--topbar-bg);
+    box-shadow: 0 1px 0 rgb(29 39 53 / 2%);
+  }
+
+  .editor-topbar--sidebar {
+    height: auto;
+    min-height: 0;
+    flex: 0 0 auto;
+    align-items: stretch;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+
+  .editor-topbar--sidebar .editor-topbar__tabs {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 3px;
+  }
+
+  .editor-topbar--sidebar .editor-topbar__tab-list {
+    width: 100%;
+    flex: 0 0 auto;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 3px;
+    overflow: visible;
+  }
+
+  .editor-topbar--sidebar .editor-tab,
+  .editor-topbar--sidebar .editor-tab__new,
+  .editor-topbar--sidebar .editor-tab__more {
+    width: 100%;
+  }
+
+  .editor-topbar--sidebar .editor-tab-menu { width: 100%; }
+  .editor-topbar--sidebar .editor-tab-menu__popover { top: 0; left: calc(100% + 7px); right: auto; }
+  .editor-topbar--sidebar .editor-tab-menu__popover::before { top: 14px; left: -5px; right: auto; transform: rotate(-45deg); }
+
+  .editor-topbar__command {
+    position: relative;
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+  }
+
+  .editor-topbar__tabs {
+    display: flex;
+    min-width: 0;
+    margin-left: 0;
+    flex: 1 1 auto;
+    align-items: center;
+    gap: 4px;
+    overflow: visible;
+  }
+
+  .editor-topbar__tab-list {
+    display: flex;
+    min-width: 0;
+    flex: 1 1 auto;
+    align-items: center;
+    gap: 4px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .editor-topbar__tab-list::-webkit-scrollbar { display: none; }
+
+  .editor-tab {
+    display: inline-flex;
+    min-width: 0;
+    height: 32px;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: 4px;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    padding: 0 6px 0 9px;
+    color: var(--text-muted);
+    transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease;
+  }
+
+  .editor-tab:hover { background: var(--panel-bg-alt); color: var(--text-primary); }
+  .editor-tab--active { border-color: color-mix(in srgb, var(--accent) 48%, var(--border-strong)); background: var(--accent-soft); color: var(--text-primary); box-shadow: 0 1px 2px rgb(29 39 53 / 5%); }
+  .editor-tab--renaming { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 16%, transparent); }
+
+  .editor-tab__open, .editor-tab__close, .editor-tab__new {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 0;
+    background: transparent;
+    color: inherit;
+  }
+
+  .editor-tab__open { display: block; min-width: 0; max-width: 150px; flex: 0 1 auto; overflow: hidden; padding: 0; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
+  .editor-tab__close { width: 19px; height: 19px; border-radius: 4px; }
+  .editor-tab__close:hover { background: color-mix(in srgb, var(--accent) 11%, transparent); color: var(--accent); }
+  .editor-tab__new { width: 32px; height: 32px; flex: 0 0 auto; order: 2; border: 1px solid var(--border-muted); border-radius: 6px; color: var(--text-muted); }
+  .editor-tab__new:hover { background: var(--panel-bg-alt); color: var(--text-primary); }
+  .editor-tab-menu { position: relative; z-index: 1; order: 3; flex: 0 0 auto; }
+  .editor-tab__more { display: inline-flex; width: 32px; height: 32px; flex: 0 0 auto; align-items: center; justify-content: center; border: 1px solid var(--border-muted); border-radius: 6px; color: var(--text-muted); background: transparent; }
+  .editor-tab__more:hover, .editor-tab__more[aria-expanded='true'] { border-color: color-mix(in srgb, var(--accent) 40%, var(--border-muted)); color: var(--text-primary); background: var(--panel-bg-alt); }
+  .editor-tab-menu__popover { position: absolute; z-index: 40; top: calc(100% + 7px); right: 0; width: 238px; padding: 6px; border: 1px solid var(--border-strong); border-radius: 8px; background: var(--topbar-bg); box-shadow: 0 12px 30px rgb(29 39 53 / 15%); }
+  .editor-tab-menu__popover::before { position: absolute; top: -5px; right: 14px; width: 8px; height: 8px; border-top: 1px solid var(--border-strong); border-left: 1px solid var(--border-strong); background: var(--topbar-bg); content: ''; transform: rotate(45deg); }
+  .editor-tab-menu__label { padding: 5px 8px 6px; color: var(--text-muted); font-size: 9px; font-weight: 700; letter-spacing: .08em; }
+  .editor-tab-menu__item { display: flex; min-width: 0; align-items: center; gap: 4px; border-radius: 5px; padding: 2px 3px 2px 8px; color: var(--text-primary); }
+  .editor-tab-menu__item:hover { background: var(--panel-bg-alt); }
+  .editor-tab-menu__open { display: block; min-width: 0; flex: 1; overflow: hidden; border: 0; padding: 5px 0; color: inherit; background: transparent; text-align: left; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
+  .editor-tab-menu__item .editor-tab__close { flex: 0 0 auto; }
+  .editor-tab__rename-wrap { position: relative; min-width: 0; }
+  .editor-tab-menu__item .editor-tab__rename-wrap { flex: 1; }
+  .editor-tab__measure { visibility: hidden; white-space: pre; font-size: 11px; }
+  .editor-tab__rename { position: absolute; inset: 0; width: 100%; min-width: 70px; border: 0; outline: 0; background: transparent; color: inherit; font-size: 11px; }
+
+  @media (max-width: 620px) {
+    .editor-topbar__tabs { gap: 3px; }
+    .editor-tab__open { max-width: 112px; }
+  }
+</style>

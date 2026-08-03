@@ -67,6 +67,13 @@ test('viewport collapse toggles viewer and editor panes', async ({ page }) => {
   await page.getByRole('button', { name: 'Collapse viewer', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Expand viewer', exact: true })).toBeVisible();
   await expect(page.getByTestId('right-pane')).toHaveAttribute('aria-hidden', 'true');
+  await expect.poll(() => page.getByTestId('splitter-divider').evaluate((element) => ({
+    collapsed: element.classList.contains('app-split-divider--collapsed'),
+    rightEdge: element.classList.contains('app-split-divider--right-edge'),
+    lineOpacity: getComputedStyle(element, '::after').opacity,
+    lineRight: getComputedStyle(element, '::after').right,
+    collapsedPaneBackground: getComputedStyle(document.querySelector('[data-testid="right-pane"]')!).backgroundColor,
+  }))).toEqual({ collapsed: true, rightEdge: true, lineOpacity: '1', lineRight: '0px', collapsedPaneBackground: 'rgba(0, 0, 0, 0)' });
 
   await page.getByRole('button', { name: 'Expand viewer', exact: true }).click();
   await expect(page.getByTestId('right-pane')).toHaveAttribute('aria-hidden', 'false');
@@ -75,6 +82,13 @@ test('viewport collapse toggles viewer and editor panes', async ({ page }) => {
   await page.getByRole('button', { name: 'Collapse editor', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Expand editor', exact: true })).toBeVisible();
   await expect(page.getByTestId('left-pane')).toHaveAttribute('aria-hidden', 'true');
+  await expect.poll(() => page.getByTestId('splitter-divider').evaluate((element) => ({
+    collapsed: element.classList.contains('app-split-divider--collapsed'),
+    rightEdge: element.classList.contains('app-split-divider--right-edge'),
+    lineOpacity: getComputedStyle(element, '::after').opacity,
+    lineRight: getComputedStyle(element, '::after').right,
+    collapsedPaneBackground: getComputedStyle(document.querySelector('[data-testid="left-pane"]')!).backgroundColor,
+  }))).toEqual({ collapsed: true, rightEdge: false, lineOpacity: '1', lineRight: 'auto', collapsedPaneBackground: 'rgba(0, 0, 0, 0)' });
 
   await page.getByRole('button', { name: 'Expand editor', exact: true }).click();
   await expect(page.getByTestId('left-pane')).toHaveAttribute('aria-hidden', 'false');

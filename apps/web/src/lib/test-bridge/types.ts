@@ -27,6 +27,7 @@ export type TreeaseMonacoHook = {
   setValueExact?: (value: string) => void;
   setPosition?: (lineNumber: number, column: number) => void;
   getScroll?: () => { scrollTop: number; scrollLeft: number };
+  getVisibleStartLine?: () => number;
   setScroll?: (scrollTop: number, scrollLeft?: number) => void;
   getLanguage?: () => string | null;
   getMarkers?: () => Array<{ owner?: string; message?: string; severity?: number }>;
@@ -88,6 +89,7 @@ export type TreeaseGraphInteractionState = {
 
 export type TreeaseGraphRuntime = {
   getInteractionState?: () => TreeaseGraphInteractionState | null;
+  getViewportState?: () => { x: number; y: number; scaleX: number; scaleY: number } | null;
   getRuntimeReadiness?: () => TreeaseRuntimeReadiness | null;
   getClickProbeTargets?: (scope?: 'root' | 'panel' | 'workspace') => TreeaseGraphProbe[];
   getHighlightTarget?: () => {
@@ -263,6 +265,7 @@ export type WindowTreease = {
     setValue: (hookId: string, value: string) => void;
     setPosition: (hookId: string, lineNumber: number, column: number) => void;
     getScroll: (hookId: string) => { scrollTop: number; scrollLeft: number };
+    getVisibleStartLine: (hookId: string) => number;
     setScroll: (hookId: string, scrollTop: number, scrollLeft?: number) => void;
     getLanguage: (hookId: string) => string | null;
     getMarkers?: (hookId: string) => Array<{ owner?: string; message?: string; severity?: number }>;
@@ -280,6 +283,7 @@ export type WindowTreease = {
   };
   graph: {
     getInteractionState: () => ReturnType<NonNullable<TreeaseGraphRuntime['getInteractionState']>>;
+    getViewportState: () => ReturnType<NonNullable<TreeaseGraphRuntime['getViewportState']>>;
     getRuntimeReadiness: () => ReturnType<NonNullable<TreeaseGraphRuntime['getRuntimeReadiness']>>;
     getClickProbeTargets: (scope?: 'root' | 'workspace') => TreeaseGraphProbe[];
     getHighlightTarget: () => ReturnType<NonNullable<TreeaseGraphRuntime['getHighlightTarget']>>;

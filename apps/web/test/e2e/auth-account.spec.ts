@@ -120,7 +120,7 @@ test("PKCE login returns to the original page, shows the account, and supports l
           tier: "free",
           periodKey: "2026-01",
           limits: {
-            bidirectionalEditDocumentsMonthly: { kind: "limited", limit: 10 },
+            graphViewDocumentsMonthly: { kind: "limited", limit: 10 },
             largeFileProcessingRunsMonthly: { kind: "limited", limit: 3 },
             aiProcessingMonthly: { kind: "limited", limit: 1 },
             shareMaxAgeDays: 7,

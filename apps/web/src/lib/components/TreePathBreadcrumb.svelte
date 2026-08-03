@@ -90,11 +90,7 @@
       title="Copy tree path"
       on:click={handleCopyClick}
     >
-      {#if copied}
-        <Check size={12} class="text-(--text-primary)" />
-      {:else}
-        <Copy size={12} class="text-(--text-muted)" />
-      {/if}
+      {#if copied}<Check size={12} class="text-(--text-primary)" />{:else}<Copy size={12} class="text-(--text-muted)" />{/if}
     </button>
   </Breadcrumb.List>
 </Breadcrumb.Root>

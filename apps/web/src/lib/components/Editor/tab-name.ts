@@ -1,3 +1,3 @@
-export function createDefaultTabName(index: number): string {
-  return `Tab ${index}`;
+export function createDefaultTabName(_index?: number): string {
+  return 'Untitled';
 }

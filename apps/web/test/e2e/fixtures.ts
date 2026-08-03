@@ -4,7 +4,7 @@ const usageSummary = {
   tier: 'free',
   periodKey: '2026-07',
   limits: {
-    bidirectionalEditDocumentsMonthly: { kind: 'limited', limit: 10 },
+    graphViewDocumentsMonthly: { kind: 'limited', limit: 10 },
     largeFileProcessingRunsMonthly: { kind: 'limited', limit: 10 },
     aiProcessingMonthly: { kind: 'limited', limit: 10 },
     shareMaxAgeDays: 7,

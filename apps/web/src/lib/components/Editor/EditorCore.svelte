@@ -34,7 +34,6 @@
   import { getLanguageExample } from '../../monaco/language-examples';
   import {
     editorLanguageFallback,
-    importFormatOptions,
     supportedEditorLanguageSet,
     type SupportedEditorLanguageId,
   } from '../../monaco/language-support';
@@ -65,6 +64,7 @@
   import { createWorkspaceTabFullEditSink } from './editor-full-edit-sink';
   import { resolveLanguageSwitchPolicy } from './language-switch-policy';
   import { createEditorRuntimeController } from './editor-runtime-controller';
+  import { createEditorPlaceholderController } from './editor-placeholder';
   import { commitEditorTabTextChange } from './editor-tab-edit-commit';
   import { settleWholeDocumentReplacement } from './whole-document-replacement';
   import type { EditorModelWithDocumentKey } from './types';
@@ -85,6 +85,7 @@
 
   export let onScroll: (payload: { scrollTop: number; scrollLeft: number }) => void = () => {};
   export let enableRevealSync = true;
+  export let enableScrollRevealSync = false;
   export let synchronizedRuntimeLoading = false;
   export let runBidirectionalEdit: <T>(source: string, execute: () => Promise<T>, reason?: string) => Promise<T> = async (_source, execute) => execute();
   export let onRequestImportFile: (payload: { sourceFormat: string; targetFormat: string; accept: string[] }) => Promise<void> = async () => {};
@@ -113,18 +114,18 @@
   let languageUnsub: (() => void) | null = null;
   let tempModelUnsub: (() => void) | null = null;
   let jsonBlockSelectionUnsub: (() => void) | null = null;
-  let placeholderWidget: Monaco.editor.IContentWidget | null = null;
-  let placeholderVisible = false;
 
   let languageIdValue: SupportedEditorLanguageId = editorLanguageFallback;
   let shouldSuppressLanguageExample = false;
   let lastMutationId = 0;
   let lastExternalTreeSelectionSignature = '';
+  let externalTreeSelectionGeneration = 0;
   let diffDecorations: Monaco.editor.IEditorDecorationsCollection | null = null;
   let jsonBlockDecorations: Monaco.editor.IEditorDecorationsCollection | null = null;
   let diffBlankZoneIds: string[] = [];
   let suppressGraphHighlightSync = 0;
   let suppressTreePathUpdate = 0;
+  let lastViewportTreePathPosition = '';
   let unfocusedExternalRevealSelection = false;
   let wholeDocumentReplacementToken = 0;
   let formattingOptionsValue;
@@ -294,86 +295,23 @@
   const maxTabs = EDITOR_CONFIG.maxTabs;
   const initialCode = getLanguageExample('json');
 
-  function updateEditorPlaceholder(): void {
-    if (!editor || !model) return;
-    const shouldShow = model.getValue().trim() === '';
-
-    if (!shouldShow) {
-      if (placeholderWidget) {
-        editor.removeContentWidget(placeholderWidget);
-        placeholderWidget = null;
-      }
-      placeholderVisible = false;
-      return;
-    }
-
-    if (placeholderWidget) {
-      placeholderVisible = true;
-      return;
-    }
-
-    placeholderWidget = {
-        getId: () => 'treease-editor-placeholder',
-        getDomNode: () => {
-          const root = document.createElement('div');
-          root.className = 'treease-editor-placeholder';
-
-          const title = document.createElement('div');
-          title.textContent = 'Start typing, or open a file';
-          root.appendChild(title);
-
-          const openFileRow = document.createElement('div');
-          openFileRow.className = 'treease-editor-placeholder__row';
-          const openFile = document.createElement('button');
-          openFile.type = 'button';
-          openFile.className = 'treease-editor-placeholder__link';
-          openFile.textContent = 'Choose a file or drag one into this editor';
-          openFile.addEventListener('click', (event) => {
-            event.preventDefault();
-            event.stopPropagation();
-            void onRequestImportFile({
-              sourceFormat: languageIdValue,
-              targetFormat: languageIdValue,
-              accept: importFormatOptions.find((option) => option.id === languageIdValue)?.extensions ?? [],
-            });
-          });
-          openFileRow.appendChild(openFile);
-          root.appendChild(openFileRow);
-
-          const exampleRow = document.createElement('div');
-          exampleRow.className = 'treease-editor-placeholder__row';
-          const loadExample = document.createElement('button');
-          loadExample.type = 'button';
-          loadExample.className = 'treease-editor-placeholder__link';
-          loadExample.textContent = 'Load an example file';
-          loadExample.addEventListener('click', (event) => {
-            event.preventDefault();
-            event.stopPropagation();
-            const example = getLanguageExample(languageIdValue);
-            if (!example) return;
-            setActiveTabOrigin('example');
-            queueWholeDocumentReplacement(example, {
-              sourceWritebackPolicy: 'intake',
-              formatSourceOnClose: false,
-              shouldResolveLanguage: false,
-              markUserInput: false,
-            });
-            editor?.focus();
-          });
-          exampleRow.appendChild(loadExample);
-          root.appendChild(exampleRow);
-          return root;
-        },
-        getPosition: () => ({
-          position: { lineNumber: 1, column: 1 },
-          preference: [monaco.editor.ContentWidgetPositionPreference.EXACT],
-        }),
-        suppressMouseDown: true,
-    };
-    editor.addContentWidget(placeholderWidget);
-
-    placeholderVisible = true;
-  }
+  const editorPlaceholder = createEditorPlaceholderController({
+    getEditor: () => editor,
+    getModel: () => model,
+    getMonaco: () => monaco,
+    getLanguage: () => languageIdValue,
+    onRequestImportFile: (payload) => onRequestImportFile(payload),
+    onLoadExample: (example) => {
+      setActiveTabOrigin('example');
+      queueWholeDocumentReplacement(example, {
+        sourceWritebackPolicy: 'intake',
+        formatSourceOnClose: false,
+        shouldResolveLanguage: false,
+        markUserInput: false,
+      });
+      editor?.focus();
+    },
+  });
 
   let tabRuntime: EditorTabRuntime;
   const fullEditControllersByTabId = new Map<string, ReturnType<typeof createEditorFullEditController>>();
@@ -544,7 +482,9 @@
       triggerGraphSync: (position) => {
         const target = tabRuntime?.get(tabId) ?? null;
         if (!isTabActive(tabId, target) || !position) return;
-        void editorAnalysisController.updateTreePath(position, { syncGraphHighlight: true });
+        void editorAnalysisController.updateTreePath(position, {
+          syncGraphHighlight: true,
+        });
       },
       runBidirectionalEdit,
       beforeDocumentMutation: ({ model: targetModel }) => {
@@ -583,7 +523,7 @@
     if (activeId) {
       userInputByTabId.set(activeId, origin !== 'example');
       updateWorkspaceTab(activeId, { origin });
-      updateEditorPlaceholder();
+      editorPlaceholder.update();
     }
   }
 
@@ -652,6 +592,7 @@
     },
   });
 
+  $: if (!enableScrollRevealSync) lastViewportTreePathPosition = '';
   $: formattingOptionsValue = $settings.formatting;
   $: editorRevisionValue = $editorRevision;
   $: editorRuntimeOverlay = resolveEditorRuntimeOverlay({
@@ -683,17 +624,19 @@
 
   $: {
     const graphHighlight = $activeTempModel?.graphHighlight ?? null;
-    const graphRevealSyncBlocked =
-      !enableRevealSync && (graphHighlight?.source === 'graph' || graphHighlight?.source === 'search');
+    const graphRevealSyncBlocked = !enableRevealSync && graphHighlight?.source !== 'editor';
     if (!graphHighlight?.path?.length || graphHighlight.source === 'editor' || graphRevealSyncBlocked) {
+      externalTreeSelectionGeneration += 1;
       lastExternalTreeSelectionSignature = '';
     } else if (editor && model) {
       const signature = buildExternalTreeSelectionSignature(graphHighlight);
       if (signature !== lastExternalTreeSelectionSignature) {
         lastExternalTreeSelectionSignature = signature;
+        const generation = ++externalTreeSelectionGeneration;
         void revealPath(graphHighlight.path, {
           target: graphHighlight.target,
           focus: false,
+          isCurrent: () => generation === externalTreeSelectionGeneration,
         }).catch(() => {
           // revealPath already reports the failure via toast + temp model state.
         });
@@ -765,7 +708,9 @@
       if (!treePathLanguages.has(next)) {
         activeTempModel.update((current) => ({ ...current, treePath: [], graphHighlight: null }));
       } else if (activeId && model && !shouldDeferTreePath) {
-        void editorAnalysisController.updateTreePath(editor?.getPosition() ?? null, { syncGraphHighlight: false });
+        void editorAnalysisController.updateTreePath(editor?.getPosition() ?? null, {
+          syncGraphHighlight: false,
+        });
       }
     });
   }
@@ -784,7 +729,7 @@
       model,
       ...editorOptions,
     });
-    updateEditorPlaceholder();
+    editorPlaceholder.update();
     cleanupSourceEditorTestHook = attachMonacoTestHook(
       {
         getDomNode: () => editor?.getDomNode() ?? null,
@@ -805,6 +750,7 @@
         revealPositionInCenter: (position) => editor?.revealPositionInCenter(position),
         getScrollTop: () => editor?.getScrollTop() ?? 0,
         getScrollLeft: () => editor?.getScrollLeft() ?? 0,
+        getVisibleStartLine: () => editor?.getVisibleRanges()[0]?.startLineNumber ?? 1,
         setScrollPosition: (position) => editor?.setScrollPosition(position),
         executeEdits: (source, edits) =>
           editor?.executeEdits(source, edits as Monaco.editor.IIdentifiedSingleEditOperation[]),
@@ -862,7 +808,7 @@
     editor.onDidChangeModelContent((event) => {
       const activeModel = model;
       if (!activeModel) return;
-      updateEditorPlaceholder();
+      editorPlaceholder.update();
       const previousLength = lastModelLength;
       const previousText = lastModelText;
       const nextText = activeModel.getValue();
@@ -1049,7 +995,9 @@
         selectionLength,
       }));
       if (suppressTreePathUpdate > 0) return;
-      void editorAnalysisController.updateTreePath(position, { syncGraphHighlight });
+      void editorAnalysisController.updateTreePath(position, {
+        syncGraphHighlight,
+      });
     };
 
     editor.onDidChangeCursorPosition((event) => {
@@ -1074,6 +1022,18 @@
     editor.onDidScrollChange((event) => {
       onScroll({ scrollTop: event.scrollTop, scrollLeft: event.scrollLeft });
       syncColorViewportState('scroll');
+      if (!enableScrollRevealSync || !event.scrollTopChanged) return;
+      const visibleStartLine = editor?.getVisibleRanges()[0]?.startLineNumber;
+      if (!visibleStartLine || !model) return;
+      const line = model.getLineContent(visibleStartLine);
+      const firstContentColumn = Math.max(1, line.search(/\S/) + 1);
+      const positionKey = `${visibleStartLine}:${firstContentColumn}`;
+      if (positionKey === lastViewportTreePathPosition) return;
+      lastViewportTreePathPosition = positionKey;
+      void editorAnalysisController.updateTreePath(
+        { lineNumber: visibleStartLine, column: firstContentColumn },
+        { syncGraphHighlight: true }
+      );
     });
   }
 
@@ -1361,8 +1321,7 @@
     const text = model.getValue();
     sourceText.set(text);
     documentKeyStore.set(tab.documentKey);
-    placeholderVisible = false;
-    updateEditorPlaceholder();
+    editorPlaceholder.update();
     syncColorViewportState('model');
     lastModelLength = model.getValue().length;
     lastModelText = model.getValue();
@@ -1391,7 +1350,7 @@
         if (isTabActive(tabId, requestModel)) activeTempModel.set(nextTempModel);
         else updateWorkspaceTab(tabId, { tempModel: nextTempModel });
       }
-      if (isTabActive(tabId, requestModel)) toast.error('Document analysis failed. You can keep editing and retry by editing again.');
+      if (isTabActive(tabId, requestModel)) toast.error('Unable to update the document view. You can keep editing and try again.');
       return;
     }
     console.debug('[editor] document task ended before landing', error);
@@ -1462,7 +1421,7 @@
   export function addTab() {
     if (!monaco) return;
     const id = `tab-${Date.now()}-${tabSequence++}`;
-    const transition = createWorkspaceTabTransition(getWorkspaceRawState(), { id, name: `Untitled ${tabSequence}`, documentKey: `${id}:0`, languageId: languageIdValue, sourceText: '', origin: 'user' });
+    const transition = createWorkspaceTabTransition(getWorkspaceRawState(), { id, name: 'Untitled', documentKey: `${id}:0`, languageId: languageIdValue, sourceText: '', origin: 'user' });
     const tab = transition?.workspace.tabsById[id];
     if (tab && transition) {
       // Install the model before publishing the new active workspace tab.
@@ -1540,7 +1499,7 @@
     const workspace = getWorkspaceRawState();
     const wasActive = workspace.activeTabId === id || workspace.primaryTabId === id || workspace.paneTabIds.left === id;
     const blankId = `tab-${Date.now()}-${tabSequence++}`;
-    const transition = closeWorkspaceTabTransition(workspace, id, { id: blankId, documentKey: `${blankId}:0`, name: `Untitled ${tabSequence}`, languageId: languageIdValue });
+    const transition = closeWorkspaceTabTransition(workspace, id, { id: blankId, documentKey: `${blankId}:0`, name: 'Untitled', languageId: languageIdValue });
     if (!transition) return;
     // Invalidate the closed tab synchronously before its model leaves the
     // runtime. The controller owns its Job/RAF/conversion cleanup.
@@ -1684,6 +1643,7 @@
       throw new Error(message);
     }
     suppressNextWholeDocumentAutoGuess = true;
+    suppressNextTreePathUpdate();
     markActiveTabUserInput(true);
     setLanguageIdWithoutExample(nextLanguage);
     setEditorValue(text);
@@ -1714,7 +1674,11 @@
 
   export async function revealPath(
     path: PathSeg[],
-    options: { target?: 'key' | 'value' | 'node'; focus?: boolean } | undefined,
+    options: {
+      target?: 'key' | 'value' | 'node';
+      focus?: boolean;
+      isCurrent?: () => boolean;
+    } | undefined,
   ) {
     if (!editor || !model || !monaco) return;
     if (!path || path.length === 0) return;
@@ -1730,6 +1694,7 @@
       getWorkspaceSnapshotId(documentKeyValue),
     );
     if (selectionRangeResult.status !== 'ready') return false;
+    if (options?.isCurrent && !options.isCurrent()) return false;
     const selectionRange = selectionRangeResult.data;
     if (!selectionRange) {
       const message = `Failed to reveal path ${JSON.stringify(path)}`;
@@ -1971,10 +1936,7 @@
     fullEditControllersByTabId.clear();
     cleanupSourceEditorTestHook?.();
     cleanupSourceEditorTestHook = null;
-    if (editor && placeholderWidget) {
-      editor.removeContentWidget(placeholderWidget);
-      placeholderWidget = null;
-    }
+    editorPlaceholder.dispose();
     if (editor) {
       editor.dispose();
       editor = null;
@@ -2035,45 +1997,3 @@
     onRetry={retryEditorRuntime}
   />
 </div>
-
-<style>
-  :global(.treease-editor-placeholder) {
-    color: #7b8794;
-    font: 13px/20px ui-monospace, SFMono-Regular, Menlo, monospace;
-    pointer-events: auto;
-    white-space: nowrap;
-  }
-
-  :global(.treease-editor-placeholder__link) {
-    padding: 1px 3px;
-    border: 0;
-    border-radius: 3px;
-    background: transparent;
-    color: var(--accent);
-    cursor: pointer;
-    font: inherit;
-    text-decoration: underline;
-    text-decoration-thickness: 1px;
-    text-underline-offset: 2px;
-  }
-
-  :global(.treease-editor-placeholder__row) {
-    display: flex;
-    align-items: baseline;
-    gap: 7px;
-  }
-
-  :global(.treease-editor-placeholder__row::before) {
-    width: 6px;
-    height: 6px;
-    flex: 0 0 6px;
-    border-radius: 999px;
-    background: var(--accent);
-    content: '';
-  }
-
-  :global(.treease-editor-placeholder__link:hover),
-  :global(.treease-editor-placeholder__link:focus-visible) {
-    background: color-mix(in srgb, var(--accent) 10%, transparent);
-  }
-</style>

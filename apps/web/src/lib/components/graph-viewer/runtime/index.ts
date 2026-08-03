@@ -4,9 +4,7 @@ export { createGraphRuntimeProbeController } from '../graph-runtime-probe-contro
 export { createGraphRuntimeProbeActions } from './probe-actions';
 export {
   buildClientProbeCoord,
-  clearCanvasHintOverlay,
   dispatchGraphEditEvent,
-  ensureCanvasHintOverlay,
   exportLeaferImage,
   getLeaferContentRoot,
 } from './view-helpers';

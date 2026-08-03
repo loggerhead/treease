@@ -32,6 +32,8 @@
   import { commitEditorTabTextChange } from './editor-tab-edit-commit';
   import { createSidecarExternalSync } from './sidecar-external-sync';
   import { createTreeaseMonacoEditorOptions } from './editor-options';
+  import { createEditorPlaceholderController } from './editor-placeholder';
+  import { fileDropFeedback } from '../ui/file-drop-feedback';
 
   export let tabId = 'tab-sidecar';
   export let tabName = 'Right Editor';
@@ -50,9 +52,15 @@
   export let compactGutter = false;
   export let hideLineNumbers = false;
   export let readOnly = false;
+  export let placeholderTitle = 'Start typing, or open a file';
   export let onScroll: (payload: { scrollTop: number; scrollLeft: number }) => void = () => {};
   export let onContentChange: (text: string) => void = () => {};
   export let onEditorBlur: (text: string) => void = () => {};
+  export let onRequestImportFile: (payload: {
+    sourceFormat: string;
+    targetFormat: string;
+    accept: string[];
+  }) => void | Promise<void> = async () => {};
 
   // A detached sidecar is the Column Detail Editor: it owns a Monaco draft,
   // but its path is part of the primary document. Its writes must therefore
@@ -113,6 +121,16 @@
   $: editor?.updateOptions({ readOnly });
 
   const fullEditSink = createWorkspaceTabFullEditSink(tabId);
+
+  const editorPlaceholder = createEditorPlaceholderController({
+    getEditor: () => editor,
+    getModel: () => model,
+    getMonaco: () => monaco,
+    getLanguage: () => activeLanguage,
+    getTitle: () => placeholderTitle,
+    onRequestImportFile: (payload) => onRequestImportFile(payload),
+    onLoadExample: (example, nextLanguage) => showText(example, nextLanguage),
+  });
 
   const fullEditController = createEditorFullEditController({
     getModel: () => model,
@@ -422,6 +440,7 @@
     suppressChange = true;
     target.setValue(value);
     afterSet?.();
+    editorPlaceholder.update();
     queueMicrotask(() => {
       suppressChange = false;
     });
@@ -490,7 +509,11 @@
         : {}),
       readOnly,
     });
+    editorPlaceholder.update();
+    await tick();
+    editorPlaceholder.refresh();
     cleanupTestHook = attachMonacoTestHook(editor, runtimeHookId, monaco.editor.tokenize);
+    editor.onDidLayoutChange(() => editorPlaceholder.refresh());
     editor.onDidChangeModelContent((event) => {
       const activeModel = model;
       if (!activeModel) return;
@@ -498,6 +521,7 @@
         syncLastModelSnapshot();
         return;
       }
+      editorPlaceholder.update();
       const previousLength = lastModelLength;
       const previousText = lastModelText;
       const nextText = activeModel.getValue();
@@ -780,6 +804,7 @@
     runtimeToken += 1;
     sidecarAnalysisSyncToken += 1;
     clearDiffPlan();
+    editorPlaceholder.dispose();
     cleanupTestHook?.();
     cleanupTestHook = null;
     editor?.dispose();
@@ -795,6 +820,25 @@
 
 <div
   bind:this={container}
-  class="min-h-0 min-w-0 flex-1 overflow-hidden"
+  class="relative min-h-0 min-w-0 flex-1 overflow-hidden"
   data-testid={containerTestId}
-></div>
+  use:fileDropFeedback
+>
+  <div class="file-drop-feedback-overlay" aria-hidden="true"></div>
+</div>
+
+<style>
+  .file-drop-feedback-overlay {
+    position: absolute;
+    z-index: 10;
+    inset: 0;
+    pointer-events: none;
+    opacity: 0;
+    background: rgb(224 243 255 / 88%);
+    transition: opacity 120ms ease-out;
+  }
+
+  :global(.file-drop-feedback--active) .file-drop-feedback-overlay {
+    opacity: 1;
+  }
+</style>

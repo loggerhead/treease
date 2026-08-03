@@ -7,7 +7,10 @@ import {
   installClipboardCapture,
   readEditorState,
   readGraphClickProbes,
+  readGraphHighlightWorld,
   readGraphLastReveal,
+  readGraphViewportState,
+  readTempGraphSelection,
   readClipboardWrites,
   setEditorContent,
   setMonacoPosition,
@@ -116,6 +119,19 @@ test('command search supports shortcut toggle, execute, and outside-click close'
   await dispatchWindowShortcut(page, 'k', COMMAND_MOD);
   await expect(page.getByText('Format').first()).toBeVisible({ timeout: 5_000 });
 
+  const compactInfo = page.getByRole('option', { name: 'Compact', exact: true }).locator('.ui-tooltip');
+  await compactInfo.hover();
+  const compactTooltip = page.getByRole('tooltip', {
+    name: 'Recursively remove zero-valued object entries and array elements, including null, false, zero, empty strings, empty arrays, and empty objects.',
+    exact: true,
+  });
+  await expect(compactTooltip).toBeVisible();
+  await expect.poll(() => compactTooltip.evaluate((tooltip) => {
+    let panel = document.querySelector('.command-search-list');
+    while (panel && getComputedStyle(panel).zIndex === 'auto') panel = panel.parentElement;
+    return Number(getComputedStyle(tooltip).zIndex) > Number(getComputedStyle(panel!).zIndex);
+  })).toBe(true);
+
   await dispatchWindowShortcut(page, 'k', COMMAND_MOD);
   await expect(page.locator('.command-search-list')).toHaveCount(0);
 
@@ -123,6 +139,8 @@ test('command search supports shortcut toggle, execute, and outside-click close'
   await commandInput.press('Enter');
   await expect(page.getByText('Format').first()).toBeVisible({ timeout: 5_000 });
   await commandInput.fill('sort');
+  await expect(page.getByText('Sort').first()).toBeVisible();
+  await expect(page.getByText('Format').first()).toBeHidden();
   await commandInput.press('Enter');
   await commandInput.press('Enter');
 
@@ -148,12 +166,12 @@ test('graph search supports shortcut open, keyboard selection, and escape close'
   await waitForGraphRendered(page);
 
   await page.getByTestId('graph-search-trigger').click();
-  const input = page.getByRole('textbox', { name: 'Search graph', exact: true });
+  const input = page.getByRole('combobox', { name: 'Search graph', exact: true });
   await expect(input).toBeVisible({ timeout: 5_000 });
   await expect(page.getByText('No results.').first()).toBeVisible({ timeout: 5_000 });
 
   await input.fill('Alice');
-  const result = page.getByRole('button', { name: 'Graph search result $.user.name', exact: true }).first();
+  const result = page.getByRole('option', { name: 'Graph search result $.user.name', exact: true }).first();
   await expect(result).toBeVisible({ timeout: 5_000 });
   await input.press('Enter');
 
@@ -162,6 +180,143 @@ test('graph search supports shortcut open, keyboard selection, and escape close'
     .toEqual(expect.arrayContaining(['$', 'user']));
   await page.keyboard.press('Escape');
   await expect(result).toHaveCount(0);
+});
+
+test('graph search loops keyboard selection through results', async ({ page }) => {
+  await page.goto('/editor');
+  await waitForEditorReady(page);
+  const sourceText = '{"first":"needle","second":"needle","third":"needle","fourth":"needle","fifth":"needle","sixth":"needle","seventh":"needle","eighth":"needle"}';
+  await setEditorContent(page, {
+    sourceText,
+    language: 'json',
+  });
+  await expect.poll(async () => (await readEditorState(page)).sourceText, { timeout: 5_000 }).toBe(sourceText);
+  await waitForGraphRendered(page);
+
+  await page.getByTestId('graph-search-trigger').click();
+  const input = page.getByRole('combobox', { name: 'Search graph', exact: true });
+  await input.fill('needle');
+
+  const results = page.getByRole('option', { name: /Graph search result/ });
+  await expect.poll(() => results.count(), { timeout: 10_000 }).toBeGreaterThan(1);
+  await expect(results.nth(0)).toHaveAttribute('aria-selected', 'true');
+  await expect(page.locator('[role="option"][aria-selected="true"]')).toHaveCount(1);
+
+  await input.press('ArrowDown');
+  await expect(results.nth(1)).toHaveAttribute('aria-selected', 'true');
+  await expect(page.locator('[role="option"][aria-selected="true"]')).toHaveCount(1);
+  await expect.poll(() => readGraphHighlightWorld(page), { timeout: 5_000 }).not.toBeNull();
+  await input.press('ArrowUp');
+  await expect(results.nth(0)).toHaveAttribute('aria-selected', 'true');
+  await input.press('ArrowUp');
+  await expect(results.last()).toHaveAttribute('aria-selected', 'true');
+  await expect
+    .poll(() => page.locator('.graph-search-list').evaluate((element) => element.scrollTop), { timeout: 5_000 })
+    .toBeGreaterThan(0);
+  await expect.poll(() => readTempGraphSelection(page), { timeout: 5_000 }).not.toBeNull();
+
+  await input.press('Escape');
+  await expect.poll(() => readTempGraphSelection(page), { timeout: 5_000 }).toBeNull();
+  await expect.poll(() => readGraphHighlightWorld(page), { timeout: 5_000 }).toBeNull();
+});
+
+test('graph search hover does not take control of manual result scrolling', async ({ page }) => {
+  await page.goto('/editor');
+  await waitForEditorReady(page);
+  const sourceText = JSON.stringify(
+    Object.fromEntries(Array.from({ length: 20 }, (_, index) => [`field_${index}`, 'needle'])),
+  );
+  await setEditorContent(page, { sourceText, language: 'json' });
+  await waitForGraphRendered(page);
+
+  await page.getByTestId('graph-search-trigger').click();
+  const input = page.getByRole('combobox', { name: 'Search graph', exact: true });
+  await input.fill('needle');
+  const results = page.getByRole('option', { name: /Graph search result/ });
+  await expect.poll(() => results.count(), { timeout: 10_000 }).toBeGreaterThan(5);
+
+  const list = page.locator('.graph-search-list');
+  const manualScrollTop = await list.evaluate((element) => {
+    element.scrollTop = element.scrollHeight - element.clientHeight;
+    return element.scrollTop;
+  });
+  expect(manualScrollTop).toBeGreaterThan(0);
+
+  await results.first().evaluate((element) => {
+    element.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
+  });
+  await page.waitForTimeout(200);
+  await expect.poll(() => list.evaluate((element) => element.scrollTop)).toBe(manualScrollTop);
+  await expect(page.locator('[role="option"][aria-selected="true"]')).toHaveCount(1);
+  await expect(results.first()).toHaveAttribute('aria-selected', 'true');
+
+  await input.press('ArrowDown');
+  await expect(page.locator('[role="option"][aria-selected="true"]')).toHaveCount(1);
+  await expect(results.nth(1)).toHaveAttribute('aria-selected', 'true');
+  await expect(results.first()).toHaveAttribute('aria-selected', 'false');
+});
+
+test('graph search hover highlights without moving when Navigation sync is off, while click still reveals', async ({ page }) => {
+  await page.goto('/editor');
+  await waitForEditorReady(page);
+  await page.evaluate(async () => {
+    const current = window._treease?.settings.getState().settings;
+    if (!current) throw new Error('settings bridge unavailable');
+    await window._treease.settings.save({
+      interaction: { ...current.interaction, enableSyncScroll: false },
+    });
+  });
+  const sourceText = '{"first":"needle","second":"needle","third":"needle","fourth":"needle","fifth":"needle","sixth":"needle","seventh":"needle","eighth":"needle"}';
+  await setEditorContent(page, { sourceText, language: 'json' });
+  await waitForGraphRendered(page);
+
+  const initialViewport = await readGraphViewportState(page);
+  expect(initialViewport).not.toBeNull();
+  await page.getByTestId('graph-search-trigger').click();
+  const input = page.getByRole('combobox', { name: 'Search graph', exact: true });
+  await input.fill('needle');
+  const results = page.getByRole('option', { name: /Graph search result/ });
+  await expect.poll(() => results.count(), { timeout: 10_000 }).toBeGreaterThan(1);
+  await expect.poll(() => readGraphHighlightWorld(page), { timeout: 5_000 }).not.toBeNull();
+  await expect.poll(() => readGraphViewportState(page), { timeout: 5_000 }).toEqual(initialViewport);
+
+  await results.nth(1).click();
+  await expect.poll(() => readGraphHighlightWorld(page), { timeout: 5_000 }).not.toBeNull();
+  await expect
+    .poll(async () => {
+      const current = await readGraphViewportState(page);
+      return current && JSON.stringify(current) !== JSON.stringify(initialViewport);
+    }, { timeout: 5_000 })
+    .toBe(true);
+});
+
+test('cancelling graph search restores viewport and graph selection', async ({ page }) => {
+  await page.goto('/editor');
+  await waitForEditorReady(page);
+  const sourceText = '{"alpha":{"needle":"one"},"beta":{"needle":"two"},"gamma":{"needle":"three"}}';
+  await setEditorContent(page, { sourceText, language: 'json' });
+  await waitForGraphRendered(page);
+
+  const initialViewport = await readGraphViewportState(page);
+  expect(initialViewport).not.toBeNull();
+  await page.getByTestId('graph-search-trigger').click();
+  const input = page.getByRole('combobox', { name: 'Search graph', exact: true });
+  await input.fill('needle');
+  const results = page.getByRole('option', { name: /Graph search result/ });
+  await expect.poll(() => results.count(), { timeout: 10_000 }).toBeGreaterThan(1);
+  await input.press('ArrowDown');
+
+  await expect.poll(() => readTempGraphSelection(page), { timeout: 5_000 }).not.toBeNull();
+  await expect
+    .poll(async () => {
+      const current = await readGraphViewportState(page);
+      return current && JSON.stringify(current) !== JSON.stringify(initialViewport);
+    }, { timeout: 5_000 })
+    .toBe(true);
+
+  await input.press('Escape');
+  await expect.poll(() => readTempGraphSelection(page), { timeout: 5_000 }).toBeNull();
+  await expect.poll(() => readGraphViewportState(page), { timeout: 5_000 }).toEqual(initialViewport);
 });
 
 test('editor semantic colors keep key and value tokens aligned with current theme', async ({ page }) => {

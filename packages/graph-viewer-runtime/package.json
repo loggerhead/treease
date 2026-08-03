@@ -5,11 +5,11 @@
   "type": "module",
   "exports": { ".": "./src/index.ts" },
   "dependencies": {
-    "@leafer-in/animate": "2.2.7",
-    "@leafer-in/color": "2.2.7",
-    "@leafer-in/view": "2.2.7",
-    "@leafer-in/viewport": "^2.2.7",
-    "leafer-ui": "^2.2.7"
+    "@leafer-in/animate": "2.2.9",
+    "@leafer-in/color": "2.2.9",
+    "@leafer-in/view": "2.2.9",
+    "@leafer-in/viewport": "^2.2.9",
+    "leafer-ui": "^2.2.9"
   },
   "devDependencies": {
     "typescript": "^5.9.3",

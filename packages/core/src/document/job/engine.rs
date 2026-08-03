@@ -52,6 +52,7 @@ fn projection_from_graph(
     graph.map(|projection| ProjectionDelta {
         clear: projection.clear,
         graph_data: projection.graph_data.clone(),
+        topology_bytes: projection.topology_bytes.clone(),
         ..Default::default()
     })
 }
@@ -374,6 +375,7 @@ mod tests {
             ready: true,
             clear: true,
             graph_data: Some(Default::default()),
+            topology_bytes: Vec::new(),
         };
         let output = OutputPlan {
             analysis: true,
@@ -389,6 +391,7 @@ mod tests {
             ready: true,
             clear: true,
             graph_data: None,
+            topology_bytes: Vec::new(),
         };
         let output = OutputPlan {
             analysis: false,
@@ -404,6 +407,7 @@ mod tests {
             ready: true,
             clear: false,
             graph_data: None,
+            topology_bytes: Vec::new(),
         };
         let output = OutputPlan {
             analysis: false,

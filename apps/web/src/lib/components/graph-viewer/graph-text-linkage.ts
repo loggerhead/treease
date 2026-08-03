@@ -15,11 +15,6 @@ import {
 } from "./graph-anchor-index";
 import type { TableCellAnchor } from "./graph-table-anchor-index";
 
-export type GraphTextLinkageSearchResult = {
-  target: "key" | "value" | "node";
-  path: PathSeg[];
-};
-
 type GraphTextLinkageControllerDeps = {
   getDocumentKey: () => string;
   getSourceText: () => string;
@@ -85,6 +80,10 @@ type RevealOptions = {
   navigate?: boolean;
 };
 
+type RevealDispatchOptions = {
+  navigate?: boolean;
+};
+
 type TableRowMetrics = {
   rowOffsetY?: number;
   rowHeight?: number;
@@ -94,11 +93,17 @@ export function createGraphTextLinkageController(
   deps: GraphTextLinkageControllerDeps,
 ) {
   let revealPathToken = 0;
+  let revealToken = 0;
   let activeHighlightState: {
     path: PathSeg[];
     target?: GraphHighlightTarget;
   } | null = null;
   let highlightValidationToken = 0;
+
+  function cancelPendingReveal(): void {
+    revealPathToken += 1;
+    highlightValidationToken += 1;
+  }
 
   function clearRenderedSearchHighlights(): void {
     deps.setGraphHighlightTestState(null);
@@ -223,21 +228,32 @@ export function createGraphTextLinkageController(
     path: PathSeg[],
     target?: GraphHighlightTarget,
     trigger?: string,
+    options?: RevealDispatchOptions,
   ): void {
-    if (!path?.length || deps.getEnableRevealSync?.() === false) return;
+    if (!path?.length) return;
+    const revealSyncEnabled = deps.getEnableRevealSync?.() !== false;
     const source = trigger === 'search' || trigger === 'breadcrumb' ? trigger : 'graph';
+    const isSearchReveal = source === 'search';
+    const publishGraphHighlight = revealSyncEnabled || isSearchReveal;
+    const updateTreePath = revealSyncEnabled || !isSearchReveal;
     deps.updateActiveTempModel((current) => ({
       ...current,
-      treePath: path,
-      graphHighlight: {
-        path,
-        target,
-        revision: Math.max(
-          deps.getEditorRevision(),
-          deps.getGraphAppliedRevision(),
-        ),
-        source,
-      },
+      ...(updateTreePath ? { treePath: path } : {}),
+      ...(publishGraphHighlight
+        ? {
+            graphHighlight: {
+              path,
+              target,
+              revision: Math.max(
+                deps.getEditorRevision(),
+                deps.getGraphAppliedRevision(),
+              ),
+              source,
+              navigate: options?.navigate ?? revealSyncEnabled,
+              revealToken: ++revealToken,
+            },
+          }
+        : {}),
     }));
   }
 
@@ -245,9 +261,10 @@ export function createGraphTextLinkageController(
     path: PathSeg[],
     target?: GraphHighlightTarget,
     trigger?: string,
+    options?: RevealDispatchOptions,
   ): void {
     if (!path?.length) return;
-    syncTreeSelection(path, target, trigger);
+    syncTreeSelection(path, target, trigger, options);
     deps.setGraphRevealTestState(path, target);
     deps.dispatchReveal(path, target, trigger);
   }
@@ -605,17 +622,6 @@ export function createGraphTextLinkageController(
     return stableReveal;
   }
 
-  function revealSearchResult(result: GraphTextLinkageSearchResult): void {
-    if (!result?.path?.length) return;
-    runRevealSequence(
-      result.path,
-      { target: result.target, navigate: true },
-      () => {
-        emitReveal(result.path, result.target, "search");
-      },
-    );
-  }
-
   function revealPath(
     path: PathSeg[],
     options?: RevealOptions,
@@ -679,13 +685,13 @@ export function createGraphTextLinkageController(
   }
 
   return {
+    cancelPendingReveal,
     clearSearchHighlight,
     clearRenderedSearchHighlights,
     resolveTreePathByPosition,
     ensurePathIndex,
     hydrateResolvedGraphPaths,
     emitReveal,
-    revealSearchResult,
     revealPath,
     refreshActiveHighlight,
     reconcileActiveHighlight,

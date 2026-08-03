@@ -1,7 +1,7 @@
 import type { SupportedLanguageId } from './monaco/language-support'
 
 export type CommandId =
-  | 'format' | 'minify' | 'compact' | 'sort' | 'show-yq-input' | 'generate-struct' | 'toggle-nest' | 'toggle-auto-format' | 'escape' | 'unescape'
+  | 'format' | 'minify' | 'compact' | 'sort' | 'show-yq-input' | 'generate-struct' | 'escape' | 'unescape'
   | 'workspace:new' | 'workspace:open' | 'workspace:save' | 'workspace:save-as' | 'workspace:close-tab'
 
 export type CommandLangs = '*' | SupportedLanguageId
@@ -41,22 +41,6 @@ export const commandItems: CommandItem[] = [
     keywords: ['json', 'type', 'interface', 'struct', 'class', 'codegen'],
     description: 'Generate a typed structure definition from the active document. Non-JSON documents are converted to JSON first.',
     type: 'action',
-    langs: ['*'],
-  },
-  {
-    id: 'toggle-nest',
-    label: 'Enable nest parse',
-    keywords: ['nested', 'json', 'expand', 'nest'],
-    description: 'Parse nested JSON strings into their structured values so embedded objects and arrays can be viewed and edited as nested data.',
-    type: 'toggle',
-    langs: ['json'],
-  },
-  {
-    id: 'toggle-auto-format',
-    label: 'Enable auto format',
-    keywords: ['smart', 'auto', 'format', 'beautify'],
-    description: 'Automatically apply the editor’s formatting rules after supported document changes, keeping indentation and layout synchronized with the active format settings.',
-    type: 'toggle',
     langs: ['*'],
   },
   { id: 'escape', label: 'Escape', keywords: ['escape', 'encode', 'to_json', 'stringify'], type: 'action', langs: ['json'] },

@@ -12,6 +12,7 @@ import {
   setEditorContent,
   setMonacoValue,
   waitForEditorReady,
+  waitForEditorRuntimeReady,
   waitForGraphRendered,
   waitForImportSettled,
   waitForColumnNavigatorSettled,
@@ -224,6 +225,82 @@ test('column navigator column detail editor uses monaco editor and syncs edits b
   await expect
     .poll(async () => getMonacoValue(page, 'column-navigator-content:k:rows|i:0'), { timeout: 5_000 })
     .toBe('{"title":"one","done":false}');
+});
+
+test('column navigator detail editor resizes and collapses at the right edge', async ({ page }) => {
+  await page.goto('/editor');
+  await waitForEditorReady(page);
+  await setEditorContent(page, {
+    sourceText: JSON.stringify({ user: { name: 'Alice' } }),
+    language: 'json',
+  });
+  await waitForGraphRendered(page);
+
+  const probe = (await readGraphClickProbes(page)).find(
+    (candidate) => candidate.target === 'value' && candidate.path.join('.') === 'user.name' && candidate.coord,
+  );
+  expect(probe).toBeTruthy();
+  if (!probe?.coord) throw new Error('user.name probe missing');
+  await clickGraphProbeAt(page, probe.coord);
+  await waitForColumnNavigatorSettled(page, 'k:user|k:name');
+
+  const workspace = page.getByTestId('column-navigator-graph');
+  const divider = page.getByTestId('column-navigator-detail-divider');
+  const columns = workspace.locator('.column-navigator-graph__track');
+  const trailingSpace = page.getByTestId('column-navigator-trailing-space');
+  const detail = workspace.locator('.column-navigator-detail');
+  const initialWidth = (await detail.boundingBox())?.width ?? 0;
+  const dividerBox = await divider.boundingBox();
+  const workspaceBox = await workspace.boundingBox();
+  expect(dividerBox).toBeTruthy();
+  expect(workspaceBox).toBeTruthy();
+  if (!dividerBox || !workspaceBox) throw new Error('column navigator detail drag geometry missing');
+  await expect.poll(async () => {
+    const trailingSpaceBox = await trailingSpace.boundingBox();
+    return Math.round(trailingSpaceBox?.width ?? 0);
+  }).toBe(Math.round(workspaceBox.width - 288));
+  await expect.poll(async () => {
+    const columnsBox = await columns.boundingBox();
+    return Math.round((columnsBox?.width ?? 0) - workspaceBox.width);
+  }).toBe(0);
+
+  await page.mouse.move(dividerBox.x + dividerBox.width / 2, dividerBox.y + dividerBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(workspaceBox.x + workspaceBox.width - 2, dividerBox.y + dividerBox.height / 2);
+  await page.mouse.up();
+
+  await expect(detail).toHaveClass(/column-navigator-detail--collapsed/);
+  const expand = page.getByTestId('column-navigator-detail-expand');
+  await expect(expand).toBeVisible();
+  expect((await detail.boundingBox())?.width ?? 0).toBeLessThanOrEqual(1);
+  expect((await detail.boundingBox())?.width).toBeLessThan(initialWidth);
+  await expect.poll(async () => {
+    const expandBox = await expand.boundingBox();
+    const dividerMetrics = await divider.evaluate((element) => ({
+      lineRight: getComputedStyle(element, '::after').right,
+      lineLeft: getComputedStyle(element, '::after').left,
+    }));
+    return {
+      expandRightInset: Math.round((workspaceBox.x + workspaceBox.width) - (expandBox?.x ?? 0) - (expandBox?.width ?? 0)),
+      ...dividerMetrics,
+    };
+  }).toEqual({ expandRightInset: 8, lineRight: '0px', lineLeft: 'auto' });
+
+  await expand.click();
+  await expect(detail).not.toHaveClass(/column-navigator-detail--collapsed/);
+  await expect.poll(async () => (await detail.boundingBox())?.width ?? 0).toBeGreaterThan(200);
+
+  const restoredDividerBox = await divider.boundingBox();
+  if (!restoredDividerBox) throw new Error('column navigator detail divider missing after expansion');
+  await page.mouse.move(restoredDividerBox.x + restoredDividerBox.width / 2, restoredDividerBox.y + restoredDividerBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(workspaceBox.x + 2, restoredDividerBox.y + restoredDividerBox.height / 2);
+  await page.mouse.up();
+
+  const expandColumns = page.getByRole('button', { name: 'Expand column navigator columns', exact: true });
+  await expect(expandColumns).toBeVisible();
+  await expandColumns.click();
+  await expect(expandColumns).toHaveCount(0);
 });
 
 test('prompt diff lane_name detail edit repaints only the affected graph region', async ({ page }) => {
@@ -478,6 +555,51 @@ test('workspace keyboard navigation is focus-bounded and Monaco keeps arrow keys
   );
 });
 
+test('column navigator introduces its keyboard controls and supports history shortcuts', async ({ page }) => {
+  test.setTimeout(30_000);
+  await page.addInitScript(() => localStorage.removeItem('treease:column-navigator-keyboard-hint-seen'));
+  await page.goto('/editor');
+  await waitForEditorRuntimeReady(page);
+  await setEditorContent(page, {
+    sourceText: JSON.stringify({ root: { first: { leaf: 'one' } } }),
+    language: 'json',
+  });
+  await waitForGraphRendered(page);
+
+  const rootProbe = (await readGraphClickProbes(page)).find(
+    (probe) => probe.target === 'value' && probe.path.join('.') === 'root' && probe.coord,
+  );
+  expect(rootProbe).toBeTruthy();
+  if (!rootProbe?.coord) throw new Error('root probe missing');
+
+  await clickGraphProbeAt(page, rootProbe.coord);
+  await waitForColumnNavigatorSettled(page, 'k:root', 20_000);
+
+  const workspace = page.getByTestId('column-navigator-graph');
+  const hint = page.getByTestId('column-navigator-keyboard-hint');
+  await expect(hint).toBeVisible();
+  await expect(hint).toContainText('Browse nodes with');
+  await expect(hint).toContainText('move through history');
+
+  await workspace.focus();
+  await page.keyboard.press('ArrowRight');
+  await waitForColumnNavigatorSettled(page, 'k:root|k:first', 20_000);
+  await expect(hint).toBeVisible();
+
+  await page.keyboard.press('[');
+  await waitForColumnNavigatorSettled(page, 'k:root', 20_000);
+  await page.keyboard.press(']');
+  await waitForColumnNavigatorSettled(page, 'k:root|k:first', 20_000);
+
+  await page.getByTestId('column-navigator-collapse').click();
+  await page.getByTestId('graph-viewer-dropzone').focus();
+  await page.keyboard.press('[');
+  await waitForColumnNavigatorSettled(page, 'k:root', 20_000);
+  await expect(page.getByTestId('column-navigator-graph')).toHaveCount(0);
+
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('treease:column-navigator-keyboard-hint-seen'))).toBe('1');
+});
+
 test('full active paths remain horizontally browsable with independent native column scrolling', async ({ page }) => {
   test.setTimeout(30_000);
   await page.goto('/editor');
@@ -557,6 +679,7 @@ test('column navigator can close and reopen without losing the main document vie
     language: 'json',
   });
   await waitForGraphRendered(page);
+  await expect(page.getByTestId('bottom-tree-pathbar')).toBeVisible();
 
   const probe = (await readGraphClickProbes(page)).find(
     (candidate) => candidate.target === 'value' && candidate.path.join('.') === 'user' && candidate.coord,
@@ -568,11 +691,37 @@ test('column navigator can close and reopen without losing the main document vie
 
   const navigator = page.getByTestId('column-navigator-graph');
   await expect(navigator).toBeVisible();
-  await navigator.getByRole('button', { name: 'Close column navigator' }).click();
+  const collapseButton = page.getByTestId('column-navigator-collapse');
+  await expect(collapseButton.locator('..')).toHaveClass(/ui-tooltip--top-left/);
+  await collapseButton.click();
   await expect(navigator).toHaveCount(0);
   await expect(page.getByTestId('graph-viewer-canvas')).toBeVisible();
+  await expect(page.getByTestId('bottom-tree-pathbar')).toBeVisible();
+  const expandButton = page.getByTestId('column-navigator-expand');
+  const backButton = page.getByTestId('bottom-column-navigator-back');
+  const forwardButton = page.getByTestId('bottom-column-navigator-forward');
+  await expect(expandButton).toBeVisible();
+  await expect(expandButton.locator('..')).toHaveClass(/ui-tooltip--top-left/);
+  await expect(page.getByTestId('column-navigator-pin-collapsed')).toBeDisabled();
+  await expect(backButton).toBeVisible();
+  await expect(forwardButton).toBeVisible();
+  expect((await expandButton.boundingBox())?.x).toBeGreaterThan((await forwardButton.boundingBox())?.x ?? 0);
 
   await clickGraphProbeAt(page, probe.coord);
   await waitForColumnNavigatorSettled(page, 'k:user');
+  await expect(navigator).toBeVisible();
+  await page.getByTestId('column-navigator-collapse').click();
+
+  await page.getByTestId('column-navigator-expand').click();
   await expect(page.getByTestId('column-navigator-graph')).toBeVisible();
+
+  await expect(page.getByTestId('column-navigator-pin-collapsed')).toBeEnabled();
+  await page.getByTestId('column-navigator-pin-collapsed').click();
+  await expect(navigator).toHaveCount(0);
+  await clickGraphProbeAt(page, probe.coord);
+  await waitForColumnNavigatorSettled(page, 'k:user');
+  await expect(navigator).toHaveCount(0);
+
+  await page.getByTestId('column-navigator-expand').click();
+  await expect(navigator).toBeVisible();
 });

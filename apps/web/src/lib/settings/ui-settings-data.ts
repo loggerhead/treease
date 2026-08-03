@@ -23,20 +23,20 @@ export const editorUiColors = {
   // Editor background color
   'editor.background': '#ffffff',
   // Editor foreground color
-  'editor.foreground': '#0f172a',
+  'editor.foreground': '#294c66',
   // Default line-number color
-  'editorLineNumber.foreground': '#64748b',
+  'editorLineNumber.foreground': '#9caebb',
   // Active line-number color
-  'editorLineNumber.activeForeground': '#0f172a',
+  'editorLineNumber.activeForeground': '#6d8292',
   // Cursor color
-  'editorCursor.foreground': '#0f172a',
+  'editorCursor.foreground': '#286b90',
   // Selection background color
-  'editor.selectionBackground': '#dbeafe',
+  'editor.selectionBackground': '#eaf4fb',
   // Selection-highlight background color
-  'editor.selectionHighlightBackground': '#dbeafe',
+  'editor.selectionHighlightBackground': '#eaf4fb',
   // Opaque overview-ruler background
   'editorOverviewRuler.background': '#ffffff',
-  'editorOverviewRuler.border': '#e2e8f0',
+  'editorOverviewRuler.border': '#cbd9e3',
 };
 
 export const formattingOptions = {
@@ -61,36 +61,36 @@ export const graphViewerConfig = {
   colors: {
     // Semantic-type colors
     semanticType: semanticTypeColors,
-    textMuted: '#6b7280',
+    textMuted: '#74899a',
     // Edge color
-    edge: '#cbd5e1',
+    edge: '#aec9dc',
     node: {
       // Node background color
       background: '#ffffff',
       // Node border color
-      border: '#00000040',
+      border: '#afc4d4',
     },
     table: {
       // Table background color
       background: '#ffffff',
       // Table border color
-      border: '#00000040',
+      border: '#afc4d4',
       // Table-header background color
-      headerBackground: '#f1f5f9',
+      headerBackground: '#f6f9fb',
       // Table-header border color
-      headerBorder: '#00000040',
+      headerBorder: '#d5e1e9',
       // Row background color
       rowBackground: '#ffffff',
       // Row border color
-      rowBorder: '#00000040',
-      hoverRowBackground: '#e6f0ff',
-      hoverCellBackground: '#ffe27a',
+      rowBorder: '#e0e8ee',
+      hoverRowBackground: '#eaf4fb',
+      hoverCellBackground: '#fff2c8',
       // Scroll-track background color
-      trackBackground: '#f8fafc',
+      trackBackground: '#f2f6f9',
       // Scroll-track border color
-      trackBorder: '#e2e8f0',
+      trackBorder: '#cbd9e3',
       // Scroll-thumb background color
-      thumbBackground: '#cbd5e1',
+      thumbBackground: '#9bb0c0',
     },
   },
   layout: {

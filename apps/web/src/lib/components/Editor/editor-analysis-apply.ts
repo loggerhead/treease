@@ -67,6 +67,7 @@ async function applyStoredDiagnosticsToEditor(params: {
     ...current,
     diagnostics: result.diagnostics,
     error: result.error,
+    ...(result.diagnostics.length > 0 ? { treePath: [], graphHighlight: null } : {}),
   }));
   return result;
 }

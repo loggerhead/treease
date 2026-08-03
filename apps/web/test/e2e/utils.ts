@@ -332,6 +332,11 @@ export async function getMonacoScroll(page: Page, hookId: string) {
   return evaluateTreease(page, (treease, nextHookId) => treease.editor.getScroll(nextHookId), hookId);
 }
 
+export async function getMonacoVisibleStartLine(page: Page, hookId: string) {
+  await waitForMonacoHook(page, hookId);
+  return evaluateTreease(page, (treease, nextHookId) => treease.editor.getVisibleStartLine(nextHookId), hookId);
+}
+
 export async function getMonacoLanguage(page: Page, hookId: string) {
   await waitForMonacoHook(page, hookId);
   return evaluateTreease(page, (treease, nextHookId) => treease.editor.getLanguage(nextHookId), hookId);
@@ -492,7 +497,8 @@ export async function waitForEditorReady(page: Page, timeout = DEFAULT_UI_TIMEOU
     .toEqual({ hasActiveSnapshot: true, hasBoundSnapshot: true });
   await expect(
     page
-      .getByRole('button', { name: 'Graph mode', exact: true })
+      .getByTestId('graph-surface-graph')
+      .or(page.getByRole('button', { name: 'Graph mode', exact: true }))
       .or(page.getByRole('button', { name: 'Text mode', exact: true })),
   ).toBeVisible({ timeout });
 }
@@ -756,6 +762,15 @@ export async function readGraphHighlightRect(page: Page): Promise<{
       height: Number(highlight.rect.height ?? 0),
     };
   });
+}
+
+export async function readGraphViewportState(page: Page): Promise<{
+  x: number;
+  y: number;
+  scaleX: number;
+  scaleY: number;
+} | null> {
+  return evaluateGraphRuntime(page, (runtime) => runtime.getViewportState?.() ?? null);
 }
 
 export async function readGraphViewportRect(

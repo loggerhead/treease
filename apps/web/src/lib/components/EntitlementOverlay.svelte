@@ -14,13 +14,13 @@
 
   $: effectiveUsageNotice = usageNotice ?? (block
     ? {
-        capability: block.capability === 'large_file_processing' ? 'Large-file processing' : 'Bidirectional editing',
+        capability: block.capability === 'large_file_processing' ? 'Large-file processing' : 'Graph views',
         used: block.used,
         limit: block.limit,
         periodLabel: 'this month',
       }
     : null);
-  $: capabilityLabel = block?.capability === 'large_file_processing' ? 'large-file processing' : 'graph editing';
+  $: capabilityLabel = block?.capability === 'large_file_processing' ? 'large-file processing' : 'graph views';
 </script>
 
 <section class="entitlement-overlay" data-testid="entitlement-overlay" aria-live="polite">
@@ -44,7 +44,10 @@
         onSelectPlan={onSelectPlan}
       />
     {:else}
-      <div class="entitlement-overlay__loading" aria-busy="true" aria-label="Loading pricing options"></div>
+      <div class="entitlement-overlay__loading" aria-busy="true" aria-label="Loading pricing options">
+        <span class="entitlement-overlay__spinner" aria-hidden="true"></span>
+        <span>Loading pricing options…</span>
+      </div>
     {/if}
   </div>
 </section>
@@ -80,12 +83,32 @@
     padding: 24px;
     border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--border-muted));
     border-radius: 16px;
-    background: color-mix(in srgb, var(--panel-bg) 94%, transparent);
+    background: var(--panel-bg, #fff);
     box-shadow: 0 22px 70px rgba(15, 23, 42, 0.2);
     scrollbar-gutter: stable;
   }
 
-  .entitlement-overlay__loading { min-height: 420px; }
+  .entitlement-overlay__loading {
+    display: grid;
+    min-height: 420px;
+    place-items: center;
+    gap: 10px;
+    color: var(--text-muted, #64748b);
+    font-size: 14px;
+  }
+
+  .entitlement-overlay__spinner {
+    width: 22px;
+    height: 22px;
+    border: 2px solid var(--border-muted, #e5e7eb);
+    border-top-color: var(--accent, #2563eb);
+    border-radius: 999px;
+    animation: entitlement-overlay-spin 700ms linear infinite;
+  }
+
+  @keyframes entitlement-overlay-spin {
+    to { transform: rotate(360deg); }
+  }
 
   @media (max-width: 640px) {
     .entitlement-overlay { padding: 16px; place-items: center; }

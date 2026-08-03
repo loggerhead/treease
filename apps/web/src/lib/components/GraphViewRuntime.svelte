@@ -1,7 +1,7 @@
 <!-- Responsibility: own the Leafer lifecycle, controller assembly, cross-boundary orchestration, and DOM template. -->
 <script lang="ts">
   import { onDestroy, onMount, tick, createEventDispatcher } from 'svelte';
-  import { ChevronLeft, ChevronRight, X } from 'lucide-svelte';
+  import { ChevronRight } from 'lucide-svelte';
   import {
     documentKey as documentKeyStore,
     editorIO,
@@ -11,7 +11,12 @@
     languageId as languageIdStore,
     sourceText,
   } from '../store/document-session-store';
-  import { activeTempModel, treeState } from '../store/graph-selection-store';
+  import {
+    activeTempModel,
+    getActiveTempModelSnapshot,
+    treeState,
+    type TempModel,
+  } from '../store/graph-selection-store';
   import { activeDocumentSemanticStateByKey } from '../store/active-document-authority';
   import { jsonBlockSelection } from '../store/full-edit-ui-store';
   import { activeFullEditUiState as fullEditUiState } from '../store/active-full-edit-ui-store';
@@ -32,7 +37,18 @@
   import { GraphRuntimeHost, GraphRuntimeLoading } from './graph-viewer/runtime';
   import GraphStreamProgressOverlay from './graph-viewer/GraphStreamProgressOverlay.svelte';
   import SidecarEditor from './Editor/SidecarEditor.svelte';
-  import { splitLayoutDrag } from './ui/split-layout';
+  import InteractionHint from './ui/InteractionHint.svelte';
+  import {
+    computePaneWidths,
+    createSplitLayoutDragController,
+    createSplitLayoutState,
+    expandSplit,
+    splitLayoutDrag,
+    SplitLayoutCollapseHint,
+    SplitLayoutCollapsedControl,
+    type SplitLayoutConfig,
+  } from './ui/split-layout';
+  import { fileDropFeedback } from './ui/file-drop-feedback';
   import {
     buildGraphHighlightSignature,
     createGraphFullEditRuntime,
@@ -58,7 +74,6 @@
     getClientProbeCoordFromBoxLike,
     getClientRectFromBoxLike,
     getWorldRectFromBoxLike,
-    getZoomScale,
     resolveInteractiveCellPath as resolveInteractiveCellPathWithFallback,
     toGraphClickTarget,
     toMinimapViewData,
@@ -72,13 +87,11 @@
   import type { GraphSceneViewData } from './graph-viewer/rendering';
   import {
     buildClientProbeCoord,
-    clearCanvasHintOverlay,
     createGraphMeasurementController,
     createGraphMinimapRuntimeController,
     createGraphRuntimeProbeActions,
     createGraphRuntimeProbeController,
     dispatchGraphEditEvent,
-    ensureCanvasHintOverlay,
     exportLeaferImage,
     getLeaferContentRoot,
   } from './graph-viewer/runtime';
@@ -102,12 +115,18 @@
     LeaferBox,
     ScrollableBox,
   } from './graph-viewer/model';
-  import { editorLanguageFallback, type SupportedEditorLanguageId } from '../monaco/language-support';
+  import { editorLanguageFallback, importFormatOptions, type SupportedEditorLanguageId } from '../monaco/language-support';
+  import { getLanguageExample } from '../monaco/language-examples';
   import type { EditorIO } from '../store/document-session-store';
   import { handleError } from '../utils/error-handler';
   import { GRAPH_CONFIG } from '../config/constants';
   import { resolveSemanticTypeColor } from '@treease/graph-viewer-runtime';
-  import { type GraphCell, type GraphCellKind, type GraphNode } from '@treease/graph-viewer-runtime';
+  import {
+    type GraphCell,
+    type GraphCellKind,
+    type GraphNode,
+    type GraphViewportState,
+  } from '@treease/graph-viewer-runtime';
   import { buildPathKey } from '../graph/graph-viewer-path';
   import { isDocumentRevisionGuardCurrent } from '../guards/document-revision-guard';
   import { clearGraphSelectionForFullEdit } from './GraphViewer.graph-highlight';
@@ -116,6 +135,7 @@
     runPostpaidCapability,
     type UsageBlock,
   } from '../billing/entitlement-gate';
+  import { graphViewTopologyKey } from '../billing/graph-view-usage';
   import {
     clearGraphBridge,
     installGraphBridge,
@@ -146,15 +166,51 @@
 
   type LeaferAppOrLeafer = LeaferApp | Leafer;
   export let enableRevealSync = true;
+  export let active = true;
   export let synchronizedRuntimeLoading = false;
   export let readonly = false;
   export let onFileDrop: (event: globalThis.DragEvent) => void | Promise<void> = () => {};
+  export let onRequestImportFile: (payload: { sourceFormat: string; targetFormat: string; accept: string[] }) => void | Promise<void> = () => {};
+  export let onLoadExample: (example: string, language: SupportedEditorLanguageId) => void | Promise<void> = () => {};
   export let onEntitlementBlocked: (block: UsageBlock) => void = () => {};
   export let ensureSharedWorkspacePromoted: (target: SharedWorkspaceMutationTarget) => Promise<boolean> = async () => true;
 
   const MINIMAP_WIDTH = 220;
   const MINIMAP_HEIGHT = 150;
   const COLUMN_NAVIGATOR_DEFAULT_HEIGHT = 220;
+  const COLUMN_NAVIGATOR_PANE_WIDTH_PX = 288;
+  const COLUMN_NAVIGATOR_DETAIL_LAYOUT_CONFIG: SplitLayoutConfig = {
+    defaultSplitRatio: 0.66,
+    minPaneWidthPx: 200,
+    dividerWidthPx: 10,
+    collapsedControlInsetPx: 16,
+    collapsedPaneWidthPx: 44,
+  };
+  const COLUMN_NAVIGATOR_HINT_STORAGE_KEY = 'treease:column-navigator-keyboard-hint-seen';
+  const COLUMN_NAVIGATOR_HINT_MAX_PRESENTATIONS = 3;
+  const COLUMN_NAVIGATOR_HINT_VISIBLE_MS = 4_500;
+  const COLUMN_NAVIGATOR_HINT_FADE_MS = 180;
+  const CANVAS_HINT_STORAGE_KEY = 'treease:canvas-drag-hint-seen';
+  const CANVAS_HINT_MAX_PRESENTATIONS = 3;
+  const CANVAS_HINT_VISIBLE_MS = 10_000;
+  const CANVAS_HINT_FADE_MS = 180;
+  const CANVAS_HINT_TOKENS = [
+    'Hold ',
+    { key: 'Space' },
+    ' and drag to move the canvas.',
+  ];
+  const COLUMN_NAVIGATOR_HINT_TOKENS = [
+    'Browse nodes with ',
+    { key: '↑' },
+    { key: '↓' },
+    { key: '←' },
+    { key: '→' },
+    '. Use ',
+    { key: '[' },
+    ' and ',
+    { key: ']' },
+    ' to move through history.',
+  ];
 
   let graphViewerShell: HTMLDivElement;
   let graphViewerMain: HTMLDivElement;
@@ -168,10 +224,13 @@
   let TextCtor: typeof Text | undefined;
   let PenCtor: typeof Pen | undefined;
   let errorMessage = '';
+  let lastTopologyBytes: Uint8Array | null = null;
+  const meteredTopologyKeys = new Set<string>();
   let graphRuntimeRetryToken = 0;
   let graphRuntimeReady = false;
   let showRuntimeLoading = true;
   let renderRuntimeReady = false;
+  let isEmptyDocument = false;
   const graphReadinessWaiters = new Set<{
     resolve: (ready: boolean) => void;
     timeout: ReturnType<typeof setTimeout>;
@@ -185,7 +244,14 @@
   let edgeLayer: Box | null = null;
   let nodeLayer: Box | null = null;
   let overlayLayer: Box | null = null;
-  let canvasHintText: Text | null = null;
+  let canvasHintReady = false;
+  let canvasHintGraphReady = false;
+  let canvasHintPresentationCount = 0;
+  let canvasHintTriggered = false;
+  let canvasHintVisible = false;
+  let canvasHintFading = false;
+  let canvasHintTimer: ReturnType<typeof setTimeout> | null = null;
+  let canvasHintFadeTimer: ReturnType<typeof setTimeout> | null = null;
   let suppressGraphPointerUntil = 0;
   let MoveEventCtor: typeof MoveEvent | undefined;
   let ZoomEventCtor: typeof ZoomEvent | undefined;
@@ -209,6 +275,7 @@
     errorMessage,
   });
   $: renderRuntimeReady = Boolean(leafer && BoxCtor && TextCtor && PenCtor);
+  $: isEmptyDocument = $sourceText.trim() === '';
   const graphRenderState = createGraphRenderState();
   const graphRenderBindings = createGraphRenderBindings(graphRenderState);
   const {
@@ -238,7 +305,13 @@
   });
   let columnNavigatorChain: ColumnNavigatorPaneState[] = [];
   let columnNavigatorVisiblePanes: VisibleColumnNavigatorPaneState[] = [];
-  let columnNavigatorOpen = false;
+  type ColumnNavigatorPaneMotion = {
+    pane: VisibleColumnNavigatorPaneState;
+    phase: 'entering' | 'entered' | 'exiting';
+  };
+  let renderedColumnNavigatorPanes: ColumnNavigatorPaneMotion[] = [];
+  const columnNavigatorPaneExitTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  let columnNavigatorCollapsed = true;
   let columnNavigatorLoading = false;
   let columnNavigatorInitialLoading = false;
   let columnNavigatorActivePath: PathSeg[] = [];
@@ -249,8 +322,97 @@
   let isDraggingColumnNavigatorDivider = false;
   let columnNavigatorRoot: HTMLDivElement;
   let columnNavigatorRail: HTMLDivElement;
+  let columnNavigatorDetailContainerWidthPx = 0;
+  let columnNavigatorDetailLayout = createSplitLayoutState(
+    COLUMN_NAVIGATOR_DETAIL_LAYOUT_CONFIG.defaultSplitRatio,
+  );
+  let columnNavigatorDetailWidthPx = 0;
+  let columnNavigatorTrailingSpacePx = 0;
+  let columnNavigatorDetailDividerLeftPx = 0;
+  let columnNavigatorDetailControlLeftPx = 0;
+  let isDraggingColumnNavigatorDetailDivider = false;
+  let columnNavigatorDetailCollapseHint: 'left' | 'right' | null = null;
+  let hasColumnNavigatorDetail = false;
+  let columnNavigatorDetailCollapsed = false;
   let columnNavigatorDetailPane: VisibleColumnNavigatorPaneState | null = null;
+  let columnNavigatorHintReady = false;
+  let columnNavigatorHintPresentationCount = 0;
+  let columnNavigatorHintTriggered = false;
+  let columnNavigatorHintVisible = false;
+  let columnNavigatorHintFading = false;
+  let columnNavigatorHintTimer: ReturnType<typeof setTimeout> | null = null;
+  $: hasColumnNavigatorDetail = Boolean(
+    columnNavigatorDetailPane?.status === 'ready' && columnNavigatorDetailPane.content,
+  );
+  $: columnNavigatorDetailCollapsed = columnNavigatorDetailLayout.layoutMode === 'left-only';
+  $: {
+    const widths = computePaneWidths(
+      columnNavigatorDetailLayout,
+      columnNavigatorDetailContainerWidthPx,
+      COLUMN_NAVIGATOR_DETAIL_LAYOUT_CONFIG,
+    );
+    // Keep this rail's scroll range independent from divider movement. The trailing space lets the
+    // terminal fixed-width column move entirely left of the detail overlay.
+    columnNavigatorTrailingSpacePx = Math.max(
+      columnNavigatorDetailContainerWidthPx - COLUMN_NAVIGATOR_PANE_WIDTH_PX,
+      0,
+    );
+    columnNavigatorDetailWidthPx = widths.rightPaneWidthPx;
+    columnNavigatorDetailDividerLeftPx = widths.splitterLeftPx;
+    columnNavigatorDetailControlLeftPx = widths.splitterControlLeftPx;
+  }
+  const columnNavigatorDetailDragController = createSplitLayoutDragController(
+    COLUMN_NAVIGATOR_DETAIL_LAYOUT_CONFIG,
+  );
+  let searchPreviewSnapshot: {
+    tempModel: TempModel;
+    viewport: GraphViewportState | null;
+    columnNavigatorCollapsed: boolean;
+    columnNavigatorPath: PathSeg[];
+  } | null = null;
+  let columnNavigatorHintFadeTimer: ReturnType<typeof setTimeout> | null = null;
   let lastSubgraphScrollKey = '';
+
+  function syncRenderedColumnNavigatorPanes(nextPanes: VisibleColumnNavigatorPaneState[]): void {
+    const nextColumns = nextPanes.filter((pane) => pane.kind === 'column');
+    const nextKeys = new Set(nextColumns.map((pane) => pane.pathKey));
+    const currentByKey = new Map(renderedColumnNavigatorPanes.map((entry) => [entry.pane.pathKey, entry]));
+
+    for (const [pathKey, timer] of columnNavigatorPaneExitTimers) {
+      if (nextKeys.has(pathKey)) {
+        clearTimeout(timer);
+        columnNavigatorPaneExitTimers.delete(pathKey);
+      }
+    }
+
+    const nextEntries = nextColumns.map((pane) => {
+      const current = currentByKey.get(pane.pathKey);
+      return {
+        pane,
+        phase: current?.phase === 'exiting' ? 'entering' : current ? 'entered' : 'entering',
+      } satisfies ColumnNavigatorPaneMotion;
+    });
+    const exitingEntries = renderedColumnNavigatorPanes
+      .filter((entry) => !nextKeys.has(entry.pane.pathKey))
+      .map((entry) => ({ ...entry, phase: 'exiting' as const }));
+    renderedColumnNavigatorPanes = [...nextEntries, ...exitingEntries];
+
+    for (const entry of exitingEntries) {
+      if (columnNavigatorPaneExitTimers.has(entry.pane.pathKey)) continue;
+      const timer = setTimeout(() => {
+        columnNavigatorPaneExitTimers.delete(entry.pane.pathKey);
+        renderedColumnNavigatorPanes = renderedColumnNavigatorPanes.filter(
+          (current) => current.pane.pathKey !== entry.pane.pathKey,
+        );
+      }, 180);
+      columnNavigatorPaneExitTimers.set(entry.pane.pathKey, timer);
+    }
+  }
+
+  function clearColumnNavigatorPaneExitTimers(): void {
+    for (const timer of columnNavigatorPaneExitTimers.values()) clearTimeout(timer);
+    columnNavigatorPaneExitTimers.clear();
+  }
 
   let graphSceneController: ReturnType<typeof createGraphSceneController>;
   let graphRuntimeProbeController: ReturnType<typeof createGraphRuntimeProbeController>;
@@ -273,9 +435,7 @@
       semanticType: $settings.editor.semanticTypeColors,
     },
   };
-  $: if (columnNavigatorOpen) {
-    columnNavigatorController.syncHeightToShell();
-  }
+  $: columnNavigatorController.syncHeightToShell();
   $: if ($settings && !restoredColumnNavigatorHeight) {
     const savedColumnNavigatorHeight = settingsStore.getColumnNavigatorHeight();
     if (savedColumnNavigatorHeight !== null) {
@@ -290,9 +450,28 @@
     columnNavigatorLoading &&
     columnNavigatorVisiblePanes.length === 1 &&
     columnNavigatorVisiblePanes[0]?.status === 'loading';
+  $: if (
+    columnNavigatorHintReady &&
+    !columnNavigatorCollapsed &&
+    !columnNavigatorLoading &&
+    !columnNavigatorHintTriggered &&
+    columnNavigatorHintPresentationCount < COLUMN_NAVIGATOR_HINT_MAX_PRESENTATIONS
+  ) {
+    showColumnNavigatorHint();
+  }
+  $: if (
+    canvasHintReady &&
+    canvasHintGraphReady &&
+    !showRuntimeLoading &&
+    !isEmptyDocument &&
+    !canvasHintTriggered &&
+    canvasHintPresentationCount < CANVAS_HINT_MAX_PRESENTATIONS
+  ) {
+    showCanvasHint();
+  }
   $: {
     const nextScrollKey = `${workspacePathKey(columnNavigatorActivePath)}|${columnNavigatorVisiblePanes.length}`;
-    if (columnNavigatorOpen && nextScrollKey !== lastSubgraphScrollKey) {
+    if (!columnNavigatorCollapsed && nextScrollKey !== lastSubgraphScrollKey) {
       lastSubgraphScrollKey = nextScrollKey;
       void scrollSubgraphSelectionIntoView();
     }
@@ -414,9 +593,6 @@
 
   $: if (renderRuntimeReady) {
     graphSceneController.ensureLayers();
-    ensureCanvasHint();
-  } else {
-    resetCanvasHint();
   }
 
   graphRuntimeProbeController = createGraphRuntimeProbeController({
@@ -533,14 +709,6 @@
     emitEditorMutation,
     updateActiveTempModel: (updater) => activeTempModel.update(updater),
     dispatchGraphEditEvent: (type, detail) => dispatchGraphEditEvent(container, type, detail),
-    runBidirectionalEdit: async (documentKey, execute) => runPostpaidCapability({
-      capability: 'bidirectional_edit',
-      idempotencyKey: documentKey,
-      metadata: { surface: 'graph_cell' },
-      surface: 'graph_edit',
-      execute,
-      onBlocked: onEntitlementBlocked,
-    }),
     beforeApplyMutation: ({ documentKey, model }) => {
       const workspace = getWorkspaceState();
       const tabId = workspace.activeTabId;
@@ -589,11 +757,12 @@
     markSubgraphRequested,
     markSubgraphMaterialized,
     onState: (state) => {
-      columnNavigatorOpen = state.open;
+      columnNavigatorCollapsed = state.collapsed;
       columnNavigatorLoading = state.isLoading;
       columnNavigatorActivePath = state.activePath;
       columnNavigatorChain = state.chain;
       columnNavigatorVisiblePanes = state.visiblePanes;
+      syncRenderedColumnNavigatorPanes(state.visiblePanes);
       columnNavigatorCanGoBack = state.canGoBack;
       columnNavigatorCanGoForward = state.canGoForward;
       columnNavigatorHeightPx = state.heightPx;
@@ -766,7 +935,7 @@
       }
     },
     callWorker: (method, input) => callSharedWasmWorker(method as any, input),
-    onStreamFinalAnalysis: (documentKey, language, revision, _analysis) => {
+    onStreamFinalAnalysis: (documentKey, language, revision, _analysis, snapshotId) => {
       if (
         !isDocumentRevisionGuardCurrent(
           { documentKey, revision },
@@ -775,8 +944,15 @@
       ) {
         return;
       }
+      if (snapshotId == null) {
+        columnNavigatorController.reset();
+      }
       const requestId = graphTreeStateController.nextToken();
       graphTreeStateController.clear(requestId, 'graph', revision);
+    },
+    onTopologyRendered: async (topologyBytes) => {
+      lastTopologyBytes = topologyBytes;
+      await recordGraphView(topologyBytes);
     },
     onStreamFinalRedraw: (mode, revision, guard) => {
       if (
@@ -893,7 +1069,7 @@
   graphRenderCoordinator.attachSceneBridge({
     applyGraphDelta: async (delta, version) => {
       const result = await graphSceneController.applyGraphDelta(delta, version);
-      ensureCanvasHint();
+      canvasHintGraphReady = true;
       if (!isFullEditInteractionBlocked()) graphMinimapRuntimeController.update();
       return result;
     },
@@ -901,7 +1077,7 @@
     cancelActiveRenderWork: () => graphSceneController.cancelActiveRenderWork(),
     replaceRenderedGraph: (value) => {
       const result = graphSceneController.replaceAll(value);
-      ensureCanvasHint();
+      canvasHintGraphReady = true;
       if (!isFullEditInteractionBlocked()) graphMinimapRuntimeController.update();
       return result;
     },
@@ -932,6 +1108,30 @@
     graphFullEditRuntime.syncReadonlyEditability();
   }
 
+  async function recordGraphView(topologyBytes: Uint8Array): Promise<void> {
+    if (!active) return;
+    const idempotencyKey = await graphViewTopologyKey(topologyBytes);
+    if (meteredTopologyKeys.has(idempotencyKey)) return;
+    meteredTopologyKeys.add(idempotencyKey);
+    try {
+      await runPostpaidCapability({
+        capability: 'graph_view',
+        idempotencyKey,
+        metadata: { surface: 'graph_view', topologyVersion: 1 },
+        surface: 'graph_view',
+        execute: async () => undefined,
+        onBlocked: onEntitlementBlocked,
+      });
+    } catch (error) {
+      meteredTopologyKeys.delete(idempotencyKey);
+      throw error;
+    }
+  }
+
+  $: if (active && lastTopologyBytes) {
+    void recordGraphView(lastTopologyBytes);
+  }
+
   function resolveInteractiveCellPath(cell: GraphCell, fallbackPath: PathSeg[]): Promise<PathSeg[]> {
     return resolveInteractiveCellPathWithFallback(cell, fallbackPath, resolveTreePathByPosition);
   }
@@ -952,18 +1152,44 @@
     graphFullEditRuntime.scheduleCleanup(kind, task);
   }
 
-  function ensureCanvasHint(): void {
-    canvasHintText = ensureCanvasHintOverlay(
-      container,
-      leafer as LeaferAppLike | null,
-      overlayLayer,
-      TextCtor,
-      canvasHintText,
-    );
+  function clearCanvasHintTimers(): void {
+    if (canvasHintTimer !== null) {
+      clearTimeout(canvasHintTimer);
+      canvasHintTimer = null;
+    }
+    if (canvasHintFadeTimer !== null) {
+      clearTimeout(canvasHintFadeTimer);
+      canvasHintFadeTimer = null;
+    }
+  }
+
+  function dismissCanvasHint(): void {
+    if (!canvasHintVisible || canvasHintFading) return;
+    clearCanvasHintTimers();
+    canvasHintFading = true;
+    canvasHintFadeTimer = setTimeout(() => {
+      canvasHintVisible = false;
+      canvasHintFading = false;
+      canvasHintFadeTimer = null;
+    }, CANVAS_HINT_FADE_MS);
+  }
+
+  function showCanvasHint(): void {
+    canvasHintTriggered = true;
+    canvasHintPresentationCount += 1;
+    canvasHintVisible = true;
+    try {
+      localStorage.setItem(CANVAS_HINT_STORAGE_KEY, String(canvasHintPresentationCount));
+    } catch {
+      // Storage may be unavailable in private or restricted browser contexts.
+    }
+    canvasHintTimer = setTimeout(dismissCanvasHint, CANVAS_HINT_VISIBLE_MS);
   }
 
   function resetCanvasHint(): void {
-    canvasHintText = clearCanvasHintOverlay(canvasHintText);
+    clearCanvasHintTimers();
+    canvasHintVisible = false;
+    canvasHintFading = false;
   }
 
   const graphMeasurementController = createGraphMeasurementController({
@@ -993,6 +1219,18 @@
     columnNavigatorController.reset();
   }
 
+  function handleCollapseColumnNavigator(): void {
+    columnNavigatorController.collapse();
+  }
+
+  function handleExpandColumnNavigator(): void {
+    columnNavigatorController.expand();
+  }
+
+  function handlePinColumnNavigatorCollapsed(): void {
+    columnNavigatorController.pinCollapsed();
+  }
+
   async function openColumnNavigatorPath(path: PathSeg[], parentAbsoluteIndex: number): Promise<void> {
     await columnNavigatorController.openPath(path, parentAbsoluteIndex);
   }
@@ -1002,6 +1240,40 @@
     draft: string | undefined,
   ): Promise<void> {
     await columnNavigatorController.commitValueEdit(pane, draft);
+  }
+
+  function clearColumnNavigatorHintTimers(): void {
+    if (columnNavigatorHintTimer !== null) {
+      clearTimeout(columnNavigatorHintTimer);
+      columnNavigatorHintTimer = null;
+    }
+    if (columnNavigatorHintFadeTimer !== null) {
+      clearTimeout(columnNavigatorHintFadeTimer);
+      columnNavigatorHintFadeTimer = null;
+    }
+  }
+
+  function dismissColumnNavigatorHint(): void {
+    if (!columnNavigatorHintVisible || columnNavigatorHintFading) return;
+    clearColumnNavigatorHintTimers();
+    columnNavigatorHintFading = true;
+    columnNavigatorHintFadeTimer = setTimeout(() => {
+      columnNavigatorHintVisible = false;
+      columnNavigatorHintFading = false;
+      columnNavigatorHintFadeTimer = null;
+    }, COLUMN_NAVIGATOR_HINT_FADE_MS);
+  }
+
+  function showColumnNavigatorHint(): void {
+    columnNavigatorHintTriggered = true;
+    columnNavigatorHintPresentationCount += 1;
+    columnNavigatorHintVisible = true;
+    try {
+      localStorage.setItem(COLUMN_NAVIGATOR_HINT_STORAGE_KEY, String(columnNavigatorHintPresentationCount));
+    } catch {
+      // Storage may be unavailable in private or restricted browser contexts.
+    }
+    columnNavigatorHintTimer = setTimeout(dismissColumnNavigatorHint, COLUMN_NAVIGATOR_HINT_VISIBLE_MS);
   }
 
   async function selectColumnNavigatorPathInternal(path: PathSeg[]): Promise<void> {
@@ -1017,7 +1289,9 @@
     await tick();
     const selected = columnNavigatorRoot?.querySelector<HTMLElement>('[data-column-navigator-selected="true"]');
     selected?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
-    const terminalPane = columnNavigatorRail?.lastElementChild as HTMLElement | null;
+    const terminalPane = columnNavigatorRail?.querySelector<HTMLElement>(
+      ':scope > [data-testid="column-navigator-pane"]:last-of-type',
+    );
     terminalPane?.scrollIntoView({ block: 'nearest', inline: 'center' });
   }
 
@@ -1039,12 +1313,9 @@
   }
 
   function handleColumnNavigatorKeydown(event: KeyboardEvent): void {
-    if (!columnNavigatorOpen || hasActiveEdit()) return;
+    if (hasActiveEdit()) return;
     if (isWorkspaceTextEditorTarget(event.target)) return;
-    const historyDirection =
-      event.altKey && event.key === 'ArrowLeft' ? -1 :
-      event.altKey && event.key === 'ArrowRight' ? 1 :
-      0;
+    const historyDirection = event.key === '[' ? -1 : event.key === ']' ? 1 : 0;
     if (historyDirection) {
       event.preventDefault();
       void (historyDirection < 0
@@ -1079,7 +1350,6 @@
   }
 
   function handleGraphKeydown(event: KeyboardEvent): void {
-    if (!columnNavigatorOpen) return;
     handleColumnNavigatorKeydown(event);
   }
 
@@ -1096,9 +1366,84 @@
     void settingsStore.saveColumnNavigatorHeight(columnNavigatorHeightPx);
   }
 
+  function handleColumnNavigatorDetailDragStart(clientX: number): void {
+    if (!hasColumnNavigatorDetail || !columnNavigatorRoot) return;
+    isDraggingColumnNavigatorDetailDivider = true;
+    const update = columnNavigatorDetailDragController.start(
+      columnNavigatorDetailLayout,
+      clientX,
+      columnNavigatorRoot.getBoundingClientRect(),
+    );
+    if (update) columnNavigatorDetailLayout = update.state;
+    columnNavigatorDetailCollapseHint = update?.collapseSide ?? null;
+  }
+
+  function handleColumnNavigatorDetailDragMove(clientX: number): void {
+    const update = columnNavigatorDetailDragController.move(columnNavigatorDetailLayout, clientX);
+    if (update) columnNavigatorDetailLayout = update.state;
+    columnNavigatorDetailCollapseHint = update?.collapseSide ?? null;
+  }
+
+  function handleColumnNavigatorDetailDragEnd(): void {
+    columnNavigatorDetailDragController.end();
+    isDraggingColumnNavigatorDetailDivider = false;
+    columnNavigatorDetailCollapseHint = null;
+  }
+
+  function expandColumnNavigatorDetail(): void {
+    if (columnNavigatorDetailLayout.layoutMode === 'split') return;
+    columnNavigatorDetailLayout = expandSplit(
+      columnNavigatorDetailLayout,
+      columnNavigatorDetailContainerWidthPx,
+      COLUMN_NAVIGATOR_DETAIL_LAYOUT_CONFIG,
+    );
+  }
+
+  function beginSearchPreview(): void {
+    if (searchPreviewSnapshot) return;
+    searchPreviewSnapshot = {
+      tempModel: getActiveTempModelSnapshot(),
+      viewport: graphViewportController.getViewportState(),
+      columnNavigatorCollapsed,
+      columnNavigatorPath: columnNavigatorActivePath.map((segment) => ({ ...segment })),
+    };
+  }
+
+  export function previewSearchResult(result: GraphSearchResult): void {
+    if (isFullEditInteractionBlocked() || !result?.path?.length) return;
+    beginSearchPreview();
+    graphTextLinkageController.emitReveal(result.path, result.target, 'search', {
+      navigate: enableRevealSync,
+    });
+  }
+
+  export function commitSearchPreview(): void {
+    searchPreviewSnapshot = null;
+  }
+
+  export async function cancelSearchPreview(): Promise<void> {
+    const snapshot = searchPreviewSnapshot;
+    if (!snapshot) return;
+    searchPreviewSnapshot = null;
+    graphTextLinkageController.cancelPendingReveal();
+    graphTextLinkageController.clearSearchHighlight();
+    columnNavigatorController.reset();
+    if (snapshot.columnNavigatorPath.length) {
+      await columnNavigatorController.openPath(snapshot.columnNavigatorPath);
+      if (snapshot.columnNavigatorCollapsed) columnNavigatorController.collapse();
+    } else if (!snapshot.columnNavigatorCollapsed) {
+      columnNavigatorController.expand();
+    }
+    activeTempModel.set(snapshot.tempModel);
+    await tick();
+    await graphViewportController.waitForRevealTransition();
+    if (snapshot.viewport) graphViewportController.restoreViewportState(snapshot.viewport);
+  }
+
   export function revealSearchResult(result: GraphSearchResult): void {
-    if (isFullEditInteractionBlocked()) return;
-    graphTextLinkageController.revealSearchResult(result);
+    if (isFullEditInteractionBlocked() || !result?.path?.length) return;
+    graphTextLinkageController.emitReveal(result.path, result.target, 'search', { navigate: true });
+    commitSearchPreview();
   }
 
   export function revealPath(
@@ -1110,9 +1455,7 @@
   }
 
   export function getColumnNavigatorActivePath(): PathSeg[] {
-    return columnNavigatorOpen
-      ? columnNavigatorController.getActivePath().map((segment) => ({ ...segment }))
-      : [];
+    return columnNavigatorController.getActivePath().map((segment) => ({ ...segment }));
   }
 
   export async function restoreColumnNavigatorPath(activePath: PathSeg[]): Promise<boolean> {
@@ -1126,18 +1469,30 @@
     }
   }
 
+  export function collapseColumnNavigator(): void {
+    handleCollapseColumnNavigator();
+  }
+
+  export function expandColumnNavigator(): void {
+    handleExpandColumnNavigator();
+  }
+
+  export function pinColumnNavigatorCollapsed(): void {
+    handlePinColumnNavigatorCollapsed();
+  }
+
   export async function goColumnNavigatorBack(): Promise<void> {
-    if (isFullEditInteractionBlocked() || !columnNavigatorOpen) return;
+    if (isFullEditInteractionBlocked()) return;
     await columnNavigatorController.goBack();
   }
 
   export async function goColumnNavigatorForward(): Promise<void> {
-    if (isFullEditInteractionBlocked() || !columnNavigatorOpen) return;
+    if (isFullEditInteractionBlocked()) return;
     await columnNavigatorController.goForward();
   }
 
   export async function selectColumnNavigatorPath(path: PathSeg[]): Promise<void> {
-    if (isFullEditInteractionBlocked() || !columnNavigatorOpen) return;
+    if (isFullEditInteractionBlocked()) return;
     await selectColumnNavigatorPathInternal(path);
   }
 
@@ -1154,6 +1509,7 @@
     getHitResult: (point: { x: number; y: number }) => graphRuntimeProbeActions.getRuntimeHitResult(point),
     getLastGraphData: () => graphSceneController.getLastGraphData(),
     getInteractionState: () => getGraphInteractionState(),
+    getViewportState: () => graphViewportController.getViewportState(),
     getRuntimeReadiness: () => getRuntimeReadiness(),
     getStreamProgressState: () => streamProgressState,
     revealPath: (path: PathSeg[], options: { target: 'key' | 'value' | 'node' | undefined; navigate: boolean | undefined }) =>
@@ -1185,8 +1541,8 @@
 
   function setError(message: string) {
     errorMessage = message;
+    canvasHintGraphReady = false;
     graphSceneController?.clear?.();
-    ensureCanvasHint();
     clearSearchHighlight();
   }
 
@@ -1232,12 +1588,30 @@
   }
 
   onMount(() => {
+    try {
+      const storedPresentationCount = localStorage.getItem(COLUMN_NAVIGATOR_HINT_STORAGE_KEY);
+      // Treat the previous boolean marker as one presentation so existing users get one final hint.
+      columnNavigatorHintPresentationCount = storedPresentationCount === 'true'
+        ? 1
+        : Math.max(0, Number.parseInt(storedPresentationCount ?? '0', 10) || 0);
+      canvasHintPresentationCount = Math.max(
+        0,
+        Number.parseInt(localStorage.getItem(CANVAS_HINT_STORAGE_KEY) ?? '0', 10) || 0,
+      );
+    } catch {
+      // Storage may be unavailable in private or restricted browser contexts.
+    }
+    columnNavigatorHintReady = true;
+    canvasHintReady = true;
     void refreshUsageGate().catch((error) => {
       console.error('[graph] usage gate initialization failed', error);
     });
   });
 
   onDestroy(() => {
+    clearColumnNavigatorPaneExitTimers();
+    clearColumnNavigatorHintTimers();
+    clearCanvasHintTimers();
     graphReadinessWaiters.forEach((waiter) => {
       clearTimeout(waiter.timeout);
       waiter.resolve(false);
@@ -1317,9 +1691,6 @@
     } else if (!graphHighlightSignature) {
       graphSceneController.syncGraphHighlight(null);
       resetAppliedGraphHighlightState({ clearHighlight: true });
-    } else if (!enableRevealSync) {
-      graphSceneController.syncGraphHighlight(null);
-      resetAppliedGraphHighlightState();
     } else if (
       shouldApplyGraphHighlight({
         hasLeafer: Boolean(leafer),
@@ -1334,20 +1705,31 @@
       lastAppliedGraphHighlightSignature = graphHighlightSignature;
       lastAppliedGraphHighlightRevision = appliedRevision;
       graphSceneController.syncGraphHighlight(graphHighlight);
-      revealPath(graphHighlight.path, {
-        target: graphHighlight.target,
-        navigate: graphHighlight.source === 'search' || graphHighlight.source === 'breadcrumb',
-      });
-      // A newly committed graph may not have registered its replacement boxes
-      // when the old visual selection is cleared.  The linkage controller
-      // restores that visual state from the retained logical path, then uses
-      // the snapshot projection (not box presence) to decide whether it can
-      // be discarded.
-      void graphTextLinkageController.reconcileActiveHighlight({
-        documentKey: documentKeyValue,
-        snapshotId: graphRenderCoordinator.getActiveSnapshotId(),
-        graphAppliedRevision: appliedRevision,
-      });
+      if (!enableRevealSync && graphHighlight.source === 'editor') {
+        columnNavigatorController.recordExternalPath(graphHighlight.path);
+      }
+      const isSearchHighlight = graphHighlight.source === 'search';
+      if (enableRevealSync || isSearchHighlight) {
+        revealPath(graphHighlight.path, {
+          target: graphHighlight.target,
+          navigate: isSearchHighlight
+            ? graphHighlight.navigate === true
+            : graphHighlight.source === 'editor' || graphHighlight.source === 'breadcrumb',
+        });
+        if (graphHighlight.source === 'editor') {
+          void columnNavigatorController.openPath(graphHighlight.path);
+        }
+        // A newly committed graph may not have registered its replacement boxes
+        // when the old visual selection is cleared. The linkage controller
+        // restores that visual state from the retained logical path, then uses
+        // the snapshot projection (not box presence) to decide whether it can
+        // be discarded.
+        void graphTextLinkageController.reconcileActiveHighlight({
+          documentKey: documentKeyValue,
+          snapshotId: graphRenderCoordinator.getActiveSnapshotId(),
+          graphAppliedRevision: appliedRevision,
+        });
+      }
     }
   }
 
@@ -1386,13 +1768,33 @@
     event.preventDefault();
     event.stopPropagation();
   }
+
+  function getEmptyStateLanguage(): SupportedEditorLanguageId {
+    return languageIdValue || editorLanguageFallback;
+  }
+
+  function handleEmptyStateOpenFile(): void {
+    const language = getEmptyStateLanguage();
+    const format = importFormatOptions.find((option) => option.id === language);
+    void onRequestImportFile({
+      sourceFormat: language,
+      targetFormat: language,
+      accept: format?.extensions ?? [],
+    });
+  }
+
+  function handleEmptyStateLoadExample(): void {
+    const language = getEmptyStateLanguage();
+    const example = getLanguageExample(language);
+    if (example) void onLoadExample(example, language);
+  }
 </script>
 
 <div
   bind:this={graphViewerShell}
   bind:clientHeight={graphViewerShellHeight}
   class="graph-viewer-shell"
-  class:graph-viewer-shell--with-workspace={columnNavigatorOpen}
+  class:graph-viewer-shell--with-workspace={!columnNavigatorCollapsed}
   data-testid="graph-viewer-root"
 >
   <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
@@ -1408,6 +1810,7 @@
     on:keydown={handleGraphKeydown}
     on:drop={handleFileDrop}
     on:dragover={handleFileDragOver}
+    use:fileDropFeedback
   >
     <!--
       Keep the graph decoration outside Leafer's scene. This node is created once
@@ -1418,6 +1821,7 @@
       aria-hidden="true"
       data-testid="graph-background-grid"
     ></div>
+    <div class="file-drop-feedback-overlay" aria-hidden="true"></div>
     <div
       class="absolute inset-0 z-[1]"
       class:invisible={showRuntimeLoading}
@@ -1426,9 +1830,9 @@
       <div bind:this={container} class="absolute inset-0 touch-none" data-testid="graph-viewer-canvas"></div>
       <div
         bind:this={minimapHost}
-        class="pointer-events-auto absolute bottom-4 right-4 z-[2] h-[150px] w-[220px] overflow-hidden rounded-[14px]
-          shadow-[0_12px_28px_rgba(15,23,42,0.14)] backdrop-blur transition-[bottom] duration-200 ease-out"
-        style:bottom={`${columnNavigatorOpen ? columnNavigatorHeightPx + 16 : 16}px`}
+        class="pointer-events-auto absolute bottom-4 right-4 z-[2] h-[150px] w-[220px] overflow-hidden rounded-[9px]
+          border border-[var(--border-strong)] bg-[var(--panel-bg)] shadow-[0_8px_20px_rgba(29,39,53,0.10)] transition-[bottom] duration-200 ease-out"
+        style:bottom={`${!columnNavigatorCollapsed ? columnNavigatorHeightPx + 16 : 16}px`}
         class:hidden={streamProgressState.visible ||
           (isFullEditProgressActive() && $fullEditUiState?.phase !== 'settled')}
         data-testid="graph-viewer-minimap"
@@ -1462,8 +1866,49 @@
     </div>
     {#if showRuntimeLoading}
       <GraphRuntimeLoading />
+    {:else if isEmptyDocument && !errorMessage}
+      <div class="graph-empty-state" data-testid="graph-empty-state">
+        <div class="graph-empty-state__art" aria-hidden="true">
+          <svg viewBox="0 0 296 116" role="presentation">
+            <path class="graph-empty-state__edge graph-empty-state__edge--soft" d="M43 76 100 39 168 67 238 30" />
+            <path class="graph-empty-state__edge" d="M43 76 100 39 168 67 238 30M100 39 137 90" />
+            <circle class="graph-empty-state__node graph-empty-state__node--accent" cx="43" cy="76" r="11" />
+            <circle class="graph-empty-state__node" cx="100" cy="39" r="14" />
+            <circle class="graph-empty-state__node graph-empty-state__node--accent" cx="168" cy="67" r="11" />
+            <circle class="graph-empty-state__node" cx="238" cy="30" r="13" />
+            <circle class="graph-empty-state__node graph-empty-state__node--small" cx="137" cy="90" r="7" />
+          </svg>
+        </div>
+        <div class="graph-empty-state__body">
+          <span class="graph-empty-state__eyebrow">GRAPH VIEW</span>
+          <h2>Turn your data into a map</h2>
+          <p>Open a file or load an example to see relationships here.</p>
+          <div class="graph-empty-state__actions">
+            <button type="button" class="graph-empty-state__button graph-empty-state__button--primary" on:click={handleEmptyStateLoadExample}>
+              Load example
+              <span aria-hidden="true">↗</span>
+            </button>
+            <button type="button" class="graph-empty-state__button graph-empty-state__button--secondary" on:click={handleEmptyStateOpenFile}>
+              Open file
+            </button>
+          </div>
+        </div>
+      </div>
     {/if}
     <GraphStreamProgressOverlay state={streamProgressState} />
+    {#if canvasHintVisible}
+      <div class="canvas-drag-hint">
+        <InteractionHint
+          icon="pointer"
+          label="Canvas navigation"
+          tokens={CANVAS_HINT_TOKENS}
+          fading={canvasHintFading}
+          testId="canvas-drag-hint"
+          dismissLabel="Dismiss canvas navigation hint"
+          onDismiss={dismissCanvasHint}
+        />
+      </div>
+    {/if}
     {#if errorMessage}
       <div
         data-testid="graph-error-message"
@@ -1484,7 +1929,7 @@
     {/if}
   </div>
 
-  {#if columnNavigatorOpen}
+  {#if !columnNavigatorCollapsed}
     <div
       class="column-navigator-overlay"
       style={`--column-navigator-height: ${columnNavigatorHeightPx}px`}
@@ -1505,6 +1950,7 @@
     </div>
     <div
       bind:this={columnNavigatorRoot}
+      bind:clientWidth={columnNavigatorDetailContainerWidthPx}
       class="column-navigator-graph"
       class:column-navigator-graph--loading={columnNavigatorLoading}
       data-testid="column-navigator-graph"
@@ -1523,10 +1969,20 @@
           <div class="column-navigator-loading-skeleton__detail"></div>
         </div>
       {:else}
-      <div bind:this={columnNavigatorRail} class="column-navigator-graph__track">
-        {#each columnNavigatorVisiblePanes as pane (`${pane.kind}:${pane.pathKey}`)}
+      <div
+        class="column-navigator-graph__track"
+        bind:this={columnNavigatorRail}
+      >
+        {#each renderedColumnNavigatorPanes as paneMotion (paneMotion.pane.pathKey)}
+          {@const pane = paneMotion.pane}
           {#if pane.kind === 'column'}
-            <section class="column-navigator-pane" data-testid="column-navigator-pane" data-column-navigator-path-key={pane.pathKey}>
+            <section
+              class="column-navigator-pane"
+              class:column-navigator-pane--entering={paneMotion.phase === 'entering'}
+              class:column-navigator-pane--exiting={paneMotion.phase === 'exiting'}
+              data-testid="column-navigator-pane"
+              data-column-navigator-path-key={pane.pathKey}
+            >
               {#if pane.status === 'ready'}
                 <div class="column-navigator-pane__items" role="list" aria-label={`${pane.title} children`}>
                   {#each pane.items as item (item.pathKey)}
@@ -1582,24 +2038,49 @@
             </section>
           {/if}
         {/each}
+        {#if hasColumnNavigatorDetail}
+          <div
+            class="column-navigator-graph__trailing-space"
+            data-testid="column-navigator-trailing-space"
+            aria-hidden="true"
+            style:width={`${columnNavigatorTrailingSpacePx}px`}
+          ></div>
+        {/if}
       </div>
       {/if}
       {#if columnNavigatorLoading && !columnNavigatorInitialLoading}
         <span class="column-navigator-loading-indicator" role="status" aria-live="polite">Updating path…</span>
       {/if}
-      <button
-        type="button"
-        class="column-navigator-graph__dismiss"
-        aria-label="Close column navigator"
-        on:click={() => columnNavigatorController.reset()}
-      ><X size={15} strokeWidth={2} /></button>
-      {#if columnNavigatorDetailPane?.status === 'ready' && columnNavigatorDetailPane.content}
+      {#if columnNavigatorDetailCollapseHint}
+        <SplitLayoutCollapseHint side={columnNavigatorDetailCollapseHint} />
+      {/if}
+      {#if hasColumnNavigatorDetail}
+        <div
+          class={`app-split-divider app-split-divider--vertical column-navigator-detail-divider ${isDraggingColumnNavigatorDetailDivider ? 'app-split-divider--dragging' : ''} ${columnNavigatorDetailCollapsed ? 'app-split-divider--collapsed app-split-divider--right-edge' : ''}`}
+          data-testid="column-navigator-detail-divider"
+          role="separator"
+          aria-label="Resize column navigator editor"
+          aria-orientation="vertical"
+          style:left={`${columnNavigatorDetailDividerLeftPx}px`}
+          use:splitLayoutDrag={{
+            onDragStart: ({ clientX }) => handleColumnNavigatorDetailDragStart(clientX),
+            onDragMove: ({ clientX }) => handleColumnNavigatorDetailDragMove(clientX),
+            onDragEnd: () => handleColumnNavigatorDetailDragEnd(),
+          }}
+        ></div>
         <section
           class="column-navigator-detail"
+          class:column-navigator-detail--collapsed={columnNavigatorDetailCollapsed}
+          class:column-navigator-detail--instant={isDraggingColumnNavigatorDetailDivider}
           data-testid="column-navigator-pane"
           data-column-navigator-content-path-key={columnNavigatorDetailPane.pathKey}
+          style:width={`${columnNavigatorDetailWidthPx}px`}
         >
-          <div class="column-navigator-pane__content" data-testid="column-navigator-content-pane">
+          <div
+            class="column-navigator-pane__content column-navigator-detail__content"
+            data-testid="column-navigator-content-pane"
+            aria-hidden={columnNavigatorDetailCollapsed}
+          >
             <div class="column-navigator-pane__content-editor" data-testid="column-navigator-monaco-pane">
               {#key columnNavigatorDetailPane.content.tabId}
                 <SidecarEditor
@@ -1629,8 +2110,31 @@
             </div>
           </div>
         </section>
+        {#if columnNavigatorDetailLayout.layoutMode !== 'split'}
+          <SplitLayoutCollapsedControl
+            mode={columnNavigatorDetailLayout.layoutMode}
+            leftPx={columnNavigatorDetailControlLeftPx}
+            expandLeftLabel="Expand column navigator columns"
+            expandRightLabel="Expand column navigator editor"
+            testId="column-navigator-detail-expand"
+            onExpand={expandColumnNavigatorDetail}
+          />
+        {/if}
       {/if}
     </div>
+    {#if columnNavigatorHintVisible}
+      <div class="column-navigator-keyboard-hint">
+        <InteractionHint
+          icon="keyboard"
+          label="Keyboard navigation"
+          tokens={COLUMN_NAVIGATOR_HINT_TOKENS}
+          fading={columnNavigatorHintFading}
+          testId="column-navigator-keyboard-hint"
+          dismissLabel="Dismiss keyboard navigation hint"
+          onDismiss={dismissColumnNavigatorHint}
+        />
+      </div>
+    {/if}
     </div>
   {/if}
 
@@ -1651,7 +2155,7 @@
     height: 100%;
     width: 100%;
     min-height: 0;
-    background: #f8fafc;
+    background: var(--panel-bg-alt);
     grid-template-rows: minmax(0, 1fr) auto;
   }
 
@@ -1661,6 +2165,20 @@
     overflow: hidden;
     outline: none;
     isolation: isolate;
+  }
+
+  .file-drop-feedback-overlay {
+    position: absolute;
+    z-index: 10;
+    inset: 0;
+    pointer-events: none;
+    opacity: 0;
+    background: rgb(224 243 255 / 88%);
+    transition: opacity 120ms ease-out;
+  }
+
+  :global(.graph-viewer-main.file-drop-feedback--active) .file-drop-feedback-overlay {
+    opacity: 1;
   }
 
   /*
@@ -1674,11 +2192,208 @@
     inset: 0;
     pointer-events: none;
     contain: paint;
-    background-color: #ffffff;
+    background-color: #f8fbfd;
     background-image:
-      linear-gradient(rgba(226, 232, 240, 0.72) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(226, 232, 240, 0.72) 1px, transparent 1px);
-    background-size: 28px 28px;
+      linear-gradient(rgb(181 204 220 / 25%) 1px, transparent 1px),
+      linear-gradient(90deg, rgb(181 204 220 / 25%) 1px, transparent 1px);
+    background-size: 32px 32px;
+  }
+
+  .canvas-drag-hint {
+    position: absolute;
+    z-index: 4;
+    top: 5px;
+    left: 50%;
+    transform: translateX(-50%);
+  }
+
+  .graph-empty-state {
+    position: absolute;
+    z-index: 3;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 48px 24px 70px;
+    pointer-events: none;
+    background: radial-gradient(ellipse 520px 360px at 50% 48%, rgb(255 255 255 / 60%), transparent 72%);
+  }
+
+  .graph-empty-state::before {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 360px;
+    height: 360px;
+    border: 1px solid rgb(95 151 180 / 8%);
+    border-radius: 50%;
+    content: '';
+    transform: translate(-50%, -58%);
+    pointer-events: none;
+  }
+
+  .graph-empty-state__body {
+    position: relative;
+    z-index: 0;
+    display: flex;
+    width: min(420px, 100%);
+    flex-direction: column;
+    align-items: center;
+    margin-top: -26px;
+    padding: 35px 32px 27px;
+    border: 1px solid rgb(133 169 188 / 28%);
+    border-radius: 22px;
+    background: linear-gradient(145deg, rgb(255 255 255 / 86%), rgb(247 251 253 / 78%));
+    box-shadow: 0 24px 54px rgb(29 61 78 / 10%), 0 2px 8px rgb(29 61 78 / 4%);
+    backdrop-filter: blur(14px);
+    text-align: center;
+    pointer-events: auto;
+    animation: graph-empty-state-in 420ms cubic-bezier(.22, 1, .36, 1) both;
+  }
+
+  .graph-empty-state__art {
+    position: relative;
+    z-index: 1;
+    width: 340px;
+    height: 122px;
+    margin-top: 0;
+    margin-bottom: 0;
+    pointer-events: none;
+  }
+
+  .graph-empty-state__art::before {
+    position: absolute;
+    top: 10px;
+    left: 50%;
+    width: 190px;
+    height: 90px;
+    border-radius: 50%;
+    background: rgb(220 239 246 / 52%);
+    content: '';
+    filter: blur(22px);
+    transform: translateX(-50%);
+  }
+
+  .graph-empty-state__art svg {
+    position: relative;
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+
+  .graph-empty-state__edge {
+    fill: none;
+    stroke: #7395aa;
+    stroke-width: 1.7;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  .graph-empty-state__edge--soft {
+    stroke: #b8d1de;
+    stroke-width: 5;
+    opacity: .42;
+  }
+
+  .graph-empty-state__node {
+    fill: rgb(255 255 255 / 92%);
+    stroke: #7898ad;
+    stroke-width: 2;
+  }
+
+  .graph-empty-state__node--accent {
+    fill: #e5f3f7;
+    stroke: var(--accent);
+  }
+
+  .graph-empty-state__node--small {
+    fill: #dcecf2;
+    stroke: #a4c0d0;
+    stroke-width: 1.5;
+  }
+
+  .graph-empty-state__eyebrow {
+    margin-top: 0;
+    color: #6f8aa0;
+    font-size: 9px;
+    font-weight: 750;
+    letter-spacing: .18em;
+  }
+
+  .graph-empty-state h2 {
+    margin: 8px 0 0;
+    color: #163449;
+    font-family: Georgia, 'Times New Roman', serif;
+    font-size: 21px;
+    font-weight: 600;
+    letter-spacing: -.025em;
+  }
+
+  .graph-empty-state p {
+    max-width: 300px;
+    margin: 8px 0 0;
+    color: #71879a;
+    font-size: 12px;
+    line-height: 1.55;
+  }
+
+  .graph-empty-state__actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 18px;
+  }
+
+  .graph-empty-state__button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    min-height: 34px;
+    padding: 0 14px;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: 650;
+    cursor: pointer;
+    transition: transform 140ms ease, box-shadow 140ms ease, background-color 140ms ease;
+  }
+
+  .graph-empty-state__button:hover {
+    transform: translateY(-1px);
+  }
+
+  .graph-empty-state__button--primary {
+    color: #fff;
+    background: var(--accent);
+    box-shadow: 0 5px 12px rgb(45 118 151 / 22%);
+  }
+
+  .graph-empty-state__button--primary:hover {
+    box-shadow: 0 7px 16px rgb(45 118 151 / 28%);
+  }
+
+  .graph-empty-state__button--secondary {
+    color: #315b73;
+    border-color: #c8d8e2;
+    background: rgb(255 255 255 / 76%);
+  }
+
+  .graph-empty-state__button:focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--accent) 50%, transparent);
+    outline-offset: 2px;
+  }
+
+  @keyframes graph-empty-state-in {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  @media (max-width: 720px) {
+    .graph-empty-state__body { width: min(350px, 100%); }
+    .graph-empty-state__art { width: 260px; }
   }
 
   .column-navigator-graph {
@@ -1691,17 +2406,26 @@
     min-height: 0;
     overflow: hidden;
     outline: none;
-    border-top: 1px solid rgba(148, 163, 184, 0.28);
-    background: #eef3f8;
+    border-top: 1px solid var(--border-strong);
+    background: var(--panel-bg-alt);
     box-shadow:
-      inset 0 1px 0 rgba(255, 255, 255, 0.76),
-      0 -12px 24px rgba(15, 23, 42, 0.08);
+      inset 0 1px 0 rgb(255 255 255 / 68%),
+      0 -12px 24px rgb(29 39 53 / 7%);
   }
 
   .column-navigator-graph:focus-visible {
     box-shadow:
-      inset 0 2px 0 rgba(59, 130, 246, 0.42),
-      0 -12px 24px rgba(15, 23, 42, 0.08);
+      inset 0 2px 0 color-mix(in srgb, var(--accent) 42%, transparent),
+      0 -12px 24px rgb(29 39 53 / 7%);
+  }
+
+  .column-navigator-keyboard-hint {
+    position: absolute;
+    z-index: 2;
+    bottom: calc(var(--column-navigator-height) + 10px);
+    left: 50%;
+    pointer-events: auto;
+    transform: translateX(-50%);
   }
 
   .column-navigator-loading-indicator {
@@ -1743,35 +2467,6 @@
     pointer-events: auto;
   }
 
-  .column-navigator-graph__dismiss {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 22px;
-    height: 28px;
-    border: 0;
-    border-radius: 0;
-    background: transparent;
-    color: #64748b;
-    cursor: pointer;
-  }
-
-  .column-navigator-graph__dismiss {
-    position: absolute;
-    top: 0;
-    right: 0;
-    z-index: 6;
-    border: 1px solid #cbd5e1;
-    background: #e2e8f0;
-    color: #475569;
-    box-shadow: none;
-  }
-
-  .column-navigator-graph__dismiss:hover {
-    color: #1e293b;
-    background: #cbd5e1;
-  }
-
   .column-navigator-graph__track {
     display: flex;
     height: 100%;
@@ -1780,7 +2475,10 @@
     overflow-y: hidden;
     overscroll-behavior-inline: contain;
     scrollbar-color: rgba(100, 116, 139, 0.4) transparent;
-    padding-right: 440px;
+  }
+
+  .column-navigator-graph__trailing-space {
+    flex: 0 0 auto;
   }
 
   .column-navigator-loading-skeleton {
@@ -1794,13 +2492,13 @@
   .column-navigator-loading-skeleton__detail {
     position: relative;
     overflow: hidden;
-    border-right: 1px solid rgba(203, 213, 225, 0.82);
-    background: rgba(250, 252, 255, 0.9);
+    border-right: 1px solid var(--border-strong);
+    background: var(--panel-bg);
   }
 
   .column-navigator-loading-skeleton__detail {
     border-right: 0;
-    background: rgba(248, 250, 252, 0.96);
+    background: var(--panel-bg-alt);
   }
 
   .column-navigator-loading-skeleton__column::after,
@@ -1808,7 +2506,7 @@
     position: absolute;
     inset: 18px 14px;
     content: '';
-    background: linear-gradient(90deg, #edf2f7 25%, #f8fafc 38%, #edf2f7 63%);
+    background: linear-gradient(90deg, #e9e8e3 25%, #f6f5f1 38%, #e9e8e3 63%);
     background-size: 400% 100%;
     animation: column-navigator-skeleton-shimmer 1.4s ease-in-out infinite;
   }
@@ -1818,6 +2516,32 @@
     to { background-position: 0 0; }
   }
 
+  .column-navigator-pane--entering {
+    animation: column-navigator-pane-enter 220ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
+  .column-navigator-pane--exiting {
+    pointer-events: none;
+    animation: column-navigator-pane-exit 180ms ease-out both;
+  }
+
+  @keyframes column-navigator-pane-enter {
+    from { opacity: 0; transform: translateX(24px); }
+    to { opacity: 1; transform: translateX(0); }
+  }
+
+  @keyframes column-navigator-pane-exit {
+    from { opacity: 1; }
+    to { opacity: 0; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .column-navigator-pane--entering,
+    .column-navigator-pane--exiting {
+      animation-duration: 1ms;
+    }
+  }
+
   .column-navigator-pane {
     display: grid;
     width: 288px;
@@ -1825,8 +2549,8 @@
     flex: 0 0 288px;
     min-height: 0;
     grid-template-rows: minmax(0, 1fr);
-    border-right: 1px solid rgba(203, 213, 225, 0.82);
-    background: rgba(250, 252, 255, 0.9);
+    border-right: 1px solid var(--border-strong);
+    background: var(--panel-bg);
   }
 
   .column-navigator-detail {
@@ -1836,13 +2560,39 @@
     right: 0;
     bottom: 0;
     display: grid;
-    width: 440px;
-    min-width: 440px;
-    flex: 0 0 440px;
+    min-width: 0;
     min-height: 0;
+    overflow: hidden;
     grid-template-rows: minmax(0, 1fr);
-    border-left: 1px solid rgba(203, 213, 225, 0.92);
-    background: rgba(248, 250, 252, 0.96);
+    border-left: 1px solid var(--border-strong);
+    background: var(--panel-bg-alt);
+    transition: width 180ms cubic-bezier(0.22, 1, 0.36, 1), border-color 160ms ease;
+    will-change: width;
+  }
+
+  .column-navigator-detail--instant {
+    transition: none;
+  }
+
+  .column-navigator-detail--collapsed {
+    border-left-color: transparent;
+    background: transparent;
+  }
+
+  .column-navigator-detail__content {
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+    transition: opacity 160ms ease;
+  }
+
+  .column-navigator-detail--collapsed .column-navigator-detail__content {
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .column-navigator-detail-divider {
+    z-index: 5;
   }
 
   .column-navigator-pane__header {
@@ -1901,9 +2651,9 @@
     min-height: 31px;
     padding: 5px 7px;
     border: 1px solid transparent;
-    border-radius: 0;
+    border-radius: 6px;
     background: transparent;
-    color: #334155;
+    color: var(--text-primary);
     font-family: inherit;
     text-align: left;
     cursor: default;
@@ -1914,18 +2664,18 @@
   }
 
   .column-navigator-item:hover {
-    background: rgba(226, 232, 240, 0.62);
+    background: var(--panel-bg-alt);
   }
 
   .column-navigator-item.selected {
-    border-color: #bfdbfe;
-    background: #eaf2ff;
-    box-shadow: none;
+    border-color: color-mix(in srgb, var(--accent) 32%, var(--border-strong));
+    background: var(--accent-soft);
+    box-shadow: inset 2px 0 0 var(--accent);
   }
 
   .column-navigator-item.path-ancestor:not(.selected) {
-    border-color: rgba(148, 163, 184, 0.22);
-    background: rgba(148, 163, 184, 0.15);
+    border-color: var(--border-strong);
+    background: color-mix(in srgb, var(--panel-bg-alt) 72%, var(--accent-soft));
     box-shadow: none;
   }
 
@@ -1934,12 +2684,12 @@
   }
 
   .column-navigator-item.index .column-navigator-item__dot {
-    background: #5b83c4;
+    background: var(--accent);
     opacity: 1;
   }
 
   .column-navigator-item:focus-visible {
-    outline: 2px solid rgba(59, 130, 246, 0.42);
+    outline: 2px solid color-mix(in srgb, var(--accent) 42%, transparent);
     outline-offset: -1px;
   }
 
@@ -1968,7 +2718,7 @@
   }
 
   .column-navigator-item__label {
-    color: #334155;
+    color: var(--text-primary);
     font-weight: 550;
   }
 
@@ -1978,13 +2728,13 @@
   }
 
   .column-navigator-item__preview.container-preview {
-    color: #6b7280;
+    color: var(--text-muted);
     opacity: 1;
   }
 
   .column-navigator-item__chevron {
     display: block;
-    color: #94a3b8;
+    color: var(--text-muted);
   }
 
   .column-navigator-item__chevron-slot {
@@ -1999,7 +2749,7 @@
     display: grid;
     height: 100%;
     min-height: 0;
-    background: #f1f5f9;
+    background: var(--panel-bg-alt);
   }
 
   .column-navigator-pane__content-editor {
@@ -2011,7 +2761,7 @@
     height: 100%;
     border: 0;
     border-radius: 0;
-    background: #ffffff;
+    background: var(--panel-bg);
     overflow: hidden;
     box-shadow: none;
   }
@@ -2021,13 +2771,13 @@
     place-items: center;
     min-height: 0;
     padding: 16px;
-    color: #64748b;
+    color: var(--text-muted);
     font-size: 12px;
     text-align: center;
   }
 
   .column-navigator-pane__placeholder--error {
-    color: #b91c1c;
+    color: var(--danger);
   }
 
 </style>

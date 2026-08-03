@@ -138,4 +138,15 @@ describe('generatePreview', () => {
     expect(preview).toContain('<strong>Timestamp</strong>');
     expect(preview).toContain('<strong>RelativeTime</strong>');
   });
+
+  it.each(['2026-13-01', '2026-02-29', '2026-02-31', '2026-04-13T29:00:00Z'])('does not render invalid date previews for %s', async (value) => {
+    const preview = await generatePreview({
+      node: valueToTreeNode(value),
+      value,
+      rawValue: JSON.stringify(value),
+      language: 'json',
+    });
+
+    expect(preview).toBeNull();
+  });
 });

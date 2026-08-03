@@ -16,6 +16,9 @@
   import { applyLocalUsage } from '../billing/entitlement-gate';
   import { runBillingCheckout } from '../billing/checkout-flow';
   import { LARGE_FILE_PROCESSING_INFO } from '../config/large-file';
+  import Tooltip from './Tooltip.svelte';
+  import AccountPanel from './AccountPanel.svelte';
+  import ContextItem from './ContextItem.svelte';
   import {
     DropdownMenu,
     DropdownMenuContent,
@@ -29,6 +32,9 @@
   export let onLogout: () => Promise<void> = async () => {};
   export let onCheckForUpdates: () => Promise<void> = async () => {};
   export let onOpenSettings: () => void = () => {};
+  export let showTriggerTitle = true;
+  export let showProfileTrigger = false;
+  export let contextPanel = false;
 
   const desktop = import.meta.env.PUBLIC_WORKSPACE_SURFACE === 'desktop';
   let account: AccountSummary['user'] | null = null;
@@ -226,15 +232,72 @@
 
 {#if variant === 'landing' && !signedInUser}
   <button class="landing-login" type="button" data-testid="account-login-button" on:click={onLogin}>Login</button>
+{:else if contextPanel}
+  <ContextItem
+    label="Account"
+    ariaLabel={details ? `Account for ${details.name}` : 'Account'}
+    tooltip="Account"
+    expanded={showProfileTrigger}
+    placement="right-end"
+    bind:open={accountMenuOpen}
+    customTrigger
+    triggerClass={showProfileTrigger ? 'account-profile-trigger' : 'account-compact-trigger'}
+    testId={signedInUser ? 'account-avatar-button' : 'account-menu-button'}
+  >
+    <span slot="trigger" class="account-trigger-content">
+      {#if signedInUser}
+        <span class="avatar-frame">
+          {#if details.avatarUrl}
+            <img class="avatar-image" src={details.avatarUrl} alt="" referrerpolicy="no-referrer" />
+          {:else}
+            <span class="avatar-fallback" aria-hidden="true">{details.initial}</span>
+          {/if}
+        </span>
+        {#if showProfileTrigger}
+          <span class="account-trigger-copy"><strong>{details.name}</strong>{#if details.email}<span>{details.email}</span>{/if}</span>
+        {/if}
+      {:else if showProfileTrigger}
+        <span class="avatar-frame avatar-frame--anonymous"><UserIcon size={18} /></span>
+        <span class="account-trigger-copy"><strong>Anonymous user</strong><span>{details.email}</span></span>
+      {:else}
+        <UserIcon size={12} />
+      {/if}
+    </span>
+    <div slot="panel" class="account-context-panel">
+      <AccountPanel
+        signedInUser={Boolean(signedInUser)}
+        {details}
+        {planPresentation}
+        {subscription}
+        {subscriptionLoading}
+        {usage}
+        {usageLoading}
+        bind:usageExpanded
+        {desktop}
+        showSettings={false}
+        {managingPlan}
+        {checkoutBusy}
+        {onLogin}
+        {onLogout}
+        {onCheckForUpdates}
+        {onOpenSettings}
+        onPlanAction={handlePlanAction}
+        onRefreshUsage={refreshUsage}
+        onCopyAnonymousId={copyAnonymousId}
+      />
+    </div>
+  </ContextItem>
 {:else}
-  <div class:editor-account-anchor={variant === 'editor'}>
+  <div class:editor-account-anchor={variant === 'editor'} class:editor-account-anchor--profile={variant === 'editor' && showProfileTrigger}>
   <DropdownMenu bind:open={accountMenuOpen}>
     <DropdownMenuTrigger
       class={variant === 'landing'
         ? 'relative inline-grid h-9 w-9 cursor-pointer place-items-center rounded-full border border-slate-900/10 bg-white shadow-[0_8px_20px_rgba(15,23,42,0.08)] outline-none transition-[background-color,border-color,box-shadow] duration-150 hover:border-slate-900/20 hover:bg-slate-100 hover:shadow-[0_5px_14px_rgba(15,23,42,0.12)] data-[state=open]:border-slate-900/20 data-[state=open]:bg-slate-100 data-[state=open]:shadow-[0_5px_14px_rgba(15,23,42,0.12)] focus-visible:ring-2 focus-visible:ring-blue-600/30 focus-visible:ring-offset-2'
-        : 'relative inline-grid h-6 w-6 cursor-pointer place-items-center rounded-full border-0 bg-transparent text-[var(--text-primary)] outline-none transition-[background-color,box-shadow] duration-150 hover:bg-[var(--panel-bg-alt)] data-[state=open]:bg-[var(--panel-bg-alt)] focus-visible:ring-2 focus-visible:ring-blue-600/30'}
+        : showProfileTrigger
+          ? 'account-profile-trigger'
+          : 'relative inline-grid h-6 w-6 cursor-pointer place-items-center rounded-full border-0 bg-transparent text-[var(--text-primary)] outline-none transition-[background-color,box-shadow] duration-150 hover:bg-[var(--panel-bg-alt)] data-[state=open]:bg-[var(--panel-bg-alt)] focus-visible:ring-2 focus-visible:ring-blue-600/30'}
       aria-label={details ? `Account for ${details.name}` : 'Account'}
-      title={details ? details.name : 'Account'}
+      title={showTriggerTitle ? (details ? details.name : 'Account') : undefined}
       data-testid={signedInUser ? 'account-avatar-button' : 'account-menu-button'}
     >
       {#if signedInUser}
@@ -245,9 +308,21 @@
             <span class="avatar-fallback" aria-hidden="true">{details.initial}</span>
           {/if}
         </span>
+        {#if showProfileTrigger}
+          <span class="account-trigger-copy">
+            <strong>{details.name}</strong>
+            {#if details.email}<span>{details.email}</span>{/if}
+          </span>
+        {/if}
         {#if planPresentation && subscription?.tier === 'pro'}
           <span class="plan-badge pro-plan-badge" aria-hidden="true"></span>
         {/if}
+      {:else if showProfileTrigger}
+        <span class="avatar-frame avatar-frame--anonymous"><UserIcon size={18} /></span>
+        <span class="account-trigger-copy">
+          <strong>Anonymous user</strong>
+          <span>{details.email}</span>
+        </span>
       {:else}
         <UserIcon size={12} />
       {/if}
@@ -324,18 +399,18 @@
                 {/if}
               </div>
               <div class="usage-item">
-                <div class="usage-item-label"><span>Graph edits</span><span>{monthlyLimit(usage.limits.bidirectionalEditDocumentsMonthly, usage.usage.bidirectional_edit)}</span></div>
-                {#if usagePercent(usage.limits.bidirectionalEditDocumentsMonthly, usage.usage.bidirectional_edit) !== null}
-                  <div class="usage-progress"><span style={`width: ${usagePercent(usage.limits.bidirectionalEditDocumentsMonthly, usage.usage.bidirectional_edit)}%`}></span></div>
+                <div class="usage-item-label"><span>Graph views</span><span>{monthlyLimit(usage.limits.graphViewDocumentsMonthly, usage.usage.graph_view)}</span></div>
+                {#if usagePercent(usage.limits.graphViewDocumentsMonthly, usage.usage.graph_view) !== null}
+                  <div class="usage-progress"><span style={`width: ${usagePercent(usage.limits.graphViewDocumentsMonthly, usage.usage.graph_view)}%`}></span></div>
                 {/if}
               </div>
               <div class="usage-item">
                 <div class="usage-item-label">
                   <span class="usage-item-label__name">
                     <span>Large files</span>
-                    <span class="usage-item-info" role="img" aria-label={LARGE_FILE_PROCESSING_INFO} title={LARGE_FILE_PROCESSING_INFO}>
-                      <Info size={12} strokeWidth={2.1} />
-                    </span>
+                    <Tooltip content={LARGE_FILE_PROCESSING_INFO} side="right" className="usage-item-info">
+                      <span aria-hidden="true"><Info size={12} strokeWidth={2.1} /></span>
+                    </Tooltip>
                   </span>
                   <span>{monthlyLimit(usage.limits.largeFileProcessingRunsMonthly, usage.usage.large_file_processing)}</span>
                 </div>
@@ -423,6 +498,98 @@
     align-items: center;
     justify-content: center;
     overflow: visible;
+  }
+
+  .editor-account-anchor--profile {
+    width: 100%;
+    height: 58px;
+    flex: 0 0 58px;
+    align-items: stretch;
+  }
+
+  :global(.account-profile-trigger) {
+    display: flex;
+    width: 100%;
+    min-width: 0;
+    height: 58px;
+    box-sizing: border-box;
+    align-items: center;
+    gap: 10px;
+    overflow: hidden;
+    border: 0;
+    border-radius: 8px;
+    padding: 6px 4px;
+    color: var(--text-primary);
+    background: transparent;
+    text-align: left;
+    outline: none;
+    transition: background-color 150ms ease;
+  }
+
+  :global(.account-profile-trigger:hover),
+  :global(.account-profile-trigger[data-state='open']) {
+    background: var(--panel-bg-alt);
+  }
+
+  :global(.account-profile-trigger:focus-visible) {
+    box-shadow: 0 0 0 2px rgb(37 99 235 / 30%);
+  }
+
+  :global(.account-profile-trigger .avatar-frame) {
+    width: 44px;
+    height: 44px;
+    flex: 0 0 44px;
+    border-radius: 50%;
+  }
+
+  :global(.account-trigger-content) {
+    display: flex;
+    width: 100%;
+    min-width: 0;
+    align-items: center;
+    gap: 10px;
+  }
+
+  :global(.account-compact-trigger) {
+    width: 36px;
+    height: 36px;
+    justify-content: center;
+  }
+
+  .avatar-frame--anonymous {
+    display: grid;
+    place-items: center;
+    color: var(--text-muted);
+    background: var(--panel-bg-alt);
+  }
+
+  .account-trigger-copy {
+    display: flex;
+    min-width: 0;
+    flex: 1;
+    flex-direction: column;
+    gap: 3px;
+    overflow: hidden;
+  }
+
+  .account-trigger-copy strong,
+  .account-trigger-copy span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .account-trigger-copy strong {
+    color: var(--text-primary);
+    font-size: 13px;
+    font-weight: 650;
+    line-height: 1.2;
+  }
+
+  .account-trigger-copy span {
+    color: var(--text-muted);
+    font-size: 11px;
+    line-height: 1.2;
   }
 
   .avatar-image,
@@ -607,7 +774,7 @@
     gap: 4px;
   }
 
-  .usage-item-info {
+  :global(.usage-item-info) {
     display: inline-flex;
     flex: 0 0 auto;
     color: #94a3b8;
@@ -616,7 +783,7 @@
     transition: color 140ms ease, opacity 140ms ease;
   }
 
-  .usage-item-info:hover {
+  :global(.usage-item-info:hover) {
     color: #475569;
     opacity: 1;
   }

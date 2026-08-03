@@ -12,6 +12,20 @@ Do not edit it by hand; run `pnpm docs:map:gen`.
   - H2: Contract rules
   - H2: Repository split gate
 
+## contracts/architecture-review-checklist.md
+
+- Route: /contracts/architecture-review-checklist
+- Headings:
+  - H1: Architecture Review Checklist
+  - H2: 1. 职责与边界
+  - H2: 2. 依赖方向与契约
+  - H2: 3. Authority、状态所有权与数据流
+  - H2: 4. 异步、并发与生命周期
+  - H2: 5. 失败状态与 fallback
+  - H2: 6. 跨路径一致性与安全
+  - H2: 7. 验证证据
+  - H2: Review result
+
 ## contracts/bidirectional-edit.md
 
 - Route: /contracts/bidirectional-edit

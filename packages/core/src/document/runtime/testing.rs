@@ -83,6 +83,7 @@ mod tests {
                 ready: true,
                 clear: true,
                 graph_data: None,
+                topology_bytes: Vec::new(),
             }),
             ..DocumentSnapshot::default()
         }

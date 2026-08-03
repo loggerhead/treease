@@ -1,22 +1,20 @@
 <script lang="ts">
-  import { createEventDispatcher } from 'svelte'
-  export let selected = false
-  export let disabled = false
-  export let className = ''
-  export let ariaLabel: string | undefined = undefined
-  export let testId: string | undefined = undefined
-  const dispatch = createEventDispatcher()
+	import { Command as CommandPrimitive } from "bits-ui";
+	import { cn } from "$lib/utils";
+
+	let {
+		class: className,
+		children,
+		...restProps
+	}: CommandPrimitive.ItemProps = $props();
 </script>
 
-<button
-  class={`flex w-full items-center gap-2 rounded-[8px] px-2.5 py-1.5 text-left text-[13px] ${
-    selected ? 'bg-[#eef2f7] text-[var(--text-primary)]' : 'text-[var(--text-primary)]'
-  } ${disabled ? 'opacity-50' : 'hover:bg-[#f8fafc]'} ${className}`}
-  aria-label={ariaLabel}
-  data-testid={testId}
-  disabled={disabled}
-  on:click={(event) => dispatch('click', event)}
-  on:mouseenter={(event) => dispatch('mouseenter', event)}
+<CommandPrimitive.Item
+	class={cn(
+		"relative flex w-full cursor-default items-center gap-2 rounded-[8px] px-2.5 py-1.5 text-left text-[13px] outline-none select-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50 data-[highlighted]:bg-[#eef2f7] data-[highlighted]:text-[var(--text-primary)] data-[selected]:bg-[#eef2f7] data-[selected]:text-[var(--text-primary)]",
+		className
+	)}
+	{...restProps}
 >
-  <slot />
-</button>
+	{@render children?.()}
+</CommandPrimitive.Item>

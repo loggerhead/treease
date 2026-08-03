@@ -40,7 +40,8 @@ export type VisibleColumnNavigatorPaneState = ColumnNavigatorPaneState & {
 };
 
 export type ColumnNavigatorState = {
-  open: boolean;
+  /** The navigator keeps its workspace state while only the tree path bar remains visible. */
+  collapsed: boolean;
   /** A new path is being prepared while the last complete workspace stays visible. */
   isLoading: boolean;
   activePath: PathSeg[];

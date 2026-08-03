@@ -45,6 +45,7 @@ pub struct GraphProjection {
     pub ready: bool,
     pub clear: bool,
     pub graph_data: Option<crate::document::protocol::GraphDelta>,
+    pub topology_bytes: Vec<u8>,
 }
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DecodedSpanAuthority {

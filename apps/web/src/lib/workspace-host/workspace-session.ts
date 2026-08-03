@@ -15,6 +15,10 @@ function isOptionalString(value: unknown): value is string | undefined {
   return value === undefined || typeof value === 'string';
 }
 
+function isOptionalCloudSyncStatus(value: unknown): value is WorkspaceSession['tabs'][number]['syncStatus'] {
+  return value === undefined || value === 'synced' || value === 'syncing' || value === 'pending' || value === 'error' || value === 'offline';
+}
+
 export function validateWorkspaceSession(value: unknown): WorkspaceSessionValidationResult {
   if (!value || typeof value !== 'object') return { kind: 'invalid', reason: 'Session must be an object.' };
   const candidate = value as Partial<WorkspaceSession>;
@@ -31,6 +35,7 @@ export function validateWorkspaceSession(value: unknown): WorkspaceSessionValida
       typeof tab.sourceText !== 'string' ||
       !isOptionalString(tab.savedText) ||
       !isOptionalString(tab.linkedFileName) ||
+      !isOptionalCloudSyncStatus(tab.syncStatus) ||
       (tab.origin !== undefined && tab.origin !== 'example' && tab.origin !== 'user' && tab.origin !== 'import')
     ) {
       return { kind: 'invalid', reason: `Workspace session tab ${index} has invalid fields.` };
@@ -53,6 +58,7 @@ export function workspaceSessionFromWorkspace(workspace: EditorWorkspaceState): 
             origin: tab.origin,
             savedText: tab.savedText,
             linkedFileName: tab.fileLinkedDocument?.name,
+            syncStatus: tab.syncStatus,
           }]
         : [];
     }),
@@ -78,5 +84,6 @@ export function workspaceTabInputFromSession(
     sourceText: tab.sourceText,
     origin: tab.origin ?? (tab.sourceText === getLanguageExample(languageId) ? 'example' : 'user'),
     savedText: tab.savedText,
+    syncStatus: tab.syncStatus,
   };
 }

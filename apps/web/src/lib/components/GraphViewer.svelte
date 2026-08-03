@@ -6,6 +6,7 @@
   import type { PathSeg } from '../store/tree-path';
   import type { ColumnNavigatorState } from './graph-viewer/column-navigator/types';
   import type { SharedWorkspaceMutationTarget } from '../share/share-workspace-lifecycle';
+  import type { SupportedEditorLanguageId } from '../monaco/language-support';
   import GraphViewRuntime from './GraphViewRuntime.svelte';
 
   type GraphSearchTarget = 'node' | 'key' | 'value';
@@ -19,9 +20,12 @@
   };
 
   export let enableRevealSync = true;
+  export let active = true;
   export let synchronizedRuntimeLoading = false;
   export let readonly = false;
   export let onFileDrop: (event: DragEvent) => void | Promise<void> = () => {};
+  export let onRequestImportFile: (payload: { sourceFormat: string; targetFormat: string; accept: string[] }) => void | Promise<void> = () => {};
+  export let onLoadExample: (example: string, language: SupportedEditorLanguageId) => void | Promise<void> = () => {};
   export let onEntitlementBlocked: (block: UsageBlock) => void = () => {};
   export let ensureSharedWorkspacePromoted: (target: SharedWorkspaceMutationTarget) => Promise<boolean> = async () => true;
 
@@ -31,6 +35,18 @@
     'column-navigator-state': ColumnNavigatorState;
   }>();
   let runtime: GraphViewRuntime | null = null;
+
+  export function previewSearchResult(result: GraphSearchResult): void {
+    runtime?.previewSearchResult(result);
+  }
+
+  export function commitSearchPreview(): void {
+    runtime?.commitSearchPreview();
+  }
+
+  export async function cancelSearchPreview(): Promise<void> {
+    await runtime?.cancelSearchPreview();
+  }
 
   export function revealSearchResult(result: GraphSearchResult): void {
     runtime?.revealSearchResult(result);
@@ -53,6 +69,18 @@
 
   export async function restoreColumnNavigatorPath(path: PathSeg[]): Promise<boolean> {
     return await runtime?.restoreColumnNavigatorPath(path) ?? false;
+  }
+
+  export function collapseColumnNavigator(): void {
+    runtime?.collapseColumnNavigator();
+  }
+
+  export function expandColumnNavigator(): void {
+    runtime?.expandColumnNavigator();
+  }
+
+  export function pinColumnNavigatorCollapsed(): void {
+    runtime?.pinColumnNavigatorCollapsed();
   }
 
   export async function goColumnNavigatorBack(): Promise<void> {
@@ -87,9 +115,12 @@
 <GraphViewRuntime
   bind:this={runtime}
   {enableRevealSync}
+  {active}
   {synchronizedRuntimeLoading}
   {readonly}
   {onFileDrop}
+  {onRequestImportFile}
+  {onLoadExample}
   {onEntitlementBlocked}
   {ensureSharedWorkspacePromoted}
   on:reveal={(event) => dispatch('reveal', event.detail)}

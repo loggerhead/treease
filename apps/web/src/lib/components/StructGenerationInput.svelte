@@ -58,8 +58,6 @@
       {#if busy}<LoaderCircle size={13} class="mr-1 animate-spin" />{/if}
       {busy ? 'Generating' : 'Generate'}
     </Button>
-    <IconButton aria-label="Close structure generation" title="Close" on:click={onClose} disabled={busy}>
-      <X size={12} />
-    </IconButton>
+    <IconButton aria-label="Close structure generation" title="Close" on:click={onClose} disabled={busy}><X size={12} /></IconButton>
   </div>
 </div>

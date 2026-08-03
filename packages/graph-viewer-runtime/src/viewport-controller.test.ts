@@ -40,6 +40,31 @@ describe('graph viewport reveal', () => {
     expect(updateViewportOverlays).toHaveBeenCalledTimes(2);
   });
 
+  it('captures and restores the viewport transform', () => {
+    const layer = { x: 12, y: -8, scaleX: 1.5, scaleY: 1.5 };
+    const update = vi.fn();
+    const controller = createGraphViewportController({
+      getContainer: () => null,
+      getLeafer: () => ({ zoomLayer: layer, update }),
+      getSuppressGraphPointerUntil: () => 0,
+      getMoveEventName: () => undefined,
+      getZoomEventName: () => undefined,
+      bindPointerClick: () => {},
+      updateViewportOverlays: () => {},
+    });
+
+    expect(controller.getViewportState()).toEqual({ x: 12, y: -8, scaleX: 1.5, scaleY: 1.5 });
+    layer.x = 0;
+    layer.y = 0;
+    layer.scaleX = 1;
+    layer.scaleY = 1;
+
+    controller.restoreViewportState({ x: 12, y: -8, scaleX: 1.5, scaleY: 1.5 });
+
+    expect(layer).toEqual({ x: 12, y: -8, scaleX: 1.5, scaleY: 1.5 });
+    expect(update).toHaveBeenCalledOnce();
+  });
+
   it('uses the node bounds when a cell box is unavailable', () => {
     const { controller, zoom, updateRenderableProjection } = createController();
     const node = { boxArgs: { x: 40, y: 80, width: 200, height: 120 } };

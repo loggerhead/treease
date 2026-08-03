@@ -287,8 +287,42 @@
     <Button size="xs" on:click={() => void handleSubmit()} disabled={busy || !currentValue.trim()}>
       {#if busy}Running{:else}Run{/if}
     </Button>
-    <IconButton aria-label="Close yq input" title="Close" on:click={onClose} disabled={busy}>
-      <X size={12} />
-    </IconButton>
+    <IconButton aria-label="Close yq input" title="Close" on:click={onClose} disabled={busy}><X size={12} /></IconButton>
   </div>
 </div>
+
+<style>
+  [data-testid='yq-expression-panel'] {
+    position: relative;
+    animation: editor-input-panel-enter 220ms cubic-bezier(.22, 1, .36, 1) both;
+  }
+
+  [data-testid='yq-expression-panel']::after {
+    position: absolute;
+    top: -7px;
+    left: 50%;
+    width: 8px;
+    height: 8px;
+    border-right: 2px solid var(--accent);
+    border-bottom: 2px solid var(--accent);
+    content: '';
+    opacity: 0;
+    transform: translate(-50%, -7px) rotate(45deg);
+    animation: editor-input-panel-cue 1.2s ease-out 2;
+  }
+
+  @keyframes editor-input-panel-enter {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  @keyframes editor-input-panel-cue {
+    0%, 100% { opacity: 0; transform: translate(-50%, -7px) rotate(45deg); }
+    35% { opacity: 1; transform: translate(-50%, 1px) rotate(45deg); }
+    70% { opacity: .45; transform: translate(-50%, -2px) rotate(45deg); }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    [data-testid='yq-expression-panel'], [data-testid='yq-expression-panel']::after { animation: none; }
+  }
+</style>

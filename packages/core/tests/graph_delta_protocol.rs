@@ -791,6 +791,7 @@ fn projection_delta_with_graph_data_serializes() {
         patch_seq: 0,
         base_graph_version: 0,
         graph_version: 0,
+        topology_bytes: Vec::new(),
         graph_data: Some(GraphDelta {
             nodes_added: vec![GraphNodeData {
                 render_handle: 42,

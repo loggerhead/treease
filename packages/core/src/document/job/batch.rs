@@ -313,6 +313,10 @@ pub(super) fn advance_close(
             Some(document) => {
                 let line_index = streamed_line_index
                     .unwrap_or_else(|| crate::analysis::LineIndex::build(&source));
+                let topology_bytes = crate::graph::graph_topology::document_topology_bytes(
+                    &document.store,
+                    document.root,
+                );
                 let analysis = build_streaming_json_analysis(
                     &document_key,
                     &language,
@@ -329,6 +333,7 @@ pub(super) fn advance_close(
                         ready: true,
                         clear: update.base_graph_version == 0,
                         graph_data: Some(update.delta),
+                        topology_bytes,
                     });
                     incremental = streaming_incremental_state.or(Some(
                         crate::document::snapshot::IncrementalState::resumable(),

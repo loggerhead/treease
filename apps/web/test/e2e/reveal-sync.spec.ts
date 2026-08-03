@@ -7,6 +7,7 @@ import {
   clickGraphProbeAt,
   clearGraphLastReveal,
   getLatestGraphProbes,
+  getMonacoVisibleStartLine,
   installGraphEditEventCapture,
   readEditorState,
   readGraphClickProbes,
@@ -16,11 +17,12 @@ import {
   readGraphHitResult,
   readGraphLastReveal,
   readGraphRevealProbe,
-  setTempGraphSelection,
   setEditorContent,
   setMonacoPositionByText,
+  setMonacoScroll,
   waitForEditorReady,
   waitForGraphRendered,
+  waitForColumnNavigatorSettled,
   waitForSettingsReady,
 } from './utils';
 
@@ -28,24 +30,6 @@ const trajectoryFixture = readFileSync(
   new URL('../../../../test/fixtures/json/trajectory.1.json', import.meta.url),
   'utf8',
 );
-
-const arkServiceTierPath = [
-  { key: 'root_step' },
-  { key: 'output' },
-  { key: 'stream' },
-  { index: 11 },
-  { key: 'extra' },
-  { key: 'ark-service-tier' },
-];
-
-const arkServiceTierDisplayPath = [
-  'root_step',
-  'output',
-  'stream',
-  '[11]',
-  'extra',
-  'ark-service-tier',
-];
 
 type LargeFixtureRow = {
   name: string;
@@ -104,11 +88,11 @@ function getVisibleRowValueProbes(
 
 async function revealGraphSearchResult(page: Page, query: string, resultName: string) {
   await page.getByRole('button', { name: 'Search graph', exact: true }).click();
-  const input = page.getByRole('textbox', { name: 'Search graph', exact: true });
+  const input = page.getByRole('combobox', { name: 'Search graph', exact: true });
   await expect(input).toBeVisible();
   await input.fill(query);
 
-  const result = page.getByRole('button', { name: resultName, exact: true }).first();
+  const result = page.getByRole('option', { name: resultName, exact: true }).first();
   await expect(result).toBeVisible({ timeout: 5_000 });
   await clearGraphLastReveal(page);
   await result.click();
@@ -151,10 +135,117 @@ test('graph click updates tree path and selects editor text from emitted reveal 
   await expect.poll(async () => (await readEditorState(page)).tempModel.selectionLength, { timeout: 5_000 }).toBeGreaterThan(0);
 });
 
-test('bottom-bar breadcrumb rematerializes the trajectory target after its viewport reveal', async ({ page }) => {
+test('editor scrolling updates the BottomBar active navigation breadcrumb and reveals its graph target', async ({ page }) => {
+  await page.goto('/editor');
+  await waitForEditorReady(page);
+  await waitForSettingsReady(page);
+  await page.getByTestId('graph-surface-graph').click();
+
+  const fields = Array.from(
+    { length: 240 },
+    (_, index) => `  "field_${String(index).padStart(3, '0')}": ${index}`,
+  );
+  await setEditorContent(page, {
+    sourceText: `{\n${fields.join(',\n')}\n}`,
+    language: 'json',
+  });
+  await waitForGraphRendered(page);
+
+  await setMonacoScroll(page, 'source-editor', 1_600);
+  const visibleStartLine = await getMonacoVisibleStartLine(page, 'source-editor');
+  expect(visibleStartLine).toBeGreaterThan(2);
+  const expectedKey = `field_${String(visibleStartLine - 2).padStart(3, '0')}`;
+
+  // The reported behavior is the BottomBar selection, not merely the editor
+  // store.  Assert the rendered active breadcrumb to exercise that UI seam.
+  const navigationBar = page.getByTestId('graph-bottombar').getByTestId('bottom-tree-pathbar');
+  await expect(navigationBar).toBeVisible();
+  const activeCrumb = navigationBar.getByTestId('tree-path-crumb-1');
+  await expect(activeCrumb).toHaveText(expectedKey, { timeout: 10_000 });
+  await expect(activeCrumb).toHaveAttribute('aria-current', 'location');
+  await expect
+    .poll(async () => (await readEditorState(page)).tempModel.treePath, { timeout: 10_000 })
+    .toEqual(['$', expectedKey]);
+  await expect
+    .poll(async () => await readGraphHighlightWorld(page), { timeout: 10_000 })
+    .toEqual(expect.objectContaining({ path: ['$', expectedKey], target: 'key' }));
+  await expect
+    .poll(async () => {
+      const highlightWorld = await readGraphHighlightWorld(page);
+      if (!highlightWorld) return false;
+      return (
+        Math.abs(highlightWorld.highlight.x - highlightWorld.viewportCenter.x) < 80 &&
+        Math.abs(highlightWorld.highlight.y - highlightWorld.viewportCenter.y) < 80
+      );
+    }, { timeout: 10_000 })
+    .toBe(true);
+});
+
+test('editor cursor selects the matching Column Navigator path', async ({ page }) => {
+  await page.goto('/editor');
+  await waitForEditorReady(page);
+  await waitForSettingsReady(page);
+  await page.getByTestId('graph-surface-graph').click();
+  await setEditorContent(page, {
+    sourceText: '{\n  "object": {\n    "int": 42,\n    "float": 0.125\n  },\n  "table_with_header": [{ "h1": 11, "h2": 12 }]\n}',
+    language: 'json',
+  });
+  await waitForGraphRendered(page);
+
+  const tableProbe = (await readGraphClickProbes(page)).find(
+    (probe) => probe.path.join('.') === 'table_with_header' && probe.target === 'key' && probe.coord,
+  );
+  expect(tableProbe?.coord).toBeTruthy();
+  if (!tableProbe?.coord) throw new Error('table_with_header graph cell missing');
+  await clickGraphProbeAt(page, tableProbe.coord);
+  await waitForColumnNavigatorSettled(page, 'k:table_with_header');
+
+  const workspace = page.getByTestId('column-navigator-graph');
+  await expect(workspace.locator('[data-column-navigator-selected="true"]')).toHaveAttribute(
+    'data-column-navigator-item-path-key',
+    'k:table_with_header',
+  );
+
+  await page.locator('.view-line', { hasText: '"float": 0.125' }).click();
+
+  await waitForColumnNavigatorSettled(page, 'k:object|k:float');
+  await expect(workspace.locator('[data-column-navigator-selected="true"]')).toHaveAttribute(
+    'data-column-navigator-item-path-key',
+    'k:object|k:float',
+  );
+  const navigationBar = page.getByTestId('graph-bottombar').getByTestId('bottom-tree-pathbar');
+  await expect(navigationBar.getByTestId('tree-path-crumb-1')).toHaveText('object');
+  const activeBreadcrumb = navigationBar.getByTestId('tree-path-crumb-2');
+  await expect(activeBreadcrumb).toHaveText('float');
+  await expect(activeBreadcrumb).toHaveAttribute('aria-current', 'location');
+});
+
+test('editor cursor movement updates the BottomBar active navigation breadcrumb', async ({ page }) => {
+  await page.goto('/editor');
+  await waitForEditorReady(page);
+  await waitForSettingsReady(page);
+  await page.getByTestId('graph-surface-graph').click();
+  await setEditorContent(page, {
+    sourceText: '{\n  "first": 1,\n  "second": 2\n}',
+    language: 'json',
+  });
+  await waitForGraphRendered(page);
+
+  const secondLine = page.locator('.view-line', { hasText: '"second": 2' }).first();
+  await expect(secondLine).toBeVisible();
+  await secondLine.click();
+  await expect(page.getByTestId('column-navigator-graph')).toBeVisible();
+  const navigationBar = page.getByTestId('graph-bottombar').getByTestId('bottom-tree-pathbar');
+  const activeCrumb = navigationBar.getByTestId('tree-path-crumb-1');
+  await expect(activeCrumb).toHaveText('second', { timeout: 10_000 });
+  await expect(activeCrumb).toHaveAttribute('aria-current', 'location');
+});
+
+test('Column Navigator selects a deep trajectory node and reveals its editor text', async ({ page }) => {
   test.setTimeout(60_000);
   await page.goto('/editor');
   await waitForEditorReady(page);
+  await page.getByTestId('graph-surface-graph').click();
   await setEditorContent(page, {
     sourceText: trajectoryFixture,
     language: 'json',
@@ -165,26 +256,36 @@ test('bottom-bar breadcrumb rematerializes the trajectory target after its viewp
     revision: trajectoryState.editorRevision,
   });
 
-  // Seed the exact path without navigation so the bottom bar can drive the
-  // programmatic viewport transition under test.
-  await setTempGraphSelection(page, arkServiceTierPath, 'key');
+  const rootProbe = (await readGraphClickProbes(page)).find(
+    (probe) => probe.target === 'key' && probe.path.join('.') === 'root_step' && probe.coord,
+  );
+  expect(rootProbe?.coord).toBeTruthy();
+  if (!rootProbe?.coord) throw new Error('root_step graph cell missing');
+  await clickGraphProbeAt(page, rootProbe.coord);
+  await waitForColumnNavigatorSettled(page, 'k:root_step', 30_000);
+
+  const workspace = page.getByTestId('column-navigator-graph');
+  const pathKeys = [
+    'k:root_step|k:output',
+    'k:root_step|k:output|k:stream',
+    'k:root_step|k:output|k:stream|i:11',
+    'k:root_step|k:output|k:stream|i:11|k:extra',
+    'k:root_step|k:output|k:stream|i:11|k:extra|k:ark-service-tier',
+  ];
+  for (const pathKey of pathKeys) {
+    const item = workspace.locator(`[data-column-navigator-item-path-key="${pathKey}"]`);
+    await expect(item).toBeVisible({ timeout: 10_000 });
+    await item.click();
+    await waitForColumnNavigatorSettled(page, pathKey, 30_000);
+  }
+
+  await expect(workspace.locator('[data-column-navigator-selected="true"]')).toHaveAttribute(
+    'data-column-navigator-item-path-key',
+    pathKeys.at(-1)!,
+  );
   await expect
-    .poll(async () => (await readEditorState(page)).tempModel.treePath, { timeout: 5_000 })
-    .toEqual(['$', ...arkServiceTierDisplayPath]);
-
-  const targetIsRendered = async () =>
-    (await readGraphClickProbes(page)).some(
-      (probe) =>
-        probe.target === 'key' &&
-        probe.path.join('.') === arkServiceTierDisplayPath.join('.') &&
-        probe.coord !== null,
-    );
-
-  // This field is outside the initial virtual projection. The click below
-  // changes Leafer's viewport; it must cause a fresh virtual projection.
-  await expect.poll(targetIsRendered, { timeout: 5_000 }).toBe(false);
-  await page.getByTestId('tree-path-crumb-6').click();
-  await expect.poll(targetIsRendered, { timeout: 10_000 }).toBe(true);
+    .poll(async () => (await readEditorState(page)).tempModel.selectionLength, { timeout: 10_000 })
+    .toBeGreaterThan(0);
 });
 
 test('graph click highlight survives leaving the hovered value cell', async ({ page }) => {
@@ -269,11 +370,11 @@ test('graph search selection reveals a long indexed array item', async ({ page }
   await waitForGraphRendered(page);
 
   await page.getByRole('button', { name: 'Search graph', exact: true }).click();
-  const input = page.getByRole('textbox', { name: 'Search graph', exact: true });
+  const input = page.getByRole('combobox', { name: 'Search graph', exact: true });
   await expect(input).toBeVisible();
   await input.fill('item-172');
 
-  const result = page.getByRole('button', { name: 'Graph search result $.rows[172]', exact: true }).first();
+  const result = page.getByRole('option', { name: 'Graph search result $.rows[172]', exact: true }).first();
   await expect(result).toBeVisible({ timeout: 5_000 });
   await result.click();
 
@@ -489,7 +590,7 @@ test('1MB fixture header table row 100 click selects the matching editor text', 
     .toBeGreaterThan(0);
 });
 
-test('sync scroll toggle also gates editor and graph reveal synchronization', async ({ page }) => {
+test('sync scroll toggle gates graph navigation while preserving editor-driven graph highlights', async ({ page }) => {
   await page.goto('/editor');
   await waitForEditorReady(page);
   await waitForSettingsReady(page);
@@ -502,6 +603,9 @@ test('sync scroll toggle also gates editor and graph reveal synchronization', as
 
   await setMonacoPositionByText(page, 'source-editor', '"role":');
   await expect
+    .poll(async () => (await readEditorState(page)).tempModel.treePath, { timeout: 5_000 })
+    .toEqual(['$', 'user', 'role']);
+  await expect
     .poll(async () => readGraphHighlight(page), { timeout: 5_000 })
     .toEqual(
       expect.objectContaining({
@@ -513,14 +617,15 @@ test('sync scroll toggle also gates editor and graph reveal synchronization', as
   await expect(page.getByRole('button', { name: 'Enable synchronized scrolling', exact: true })).toBeVisible();
 
   await setMonacoPositionByText(page, 'source-editor', '"count":');
+  await page.waitForTimeout(150);
+  expect((await readEditorState(page)).tempModel.treePath).toEqual(['$', 'user', 'role']);
   await expect
-    .poll(async () => (await readEditorState(page)).tempModel.treePath, { timeout: 5_000 })
-    .toEqual(['$', 'count']);
-  expect(await readGraphHighlight(page)).toEqual(
-    expect.objectContaining({
-      path: ['$', 'user', 'role'],
-    }),
-  );
+    .poll(async () => readGraphHighlight(page), { timeout: 5_000 })
+    .toEqual(
+      expect.objectContaining({
+        path: ['$', 'count'],
+      }),
+    );
 
   const nameProbe = (await readGraphClickProbes(page)).find(
     (probe) => !!probe.coord && probe.target === 'value' && probe.path.join('.') === 'user.name' && probe.text === 'Alice',
@@ -530,7 +635,7 @@ test('sync scroll toggle also gates editor and graph reveal synchronization', as
 
   await clickGraphProbeAt(page, nameProbe.coord);
   await page.waitForTimeout(150);
-  expect((await readEditorState(page)).tempModel.treePath).toEqual(['$', 'count']);
+  expect((await readEditorState(page)).tempModel.treePath).toEqual(['$', 'user', 'role']);
 
   await page.getByTestId('sync-scroll-toggle').click();
   await expect(page.getByRole('button', { name: 'Disable synchronized scrolling', exact: true })).toBeVisible();
@@ -555,7 +660,7 @@ test('graph search closes on a single Escape and outside click', async ({ page }
   await waitForGraphRendered(page);
 
   await page.getByRole('button', { name: 'Search graph', exact: true }).click();
-  const input = page.getByRole('textbox', { name: 'Search graph', exact: true });
+  const input = page.getByRole('combobox', { name: 'Search graph', exact: true });
   await expect(input).toBeVisible();
 
   await page.keyboard.press('Escape');
@@ -580,11 +685,11 @@ test('graph search selection reveals the target graph node and editor path state
   await waitForGraphRendered(page);
 
   await page.getByRole('button', { name: 'Search graph', exact: true }).click();
-  const input = page.getByRole('textbox', { name: 'Search graph', exact: true });
+  const input = page.getByRole('combobox', { name: 'Search graph', exact: true });
   await expect(input).toBeVisible();
   await input.fill('Alice');
 
-  const result = page.getByRole('button', { name: 'Graph search result $.user.name', exact: true }).first();
+  const result = page.getByRole('option', { name: 'Graph search result $.user.name', exact: true }).first();
   await expect(result).toBeVisible({ timeout: 5_000 });
   await clearGraphLastReveal(page);
   await result.click();
@@ -611,11 +716,11 @@ test('editor first click after graph search reveal moves caret from external ran
   await expect.poll(async () => (await readEditorState(page)).sourceText, { timeout: 5_000 }).toContain('"color": "#4f46e5"');
 
   await page.getByRole('button', { name: 'Search graph', exact: true }).click();
-  const input = page.getByRole('textbox', { name: 'Search graph', exact: true });
+  const input = page.getByRole('combobox', { name: 'Search graph', exact: true });
   await expect(input).toBeVisible();
   await input.fill('你好');
 
-  const result = page.getByRole('button', { name: 'Graph search result $.preview.unicode', exact: true }).first();
+  const result = page.getByRole('option', { name: 'Graph search result $.preview.unicode', exact: true }).first();
   await expect(result).toBeVisible({ timeout: 5_000 });
   await result.click();
 
@@ -644,23 +749,23 @@ test('graph search does not expose empty collections as revealable child nodes',
   await waitForGraphRendered(page);
 
   await page.getByRole('button', { name: 'Search graph', exact: true }).click();
-  const input = page.getByRole('textbox', { name: 'Search graph', exact: true });
+  const input = page.getByRole('combobox', { name: 'Search graph', exact: true });
   await expect(input).toBeVisible();
 
   await input.fill('{}');
-  await expect(page.getByRole('button', { name: 'Graph search result $.holder.emptyObj', exact: true })).toBeHidden();
+  await expect(page.getByRole('option', { name: 'Graph search result $.holder.emptyObj', exact: true })).toBeHidden();
 
   await input.fill('[]');
-  await expect(page.getByRole('button', { name: 'Graph search result $.holder.emptyArr', exact: true })).toBeHidden();
+  await expect(page.getByRole('option', { name: 'Graph search result $.holder.emptyArr', exact: true })).toBeHidden();
 
   await input.fill('Alice');
   await expect(
-    page.getByRole('button', { name: 'Graph search result $.holder.filledObj.name', exact: true }).first(),
+    page.getByRole('option', { name: 'Graph search result $.holder.filledObj.name', exact: true }).first(),
   ).toBeVisible({ timeout: 5_000 });
 
   await input.fill('item-1');
   await expect(
-    page.getByRole('button', { name: 'Graph search result $.holder.filledArr[0]', exact: true }).first(),
+    page.getByRole('option', { name: 'Graph search result $.holder.filledArr[0]', exact: true }).first(),
   ).toBeVisible({ timeout: 5_000 });
 });
 
@@ -676,13 +781,13 @@ test('graph search filters structural collection results for example json', asyn
   await waitForGraphRendered(page);
 
   await page.getByRole('button', { name: 'Search graph', exact: true }).click();
-  const input = page.getByRole('textbox', { name: 'Search graph', exact: true });
+  const input = page.getByRole('combobox', { name: 'Search graph', exact: true });
   await expect(input).toBeVisible();
 
   await input.fill('urisample');
   await expect(
     page
-      .getByRole('button', { name: 'Graph search result $.samples.identity.encodedContacts.uriSamples', exact: true })
+      .getByRole('option', { name: 'Graph search result $.samples.identity.encodedContacts.uriSamples', exact: true })
       .first(),
   ).toBeVisible({ timeout: 5_000 });
   await expect(page.locator('button').filter({ hasText: '[]' })).toHaveCount(0);
@@ -701,22 +806,22 @@ test('graph search updates results cleanly as query narrows', async ({ page }) =
   await waitForGraphRendered(page);
 
   await page.getByRole('button', { name: 'Search graph', exact: true }).click();
-  const input = page.getByRole('textbox', { name: 'Search graph', exact: true });
+  const input = page.getByRole('combobox', { name: 'Search graph', exact: true });
   await expect(input).toBeVisible();
 
   await input.fill('4');
   await expect(
-    page.getByRole('button', { name: 'Graph search result $.previewSamples[0]', exact: true }).first(),
+    page.getByRole('option', { name: 'Graph search result $.previewSamples[0]', exact: true }).first(),
   ).toBeVisible({ timeout: 5_000 });
   await expect(
-    page.getByRole('button', { name: 'Graph search result $.exampleCount', exact: true }).first(),
+    page.getByRole('option', { name: 'Graph search result $.exampleCount', exact: true }).first(),
   ).toBeVisible({ timeout: 5_000 });
 
   await input.fill('4f');
   await expect(
-    page.getByRole('button', { name: 'Graph search result $.previewSamples[0]', exact: true }).first(),
+    page.getByRole('option', { name: 'Graph search result $.previewSamples[0]', exact: true }).first(),
   ).toBeVisible({ timeout: 5_000 });
-  await expect(page.getByRole('button', { name: 'Graph search result $.exampleCount', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('option', { name: 'Graph search result $.exampleCount', exact: true })).toHaveCount(0);
   await expect(
     page.getByRole('button', {
       name: 'Graph search result $.examples.identity.encodedContacts.uriSamples[0]',
@@ -735,12 +840,12 @@ test('graph search keeps reveal working after switching queries', async ({ page 
   await expect.poll(async () => (await readEditorState(page)).sourceText, { timeout: 5_000 }).toContain('"uris"');
 
   await page.getByRole('button', { name: 'Search graph', exact: true }).click();
-  const input = page.getByRole('textbox', { name: 'Search graph', exact: true });
+  const input = page.getByRole('combobox', { name: 'Search graph', exact: true });
   await expect(input).toBeVisible();
 
   await input.fill('redirect=');
   await expect(
-    page.getByRole('button', { name: 'Graph search result $.preview.uris[1]', exact: true }).first(),
+    page.getByRole('option', { name: 'Graph search result $.preview.uris[1]', exact: true }).first(),
   ).toBeVisible({ timeout: 5_000 });
   await clearGraphLastReveal(page);
   await page.keyboard.press('Enter');
@@ -773,7 +878,7 @@ test('graph search keeps reveal working after switching queries', async ({ page 
   await expect(input).toBeVisible();
   await input.clear();
   await input.fill('42');
-  await expect(page.getByRole('button', { name: 'Graph search result $.object.int', exact: true }).first()).toBeVisible(
+  await expect(page.getByRole('option', { name: 'Graph search result $.object.int', exact: true }).first()).toBeVisible(
     { timeout: 5_000 },
   );
   await clearGraphLastReveal(page);
@@ -821,10 +926,10 @@ test('clearing editor removes graph probes and clears highlight state', async ({
   await expect.poll(async () => (await getLatestGraphProbes(page)).length, { timeout: 5_000 }).toBeGreaterThan(1);
 
   await page.getByRole('button', { name: 'Search graph', exact: true }).click();
-  const input = page.getByRole('textbox', { name: 'Search graph', exact: true });
+  const input = page.getByRole('combobox', { name: 'Search graph', exact: true });
   await expect(input).toBeVisible();
   await input.fill('Alice');
-  const result = page.getByRole('button', { name: 'Graph search result $.user.name', exact: true }).first();
+  const result = page.getByRole('option', { name: 'Graph search result $.user.name', exact: true }).first();
   await expect(result).toBeVisible({ timeout: 5_000 });
   await clearGraphLastReveal(page);
   await result.click();

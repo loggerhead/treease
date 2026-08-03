@@ -1,23 +1,25 @@
 @import "tailwindcss";
 
 :root {
-  --app-bg: #f8fafc;
+  --app-bg: #f4f8fb;
   --panel-bg: #ffffff;
-  --panel-bg-alt: #f8fafc;
+  --panel-bg-alt: #f2f6f9;
   --topbar-bg: #ffffff;
   --bottombar-bg: #ffffff;
-  --text-primary: #0f172a;
-  --text-muted: #64748b;
-  --border-strong: #e2e8f0;
-  --border-muted: #e5e7eb;
-  --accent: #2563eb;
-  --danger: #dc2626;
+  --text-primary: #294c66;
+  --text-muted: #74899a;
+  --border-strong: #cbd9e3;
+  --border-muted: #e1eaf0;
+  --accent: #286b90;
+  --accent-soft: #eaf4fb;
+  --danger: #a44643;
   --color-popover: #ffffff;
-  --color-popover-foreground: #0f172a;
-  --color-border: #e2e8f0;
-  --topbar-height: var(--bottombar-height);
+  --color-popover-foreground: #294c66;
+  --color-border: #cbd9e3;
+  --topbar-height: 42px;
   --bottombar-height: 30px;
   --max-key-length: 300px;
+  --sidebar-rail-width: 44px;
 }
 
 html,
@@ -27,15 +29,119 @@ body {
 
 body {
   @apply overflow-x-hidden bg-[var(--app-bg)] text-[var(--text-primary)];
-  font-family: "SF Pro Text", "PingFang SC", "Segoe UI", sans-serif;
+  font-family: "Avenir Next", "SF Pro Text", "PingFang SC", "Segoe UI", sans-serif;
 }
 
 #app {
   @apply min-h-screen w-full;
 }
 
+.treease-editor-placeholder {
+  color: #7b8794;
+  font: 13px/20px ui-monospace, SFMono-Regular, Menlo, monospace;
+  pointer-events: auto;
+  white-space: nowrap;
+}
+
+.treease-editor-placeholder__link {
+  padding: 1px 3px;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--accent);
+  cursor: pointer;
+  font: inherit;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+}
+
+.treease-editor-placeholder__row {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+}
+
+.treease-editor-placeholder__row::before {
+  width: 6px;
+  height: 6px;
+  flex: 0 0 6px;
+  border-radius: 999px;
+  background: var(--accent);
+  content: '';
+}
+
+.treease-editor-placeholder__link:hover,
+.treease-editor-placeholder__link:focus-visible {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
 .app-split-layout {
   @apply relative flex h-full min-h-0 w-full overflow-hidden;
+}
+
+/* Keep graph navigation and graph actions in one focused top rail. */
+.graph-workspace-toolbar {
+  position: relative;
+  z-index: 30;
+  display: flex;
+  min-width: 0;
+  height: var(--topbar-height);
+  align-items: center;
+  overflow: visible;
+  border-bottom: 1px solid var(--border-muted);
+  background: var(--panel-bg-alt);
+}
+
+.graph-workspace-toolbar .graph-bottombar {
+  min-width: 0;
+  flex: 1 1 auto;
+  height: var(--topbar-height);
+  border: 0;
+  box-shadow: none;
+}
+
+.graph-workspace-toolbar .graph-topbar {
+  flex: 0 0 auto;
+  height: var(--topbar-height);
+  border: 0;
+}
+
+.graph-workspace-toolbar .graph-topbar.graph-topbar--tools-only {
+  flex: 1 1 auto;
+}
+
+.graph-surface-switcher {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 2px;
+  margin: 0 8px 0 6px;
+  padding: 3px;
+  border: 1px solid var(--border-strong);
+  border-radius: 7px;
+  background: var(--panel-bg-alt);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 58%);
+}
+
+.graph-surface-switcher button {
+  display: inline-flex;
+  height: 28px;
+  align-items: center;
+  gap: 4px;
+  border: 0;
+  border-radius: 5px;
+  padding: 0 8px;
+  color: var(--text-muted);
+  background: transparent;
+  font-size: 11px;
+}
+
+.graph-surface-switcher button:hover,
+.graph-surface-switcher button.active {
+  color: var(--text-primary);
+  background: var(--panel-bg);
+  box-shadow: 0 1px 3px rgb(29 39 53 / 9%);
 }
 
 .editor-page-loading-skeleton {
@@ -87,6 +193,12 @@ body {
 
 .app-split-pane--collapsed {
   pointer-events: none;
+  flex: 0 0 0 !important;
+  width: 0 !important;
+  min-width: 0 !important;
+  max-width: 0 !important;
+  border-color: transparent !important;
+  background: transparent !important;
 }
 
 .app-split-pane--left.app-split-pane--collapsed {
@@ -96,6 +208,22 @@ body {
 .app-split-pane--instant {
   transition: none;
 }
+
+.app-split-collapse-hint {
+  position: absolute;
+  z-index: 20;
+  top: 0;
+  bottom: 0;
+  display: grid;
+  width: 48px;
+  place-items: center;
+  color: var(--text-muted);
+  background: color-mix(in srgb, var(--panel-bg-alt) 78%, transparent);
+  pointer-events: none;
+}
+
+.app-split-collapse-hint--left { left: 0; }
+.app-split-collapse-hint--right { right: 0; }
 
 .app-split-divider {
   touch-action: none;
@@ -109,12 +237,14 @@ body {
   pointer-events: none;
   border-radius: 999px;
   background: var(--accent);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--accent) 32%, transparent);
   opacity: 0;
   transition: opacity 140ms ease;
 }
 
 .app-split-divider:hover::after,
-.app-split-divider--dragging::after {
+.app-split-divider--dragging::after,
+.app-split-divider--collapsed::after {
   opacity: 1;
 }
 
@@ -123,11 +253,21 @@ body {
   width: 10px;
 }
 
+.app-split-divider--collapsed {
+  z-index: 30;
+}
+
 .app-split-divider--vertical::after {
   top: 0;
   bottom: 0;
   left: 0;
   width: 2px;
+}
+
+/* The collapsed viewer's drag target remains inside the editor, while its line marks the true edge. */
+.app-split-divider--right-edge::after {
+  right: 0;
+  left: auto;
 }
 
 .app-split-divider__handle {
@@ -161,6 +301,23 @@ body {
   @apply pointer-events-auto absolute top-1/2 z-[20] -translate-x-1/2 -translate-y-1/2;
 }
 
+.splitter-control--collapsed {
+  z-index: 31;
+}
+
+.splitter-control--collapsed [data-slot='button'] {
+  border-color: var(--text-primary);
+  background: var(--text-primary);
+  color: var(--panel-bg);
+  box-shadow: 0 3px 10px rgb(41 76 102 / 24%);
+}
+
+.splitter-control--collapsed [data-slot='button']:hover {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+}
+
 .splitter-control--split {
   @apply flex items-center justify-center;
   left: 0;
@@ -180,16 +337,17 @@ body {
 }
 
 .splitter-control__button:hover {
-  @apply bg-[#eff6ff] text-[var(--text-primary)];
+  @apply text-[var(--text-primary)];
+  background: var(--accent-soft);
 }
 
 [data-slot="dialog-overlay"] {
   @apply fixed inset-0 z-50 backdrop-blur-[6px];
-  background: rgba(15, 23, 42, 0.35);
+  background: rgb(29 39 53 / 32%);
 }
 
 [data-slot="dialog-content"] {
-  @apply fixed left-1/2 top-1/2 z-[60] -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-[16px] border border-[var(--border-muted)] bg-[var(--panel-bg)] p-5 text-[var(--text-primary)] shadow-[0_24px_48px_rgba(15,23,42,0.18)];
+  @apply fixed left-1/2 top-1/2 z-[60] -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-[16px] border border-[var(--border-muted)] bg-[var(--panel-bg)] p-5 text-[var(--text-primary)] shadow-[0_24px_48px_rgba(29,39,53,0.16)];
   width: min(720px, calc(100vw - 32px));
   max-height: calc(100vh - 32px);
   @apply grid gap-4;
@@ -288,7 +446,7 @@ body {
 
 [data-slot="dropdown-menu-item"][data-highlighted],
 [data-slot="dropdown-menu-item"]:hover {
-  @apply bg-[#e2e8f0];
+  background: var(--panel-bg-alt);
 }
 
 .left-truncate {
@@ -334,5 +492,5 @@ body {
 }
 
 .monaco-editor .treease-json-block-highlight {
-  background: rgba(96, 165, 250, 0.16);
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
 }

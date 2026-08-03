@@ -102,7 +102,8 @@ function samePath(left: PathSeg[], right: PathSeg[]): boolean {
 export function createColumnNavigatorController(deps: ColumnNavigatorControllerDeps) {
   const pendingEditTaskMap = new Map<string, Promise<void>>();
   const queuedEditMap = new Map<string, string>();
-  let open = false;
+  let collapsed = true;
+  let keepCollapsed = false;
   let isLoading = false;
   let activePath: PathSeg[] = [];
   let chain: ColumnNavigatorPaneState[] = [];
@@ -139,7 +140,7 @@ export function createColumnNavigatorController(deps: ColumnNavigatorControllerD
   function emitState(): void {
     const panes = visiblePanes();
     deps.onState({
-      open,
+      collapsed,
       isLoading,
       activePath: clonePath(activePath),
       chain: chain.map(clonePane),
@@ -330,10 +331,16 @@ export function createColumnNavigatorController(deps: ColumnNavigatorControllerD
     return { activePath: clonePath(path), chain: nextChain };
   }
 
-  function recordHistory(path: PathSeg[]): void {
-    if (historyIndex >= 0 && samePath(history[historyIndex] ?? [], path)) return;
+  function recordHistory(path: PathSeg[]): boolean {
+    if (historyIndex >= 0 && samePath(history[historyIndex] ?? [], path)) return false;
     history = [...history.slice(0, historyIndex + 1), clonePath(path)];
     historyIndex = history.length - 1;
+    return true;
+  }
+
+  function recordExternalPath(path: PathSeg[]): void {
+    if (disposed || !path.length || !recordHistory(path)) return;
+    emitState();
   }
 
   function clearQueuedSiblingReveal(): void {
@@ -371,7 +378,6 @@ export function createColumnNavigatorController(deps: ColumnNavigatorControllerD
     }
     const nextRequestId = ++requestId;
     const requestedPathKey = workspacePathKey(path);
-    open = true;
     isLoading = true;
     activePath = clonePath(path);
     // A navigation operation owns the wait for the current Monaco draft.
@@ -416,6 +422,7 @@ export function createColumnNavigatorController(deps: ColumnNavigatorControllerD
 
   async function openPath(path: PathSeg[], _parentAbsoluteIndex = -1): Promise<void> {
     clearQueuedSiblingReveal();
+    if (!keepCollapsed) collapsed = false;
     await navigate(path, { recordHistory: true, reveal: 'none' });
   }
 
@@ -525,7 +532,7 @@ export function createColumnNavigatorController(deps: ColumnNavigatorControllerD
   }
 
   async function refresh(): Promise<void> {
-    if (disposed || !open) return;
+    if (disposed) return;
     void refreshOperation?.cancel();
     const operation = createWorkspaceOperation();
     refreshOperation = operation;
@@ -601,10 +608,29 @@ export function createColumnNavigatorController(deps: ColumnNavigatorControllerD
   }
 
   function syncHeightToShell(): void {
-    if (!open) return;
+    if (deps.getShellHeight() <= 0) return;
     const next = clampHeight(heightPx);
     if (next === heightPx) return;
     heightPx = next;
+    emitState();
+  }
+
+  function collapse(): void {
+    if (collapsed) return;
+    collapsed = true;
+    emitState();
+  }
+
+  function expand(): void {
+    if (!collapsed && !keepCollapsed) return;
+    keepCollapsed = false;
+    collapsed = false;
+    emitState();
+  }
+
+  function pinCollapsed(): void {
+    keepCollapsed = true;
+    collapsed = true;
     emitState();
   }
 
@@ -614,7 +640,7 @@ export function createColumnNavigatorController(deps: ColumnNavigatorControllerD
     void navigationOperation?.cancel();
     void refreshOperation?.cancel();
     requestId += 1;
-    open = false;
+    collapsed = true;
     isLoading = false;
     activePath = [];
     chain = [];
@@ -648,6 +674,10 @@ export function createColumnNavigatorController(deps: ColumnNavigatorControllerD
     navigateParent,
     goBack: () => goHistory(-1),
     goForward: () => goHistory(1),
+    recordExternalPath,
+    collapse,
+    pinCollapsed,
+    expand,
     commitValueEdit,
     syncProjection,
     reset,

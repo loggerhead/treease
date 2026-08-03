@@ -1165,6 +1165,118 @@ fn path_segment_for_node(store: &TreeStore, id: NodeId) -> Option<PathSeg> {
         .map(PathSeg::Index)
 }
 
+const TOPOLOGY_CHUNK_BYTES: usize = 16 * 1024;
+const TOPOLOGY_HEADER: &[u8] = b"GTOP\x01";
+
+/// Compact canonical encoding of the logical, ordered document tree.
+///
+/// The graph builder visits mapping values and sequence items in source order;
+/// map keys, values, and node kinds intentionally never enter this stream.
+#[derive(Debug, Default)]
+struct TopologyBitWriter {
+    chunks: Vec<Vec<u8>>,
+    chunk: Vec<u8>,
+    pending_byte: u8,
+    pending_bits: u8,
+    node_count: u64,
+}
+
+impl TopologyBitWriter {
+    fn new() -> Self {
+        Self {
+            chunk: Vec::with_capacity(TOPOLOGY_CHUNK_BYTES),
+            ..Self::default()
+        }
+    }
+
+    fn enter_node(&mut self) {
+        self.node_count += 1;
+        self.write_bit(true);
+    }
+
+    fn leave_node(&mut self) {
+        self.write_bit(false);
+    }
+
+    fn write_bit(&mut self, value: bool) {
+        self.pending_byte = (self.pending_byte << 1) | u8::from(value);
+        self.pending_bits += 1;
+        if self.pending_bits == 8 {
+            self.push_byte(self.pending_byte);
+            self.pending_byte = 0;
+            self.pending_bits = 0;
+        }
+    }
+
+    fn push_byte(&mut self, value: u8) {
+        self.chunk.push(value);
+        if self.chunk.len() == TOPOLOGY_CHUNK_BYTES {
+            self.chunks.push(std::mem::replace(
+                &mut self.chunk,
+                Vec::with_capacity(TOPOLOGY_CHUNK_BYTES),
+            ));
+        }
+    }
+
+    fn finish(mut self) -> Vec<u8> {
+        if self.pending_bits > 0 {
+            self.push_byte(self.pending_byte << (8 - self.pending_bits));
+        }
+        if !self.chunk.is_empty() {
+            self.chunks.push(self.chunk);
+        }
+
+        let bit_length = self.node_count * 2;
+        let payload_len: usize = self.chunks.iter().map(Vec::len).sum();
+        let mut bytes = Vec::with_capacity(TOPOLOGY_HEADER.len() + 16 + payload_len);
+        bytes.extend_from_slice(TOPOLOGY_HEADER);
+        bytes.extend_from_slice(&self.node_count.to_le_bytes());
+        bytes.extend_from_slice(&bit_length.to_le_bytes());
+        for chunk in self.chunks {
+            bytes.extend_from_slice(&chunk);
+        }
+        bytes
+    }
+}
+
+/// Encodes a complete document when an incremental graph update has no full
+/// topology build to piggyback on. Full builds write during reconciliation.
+pub(crate) fn document_topology_bytes(store: &TreeStore, root: NodeId) -> Vec<u8> {
+    enum Visit {
+        Enter(NodeId),
+        Leave,
+    }
+
+    let mut writer = TopologyBitWriter::new();
+    let mut stack = vec![Visit::Enter(root)];
+    while let Some(visit) = stack.pop() {
+        match visit {
+            Visit::Leave => writer.leave_node(),
+            Visit::Enter(id) => {
+                let Some(node) = store.get(id) else {
+                    continue;
+                };
+                writer.enter_node();
+                stack.push(Visit::Leave);
+                match node.kind {
+                    TreeNodeKind::Mapping => {
+                        for child in node.content.iter().skip(1).step_by(2).rev() {
+                            stack.push(Visit::Enter(*child));
+                        }
+                    }
+                    TreeNodeKind::Sequence => {
+                        for child in node.content.iter().rev() {
+                            stack.push(Visit::Enter(*child));
+                        }
+                    }
+                    TreeNodeKind::Scalar | TreeNodeKind::Alias | TreeNodeKind::Unknown => {}
+                }
+            }
+        }
+    }
+    writer.finish()
+}
+
 #[derive(Debug, Clone, Default)]
 pub(crate) struct GraphTopology {
     root: Option<NodeId>,
@@ -1267,6 +1379,27 @@ impl GraphTopology {
         root: NodeId,
         config: &BuilderConfig,
     ) -> DirtySet {
+        self.build_full_internal(store, root, config, None)
+    }
+
+    pub(crate) fn build_full_with_topology_bytes(
+        &mut self,
+        store: &TreeStore,
+        root: NodeId,
+        config: &BuilderConfig,
+    ) -> (DirtySet, Vec<u8>) {
+        let mut writer = TopologyBitWriter::new();
+        let dirty = self.build_full_internal(store, root, config, Some(&mut writer));
+        (dirty, writer.finish())
+    }
+
+    fn build_full_internal(
+        &mut self,
+        store: &TreeStore,
+        root: NodeId,
+        config: &BuilderConfig,
+        writer: Option<&mut TopologyBitWriter>,
+    ) -> DirtySet {
         *self = Self::new();
         self.root = Some(root);
         self.pass_cache.begin_pass(store.len());
@@ -1274,7 +1407,8 @@ impl GraphTopology {
 
         let mut visited = HashSet::new();
         let mut path = PathCursor::default();
-        self.reconcile_full_with_path(store, root, config, &mut visited, &mut path);
+        let mut writer = writer;
+        self.reconcile_full_with_path(store, root, config, &mut visited, &mut path, &mut writer);
         self.dirty.finish();
         self.dirty.clone()
     }
@@ -1772,7 +1906,14 @@ impl GraphTopology {
         config: &BuilderConfig,
         visited: &mut HashSet<NodeId>,
         path: &mut PathCursor,
+        writer: &mut Option<&mut TopologyBitWriter>,
     ) {
+        let Some(node) = store.get(id) else {
+            return;
+        };
+        if let Some(writer) = writer.as_deref_mut() {
+            writer.enter_node();
+        }
         self.reconcile_one_with_path(
             store,
             id,
@@ -1781,9 +1922,6 @@ impl GraphTopology {
             Some(path.as_slice()),
             ReconcileIntent::Dirty,
         );
-        let Some(node) = store.get(id) else {
-            return;
-        };
         if is_header_table_sequence(store, id) {
             for &child in &node.content {
                 let old_len = path.push_child(store, child);
@@ -1791,40 +1929,43 @@ impl GraphTopology {
                 {
                     self.metrics.path_segment_pushes += usize::from(path.segments.len() > old_len);
                 }
-                self.reconcile_full_with_path(store, child, config, visited, path);
+                self.reconcile_full_with_path(store, child, config, visited, path, writer);
                 path.truncate(old_len);
             }
-            return;
+        } else {
+            match node.kind {
+                TreeNodeKind::Mapping => {
+                    let mut index = 1;
+                    while index < node.content.len() {
+                        let child = node.content[index];
+                        let old_len = path.push_child(store, child);
+                        #[cfg(test)]
+                        {
+                            self.metrics.path_segment_pushes +=
+                                usize::from(path.segments.len() > old_len);
+                        }
+                        self.reconcile_full_with_path(store, child, config, visited, path, writer);
+                        path.truncate(old_len);
+                        index += 2;
+                    }
+                }
+                TreeNodeKind::Sequence => {
+                    for &child in &node.content {
+                        let old_len = path.push_child(store, child);
+                        #[cfg(test)]
+                        {
+                            self.metrics.path_segment_pushes +=
+                                usize::from(path.segments.len() > old_len);
+                        }
+                        self.reconcile_full_with_path(store, child, config, visited, path, writer);
+                        path.truncate(old_len);
+                    }
+                }
+                TreeNodeKind::Scalar | TreeNodeKind::Alias | TreeNodeKind::Unknown => {}
+            }
         }
-        match node.kind {
-            TreeNodeKind::Mapping => {
-                let mut index = 1;
-                while index < node.content.len() {
-                    let child = node.content[index];
-                    let old_len = path.push_child(store, child);
-                    #[cfg(test)]
-                    {
-                        self.metrics.path_segment_pushes +=
-                            usize::from(path.segments.len() > old_len);
-                    }
-                    self.reconcile_full_with_path(store, child, config, visited, path);
-                    path.truncate(old_len);
-                    index += 2;
-                }
-            }
-            TreeNodeKind::Sequence => {
-                for &child in &node.content {
-                    let old_len = path.push_child(store, child);
-                    #[cfg(test)]
-                    {
-                        self.metrics.path_segment_pushes +=
-                            usize::from(path.segments.len() > old_len);
-                    }
-                    self.reconcile_full_with_path(store, child, config, visited, path);
-                    path.truncate(old_len);
-                }
-            }
-            TreeNodeKind::Scalar | TreeNodeKind::Alias | TreeNodeKind::Unknown => {}
+        if let Some(writer) = writer.as_deref_mut() {
+            writer.leave_node();
         }
     }
 
@@ -2649,6 +2790,39 @@ mod tests {
             tag: node.tag.to_string_value(),
             value: store.value_string_for(node_id).unwrap_or_default(),
         }
+    }
+
+    #[test]
+    fn full_graph_build_topology_ignores_keys_values_and_node_kinds() {
+        let cfg = crate::graph::graph_builder::default_config();
+        let (first_store, first_root) = store_from_json(r#"{"account":{"name":"Ada","active":true}}"#);
+        let (second_store, second_root) = store_from_json(r#"{"profile":{"title":0,"enabled":null}}"#);
+
+        let mut first = GraphTopology::new();
+        let (_, first_bytes) = first.build_full_with_topology_bytes(&first_store, first_root, &cfg);
+        let mut second = GraphTopology::new();
+        let (_, second_bytes) = second.build_full_with_topology_bytes(&second_store, second_root, &cfg);
+
+        assert_eq!(first_bytes, second_bytes);
+        assert_eq!(
+            first_bytes,
+            document_topology_bytes(&first_store, first_root),
+            "incremental graph updates must use the same topology encoding",
+        );
+    }
+
+    #[test]
+    fn full_graph_build_topology_preserves_sibling_order() {
+        let cfg = crate::graph::graph_builder::default_config();
+        let (first_store, first_root) = store_from_json(r#"{"first":{"child":1},"second":2}"#);
+        let (second_store, second_root) = store_from_json(r#"{"second":2,"first":{"child":1}}"#);
+
+        let mut first = GraphTopology::new();
+        let (_, first_bytes) = first.build_full_with_topology_bytes(&first_store, first_root, &cfg);
+        let mut second = GraphTopology::new();
+        let (_, second_bytes) = second.build_full_with_topology_bytes(&second_store, second_root, &cfg);
+
+        assert_ne!(first_bytes, second_bytes);
     }
 
     #[test]

@@ -27,36 +27,31 @@ export function applyResolvedTreePath(
   },
 ): TempModel {
   const { treePath, target, revision, syncGraphHighlight } = options;
-  if (!syncGraphHighlight) {
-    return {
-      ...current,
-      treePath,
-    };
-  }
   return {
     ...current,
     treePath,
-    graphHighlight: treePath.length
+    ...(syncGraphHighlight
       ? {
-          path: treePath,
-          target,
-          revision,
-          source: 'editor',
+          graphHighlight: treePath.length
+            ? {
+                path: treePath,
+                target,
+                revision,
+                source: 'editor',
+              }
+            : null,
         }
-      : null,
+      : {}),
   };
 }
 
-export function applyFailedTreePath(current: TempModel, syncGraphHighlight: boolean): TempModel {
-  if (!syncGraphHighlight) {
-    return {
-      ...current,
-      treePath: [],
-    };
-  }
+export function applyFailedTreePath(
+  current: TempModel,
+  syncGraphHighlight: boolean,
+): TempModel {
   return {
     ...current,
     treePath: [],
-    graphHighlight: null,
+    ...(syncGraphHighlight ? { graphHighlight: null } : {}),
   };
 }

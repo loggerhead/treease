@@ -246,6 +246,7 @@ export interface DocumentAnalysisPayload {
 export interface ProjectionDelta {
     clear: boolean;
     graphData: GraphDelta | null;
+    topologyBytes?: Uint8Array;
     patchSeq?: number;
     baseGraphVersion?: number;
     graphVersion?: number;

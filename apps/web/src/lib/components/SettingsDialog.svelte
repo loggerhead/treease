@@ -1,10 +1,8 @@
 <script lang="ts">
   import { onDestroy, tick } from 'svelte';
   import { cubicOut } from 'svelte/easing';
-  import { get } from 'svelte/store';
   import { fade, fly } from 'svelte/transition';
   import type * as Monaco from 'monaco-editor';
-  import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog';
   import { settingsDialogDocument, settingsStore } from '../settings/settings-store';
   import { defaultSettings, settingsJsonSchema } from '../settings/ui-settings';
   import { initMonacoRuntime } from '../monaco/editor-runtime';
@@ -31,8 +29,6 @@
   let cleanupSettingsEditorTestHook: (() => void) | null = null;
   let suppressModelChange = false;
   let schemaConfigured = false;
-
-  const groups = ['editor', 'formatting', 'viewer', 'interaction', 'parser'];
 
   function applyDraft(value: string) {
     draft = value;
@@ -157,20 +153,6 @@
     open = false;
   }
 
-  function handleOpenChange(next: boolean) {
-    open = next;
-    if (!next) {
-      dirty = false;
-      error = '';
-      disposeMonacoEditor();
-      return;
-    }
-    dirty = false;
-    applyDraft(stringifySettingsDocument(get(settingsDialogDocument)));
-    error = '';
-    void tick().then(() => ensureMonacoEditor());
-  }
-
   $: if (open && !dirty) {
     applyDraft(stringifySettingsDocument($settingsDialogDocument));
     error = '';
@@ -185,29 +167,11 @@
   });
 </script>
 
-<Dialog bind:open onOpenChange={handleOpenChange}>
-<DialogContent aria-labelledby="settings-dialog-title" data-testid="settings-dialog">
-  <div class="flex w-full flex-col gap-4">
-      <DialogHeader>
-        <DialogTitle id="settings-dialog-title">Settings</DialogTitle>
-      </DialogHeader>
+<section aria-labelledby="settings-dialog-title" data-testid="settings-dialog" class="settings-panel flex w-full flex-col gap-4">
+      <header>
+        <h2 id="settings-dialog-title" class="text-lg leading-none font-semibold">Settings</h2>
+      </header>
     <div class="flex flex-1 flex-col gap-3">
-      <div class="flex flex-wrap gap-2 rounded-[10px] border border-[var(--border-muted)] bg-[#f8fafc] p-1">
-          {#each groups as group}
-          <div class="rounded-full border border-[var(--border-muted)] bg-[var(--panel-bg)] px-2 py-1 text-[12px] text-[var(--text-muted)]">
-            {group}
-          </div>
-          {/each}
-          {#if problemsCount > 0}
-          <div
-            class="rounded-full border border-[var(--danger)] bg-[var(--panel-bg)] px-2 py-1 text-[12px] text-[var(--danger)]"
-            data-testid="settings-problems-indicator"
-            transition:fly={{ y: -4, duration: 140, opacity: 0.08, easing: cubicOut }}
-          >
-            {problemsCount} problem{problemsCount === 1 ? '' : 's'}
-          </div>
-          {/if}
-        </div>
       <div
         class="min-h-[480px] w-full flex-1 overflow-hidden rounded-[10px] border border-[var(--border-muted)] bg-[var(--panel-bg)]"
         data-testid="monaco-settings-editor"
@@ -231,24 +195,18 @@
         <div class="text-[12px] text-[var(--danger)]" transition:fade={{ duration: 120 }}>{error}</div>
         {/if}
       </div>
-      <DialogFooter>
+      <footer class="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
       <button
         class="min-w-[72px] rounded-[8px] border border-[var(--border-muted)] bg-[var(--panel-bg)] px-[14px] py-[6px] text-[12px] text-[var(--text-primary)]"
         on:click={handleReset}
         aria-label="Reset settings"
         title="Reset settings"
-      >
-        Reset
-      </button>
+      >Reset</button>
       <button
         class="min-w-[72px] rounded-[8px] border border-[#2563eb] bg-[#2563eb] px-[14px] py-[6px] text-[12px] text-white"
         on:click={handleSave}
         aria-label="Save settings"
         title="Save settings"
-      >
-        Save
-      </button>
-      </DialogFooter>
-    </div>
-  </DialogContent>
-</Dialog>
+      >Save</button>
+      </footer>
+</section>

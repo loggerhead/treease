@@ -8,7 +8,7 @@ import { getUsageClientId } from './client-id';
 import { enqueueUsageEvent, getPendingUsageDelta } from './usage-queue';
 import { isUsageCoolingDown } from './usage-rate-limit';
 
-type GateSurface = 'graph_edit' | 'file_import';
+type GateSurface = 'graph_view' | 'file_import';
 
 export type UsageBlock = {
   capability: RecordedUsageCapability;
@@ -30,8 +30,8 @@ export async function applyLocalUsage(summary: UsageSummary): Promise<UsageSumma
 }
 
 function limitFor(summary: UsageSummary, capability: RecordedUsageCapability) {
-  return capability === 'bidirectional_edit'
-    ? summary.limits.bidirectionalEditDocumentsMonthly
+  return capability === 'graph_view'
+    ? summary.limits.graphViewDocumentsMonthly
     : summary.limits.largeFileProcessingRunsMonthly;
 }
 
@@ -46,7 +46,7 @@ export function usageBlockFor(
 }
 
 function featureFor(capability: RecordedUsageCapability): string {
-  return capability === 'bidirectional_edit' ? 'bidirectional_edit' : 'large_file_processing';
+  return capability === 'graph_view' ? 'graph_view' : 'large_file_processing';
 }
 
 function reportBlocked(block: UsageBlock, surface: GateSurface): void {

@@ -260,6 +260,7 @@ fn materialize_blank_document(
             ready: true,
             clear: true,
             graph_data: None,
+            topology_bytes: Vec::new(),
         }),
         incremental: None,
         terminal: None,
@@ -524,6 +525,7 @@ fn build_graph_output(
             ready: true,
             clear: true,
             graph_data: Some(graph_data),
+            topology_bytes: build.topology_bytes,
         }),
         Some(incremental),
     )
@@ -569,6 +571,10 @@ fn build_incremental_graph_output(
             graph_data: Some(graph_projection_service::to_document_graph_delta(
                 &result.delta,
             )),
+            topology_bytes: crate::graph::graph_topology::document_topology_bytes(
+                &decoded.store,
+                decoded.root,
+            ),
         },
         IncrementalState::resumable()
             .with_graph_state(result.model_snapshot, result.graph_index)
@@ -622,6 +628,10 @@ fn build_resumed_graph_output(
             ready: true,
             clear: false,
             graph_data: Some(update.delta),
+            topology_bytes: crate::graph::graph_topology::document_topology_bytes(
+                &decoded.store,
+                decoded.root,
+            ),
         },
         incremental,
     ))
@@ -1085,6 +1095,7 @@ pub fn store_incremental_analysis_snapshot(
         ready: true,
         clear: true,
         graph_data: Some(graph_payload),
+        topology_bytes: Vec::new(),
     });
     let _ = store_snapshot_for_document(key, snapshot, true);
     analysis
@@ -1214,6 +1225,31 @@ mod tests {
 
         assert!(result.analysis.document.is_some());
     }
+    #[test]
+    fn materialize_full_projection_carries_topology_bytes() {
+        let result = materialize(
+            &DocumentInputPlan::SourceText,
+            "topology-bytes",
+            "json",
+            r#"{"root":{"child":1},"tail":2}"#,
+            false,
+            &OutputPlan {
+                analysis: true,
+                graph: true,
+            },
+            &[],
+            None,
+        );
+
+        let bytes = &result
+            .graph
+            .as_ref()
+            .expect("graph projection should exist")
+            .topology_bytes;
+        assert!(bytes.starts_with(b"GTOP\x01"));
+        assert!(!bytes.is_empty());
+    }
+
     #[test]
     fn materialize_full_projection_keeps_structural_span_index_lazy() {
         let result = materialize(

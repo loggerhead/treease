@@ -2,7 +2,6 @@
   import { onDestroy, tick } from 'svelte';
   import { Check, Copy, Link2, LoaderCircle } from 'lucide-svelte';
   import { toast } from 'svelte-sonner';
-  import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog';
   import { Button } from './ui/button';
   import { createShareLink, getCurrentSubscription } from '../services/treease-server';
   import type { ShareResource } from '../share/share-resource';
@@ -71,11 +70,10 @@
   }
 </script>
 
-<Dialog bind:open>
-  <DialogContent aria-labelledby="share-dialog-title" data-testid="share-dialog" class="max-w-md">
-    <DialogHeader>
-      <DialogTitle id="share-dialog-title">Share this document</DialogTitle>
-    </DialogHeader>
+<section aria-labelledby="share-dialog-title" data-testid="share-dialog" class="share-panel flex flex-col gap-4">
+    <header>
+      <h2 id="share-dialog-title" class="text-lg leading-none font-semibold">Share this document</h2>
+    </header>
     <div class="flex flex-col gap-4 text-[13px] text-[var(--text-muted)]">
       <p>Create a read-only snapshot link that anyone can open without signing in.</p>
       <div class="flex items-center justify-between gap-3">
@@ -101,12 +99,11 @@
         </div>
       {/if}
     </div>
-    <DialogFooter>
+    <footer class="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
       <Button variant="outline" on:click={() => (open = false)}>Close</Button>
       <Button disabled={busy || !createResource} on:click={handleCreate}>
         {#if busy}<LoaderCircle size={13} class="mr-1 animate-spin" />{/if}
         {shareUrl ? 'Create a new link' : 'Create share link'}
       </Button>
-    </DialogFooter>
-  </DialogContent>
-</Dialog>
+    </footer>
+</section>

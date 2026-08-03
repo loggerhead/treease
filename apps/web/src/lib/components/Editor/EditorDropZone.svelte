@@ -1,5 +1,6 @@
 <script lang="ts">
   import EditorRuntimeLoading from './EditorRuntimeLoading.svelte';
+  import { fileDropFeedback } from '../ui/file-drop-feedback';
 
   export let onDrop: (event: DragEvent) => void = () => {};
   export let onDragOver: (event: DragEvent) => void = () => {};
@@ -24,8 +25,10 @@
   on:pointerdown|capture={onPointerDownCapture}
   on:drop={onDrop}
   on:dragover={onDragOver}
+  use:fileDropFeedback
 >
   <div bind:this={container} class="w-full flex-1 overflow-hidden"></div>
+  <div class="file-drop-feedback-overlay" aria-hidden="true"></div>
   {#if loading}
     <div class="pointer-events-none absolute inset-0 z-1">
       <EditorRuntimeLoading phase={loadingPhase} />
@@ -50,3 +53,19 @@
     </div>
   {/if}
 </div>
+
+<style>
+  .file-drop-feedback-overlay {
+    position: absolute;
+    z-index: 10;
+    inset: 0;
+    pointer-events: none;
+    opacity: 0;
+    background: rgb(224 243 255 / 88%);
+    transition: opacity 120ms ease-out;
+  }
+
+  :global(.file-drop-feedback--active) .file-drop-feedback-overlay {
+    opacity: 1;
+  }
+</style>

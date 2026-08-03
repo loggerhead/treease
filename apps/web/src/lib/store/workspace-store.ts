@@ -52,7 +52,7 @@ function createWorkspacePrimaryTab(payload: { id: string; name: string }): Edito
 }
 
 export const initialWorkspaceState: EditorWorkspaceState = createEditorWorkspaceState(
-  createWorkspacePrimaryTab({ id: 'primary', name: 'Primary' }),
+  createWorkspacePrimaryTab({ id: 'primary', name: 'Untitled' }),
 );
 
 const authorityWorkspaceStore = derived(activeDocumentAuthorityStore, ($authority) => $authority.workspace);

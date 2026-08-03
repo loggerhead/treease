@@ -51,7 +51,7 @@ function createPrimaryTab(): EditorWorkspaceTab {
   return {
     id: 'primary',
     role: 'primary',
-    name: 'Primary',
+    name: 'Untitled',
     documentKey: '',
     languageId: editorLanguageFallback,
     sourceText: '',

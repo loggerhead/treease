@@ -1,4 +1,4 @@
-<!-- Responsibility: assemble Editor/Viewport/TopBar/BottomBar, coordinate cross-component events, and handle DOM interaction. -->
+<!-- Responsibility: assemble Editor/Viewport/BottomBar, coordinate cross-component events, and handle DOM interaction. -->
 <script lang="ts">
   import type { PageData } from './$types';
   import { get } from 'svelte/store';
@@ -6,12 +6,11 @@
   import { cubicOut } from 'svelte/easing';
   import { fly } from 'svelte/transition';
   import Editor from '../../lib/components/Editor.svelte';
-  import TopBar from '../../lib/components/TopBar.svelte';
+  import GraphTopBar from '../../lib/components/GraphTopBar.svelte';
   import BottomBar from '../../lib/components/BottomBar.svelte';
+  import EditorFunctionBar from '../../lib/components/EditorFunctionBar.svelte';
+  import EditorSidebar from '../../lib/components/EditorSidebar.svelte';
   import ViewportPanel from '../../lib/components/ViewportPanel.svelte';
-  import SettingsDialog from '../../lib/components/SettingsDialog.svelte';
-  import ShareDialog from '../../lib/components/ShareDialog.svelte';
-  import FeedbackDialog from '../../lib/components/FeedbackDialog.svelte';
   import StructGenerationInput from '../../lib/components/StructGenerationInput.svelte';
   import LoginDialog from '../../lib/components/LoginDialog.svelte';
   import AiInput from '../../lib/components/AiInput.svelte';
@@ -27,6 +26,7 @@
   } from '../../lib/store/graph-selection-store';
   import { initialFullEditUiState } from '../../lib/store/full-edit-ui-store';
   import {
+    documentKey as documentKeyStore,
     languageId as languageIdStore,
     sourceText as sourceTextStore,
     editorRevision,
@@ -49,13 +49,12 @@
   } from './url-preset';
   import { resolveExportDownloadDetails, resolveExportPreviewDetails } from './export-controller';
   import {
-    clamp,
     collapseEditor as collapseEditorLayout,
     collapseViewer as collapseViewerLayout,
     computePaneWidths,
+    createSplitLayoutDragController,
     createSplitLayoutState,
     expandSplit,
-    getClampedSplitRatio as getClampedSplitRatioValue,
     syncSplitRatio,
     type SplitLayoutConfig,
   } from './split-layout-controller';
@@ -74,17 +73,10 @@
   import type { ColumnNavigatorState } from '../../lib/components/graph-viewer/column-navigator/types';
   import { serializePath } from '../../shared/document-anchor-utils';
   import {
-    FileCode,
+    GitCompareArrows,
     GitGraph,
-    Link2,
-    Link2Off,
-    PanelLeftClose,
-    PanelLeftOpen,
-    PanelRightClose,
-    PanelRightOpen,
   } from 'lucide-svelte';
-  import * as ButtonGroup from '../../lib/components/ui/button-group';
-  import { IconButton } from '../../lib/components/ui/button';
+  import { SplitLayoutCollapsedControl, SplitLayoutCollapseHint } from '../../lib/components/ui/split-layout';
   import { trackEvent } from '../../lib/analytics/ga4';
   import { startBillingCheckout } from '../../lib/billing/checkout-flow';
   import { getUsageClientId } from '../../lib/billing/client-id';
@@ -120,17 +112,17 @@
   import type { WorkspaceCommand, WorkspaceSession } from '../../lib/workspace-host';
   import { createViewRuntimeOperation } from '../../lib/guards/view-runtime-operation';
   import { LARGE_FILE_PROCESSING_THRESHOLD_BYTES } from '../../lib/config/large-file';
+  import type { CommandId } from '../../lib/command-registry';
 
   export let data: PageData;
 
   let editorRef: Editor | null = null;
-  let topBarRef: TopBar | null = null;
+  let sidebarRef: EditorSidebar | null = null;
   let viewerRef: ViewportPanel | null = null;
   let yqInputRef: YqExpressionInput | null = null;
   let splitLayoutContainer: HTMLDivElement | null = null;
   let containerWidth = 0;
   let tabSummaries: EditorWorkspaceTabSummary[] = [];
-  let showTabDirty = false;
   let activeTabId = '';
   let workspaceBootstrapReady = false;
   let workspaceCommandReady = false;
@@ -146,12 +138,14 @@
   let splitRatio = splitLayoutState.splitRatio;
   let lastSplitRatio = splitLayoutState.lastSplitRatio;
   let leftPaneWidthPx = 0;
+  let rightPaneWidthPx = 0;
+  let splitterLeftPx = 0;
   let splitterControlLeftPx = 0;
   let leftPaneCollapsed = false;
   let rightPaneCollapsed = false;
   let collapsedControlFlyX = 0;
   let isDraggingSplitter = false;
-  let splitterDragRect: DOMRect | null = null;
+  let splitterCollapseHint: 'editor' | 'viewer' | null = null;
   let settingsOpen = false;
   let shareOpen = false;
   let feedbackOpen = false;
@@ -161,12 +155,16 @@
   let structGenerationBusy = false;
   let structGenerationError = '';
   let loginOpen = false;
+  type GraphSurfaceMode = 'graph' | 'compare';
   let viewerViewMode: 'graph' | 'text' = 'graph';
+  let graphSurfaceMode: GraphSurfaceMode = 'graph';
   let editorRuntimeLoading = true;
   let viewerRuntimeLoading = true;
   let columnNavigatorState: ColumnNavigatorState | null = null;
   let synchronizedRuntimeLoading = true;
   let syncScrollEnabled = true;
+  let graphNavigationSyncEnabled = true;
+  let graphScrollRevealSyncEnabled = false;
   let aiInputOpen = false;
   let aiInstruction = '';
   let aiBusy = false;
@@ -212,7 +210,9 @@
     minPaneWidthPx: 200,
     dividerWidthPx: 10,
     collapsedControlInsetPx: 16,
+    collapsedPaneWidthPx: 44,
   };
+  const splitLayoutDragController = createSplitLayoutDragController(splitLayoutConfig);
   const urlCommandHandlers: Record<Exclude<EditorUrlActionCommandId, 'compare'>, () => Promise<void>> = {
     format: async () => {
       await editorRef?.formatActive();
@@ -235,12 +235,21 @@
     return !nextPreset.ui.editor && nextPreset.ui.viewer;
   }
 
+  $: graphNavigationSyncEnabled = graphSurfaceMode !== 'graph' || syncScrollEnabled;
+  $: graphScrollRevealSyncEnabled = graphSurfaceMode === 'graph' && syncScrollEnabled;
+
+  function selectGraphSurfaceMode(nextMode: GraphSurfaceMode): void {
+    graphSurfaceMode = nextMode;
+    viewerViewMode = nextMode === 'graph' ? 'graph' : 'text';
+  }
+
   function applyUrlPresetUi(nextPreset: ResolvedEditorUrlPreset): void {
     showEditorPane = nextPreset.ui.editor;
     showViewerPane = nextPreset.ui.viewer;
     showTopBar = nextPreset.ui.topbar;
     showBottomBar = nextPreset.ui.bottombar;
     viewerViewMode = nextPreset.initialViewerMode;
+    graphSurfaceMode = nextPreset.initialViewerMode === 'graph' ? 'graph' : 'compare';
     mirrorViewerFromSource = false;
     lastMirroredViewerText = '';
   }
@@ -312,12 +321,12 @@
 
     if (nextPreset.rightText.effective) {
       const nextLanguage = nextPreset.language ?? (editorRef?.getActiveLanguage() ?? $languageIdStore);
-      await viewerRef?.showTextPreview(nextPreset.rightText.value, nextLanguage);
+      await showViewerTextPreview(nextPreset.rightText.value, nextLanguage);
     } else if (nextPreset.rightTextUrl.effective) {
       const resolved = await fetchUrlPresetSourceOrReport(nextPreset.rightTextUrl.value);
       if (!resolved) return;
       const nextLanguage = nextPreset.language ?? resolved.inferredLanguage ?? (editorRef?.getActiveLanguage() ?? $languageIdStore);
-      await viewerRef?.showTextPreview(resolved.text, nextLanguage);
+      await showViewerTextPreview(resolved.text, nextLanguage);
     }
 
     if (nextPreset.yq.effective) {
@@ -329,7 +338,7 @@
         nextPreset.notes.push(`Ignored command=${nextPreset.command} for language=${effectiveLanguage}.`);
       } else if (nextPreset.command === 'compare') {
         if (!nextPreset.rightText.effective) {
-          await viewerRef?.showTextPreview(viewerRef?.getActiveText() ?? '', viewerRef?.getActiveLanguage() ?? effectiveLanguage);
+          await showViewerTextPreview(viewerRef?.getActiveText() ?? '', viewerRef?.getActiveLanguage() ?? effectiveLanguage);
         }
         await viewerRef?.waitForIdle?.();
         await viewerRef?.runCompare?.();
@@ -341,8 +350,7 @@
           mirrorViewerFromSource = true;
           const nextText = await waitForEditorCommandResult(previousText);
           lastMirroredViewerText = nextText;
-          viewerViewMode = 'text';
-          await viewerRef?.showTextPreview(nextText, editorRef?.getActiveLanguage() ?? effectiveLanguage);
+          await showViewerTextPreview(nextText, editorRef?.getActiveLanguage() ?? effectiveLanguage);
         }
       }
     }
@@ -364,7 +372,10 @@
       await restoreShareResource(resource, {
         editor: editorRef,
         viewer: viewerRef,
-        setViewMode: (mode) => { viewerViewMode = mode; },
+        setViewMode: (mode) => {
+          viewerViewMode = mode;
+          graphSurfaceMode = mode === 'graph' ? 'graph' : 'compare';
+        },
         clearCompareState,
         restoreTreePath: (path) => {
           activeTempModel.update((current) => ({ ...current, treePath: fromSharePath(path) }));
@@ -439,10 +450,6 @@
     return splitLayoutContainer?.clientWidth ?? 0;
   }
 
-  function getClampedSplitRatio(nextRatio: number, containerWidth = getContainerWidth()) {
-    return getClampedSplitRatioValue(nextRatio, containerWidth, splitLayoutConfig.minPaneWidthPx);
-  }
-
   function syncSplitLayoutState(nextState = splitLayoutState) {
     splitLayoutState = nextState;
     layoutMode = nextState.layoutMode;
@@ -452,6 +459,10 @@
 
   function formatPaneWidth(ratio: number): string {
     return `${(ratio * 100).toFixed(1)}%`;
+  }
+
+  function formatVisiblePaneWidth(ratio: number, paneWidthPx: number): string {
+    return visibleLayoutMode === 'split' ? formatPaneWidth(ratio) : `${paneWidthPx}px`;
   }
 
   function updateSplitLayout(mutator: (state: SplitLayoutState) => SplitLayoutState) {
@@ -468,6 +479,8 @@
     text: string,
     language: SupportedEditorLanguageId | undefined = undefined,
   ): Promise<void> {
+    graphSurfaceMode = 'compare';
+    viewerViewMode = 'text';
     await viewerRef?.showTextPreview(text, language);
   }
 
@@ -521,7 +534,7 @@
     $sourceTextStore !== lastMirroredViewerText
   ) {
     lastMirroredViewerText = $sourceTextStore;
-    void viewerRef.showTextPreview($sourceTextStore, editorRef?.getActiveLanguage() ?? $languageIdStore);
+    void showViewerTextPreview($sourceTextStore, editorRef?.getActiveLanguage() ?? $languageIdStore);
   }
   $: syncScrollEnabled = $settings?.interaction?.enableSyncScroll ?? true;
   $: autoSaveMode = $settings?.interaction?.autoSave ?? 'off';
@@ -570,27 +583,6 @@
       trackEvent('document_import', { source: 'file', result: 'failure' });
       toast.error(`Import failed: ${message}`);
     }
-  }
-
-  async function runEditorFullEditUsage<T>(
-    source: string,
-    execute: () => Promise<T>,
-    reason = '',
-  ): Promise<T> {
-    // File imports already reserve large-file usage in handleImportFileStream.
-    if (reason === 'import-file' || reason === 'drop-file') return execute();
-    const byteLength = new TextEncoder().encode(source).byteLength;
-    const capability = byteLength >= LARGE_FILE_PROCESSING_THRESHOLD_BYTES
-      ? 'large_file_processing'
-      : 'bidirectional_edit';
-    return runPostpaidCapability({
-      capability,
-      idempotencyKey: crypto.randomUUID(),
-      metadata: { byteLength, surface: 'editor_full_edit' },
-      surface: 'graph_edit',
-      execute,
-      onBlocked: (block) => viewerRef?.showEntitlementOverlay(block),
-    });
   }
 
   async function handleRequestImportFile(payload: { sourceFormat: string; targetFormat: string; accept: string[] }) {
@@ -785,6 +777,10 @@
   }
 
   function handleShowAiInput() {
+    if (aiInputOpen) {
+      handleCloseAiInput();
+      return;
+    }
     structGenerationOpen = false;
     yqInputOpen = false;
     aiInputOpen = true;
@@ -1005,28 +1001,34 @@
     resetViewerTextScroll();
   }
 
-  function updateSplitFromClientX(clientX: number) {
-    if (!splitterDragRect) return;
-    const offsetX = clamp(clientX - splitterDragRect.left, 0, splitterDragRect.width);
-    syncSplitLayoutState({ ...splitLayoutState, splitRatio: getClampedSplitRatio(offsetX / splitterDragRect.width, splitterDragRect.width) });
+  function updateSplitFromClientX(clientX: number, start = false) {
+    const update = start
+      ? splitLayoutDragController.start(splitLayoutState, clientX, splitLayoutContainer!.getBoundingClientRect())
+      : splitLayoutDragController.move(splitLayoutState, clientX);
+    if (!update) return;
+    splitterCollapseHint = update.collapseSide === 'left'
+      ? 'editor'
+      : update.collapseSide === 'right'
+        ? 'viewer'
+        : null;
+    syncSplitLayoutState(update.state);
   }
 
   function handleSplitterDragStart(clientX: number) {
-    if (visibleLayoutMode !== 'split' || !splitLayoutContainer) return;
-    splitterDragRect = splitLayoutContainer.getBoundingClientRect();
+    if (!showEditorPane || !showViewerPane || !splitLayoutContainer) return;
     isDraggingSplitter = true;
-    updateSplitFromClientX(clientX);
+    updateSplitFromClientX(clientX, true);
   }
 
   function handleSplitterDragMove(clientX: number) {
-    if (visibleLayoutMode !== 'split') return;
     updateSplitFromClientX(clientX);
   }
 
   function handleSplitterDragEnd() {
-    if (visibleLayoutMode !== 'split') return;
-    splitterDragRect = null;
+    if (!isDraggingSplitter) return;
+    splitLayoutDragController.end();
     isDraggingSplitter = false;
+    splitterCollapseHint = null;
     syncSplitLayoutState({ ...splitLayoutState, lastSplitRatio: splitRatio });
     void settingsStore.saveEditorSplitRatio(splitRatio);
   }
@@ -1059,7 +1061,7 @@
     position: ScrollPosition,
     apply: (position: ScrollPosition) => void,
   ) {
-    if (!syncScrollEnabled) return;
+    if (!syncScrollEnabled || graphSurfaceMode !== 'compare') return;
     if (scrollSyncLock === blockedBy) return;
     scrollSyncLock = owner;
     apply(position);
@@ -1098,7 +1100,7 @@
 
   function handleEditorReveal(event: CustomEvent<{ path: PathSeg[]; target?: 'key' | 'value' | 'node' }>) {
     const path = event?.detail?.path ?? [];
-    if (!path.length || !syncScrollEnabled) return;
+    if (!path.length || !graphNavigationSyncEnabled) return;
     viewerRef?.revealPath?.(path, { target: event.detail?.target });
   }
   function handleGraphReveal(payload: {
@@ -1107,7 +1109,7 @@
     trigger?: 'click' | 'search' | 'breadcrumb';
   }) {
     const path = payload?.path ?? [];
-    if (!path.length || !syncScrollEnabled) return;
+    if (!path.length || !graphNavigationSyncEnabled) return;
 
     // `emitReveal` in graph-text-linkage already sets graphHighlight via
     // syncTreeSelection before dispatching the reveal event. Skip this
@@ -1129,7 +1131,7 @@
 
   function handleTreePathSelect(path: PathSeg[]) {
     if (!path.length) return;
-    updateTreeSelection(path, { target: breadcrumbTargetForPath(path), source: 'breadcrumb' });
+    void viewerRef?.selectColumnNavigatorPath(path);
   }
 
   function handleAddTab() {
@@ -1139,7 +1141,7 @@
   function handleCloseTab(id: string) {
     if (!workspaceCommandReady) return;
     const tab = getWorkspaceState().tabsById[id];
-    if (showTabDirty && tab && isWorkspaceTabDirty(tab) && !window.confirm(`Close ${tab.name} without saving local changes?`)) {
+    if (tab && isWorkspaceTabDirty(tab) && !window.confirm(`Close ${tab.name} without saving local changes?`)) {
       return;
     }
     const stop = fileWatchUnsubscribers.get(id);
@@ -1272,7 +1274,7 @@
         ...currentPrimary,
         id: 'primary',
         role: 'primary',
-        name: 'Primary',
+        name: 'Untitled',
         documentKey: 'primary:0',
         languageId: editorLanguageFallback,
         sourceText,
@@ -1342,6 +1344,25 @@
     });
   }
 
+  async function handleCommandExecute(id: CommandId): Promise<void> {
+    const handlers: Record<CommandId, () => void | Promise<void>> = {
+      'workspace:new': () => workspaceCommands['workspace:new'](),
+      'workspace:open': () => workspaceCommands['workspace:open'](),
+      'workspace:save': () => workspaceCommands['workspace:save'](),
+      'workspace:save-as': () => workspaceCommands['workspace:save-as'](),
+      'workspace:close-tab': () => workspaceCommands['workspace:close-tab'](),
+      format: () => editorRef?.formatActive(),
+      minify: () => editorRef?.minifyActive(),
+      compact: () => editorRef?.compactActive(),
+      sort: () => editorRef?.sortActive(),
+      'show-yq-input': () => handleShowYqInput(),
+      'generate-struct': () => handleShowStructGeneration(),
+      escape: () => editorRef?.escapeActive(),
+      unescape: () => editorRef?.unescapeActive(),
+    };
+    await handlers[id]?.();
+  }
+
   type StaticWorkspaceCommand = Exclude<WorkspaceCommand, `workspace:open-recent:${string}`>;
 
   const workspaceCommands: Record<StaticWorkspaceCommand, () => void | Promise<void>> = {
@@ -1349,8 +1370,8 @@
     'workspace:open': () => workspaceCommandReady && handleOpenDocument(),
     'workspace:save': () => saveActiveDocument(),
     'workspace:save-as': () => saveActiveDocument(true),
-    'workspace:import': () => topBarRef?.openImportPanel(),
-    'workspace:export': () => topBarRef?.openExportPanel(),
+    'workspace:import': () => sidebarRef?.openImportPanel(),
+    'workspace:export': () => sidebarRef?.openExportPanel(),
     'workspace:clear-recent': handleClearRecentFiles,
     'workspace:close-tab': () => workspaceCommandReady && activeTabId && handleCloseTab(activeTabId),
     'workspace:toggle-viewer': () => { showViewerPane = !showViewerPane; },
@@ -1388,23 +1409,13 @@
   $: visibleLayoutMode = !showEditorPane ? 'right-only' : !showViewerPane ? 'left-only' : layoutMode;
   $: renderLayoutControls = showEditorPane && showViewerPane && visibleLayoutMode !== 'split';
   $: visibleSplitLayoutState = { ...splitLayoutState, layoutMode: visibleLayoutMode };
-  $: ({ leftPaneWidthPx, splitterControlLeftPx } = computePaneWidths(
+  $: ({ leftPaneWidthPx, rightPaneWidthPx, splitterLeftPx, splitterControlLeftPx } = computePaneWidths(
     visibleSplitLayoutState,
     containerWidth,
     splitLayoutConfig,
   ));
   $: ({ leftPaneCollapsed, rightPaneCollapsed, collapsedControlFlyX } = resolveSplitLayoutMotion(visibleLayoutMode));
-  // The top bar is mounted only after workspace commands are ready. Keep the
-  // grid rows in sync with the actual children so the loading editor occupies
-  // the main row instead of being squeezed into the top-bar row.
   $: topBarVisible = showTopBar && workspaceCommandReady;
-  $: shellRowsClass = topBarVisible
-    ? showBottomBar
-      ? 'var(--topbar-height) minmax(0, 1fr) var(--bottombar-height)'
-      : 'var(--topbar-height) minmax(0, 1fr)'
-    : showBottomBar
-      ? 'minmax(0, 1fr) var(--bottombar-height)'
-      : 'minmax(0, 1fr)';
   $: tabSummaries = summarizeWorkspaceTabs($editorWorkspace);
   $: activeTabId = $editorWorkspace.activeTabId;
 
@@ -1437,7 +1448,6 @@
     let stopDeepLinks: (() => void) | null = null;
     void (async () => {
       const host = await workspaceHost;
-      showTabDirty = host.surface === 'desktop';
       if (shareID.present) {
         sharedWorkspaceLifecycle = createSharedWorkspaceLifecycle({
           loadSession: () => host.loadSession(),
@@ -1555,34 +1565,24 @@
       <a class="mt-6 inline-flex rounded-[9px] bg-[var(--accent)] px-4 py-2 text-sm text-white" href="/editor" data-sveltekit-reload>Open a blank editor</a>
     </section>
   {:else}
-  <div class="grid h-full min-h-0 min-w-0 overflow-hidden" style:grid-template-rows={shellRowsClass}>
-    {#if showTopBar && workspaceCommandReady}
-      <TopBar
-        bind:this={topBarRef}
-        tabs={tabSummaries}
-        {showTabDirty}
-        {activeTabId}
-        canAddTab={tabSummaries.length < maxTabs}
-        showTabs={true}
-        showRightActions={true}
-        {formatOptions}
-        onAddTab={workspaceCommands['workspace:new']}
-        onCloseTab={handleCloseTab}
-        onActivateTab={handleActivateTab}
-        onRenameTab={handleRenameTab}
-        onRequestImportFile={handleRequestImportFile}
-        onImportFileStream={handleImportFileStream}
-        onExportPreview={handleExportPreview}
-        onExportDownload={handleExportDownload}
-        onShare={() => (shareOpen = true)}
-        onFeedback={() => (feedbackOpen = true)}
-        onLogin={() => (loginOpen = true)}
-        onLogout={handleLogout}
-        onCheckForUpdates={handleCheckForUpdates}
-        onOpenSettings={() => (settingsOpen = true)}
-      />
-    {/if}
-    <div bind:this={splitLayoutContainer} bind:clientWidth={containerWidth} class="app-split-layout">
+  <div class="flex h-full min-h-0 min-w-0 overflow-hidden">
+    <EditorSidebar
+      bind:this={sidebarRef}
+      {formatOptions}
+      onRequestImportFile={handleRequestImportFile}
+      onImportFileStream={handleImportFileStream}
+      onExportPreview={handleExportPreview}
+      onExportDownload={handleExportDownload}
+      bind:feedbackOpen
+      bind:shareOpen
+      bind:settingsOpen
+      createShareResource={createShareResource}
+      onLogin={() => (loginOpen = true)}
+      onLogout={handleLogout}
+      onCheckForUpdates={handleCheckForUpdates}
+    />
+    <div class="relative h-full min-h-0 min-w-0 flex-1 overflow-hidden">
+      <div bind:this={splitLayoutContainer} bind:clientWidth={containerWidth} class="app-split-layout">
       {#if showEditorPane}
         <section
           class="app-split-pane app-split-pane--left flex flex-col bg-[var(--panel-bg)]"
@@ -1590,16 +1590,28 @@
           class:app-split-pane--instant={isDraggingSplitter || !layoutReady}
           data-testid="left-pane"
           aria-hidden={leftPaneCollapsed}
-          style:width={formatPaneWidth(visibleLayoutMode === 'right-only' ? 0 : visibleLayoutMode === 'left-only' ? 1 : splitRatio)}
+          style:width={formatVisiblePaneWidth(visibleLayoutMode === 'right-only' ? 0 : visibleLayoutMode === 'left-only' ? 1 : splitRatio, leftPaneWidthPx)}
           style:opacity={leftPaneCollapsed ? 0 : 1}
         >
+          {#if splitterCollapseHint === 'editor'}
+            <SplitLayoutCollapseHint side="left" />
+          {/if}
+          {#if showBottomBar}
+            <EditorFunctionBar
+              aiInputOpen={aiInputOpen}
+              onShowAiInput={handleShowAiInput}
+              onFormat={() => editorRef?.formatActive()}
+              onMinify={() => editorRef?.minifyActive()}
+              onCommandExecute={handleCommandExecute}
+            />
+          {/if}
           <div class="min-h-0 flex-1">
             {#if workspaceBootstrapReady}
               <Editor
                 bind:this={editorRef}
-                enableRevealSync={syncScrollEnabled}
+                enableRevealSync={graphNavigationSyncEnabled}
+                enableScrollRevealSync={graphScrollRevealSyncEnabled}
                 {synchronizedRuntimeLoading}
-                runBidirectionalEdit={runEditorFullEditUsage}
                 onDirectDraftMutation={observeSharedDraftMutation}
                 {ensureSharedWorkspacePromoted}
                 onRequestImportFile={handleRequestImportFile}
@@ -1652,91 +1664,102 @@
               onClose={handleCloseStructGeneration}
             />
           {/if}
+          {#if showBottomBar}
+            <BottomBar
+              pane="editor"
+              fileName={tabSummaries.find((tab) => tab.id === activeTabId)?.name ?? 'Untitled'}
+              tabs={tabSummaries}
+              {activeTabId}
+              canAddTab={tabSummaries.length < maxTabs}
+              onAddTab={workspaceCommands['workspace:new']}
+              onActivateTab={handleActivateTab}
+              onRenameTab={handleRenameTab}
+              onCloseTab={(id) => handleCloseTab(id)}
+              onRevealError={(line, column) => editorRef?.revealError(line, column)}
+            />
+          {/if}
         </section>
       {/if}
 
-      {#if visibleLayoutMode === 'split'}
+      {#if showEditorPane && showViewerPane}
         <div
-          class={`app-split-divider app-split-divider--vertical ${isDraggingSplitter ? 'app-split-divider--dragging' : ''}`}
+          class={`app-split-divider app-split-divider--vertical ${isDraggingSplitter ? 'app-split-divider--dragging' : ''} ${visibleLayoutMode !== 'split' ? 'app-split-divider--collapsed' : ''} ${visibleLayoutMode === 'left-only' ? 'app-split-divider--right-edge' : ''}`}
           data-testid="splitter-divider"
           role="separator"
           aria-label="Resize panels"
           aria-orientation="vertical"
-          style:left={formatPaneWidth(splitRatio)}
+          style:left={`${splitterLeftPx}px`}
           use:splitLayoutDrag={{
             onDragStart: ({ clientX }) => handleSplitterDragStart(clientX),
             onDragMove: ({ clientX }) => handleSplitterDragMove(clientX),
             onDragEnd: () => handleSplitterDragEnd(),
           }}
-        >
-          {#if !synchronizedRuntimeLoading}
-            <div class="splitter-control splitter-control--split" role="presentation">
-              <div class="splitter-control__buttons" role="presentation" on:pointerdown|stopPropagation>
-                <ButtonGroup.Root orientation="vertical" variant="segmented-outline" class="shadow-none">
-                  <IconButton
-                    class="text-[var(--text-primary)]"
-                    aria-label={viewerViewMode === 'graph' ? 'Text mode' : 'Graph mode'}
-                    title={viewerViewMode === 'graph' ? 'Text mode' : 'Graph mode'}
-                    data-testid={viewerViewMode === 'graph' ? 'text-mode-button' : 'graph-mode-button'}
-                    on:click={() => (viewerViewMode = viewerViewMode === 'graph' ? 'text' : 'graph')}
-                  >
-                    {#if viewerViewMode === 'graph'}
-                      <FileCode size={12} />
-                    {:else}
-                      <GitGraph size={12} />
-                    {/if}
-                  </IconButton>
-                  <IconButton
-                    class={syncScrollEnabled ? 'text-[var(--accent)]' : 'text-[var(--text-muted)]'}
-                    aria-label={syncScrollEnabled ? 'Disable synchronized scrolling' : 'Enable synchronized scrolling'}
-                    title={syncScrollEnabled ? 'Disable synchronized scrolling' : 'Enable synchronized scrolling'}
-                    data-testid="sync-scroll-toggle"
-                    on:click={toggleSyncScroll}
-                  >
-                    {#if syncScrollEnabled}
-                      <Link2 size={12} />
-                    {:else}
-                      <Link2Off size={12} />
-                    {/if}
-                  </IconButton>
-                  <IconButton
-                    class="text-[var(--text-primary)]"
-                    aria-label="Collapse viewer"
-                    title="Collapse viewer"
-                    on:click={collapseViewer}
-                  >
-                    <PanelRightClose size={12} />
-                  </IconButton>
-                  <IconButton
-                    class="text-[var(--text-primary)]"
-                    aria-label="Collapse editor"
-                    title="Collapse editor"
-                    on:click={collapseEditor}
-                  >
-                    <PanelLeftClose size={12} />
-                  </IconButton>
-                </ButtonGroup.Root>
-              </div>
-            </div>
-          {/if}
-        </div>
+        ></div>
       {/if}
 
       {#if showViewerPane}
         <section
-          class="app-split-pane app-split-pane--right bg-[var(--panel-bg-alt)]"
+          class="app-split-pane app-split-pane--right flex flex-col bg-[var(--panel-bg-alt)]"
           class:app-split-pane--split-right={visibleLayoutMode === 'split'}
           class:app-split-pane--collapsed={rightPaneCollapsed}
           class:app-split-pane--instant={isDraggingSplitter || !layoutReady}
           data-testid="right-pane"
           aria-hidden={rightPaneCollapsed}
-          style:width={formatPaneWidth(visibleLayoutMode === 'left-only' ? 0 : visibleLayoutMode === 'right-only' ? 1 : 1 - splitRatio)}
+          style:width={formatVisiblePaneWidth(visibleLayoutMode === 'left-only' ? 0 : visibleLayoutMode === 'right-only' ? 1 : 1 - splitRatio, rightPaneWidthPx)}
           style:opacity={rightPaneCollapsed ? 0 : 1}
         >
+          {#if topBarVisible}
+            <div class="graph-workspace-toolbar" data-testid="graph-workspace-toolbar">
+              <div class="graph-surface-switcher" data-testid="graph-surface-switcher" role="tablist" aria-label="Graph surface">
+                <button
+                  type="button"
+                  class:active={graphSurfaceMode === 'graph'}
+                  role="tab"
+                  aria-selected={graphSurfaceMode === 'graph'}
+                  data-testid="graph-surface-graph"
+                  on:click={() => void selectGraphSurfaceMode('graph')}
+                  ><GitGraph size={12} />Graph</button>
+                <button
+                  type="button"
+                  class:active={graphSurfaceMode === 'compare'}
+                  role="tab"
+                  aria-selected={graphSurfaceMode === 'compare'}
+                  data-testid="graph-surface-compare"
+                  on:click={() => void selectGraphSurfaceMode('compare')}
+                  ><GitCompareArrows size={12} />Compare</button>
+              </div>
+              <GraphTopBar
+                showGlobal={false}
+                viewMode={viewerViewMode}
+                surfaceMode={graphSurfaceMode}
+                documentKey={$documentKeyStore}
+                language={$languageIdStore}
+                text={$sourceTextStore}
+                onSearchSelect={(event) => viewerRef?.revealGraphSearchResult(event.detail)}
+                onSearchPreview={(result) => viewerRef?.previewGraphSearchResult(result)}
+                onSearchCancel={() => void viewerRef?.cancelGraphSearchPreview()}
+                onOpenCompareFile={() => viewerRef?.openCompareFile()}
+                onSwapEditors={() => viewerRef?.swapCompareEditors()}
+                onCompare={() => void viewerRef?.compareEditors()}
+                onZoomIn={() => viewerRef?.zoomGraphIn()}
+                onZoomOut={() => viewerRef?.zoomGraphOut()}
+                onExportImage={() => void viewerRef?.exportGraphImage()}
+                onShare={() => (shareOpen = true)}
+                onLogin={() => (loginOpen = true)}
+                onLogout={handleLogout}
+                onCheckForUpdates={handleCheckForUpdates}
+                onOpenSettings={() => (settingsOpen = true)}
+              />
+            </div>
+          {/if}
+          {#if splitterCollapseHint === 'viewer'}
+            <SplitLayoutCollapseHint side="right" />
+          {/if}
+          <div class="min-h-0 flex-1">
           <ViewportPanel
             bind:this={viewerRef}
             bind:viewMode={viewerViewMode}
-            enableRevealSync={syncScrollEnabled}
+            enableRevealSync={graphNavigationSyncEnabled}
             {synchronizedRuntimeLoading}
             onRevealError={(line, column) => editorRef?.revealError(line, column)}
             onGraphReveal={handleGraphReveal}
@@ -1746,6 +1769,10 @@
             onApplyDiff={handleApplyDiff}
             onSwap={handleSwapEditors}
             onFileDrop={(event) => editorRef?.handleFileDrop(event)}
+            onRequestImportFile={handleRequestImportFile}
+            onLoadExample={(example, language) => {
+              void editorRef?.replaceActiveFromFile({ text: example, languageId: language, origin: 'example' })
+            }}
             {ensureSharedWorkspacePromoted}
             {pricingPlanGridComponent}
             pricingUsageNotice={null}
@@ -1753,39 +1780,35 @@
             pricingActionDisabled={() => aiUpgradeBusy}
             pricingActionLabel={(plan) => aiUpgradeBusy ? 'Opening checkout…' : plan.ctaLabel}
             onEntitlementBlocked={handleEntitlementBlocked}
+            hideGraphToolbar={topBarVisible}
           />
+          </div>
+          {#if showBottomBar}
+            <BottomBar
+              pane="graph"
+              surfaceMode={graphSurfaceMode}
+              graphVisible={showViewerPane}
+              columnNavigatorState={columnNavigatorState}
+              onColumnNavigatorBack={() => viewerRef?.goColumnNavigatorBack()}
+              onColumnNavigatorForward={() => viewerRef?.goColumnNavigatorForward()}
+              onCollapseColumnNavigator={() => viewerRef?.collapseColumnNavigator()}
+              onPinColumnNavigatorCollapsed={() => viewerRef?.pinColumnNavigatorCollapsed()}
+              onExpandColumnNavigator={() => viewerRef?.expandColumnNavigator()}
+              onTreePathSelect={handleTreePathSelect}
+            />
+          {/if}
         </section>
       {/if}
 
       {#if renderLayoutControls}
-        <div
-          class="splitter-control"
-          style:left={`${splitterControlLeftPx}px`}
-          transition:fly={{ x: collapsedControlFlyX, duration: 150, opacity: 0.08, easing: cubicOut }}
-        >
-          {#if visibleLayoutMode === 'left-only'}
-            <ButtonGroup.Root orientation="vertical" variant="segmented-outline" class="shadow-none">
-              <IconButton
-                class="text-[var(--text-primary)]"
-                aria-label="Expand viewer"
-                title="Expand viewer"
-                on:click={expandSplitLayout}
-              >
-                <PanelRightOpen size={12} />
-              </IconButton>
-            </ButtonGroup.Root>
-          {:else if visibleLayoutMode === 'right-only'}
-            <ButtonGroup.Root orientation="vertical" variant="segmented-outline" class="shadow-none">
-              <IconButton
-                class="text-[var(--text-primary)]"
-                aria-label="Expand editor"
-                title="Expand editor"
-                on:click={expandSplitLayout}
-              >
-                <PanelLeftOpen size={12} />
-              </IconButton>
-            </ButtonGroup.Root>
-          {/if}
+        <div transition:fly={{ x: collapsedControlFlyX, duration: 150, opacity: 0.08, easing: cubicOut }}>
+          <SplitLayoutCollapsedControl
+            mode={visibleLayoutMode}
+            leftPx={splitterControlLeftPx}
+            expandLeftLabel="Expand editor"
+            expandRightLabel="Expand viewer"
+            onExpand={expandSplitLayout}
+          />
         </div>
       {/if}
       {#if !layoutReady}
@@ -1796,29 +1819,8 @@
         </section>
       {/if}
     </div>
-    {#if showBottomBar}
-      <BottomBar
-        editorWidthPx={showEditorPane ? leftPaneWidthPx : 0}
-        graphVisible={showViewerPane}
-        onFormat={() => editorRef?.formatActive()}
-        onMinify={() => editorRef?.minifyActive()}
-        onCompact={() => editorRef?.compactActive()}
-        onSort={() => editorRef?.sortActive()}
-        onShowAiInput={handleShowAiInput}
-        onShowYqInput={handleShowYqInput}
-        onGenerateStruct={handleShowStructGeneration}
-        onEscape={() => editorRef?.escapeActive()}
-        onUnescape={() => editorRef?.unescapeActive()}
-        onNewDocument={workspaceCommands['workspace:new']}
-        onOpenDocument={workspaceCommands['workspace:open']}
-        onSaveDocument={workspaceCommands['workspace:save']}
-        onSaveAsDocument={workspaceCommands['workspace:save-as']}
-        onCloseDocument={workspaceCommands['workspace:close-tab']}
-        onTreePathSelect={handleTreePathSelect}
-      />
-    {/if}
   </div>
-  <FeedbackDialog bind:open={feedbackOpen} />
+  </div>
   {#if shareLoading}
     <div class="fixed inset-0 z-50 grid place-items-center bg-[var(--app-bg)]" data-testid="share-loading" aria-live="polite">
       <span class="text-sm text-[var(--text-muted)]">Restoring shared content…</span>
@@ -1843,9 +1845,9 @@
   <div class="pointer-events-none absolute -left-[10000px] top-0 h-px w-px overflow-hidden opacity-0" aria-hidden="true">
     <Editor
       bind:this={editorRef}
-      enableRevealSync={syncScrollEnabled}
+      enableRevealSync={graphNavigationSyncEnabled}
+      enableScrollRevealSync={graphScrollRevealSyncEnabled}
       {synchronizedRuntimeLoading}
-      runBidirectionalEdit={runEditorFullEditUsage}
       onDirectDraftMutation={observeSharedDraftMutation}
       {ensureSharedWorkspacePromoted}
       onRequestImportFile={handleRequestImportFile}
@@ -1855,6 +1857,4 @@
     />
   </div>
 {/if}
-<SettingsDialog bind:open={settingsOpen} />
-<ShareDialog bind:open={shareOpen} createResource={createShareResource} />
 <LoginDialog bind:open={loginOpen} />

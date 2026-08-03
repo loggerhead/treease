@@ -1,18 +1,20 @@
 <script lang="ts">
   import { tick, createEventDispatcher } from 'svelte'
-  import fuzzysort from 'fuzzysort'
   import SearchPanel from './SearchPanel.svelte'
+  import Tooltip from './Tooltip.svelte'
   import { commandItems, type CommandId } from '../command-registry'
-  import { Wand2, Shrink, Minimize2, ArrowDownWideNarrow, ListFilter, WrapText, Code, Check, Info } from 'lucide-svelte'
-  import { settings, settingsStore } from '../settings/settings-store'
+  import { Search, Wand2, Shrink, Minimize2, ArrowDownWideNarrow, ListFilter, WrapText, Code, Info } from 'lucide-svelte'
   import { languageId } from '../store/document-session-store'
 
   export let value = ''
+  export let compact = false
+  export let compactLabel = ''
   export let onExecute: (id: CommandId) => void | Promise<void> = () => {}
 
   let open = false
   let query = ''
-  let activeIndex = 0
+  let compactTrigger: HTMLButtonElement | null = null
+  let compactPanelStyle = ''
   let searchPanel: SearchPanel | null = null
   let panelRef: HTMLDivElement | null = null
   let results: Array<{ id: CommandId; label: string; keywords: string[]; keywordText: string; description?: string; type?: string }> = []
@@ -37,12 +39,6 @@
 
   const dispatch = createEventDispatcher()
 
-  function isToggleEnabled(id: CommandId) {
-    if (id === 'toggle-nest') return $settings.parser.enableNest
-    if (id === 'toggle-auto-format') return $settings.formatting.smart
-    return false
-  }
-
   function setQuery(next: string) {
     query = next
     dispatch('input', next)
@@ -52,10 +48,19 @@
     open = false
   }
 
-  async function openPanel() {
+  function positionCompactPanel(): void {
+    if (!compactTrigger || !compact) return
+    const rect = compactTrigger.getBoundingClientRect()
+    const panelWidth = 280
+    const left = Math.max(8, Math.min(rect.left, window.innerWidth - panelWidth - 8))
+    compactPanelStyle = `left: ${left}px; top: ${rect.bottom + 8}px;`
+  }
+
+  export async function openPanel() {
     open = true
-    activeIndex = 0
+    positionCompactPanel()
     await tick()
+    positionCompactPanel()
     searchPanel?.focusInput?.()
   }
 
@@ -75,27 +80,38 @@
 
   async function executeCommand(id: CommandId) {
     closePanel()
-    if (id === 'toggle-nest') {
-      await settingsStore.save({ parser: { enableNest: !$settings.parser.enableNest } })
-      return
-    }
-    if (id === 'toggle-auto-format') {
-      const current = $settings.formatting
-      await settingsStore.save({ formatting: { ...current, smart: !current.smart } })
-      return
-    }
     await onExecute(id)
   }
 
   $: if (value !== query) query = value
-  $: results = query
-    ? (fuzzysort.go(query, commandSource as any, { keys: ['label', 'keywordText'] } as any) as any).map((result: any) => result.obj)
-    : commandSource
+  // Filtering is owned by the shadcn command primitive. Keeping the full
+  // source here is important: the primitive can then show its empty state
+  // and handle keyboard navigation consistently.
+  $: results = commandSource
 
-  $: if (activeIndex >= results.length) activeIndex = Math.max(0, results.length - 1)
 </script>
 
-<svelte:window on:keydown={handleGlobalKey} on:pointerdown={handleDocumentPointerDown} />
+<svelte:window
+  on:keydown={handleGlobalKey}
+  on:pointerdown={handleDocumentPointerDown}
+  on:resize={positionCompactPanel}
+  on:scroll={positionCompactPanel}
+/>
+
+{#if compact}
+  <button
+    bind:this={compactTrigger}
+    type="button"
+    class="inline-flex h-[28px] w-[28px] items-center justify-center rounded-[6px] border border-[rgba(15,23,42,0.12)] bg-[var(--panel-bg)] text-[var(--text-primary)] transition-colors hover:bg-[var(--panel-bg-alt)] focus-visible:ring-2 focus-visible:ring-[var(--accent)]/25"
+    aria-label="Search commands"
+    title="Search commands (⌘K)"
+    data-testid="command-search-button"
+    on:click={() => void openPanel()}
+  >
+    <Search size={14} />
+    {#if compactLabel}<span>{compactLabel}</span>{/if}
+  </button>
+{/if}
 
 <SearchPanel
   bind:this={searchPanel}
@@ -106,16 +122,20 @@
   inputAriaLabel="Search command"
   inputTestId="command-search-input"
   shortcut="⌘ K"
-  panelClass="absolute left-0 bottom-[calc(100%+8px)] z-40 max-h-[calc(100dvh-var(--bottombar-height)-8px)] w-[280px]"
-  commandClassName="rounded-[10px] border-[rgba(15,23,42,0.10)] shadow-[0_12px_28px_rgba(15,23,42,0.10)] bg-[var(--panel-bg)]"
-  inputClassName="h-[23px] rounded-[7px] border border-[rgba(15,23,42,0.10)] bg-[var(--panel-bg)] px-2 text-[#6b7280] transition-colors hover:border-[rgba(15,23,42,0.16)] focus-within:border-[rgba(15,23,42,0.16)]"
+  panelClass={compact
+    ? 'fixed z-[10000] max-h-[calc(100dvh-40px)] w-[280px]'
+    : 'absolute left-0 bottom-[calc(100%+8px)] z-40 max-h-[calc(100dvh-var(--bottombar-height)-8px)] w-[280px]'}
+  panelStyle={compact ? compactPanelStyle : ''}
+  portalPanel={compact}
   listClassName="command-search-list"
   emptyText="No results."
-  showWhenClosed={true}
-  inputInline={false}
-  {activeIndex}
+  showWhenClosed={!compact}
+  inputInline={compact}
   {results}
   useVirtualList={false}
+  shouldFilter={true}
+  itemValue={(item) => item.label}
+  itemKeywords={(item) => item.keywords}
   onFocus={() => openPanel()}
   onClick={() => openPanel()}
   onInput={(event: any) => {
@@ -129,25 +149,11 @@
       return
     }
     if (!open) return
-    if (keyEvent.key === 'ArrowDown') {
-      keyEvent.preventDefault()
-      activeIndex = Math.min(results.length - 1, activeIndex + 1)
-    }
-    if (keyEvent.key === 'ArrowUp') {
-      keyEvent.preventDefault()
-      activeIndex = Math.max(0, activeIndex - 1)
-    }
-    if (keyEvent.key === 'Enter') {
-      keyEvent.preventDefault()
-      const item = results[activeIndex]
-      if (item) void executeCommand(item.id)
-    }
     if (keyEvent.key === 'Escape') {
       keyEvent.preventDefault()
       closePanel()
     }
   }}
-  onItemHover={(index) => (activeIndex = index)}
   onItemSelect={(index) => {
     const item = results[index]
     if (item) void executeCommand(item.id)
@@ -156,29 +162,14 @@
 >
   <svelte:fragment slot="item" let:item let:index>
     <div class="flex items-center gap-2">
-      {#if item.type === 'toggle'}
-        <span
-          class={`flex h-[14px] w-[14px] shrink-0 items-center justify-center rounded-[4px] border ${
-            isToggleEnabled(item.id)
-              ? 'border-[#2563eb] bg-[#eff6ff] text-[#2563eb]'
-              : 'border-[rgba(15,23,42,0.16)] bg-white text-transparent'
-          }`}
-        >
-          <Check size={10} strokeWidth={2.4} />
-        </span>
-      {:else if iconMap[item.id]}
+      {#if iconMap[item.id]}
         <svelte:component this={iconMap[item.id]} size={13} strokeWidth={2} class="shrink-0 text-[#334155]" />
       {/if}
-      <span class={item.type === 'toggle' ? 'font-medium text-[#1f2937]' : 'text-[#111827]'}>{item.label}</span>
+      <span class="text-[#111827]">{item.label}</span>
       {#if item.description}
-        <span
-          class="ml-0.5 inline-flex shrink-0 cursor-help items-center text-[#94a3b8] transition-colors hover:text-[#475569]"
-          role="img"
-          aria-label={item.description}
-          title={item.description}
-        >
-          <Info size={12} strokeWidth={2.1} />
-        </span>
+        <Tooltip content={item.description} side="right" className="ml-0.5 shrink-0 cursor-help text-[#94a3b8] hover:text-[#475569]">
+          <span aria-hidden="true"><Info size={12} strokeWidth={2.1} /></span>
+        </Tooltip>
       {/if}
     </div>
   </svelte:fragment>

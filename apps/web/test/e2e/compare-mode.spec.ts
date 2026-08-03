@@ -4,7 +4,7 @@ import { getMonacoValue, readEditorState, setEditorContent, setMonacoValue, wait
 async function openTextMode(page: Page) {
   await page.getByRole('button', { name: 'Text mode', exact: true }).click();
   await expect(page.getByTestId('monaco-right-editor')).toBeVisible({ timeout: 5_000 });
-  await expect(page.getByRole('button', { name: 'Compare', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Run comparison', exact: true })).toBeVisible();
 }
 
 async function setRightTextFromStore(page: Page, value: string) {
@@ -23,7 +23,7 @@ async function syncRightToSource(page: Page) {
 }
 
 async function runCompare(page: Page) {
-  await page.getByRole('button', { name: 'Compare', exact: true }).click();
+  await page.getByRole('button', { name: 'Run comparison', exact: true }).click();
 }
 
 async function readInlineDiffTexts(page: Page, hookId: string, className: string): Promise<string[]> {
@@ -38,6 +38,18 @@ async function readInlineDiffTexts(page: Page, hookId: string, className: string
     { hookId, className },
   );
 }
+
+test('empty right editor offers concise comparison input guidance', async ({ page }) => {
+  await page.goto('/editor');
+  await waitForEditorReady(page);
+  await openTextMode(page);
+
+  const rightEditor = page.getByTestId('monaco-right-editor');
+  await expect(rightEditor.locator('.treease-editor-placeholder')).toBeVisible();
+  await expect(rightEditor.getByText('Enter content to compare')).toBeVisible();
+  await expect(rightEditor.getByRole('button', { name: 'Choose a file or drag one into this editor' })).toBeVisible();
+  await expect(rightEditor.getByRole('button', { name: 'Load an example file' })).toBeVisible();
+});
 
 test('shows equal toast and no decorations when right text equals source', async ({ page }) => {
   await page.goto('/editor');
@@ -145,6 +157,27 @@ test('structured compare with unicode strings does not drift into unchanged sibl
   expect(inlineTexts.some((text) => text.includes('dsjk'))).toBe(true);
 });
 
+
+test('swapping editors does not leave a full JSON block highlight on the source editor', async ({ page }) => {
+  await page.goto('/editor');
+  await page.waitForFunction(() => window._treease?.editor?.getHookIds?.().includes('source-editor'));
+  await page.getByRole('tab', { name: 'Compare', exact: true }).click();
+  await page.waitForFunction(() => window._treease?.editor?.getHookIds?.().includes('right-editor'));
+
+  await page.evaluate(async () => {
+    window._treease?.editor.setValue('source-editor', '{"object":{"value":1}}');
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    window._treease?.editor.setValue('right-editor', '{"object":{"value":2}}');
+    await new Promise((resolve) => setTimeout(resolve, 700));
+  });
+  await page.getByRole('button', { name: 'Run comparison', exact: true }).click();
+  await page.waitForTimeout(800);
+  await page.getByRole('button', { name: 'Swap editors', exact: true }).click();
+
+  await expect
+    .poll(() => page.locator('[data-testid="monaco-source-editor"] .treease-json-block-highlight').count())
+    .toBe(0);
+});
 
 test('editing left source clears previous compare highlights', async ({ page }) => {
   await page.goto('/editor');

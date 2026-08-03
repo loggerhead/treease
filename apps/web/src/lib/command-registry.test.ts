@@ -33,7 +33,7 @@ describe('command-registry', () => {
     const universal = commandItems.filter((c) => c.langs.includes('*'));
     const ids = universal.map((c) => c.id);
     expect(ids).toEqual(
-      expect.arrayContaining(['format', 'minify', 'compact', 'sort', 'show-yq-input', 'toggle-auto-format']),
+      expect.arrayContaining(['format', 'minify', 'compact', 'sort', 'show-yq-input']),
     );
   });
 
@@ -42,9 +42,10 @@ describe('command-registry', () => {
     expect(generateStruct.langs).toEqual(['*']);
   });
 
-  it('restricts toggle-nest/escape/unescape to json', () => {
-    const toggleNest = commandItems.find((c) => c.id === 'toggle-nest')!;
-    expect(toggleNest.langs).toEqual(['json']);
+  it('keeps escape and unescape restricted to json', () => {
+    const commandIds = commandItems.map((command) => command.id);
+    expect(commandIds).not.toContain('toggle-nest');
+    expect(commandIds).not.toContain('toggle-auto-format');
     const escape = commandItems.find((c) => c.id === 'escape')!;
     expect(escape.langs).toEqual(['json']);
     const unescape = commandItems.find((c) => c.id === 'unescape')!;

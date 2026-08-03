@@ -75,6 +75,29 @@ describe('EditorCore graph highlight sync', () => {
     });
   });
 
+  it('updates the tree path while reveal sync is off without changing graphHighlight rules', () => {
+    const current = {
+      ...createTempModel(),
+      treePath: [{ tag: 1, key: 'previous', index: 0 }] as any[],
+    };
+    const treePath = [{ tag: 1, key: 'current', index: 0 }] as any[];
+
+    const next = applyResolvedTreePath(current, {
+      treePath,
+      target: 'value',
+      revision: 4,
+      syncGraphHighlight: true,
+    });
+
+    expect(next.treePath).toEqual(treePath);
+    expect(next.graphHighlight).toEqual({
+      path: treePath,
+      target: 'value',
+      revision: 4,
+      source: 'editor',
+    });
+  });
+
   it('treats only explicit user cursor reasons as graphHighlight sync triggers', () => {
     expect(shouldSyncGraphHighlightFromCursorReason(0)).toBe(false);
     expect(shouldSyncGraphHighlightFromCursorReason(1)).toBe(false);

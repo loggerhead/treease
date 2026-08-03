@@ -117,6 +117,7 @@ type GraphRenderSessionDeps = {
     revision: number,
     guard: GraphRenderGuard,
   ) => void;
+  onTopologyRendered?: (topologyBytes: Uint8Array) => Promise<void>;
   updateStreamProgress: (event: { event: string; phase: string; processedBytes: number; totalBytes: number; final: boolean }) => void;
   resetStreamProgress: () => void;
   completeStreamProgress: () => void;
@@ -447,7 +448,11 @@ export function createGraphRenderSession(deps: GraphRenderSessionDeps) {
   }): Promise<GraphRenderResult | null> {
     const finalEvent = finalDocumentEvent(params.batch);
     if (finalEvent == null) {
-      deps.setErrorMessage('Document analysis did not produce a snapshot');
+      console.error('[graph] document analysis did not produce a snapshot', {
+        documentKey: params.documentKey,
+        revision: params.revision,
+      });
+      deps.clearErrorMessage();
       deps.completeStreamProgress();
       return null;
     }
@@ -455,7 +460,13 @@ export function createGraphRenderSession(deps: GraphRenderSessionDeps) {
     if (finalEvent.type === 'snapshotReady') {
       const snapshotId = (params.snapshotId ?? finalEvent.snapshotId) as SnapshotId;
       if (!finalEvent.mainGraph) {
-        throw new Error('Document analysis did not produce requested main graph');
+        console.error('[graph] document analysis did not produce requested main graph', {
+          documentKey: params.documentKey,
+          revision: params.revision,
+        });
+        deps.clearErrorMessage();
+        deps.completeStreamProgress();
+        return null;
       }
       const finalDelta = projectionToRawGraphDelta(finalEvent.mainGraph);
       if (!finalDelta || !isRawGraphDelta(finalDelta)) {
@@ -518,14 +529,21 @@ export function createGraphRenderSession(deps: GraphRenderSessionDeps) {
         },
       params.freshness,
       );
+      if (params.freshness.isCurrent() && finalEvent.mainGraph.topologyBytes?.byteLength) {
+        await deps.onTopologyRendered?.(finalEvent.mainGraph.topologyBytes);
+      }
       markGraphStreamDone();
 
       return getSceneBridge().getLastRenderedGraph() ?? emptyRenderResult();
     }
 
-    deps.setErrorMessage('Document analysis failed. Fix the document or retry the graph.');
+    console.error('[graph] document analysis failed', {
+      documentKey: params.documentKey,
+      revision: params.revision,
+      diagnostics: params.analysis?.diagnostics,
+    });
+    deps.clearErrorMessage();
     markGraphStreamFinal('parse-failed', {
-      errorMessage: 'Document analysis failed. Fix the document or retry the graph.',
       failed: true,
     });
     deps.onStreamFinalAnalysis(
@@ -711,9 +729,9 @@ export function createGraphRenderSession(deps: GraphRenderSessionDeps) {
         operation: 'renderDocumentGraph',
         metadata: { documentKey: request.documentKey, revision: request.revision },
       });
-      deps.setErrorMessage(error instanceof Error ? error.message : String(error));
+      console.error('[graph] document render failed', error);
+      deps.clearErrorMessage();
       markGraphStreamFinal('exception', {
-        errorMessage: error instanceof Error ? error.message : String(error),
         failed: true,
       });
       deps.completeStreamProgress();
@@ -818,9 +836,9 @@ export function createGraphRenderSession(deps: GraphRenderSessionDeps) {
         operation: 'attachExternalDocumentJobSession',
         metadata: { documentKey: session.documentKey, revision: session.revision, sessionId: session.sessionId },
       });
-      deps.setErrorMessage(error instanceof Error ? error.message : String(error));
+      console.error('[graph] external document render failed', error);
+      deps.clearErrorMessage();
       markGraphStreamFinal('exception', {
-        errorMessage: error instanceof Error ? error.message : String(error),
         failed: true,
       });
       deps.completeStreamProgress();
@@ -948,9 +966,13 @@ export function createGraphRenderSession(deps: GraphRenderSessionDeps) {
         }
         markGraphStreamFinal('snapshot-ready');
       } else if (finalEvent?.type === 'parseFailed') {
-        deps.setErrorMessage('JSON block graph analysis failed');
+        console.error('[graph] JSON block graph analysis failed', {
+          documentKey: selection.blockDocumentKey,
+          revision: selection.revision,
+          diagnostics: result.analysis?.diagnostics,
+        });
+        deps.clearErrorMessage();
         markGraphStreamFinal('parse-failed', {
-          errorMessage: 'JSON block graph analysis failed',
           failed: true,
         });
       }
@@ -989,9 +1011,9 @@ export function createGraphRenderSession(deps: GraphRenderSessionDeps) {
         operation: 'renderJsonBlockSelection',
         metadata: { blockDocumentKey: selection.blockDocumentKey, revision: selection.revision },
       });
-      deps.setErrorMessage(error instanceof Error ? error.message : String(error));
+      console.error('[graph] JSON block render failed', error);
+      deps.clearErrorMessage();
       markGraphStreamFinal('exception', {
-        errorMessage: error instanceof Error ? error.message : String(error),
         failed: true,
       });
       deps.completeStreamProgress();

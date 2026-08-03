@@ -22,18 +22,24 @@
   export let language = ''
   export let text = ''
   export let shortcut = '⌘ F'
-  export let panelClass = 'absolute left-0 top-[calc(100%+8px)]'
+  export let panelClass = 'absolute right-0 top-[calc(100%+8px)]'
+  export let onOpenChange: (open: boolean) => void = () => {}
+  export let previewResultCallback: (result: GraphSearchResult) => void = () => {}
+  export let cancelCallback: () => void = () => {}
 
   let open = false
   let query = ''
-  let activeIndex = 0
+  let activeIndex = -1
   let results: GraphSearchResult[] = []
   let searchPanel: SearchPanel | null = null
   let panelRef: HTMLDivElement | null = null
+  let resultsList: HTMLDivElement | null = null
   let debounceHandle: ReturnType<typeof setTimeout> | null = null
   let searchToken = 0
   let lastSearchDependencySignature = ''
   let resolvedQuery = ''
+  let lastPreviewedResultKey = ''
+  let hasPreviewedResults = false
 
   const dispatch = createEventDispatcher()
 
@@ -43,17 +49,26 @@
    */
   export async function openPanel(): Promise<void> {
     open = true
-    activeIndex = 0
+    lastPreviewedResultKey = ''
+    hasPreviewedResults = false
+    onOpenChange(true)
+    activeIndex = results.length ? 0 : -1
+    previewResult(activeIndex)
     await tick()
-    searchPanel?.focusInput?.()
+  searchPanel?.focusInput()
   }
 
   /**
    * Close the search panel.
    * @returns void
    */
-  export function closePanel(): void {
+  export function closePanel(restorePreview = true): void {
+    if (restorePreview && open && hasPreviewedResults) {
+      cancelCallback()
+      dispatch('cancel')
+    }
     open = false
+    onOpenChange(false)
   }
 
   /**
@@ -62,10 +77,14 @@
    * @returns void
    */
   function setQuery(next: string): void {
+    // Invalidate an in-flight request immediately, not only when the next
+    // debounced request starts. A stale result must never replace this list.
+    searchToken += 1
     query = next
+    lastPreviewedResultKey = ''
     const trimmed = next.trim()
     resolvedQuery = trimmed ? '' : resolvedQuery
-    activeIndex = 0
+    activeIndex = -1
     results = []
     scheduleSearch(next)
   }
@@ -109,7 +128,8 @@
       if (token !== searchToken) return
       results = result.status === 'ready' ? result.data : []
       resolvedQuery = keyword
-      activeIndex = 0
+      activeIndex = results.length ? 0 : -1
+      previewResult(activeIndex)
     } catch {
       if (token !== searchToken) return
       results = []
@@ -122,9 +142,74 @@
    * @param item Selected result
    * @returns void
    */
+  function resultKey(item: GraphSearchResult): string {
+    return `${item.pathText}|${item.target}|${item.nodeId ?? 'unresolved'}|${item.label}`
+  }
+
+  function previewResult(index: number): void {
+    const item = results[index]
+    if (!item) return
+    const key = resultKey(item)
+    if (key === lastPreviewedResultKey) return
+    lastPreviewedResultKey = key
+    hasPreviewedResults = true
+    previewResultCallback(item)
+    dispatch('preview', item)
+  }
+
+  /**
+   * The single state transition for mouse and keyboard navigation. Both paths
+   * preview through the same graph-navigation callback; only keyboard asks the
+   * result list to follow the active option.
+   */
+  function activateResult(index: number, scrollIntoView = false): void {
+    if (!results[index]) return
+    activeIndex = index
+    previewResult(index)
+    if (scrollIntoView) void scrollActiveResultIntoView(index)
+  }
+
+  async function scrollActiveResultIntoView(index: number): Promise<void> {
+    await tick()
+    resultsList
+      ?.querySelector<HTMLElement>(`[data-graph-search-index="${index}"]`)
+      ?.scrollIntoView({ block: 'nearest' })
+  }
+
+  function moveActiveResult(offset: number): void {
+    if (!results.length) return
+    const nextIndex = (activeIndex + offset + results.length) % results.length
+    activateResult(nextIndex, true)
+  }
+
+  function handleSearchKeydown(event: KeyboardEvent): void {
+    if (event.key === 'ArrowDown') {
+      event.preventDefault()
+      moveActiveResult(1)
+      return
+    }
+    if (event.key === 'ArrowUp') {
+      event.preventDefault()
+      moveActiveResult(-1)
+      return
+    }
+    if (event.key === 'Enter') {
+      const item = results[activeIndex]
+      if (item && query.trim() === resolvedQuery) {
+        event.preventDefault()
+        selectResult(item)
+      }
+      return
+    }
+    if (event.key === 'Escape') {
+      event.preventDefault()
+      closePanel()
+    }
+  }
+
   function selectResult(item: GraphSearchResult): void {
     dispatch('select', item)
-    closePanel()
+    closePanel(false)
   }
 
   /**
@@ -171,7 +256,6 @@
     }
   }
 
-  $: if (activeIndex >= results.length) activeIndex = Math.max(0, results.length - 1)
 </script>
 
 <svelte:window on:keydown|capture={handleGlobalKey} on:pointerdown={handleDocumentPointerDown} />
@@ -186,61 +270,72 @@
   inputTestId="graph-search-input"
   {shortcut}
   panelClass={`${panelClass} z-40 w-[320px]`}
-  panelFrameClass="overflow-hidden rounded-[14px] border border-[var(--border-muted)] bg-white/95 shadow-[0_12px_32px_rgba(15,23,42,0.12)] backdrop-blur"
-  commandClassName="border-none bg-transparent px-2 pb-2 pt-1 shadow-none"
+  panelStyle="transform-origin: top right;"
   listClassName="graph-search-list"
-  emptyText="No results."
   showWhenClosed={false}
   inputInline={true}
-  inputClassName="h-9 rounded-none border-0 border-b border-[var(--border-muted)] bg-transparent px-3 text-[13px] shadow-none"
-  {activeIndex}
-  {results}
-  useVirtualList={false}
-  estimateSize={56}
-  itemAriaLabel={(item: GraphSearchResult) => `Graph search result ${item.pathText}`}
-  itemTestId={(item: GraphSearchResult) => `graph-search-result-${item.nodeId ?? 'unresolved'}-${item.pathText}`}
+  customResults={true}
   onInput={(event: any) => {
     const detail = event.detail as InputEvent
     setQuery((detail.target as HTMLInputElement).value)
   }}
-  onKeydown={(event: any) => {
-    const keyEvent = event.detail as KeyboardEvent
-    if (!open && keyEvent.key === 'Enter') {
-      void openPanel()
-      return
-    }
-    if (!open) return
-    if (keyEvent.key === 'ArrowDown') {
-      keyEvent.preventDefault()
-      activeIndex = Math.min(results.length - 1, activeIndex + 1)
-    }
-    if (keyEvent.key === 'ArrowUp') {
-      keyEvent.preventDefault()
-      activeIndex = Math.max(0, activeIndex - 1)
-    }
-    if (keyEvent.key === 'Enter') {
-      keyEvent.preventDefault()
-      if (query.trim() !== resolvedQuery) return
-      const item = results[activeIndex]
-      if (item) selectResult(item)
-    }
-    if (keyEvent.key === 'Escape') {
-      keyEvent.preventDefault()
-      closePanel()
-    }
-  }}
-  onItemHover={(index) => (activeIndex = index)}
-  onItemSelect={(index) => {
-    const item = results[index]
-    if (item) selectResult(item)
-  }}
+  onKeydown={(event: any) => handleSearchKeydown(event.detail as KeyboardEvent)}
 >
-  <svelte:fragment slot="item" let:item let:index>
-    <div class="flex min-w-0 flex-1 flex-col gap-1">
-      <span class="truncate text-[13px]">{item?.label}</span>
-      <div class="left-truncate text-[11px] text-[var(--text-muted)]">
-        <span class="left-truncate-content">{item?.pathText}</span>
-      </div>
+  <svelte:fragment slot="results">
+    <div
+      bind:this={resultsList}
+      id="graph-search-results"
+      class="graph-search-list max-h-[300px] overflow-y-auto p-1"
+      role="listbox"
+      aria-label="Graph search results"
+    >
+      {#if results.length}
+        {#each results as item, index (resultKey(item))}
+          <div
+            id={`graph-search-result-${index}`}
+            role="option"
+            tabindex="-1"
+            aria-label={`Graph search result ${item.pathText}`}
+            aria-selected={activeIndex === index}
+            data-graph-search-index={index}
+            data-testid={`graph-search-result-${item.nodeId ?? 'unresolved'}-${item.pathText}`}
+            class:graph-search-result--active={activeIndex === index}
+            class="graph-search-result flex h-[40px] w-full cursor-default select-none items-center gap-2 rounded-[8px] px-2.5 py-1.5 text-left text-[13px] outline-none"
+            on:mouseenter={() => activateResult(index)}
+            on:click={() => {
+              activateResult(index)
+              selectResult(item)
+            }}
+            on:keydown={(event) => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault()
+                activateResult(index)
+                selectResult(item)
+              }
+            }}
+          >
+            <div class="flex min-w-0 flex-1 flex-col gap-0">
+              <span class="truncate text-[13px] leading-[16px]">{item.label}</span>
+              <div class="left-truncate text-[11px] leading-[12px] text-[var(--text-muted)]">
+                <span class="left-truncate-content">{item.pathText}</span>
+              </div>
+            </div>
+          </div>
+        {/each}
+      {:else}
+        <div class="px-3 py-6 text-center text-[13px] text-[var(--text-muted)]">No results.</div>
+      {/if}
     </div>
   </svelte:fragment>
 </SearchPanel>
+
+<style>
+  .graph-search-result--active {
+    background-color: #eef2f7;
+    color: var(--text-primary);
+  }
+
+  .graph-search-result:not(.graph-search-result--active):hover {
+    background-color: #f7f9fc;
+  }
+</style>

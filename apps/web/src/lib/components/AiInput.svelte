@@ -97,14 +97,45 @@
       class="inline-flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-full bg-[#172033] text-white shadow-[0_1px_2px_rgba(15,23,42,0.24)] transition-[background-color,transform] hover:bg-[#0f172a] active:scale-95 disabled:cursor-not-allowed disabled:opacity-45"
       disabled={busy || !value.trim()}
     >
-      {#if busy}
-        <LoaderCircle size={14} strokeWidth={2} class="animate-spin" />
-      {:else}
-        <ArrowUp size={15} strokeWidth={2.2} />
-      {/if}
+      {#if busy}<LoaderCircle size={14} strokeWidth={2} class="animate-spin" />{:else}<ArrowUp size={15} strokeWidth={2.2} />{/if}
     </button>
-    <IconButton aria-label="Close AI input" title="Close" class="self-center" on:click={onClose} disabled={busy}>
-      <X size={12} />
-    </IconButton>
+    <IconButton aria-label="Close AI input" title="Close" class="self-center" on:click={onClose} disabled={busy}><X size={12} /></IconButton>
   </form>
 </div>
+
+<style>
+  [data-testid='ai-input-panel'] {
+    position: relative;
+    animation: editor-input-panel-enter 220ms cubic-bezier(.22, 1, .36, 1) both;
+  }
+
+  [data-testid='ai-input-panel']::after {
+    position: absolute;
+    top: -20px;
+    right: 15px;
+    width: 10px;
+    height: 10px;
+    border-right: 2px solid var(--accent);
+    border-bottom: 2px solid var(--accent);
+    content: '';
+    opacity: 0;
+    filter: drop-shadow(0 0 2px var(--accent));
+    transform: translateY(-10px) rotate(45deg) scale(.75);
+    animation: editor-input-panel-cue 900ms ease-out 3;
+  }
+
+  @keyframes editor-input-panel-enter {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  @keyframes editor-input-panel-cue {
+    0%, 100% { opacity: 0; transform: translateY(-10px) rotate(45deg) scale(.75); }
+    30% { opacity: 1; transform: translateY(-1px) rotate(45deg) scale(1.05); }
+    62% { opacity: .8; transform: translateY(4px) rotate(45deg) scale(1.12); }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    [data-testid='ai-input-panel'], [data-testid='ai-input-panel']::after { animation: none; }
+  }
+</style>

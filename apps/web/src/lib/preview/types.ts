@@ -10,5 +10,5 @@ export type PreviewContext = {
 
 export interface Previewer {
   detector: (context: PreviewContext) => Promise<boolean> | boolean;
-  generator: (context: PreviewContext) => Promise<string | string[]> | string | string[];
+  generator: (context: PreviewContext) => Promise<string | string[] | null> | string | string[] | null;
 }

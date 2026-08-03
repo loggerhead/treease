@@ -28,14 +28,13 @@ const DEFAULT_CONTENT_PADDING = 24;
 const CLICK_EPSILON = 3;
 
 const DEFAULT_COLORS: Required<MinimapColors> = {
-  background: 'rgba(255, 255, 255, 0.94)',
-  border: 'rgba(203, 213, 225, 0.95)',
-  node: 'rgba(148, 163, 184, 0.56)',
-  tableNode: 'rgba(14, 165, 233, 0.5)',
-  scalarNode: 'rgba(139, 92, 246, 0.48)',
-  edge: 'rgba(100, 116, 139, 0.32)',
-  viewportFill: 'rgba(14, 165, 233, 0.13)',
-  viewportStroke: 'rgba(2, 132, 199, 0.9)',
+  background: 'rgba(253, 252, 249, 0.98)',
+  node: 'rgba(104, 113, 129, 0.54)',
+  tableNode: 'rgba(49, 92, 148, 0.50)',
+  scalarNode: 'rgba(164, 70, 67, 0.43)',
+  edge: 'rgba(104, 113, 129, 0.24)',
+  viewportFill: 'rgba(49, 92, 148, 0.14)',
+  viewportStroke: 'rgba(49, 92, 148, 0.88)',
 };
 
 type EventHandler = (event?: unknown) => void;
@@ -78,6 +77,7 @@ export class LeaferMinimapPlugin implements LeaferMinimapPluginHandle {
   private readonly edgeLayer: MinimapBoxLike;
   private readonly nodeLayer: MinimapBoxLike;
   private readonly viewportBox: MinimapBoxLike;
+  private readonly viewportBorderLayer: MinimapBoxLike;
   private readonly cleanups: Array<() => void> = [];
   private isFixedLayerMount = false;
   private contentBounds: MinimapBounds = { x: 0, y: 0, width: 1, height: 1 };
@@ -118,9 +118,6 @@ export class LeaferMinimapPlugin implements LeaferMinimapPluginHandle {
       width: this.width,
       height: this.height,
       fill: this.colors.background,
-      stroke: this.colors.border,
-      strokeWidth: 1,
-      strokeAlign: 'inside',
       cornerRadius: 14,
       opacity: 1,
       hittable: true,
@@ -143,10 +140,21 @@ export class LeaferMinimapPlugin implements LeaferMinimapPluginHandle {
       hitChildren: false,
     });
 
+    this.viewportBorderLayer = new BoxCtor({
+      x: 0,
+      y: 0,
+      width: this.width,
+      height: this.height,
+      fill: 'transparent',
+      hittable: false,
+      hitChildren: false,
+    });
+
     this.rootBox.add?.(this.backgroundBox);
     this.rootBox.add?.(this.edgeLayer);
     this.rootBox.add?.(this.nodeLayer);
     this.rootBox.add?.(this.viewportBox);
+    this.rootBox.add?.(this.viewportBorderLayer);
 
     this.mount();
     this.bindEvents();
@@ -301,6 +309,7 @@ export class LeaferMinimapPlugin implements LeaferMinimapPluginHandle {
   private applyViewportUpdate(): void {
     if (this.destroyed) return;
     this.updateLayout();
+    this.viewportBorderLayer.removeAll?.(true);
     const viewData = this.options.getViewData();
     const viewBounds = getViewportWorldBounds(this.container, this.app.zoomLayer);
     if (!viewData || viewData.nodes.length === 0 || !viewBounds) {
@@ -314,12 +323,55 @@ export class LeaferMinimapPlugin implements LeaferMinimapPluginHandle {
       return;
     }
     this.setVisible(true);
-    const minimapRect = this.clampRectToPanel(worldToMinimapRect(viewBounds, this.transform));
-    this.viewportBox.visible = true;
+    const viewportRect = worldToMinimapRect(viewBounds, this.transform);
+    const minimapRect = this.clampRectToPanel(viewportRect);
+    const isClipped =
+      viewportRect.x < 0 ||
+      viewportRect.y < 0 ||
+      viewportRect.x + viewportRect.width > this.width ||
+      viewportRect.y + viewportRect.height > this.height;
+    this.viewportBox.visible = minimapRect.width > 0 && minimapRect.height > 0;
+    this.viewportBox.stroke = isClipped ? 'transparent' : this.colors.viewportStroke;
+    this.viewportBox.strokeWidth = isClipped ? 0 : 1;
+    this.viewportBox.cornerRadius = isClipped ? 0 : 4;
     this.viewportBox.x = minimapRect.x;
     this.viewportBox.y = minimapRect.y;
     this.viewportBox.width = minimapRect.width;
     this.viewportBox.height = minimapRect.height;
+    if (isClipped && this.viewportBox.visible) {
+      this.renderClippedViewportBorder(viewportRect, minimapRect);
+    }
+  }
+
+  private renderClippedViewportBorder(original: MinimapBounds, clipped: MinimapBounds): void {
+    const { BoxCtor } = this.options.constructors;
+    const borderWidth = 1;
+    const originalRight = original.x + original.width;
+    const originalBottom = original.y + original.height;
+    const addSegment = (x: number, y: number, width: number, height: number): void => {
+      if (width <= 0 || height <= 0) return;
+      this.viewportBorderLayer.add?.(new BoxCtor({
+        x,
+        y,
+        width,
+        height,
+        fill: this.colors.viewportStroke,
+        hittable: false,
+        hitChildren: false,
+      }));
+    };
+
+    // Only draw an edge when its original coordinate is still inside the panel.
+    // The clipped fill remains draggable, but an out-of-bounds left/top edge must
+    // not be redrawn at x/y = 0, which would make the viewport look smaller.
+    if (original.x >= 0) addSegment(clipped.x, clipped.y, borderWidth, clipped.height);
+    if (originalRight <= this.width) {
+      addSegment(clipped.x + clipped.width - borderWidth, clipped.y, borderWidth, clipped.height);
+    }
+    if (original.y >= 0) addSegment(clipped.x, clipped.y, clipped.width, borderWidth);
+    if (originalBottom <= this.height) {
+      addSegment(clipped.x, clipped.y + clipped.height - borderWidth, clipped.width, borderWidth);
+    }
   }
 
   private renderNodes(nodes: MinimapNode[]): void {

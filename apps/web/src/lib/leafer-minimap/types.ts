@@ -44,7 +44,6 @@ export type MinimapEventNames = {
 
 export type MinimapColors = {
   background?: string;
-  border?: string;
   node?: string;
   tableNode?: string;
   scalarNode?: string;

@@ -506,6 +506,10 @@ pub struct ProjectionRequest {
 pub struct ProjectionDelta {
     pub clear: bool,
     pub graph_data: Option<GraphDelta>,
+    /// Versioned canonical topology bytes for a completed full graph projection.
+    #[serde(default, rename = "topologyBytes")]
+    #[cfg_attr(feature = "wasm", tsify(type = "Uint8Array"))]
+    pub topology_bytes: Vec<u8>,
     /// Monotonically-increasing patch sequence number within this job.
     #[serde(default)]
     pub patch_seq: u64,

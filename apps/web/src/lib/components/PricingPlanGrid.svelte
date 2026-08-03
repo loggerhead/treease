@@ -9,7 +9,9 @@
 
 <script lang="ts">
   import NumberFlow from '@number-flow/svelte';
+  import { onMount } from 'svelte';
   import { Info } from 'lucide-svelte';
+  import Tooltip from './Tooltip.svelte';
   import {
     fixedYearlySavingsPercent,
     pricingConfig,
@@ -39,6 +41,11 @@
   let displayedPlans: PricingPlan[] = [];
   let hasBillingTabs = false;
   let selectedBillingPriceId: BillingPriceId = 'monthly';
+  let numberFlowReady = false;
+
+  onMount(() => {
+    numberFlowReady = true;
+  });
 
   $: visiblePlans = visiblePlanIds
     ? pricingConfig.plans.filter((plan) => visiblePlanIds!.includes(plan.id))
@@ -126,7 +133,11 @@
         <div class="pricing-plan-card__price">
           <strong aria-label={plan.price ?? ''}>
             {#if priceAmount !== null}
-              <NumberFlow value={priceAmount} format={{ style: 'currency', currency: 'USD', minimumFractionDigits: 2 }} />
+              {#if numberFlowReady}
+                <NumberFlow value={priceAmount} format={{ style: 'currency', currency: 'USD', minimumFractionDigits: 2 }} />
+              {:else}
+                {plan.price}
+              {/if}
             {:else}
               {plan.price}
             {/if}
@@ -137,9 +148,15 @@
         {#if plan.billingPriceId}
           {@const label = actionLabel?.(plan) ?? plan.ctaLabel}
           {@const tooltip = actionTooltip?.(plan)}
-          <span class="pricing-plan-card__cta-wrap" data-tooltip={tooltip ?? undefined}>
-            <button type="button" class="pricing-plan-card__cta" disabled={actionDisabled?.(plan) ?? false} on:click={() => onSelectPlan?.(plan.billingPriceId!)}>{label}</button>
-          </span>
+          {#if tooltip}
+            <Tooltip content={tooltip} side="top"><span class="pricing-plan-card__cta-wrap">
+              <button type="button" class="pricing-plan-card__cta" disabled={actionDisabled?.(plan) ?? false} on:click={() => onSelectPlan?.(plan.billingPriceId!)}>{label}</button>
+            </span></Tooltip>
+          {:else}
+            <span class="pricing-plan-card__cta-wrap">
+              <button type="button" class="pricing-plan-card__cta" disabled={actionDisabled?.(plan) ?? false} on:click={() => onSelectPlan?.(plan.billingPriceId!)}>{label}</button>
+            </span>
+          {/if}
         {:else}
           <a class="pricing-plan-card__cta" href={plan.ctaHref}>{plan.ctaLabel}</a>
         {/if}
@@ -149,9 +166,9 @@
             <li class:pricing-plan-card__feature--without-check={feature.showCheck === false}>
               {prefix}{#if emphasis}<mark>{emphasis}</mark>{/if}{suffix}
               {#if feature.info}
-                <span class="pricing-plan-card__feature-info" role="img" aria-label={feature.info} title={feature.info}>
-                  <Info size={12} strokeWidth={2.1} />
-                </span>
+                <Tooltip content={feature.info} side="right" className="pricing-plan-card__feature-info">
+                  <span aria-hidden="true"><Info size={12} strokeWidth={2.1} /></span>
+                </Tooltip>
               {/if}
             </li>
           {/each}
@@ -200,9 +217,9 @@
   li { position: relative; padding-left: 24px; color: var(--muted, #536273); font-size: 14px; line-height: 1.45; }
   li::before { position: absolute; left: 0; color: var(--accent-strong, #1745b5); content: '✓'; font-weight: 900; }
   .pricing-plan-card__feature--without-check::before { content: none; }
-  .pricing-plan-card__feature-info { display: inline-flex; margin-left: 4px; color: currentColor; cursor: help; opacity: .62; vertical-align: -2px; transition: opacity 140ms ease; }
-  .pricing-plan-card__feature-info:hover { opacity: 1; }
-  .pricing-plan-card--featured .pricing-plan-card__feature-info { color: #93c5fd; }
+  :global(.pricing-plan-card__feature-info) { display: inline-flex; margin-left: 4px; color: currentColor; cursor: help; opacity: .62; vertical-align: -2px; transition: opacity 140ms ease; }
+  :global(.pricing-plan-card__feature-info:hover) { opacity: 1; }
+  .pricing-plan-card--featured :global(.pricing-plan-card__feature-info) { color: #93c5fd; }
   mark { padding: 1px 3px; border-radius: 3px; color: var(--accent-strong, #1745b5); background: rgba(45,99,226,.12); font-weight: 700; }
   .pricing-plan-card--free mark { color: inherit; background: transparent; font-weight: inherit; }
   .pricing-plan-card--featured li { color: rgba(226,232,240,.88); }

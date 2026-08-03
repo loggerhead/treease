@@ -65,7 +65,18 @@
   export let pricingActionLabel: (plan: PricingPlan) => string = (plan) => plan.ctaLabel
   export let onEntitlementBlocked: (block: UsageBlock) => void = () => {}
   export let onFileDrop: (event: DragEvent) => void | Promise<void> = () => {}
+  export let onRequestImportFile: (payload: { sourceFormat: string; targetFormat: string; accept: string[] }) => void | Promise<void> = () => {}
+  export let onLoadExample: (example: string, language: SupportedEditorLanguageId) => void | Promise<void> = () => {}
   export let ensureSharedWorkspacePromoted: (target: SharedWorkspaceMutationTarget) => Promise<boolean> = async () => true
+  export let hideGraphToolbar = false
+
+  type GraphSearchResult = {
+    nodeId?: number
+    target: 'node' | 'key' | 'value'
+    label: string
+    path: PathSeg[]
+    pathText: string
+  }
 
   type DiffResponse = {
     mode: 'tree' | 'text'
@@ -347,9 +358,59 @@
     await runDiffCompare()
   }
 
-  function handleGraphSearchSelect(event: CustomEvent<any>): void {
-    graphViewer?.revealSearchResult?.(event.detail)
+  export function openGraphSearch(): void {
+    graphSearchInput?.openPanel?.()
+  }
+
+  export function openCompareFile(): void {
+    openRightPanelFilePicker()
+  }
+
+  export function swapCompareEditors(): void {
+    void onSwap({ rightText: getActiveText(), rightLanguage: getActiveLanguage() })
+  }
+
+  export async function compareEditors(): Promise<void> {
+    await runDiffCompare()
+  }
+
+  export function zoomGraphIn(): void {
+    graphViewer?.zoomIn?.()
+  }
+
+  export function zoomGraphOut(): void {
+    graphViewer?.zoomOut?.()
+  }
+
+  export async function exportGraphImage(): Promise<void> {
+    await graphViewer?.exportImage?.()
+  }
+
+  export function previewGraphSearchResult(result: any): void {
+    graphViewer?.previewSearchResult?.(result)
+  }
+
+  export function cancelGraphSearchPreview(): Promise<void> {
+    return graphViewer?.cancelSearchPreview?.() ?? Promise.resolve()
+  }
+
+  export function revealGraphSearchResult(result: any): void {
+    graphViewer?.commitSearchPreview?.()
+    graphViewer?.revealSearchResult?.(result)
     trackEvent('graph_search', { surface: 'graph', result_count: 1 })
+  }
+
+  function handleGraphSearchPreview(result: GraphSearchResult): void {
+    graphViewer?.previewSearchResult?.(result)
+  }
+
+  function handleGraphSearchCancel(): void {
+    void graphViewer?.cancelSearchPreview?.()
+  }
+
+  function handleGraphSearchSelect(event: CustomEvent<GraphSearchResult>): void {
+    graphViewer?.commitSearchPreview?.()
+    revealGraphSearchResult(event.detail)
   }
 
   function handleGraphReveal(event: CustomEvent<any>): void {
@@ -388,6 +449,18 @@
 
   export async function restoreColumnNavigatorPath(path: PathSeg[]): Promise<boolean> {
     return await graphViewer?.restoreColumnNavigatorPath?.(path) ?? false;
+  }
+
+  export function collapseColumnNavigator(): void {
+    graphViewer?.collapseColumnNavigator?.();
+  }
+
+  export function expandColumnNavigator(): void {
+    graphViewer?.expandColumnNavigator?.();
+  }
+
+  export function pinColumnNavigatorCollapsed(): void {
+    graphViewer?.pinColumnNavigatorCollapsed?.();
   }
 
   export async function goColumnNavigatorBack(): Promise<void> {
@@ -444,6 +517,7 @@
       on:change={handleRightPanelFileChange}
     />
   {/if}
+  {#if !hideGraphToolbar}
   <div class="absolute right-3 top-2.5 z-[2] inline-flex flex-col items-end gap-2.5">
     {#if effectiveViewMode === 'graph' && (!synchronizedRuntimeLoading || graphOnly)}
       <ButtonGroup.Root
@@ -467,6 +541,8 @@
             language={languageIdValue}
             text={$sourceText}
             panelClass="absolute right-0 top-[calc(100%+8px)]"
+            previewResultCallback={handleGraphSearchPreview}
+            cancelCallback={handleGraphSearchCancel}
             on:select={handleGraphSearchSelect}
           />
         </div>
@@ -521,8 +597,8 @@
         </IconButton>
         <IconButton
           class="text-[var(--text-primary)]"
-          aria-label="Compare"
-          title="Compare"
+          aria-label="Run comparison"
+          title="Run comparison"
           on:click={runDiffCompare}
         >
           <GitCompareArrows size={12} />
@@ -530,6 +606,7 @@
       </ButtonGroup.Root>
     {/if}
   </div>
+  {/if}
 
   {#if effectiveViewMode === 'graph' && visibleGraphDiagnostics.length}
     <div class="pointer-events-auto absolute left-3 right-[140px] top-4 z-[1] flex flex-col gap-2.5">
@@ -574,11 +651,13 @@
       <SidecarEditor
         bind:this={sidecarEditor}
         language={languageIdValue}
+        placeholderTitle="Enter content to compare"
         onScroll={onTextScroll}
         onContentChange={(text) => {
           updateScratchText(text)
           invalidateCompare()
         }}
+        onRequestImportFile={() => openRightPanelFilePicker()}
       />
     </div>
   {/if}
@@ -592,9 +671,12 @@
     <GraphViewer
       bind:this={graphViewer}
       {enableRevealSync}
+      active={graphOnly || effectiveViewMode === 'graph'}
       {synchronizedRuntimeLoading}
       readonly={readonlyGraph}
       {onFileDrop}
+      {onRequestImportFile}
+      {onLoadExample}
       onEntitlementBlocked={handleEntitlementBlocked}
       {ensureSharedWorkspacePromoted}
       on:reveal={handleGraphReveal}

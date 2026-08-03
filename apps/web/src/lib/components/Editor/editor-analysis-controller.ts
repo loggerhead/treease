@@ -278,7 +278,10 @@ export function createEditorAnalysisController(options: CreateEditorAnalysisCont
     options.updateActiveTempModel((current) => ({ ...current, diagnostics: [], error: '' }));
   }
 
-  async function updateTreePath(position: Monaco.IPosition | null, state?: { syncGraphHighlight?: boolean }): Promise<void> {
+  async function updateTreePath(
+    position: Monaco.IPosition | null,
+    state?: { syncGraphHighlight?: boolean },
+  ): Promise<void> {
     if (!position) return;
     if (options.isImportActive()) return;
     const syncGraphHighlight = state?.syncGraphHighlight ?? false;

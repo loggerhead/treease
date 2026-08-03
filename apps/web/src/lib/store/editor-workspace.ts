@@ -9,6 +9,9 @@ import type { DocumentOrigin } from '../document-origin';
 export type EditorPaneId = 'left' | 'right';
 export type EditorWorkspaceTabRole = 'primary' | 'sidecar' | 'background';
 
+/** Remote persistence state; intentionally independent of local dirty state. */
+export type CloudSyncStatus = 'synced' | 'syncing' | 'pending' | 'error' | 'offline';
+
 /** Opaque host-owned reference to a user-selected local file. */
 export type FileLinkedDocument = {
   grantId: string;
@@ -30,6 +33,7 @@ export type EditorWorkspaceTab = {
   fullEditUiState: FullEditUiState;
   fileLinkedDocument?: FileLinkedDocument;
   savedText?: string;
+  syncStatus?: CloudSyncStatus;
 };
 
 export type EditorWorkspaceState = {
@@ -47,7 +51,13 @@ export type WorkspaceSnapshotBinding = {
   snapshotId: SnapshotId;
 };
 
-export type EditorWorkspaceTabSummary = { id: string; name: string; languageId: SupportedEditorLanguageId; dirty: boolean };
+export type EditorWorkspaceTabSummary = {
+  id: string;
+  name: string;
+  languageId: SupportedEditorLanguageId;
+  dirty: boolean;
+  syncStatus?: CloudSyncStatus;
+};
 
 export type WorkspaceEditorTabInput = {
   id: string;
@@ -63,6 +73,7 @@ export type WorkspaceEditorTabInput = {
   fullEditUiState?: FullEditUiState;
   fileLinkedDocument?: FileLinkedDocument;
   savedText?: string;
+  syncStatus?: CloudSyncStatus;
 };
 
 export type TabTopologyEffect =
@@ -87,6 +98,7 @@ export type EditorWorkspaceTabPatch = {
   fullEditUiState?: FullEditUiState;
   fileLinkedDocument?: FileLinkedDocument;
   savedText?: string;
+  syncStatus?: CloudSyncStatus;
 };
 
 /**
@@ -229,6 +241,7 @@ function createEditorTabFromInput(
         : createInactiveFullEditUiState(),
     fileLinkedDocument: input.fileLinkedDocument ?? existing?.fileLinkedDocument,
     savedText: input.savedText ?? existing?.savedText,
+    syncStatus: input.syncStatus ?? existing?.syncStatus,
   };
 }
 
@@ -449,7 +462,13 @@ export function summarizeWorkspaceTabs(workspace: EditorWorkspaceState): EditorW
   return workspace.tabOrder
     .map((tabId) => workspace.tabsById[tabId])
     .filter((tab): tab is EditorWorkspaceTab => Boolean(tab && tab.role !== 'sidecar'))
-    .map((tab) => ({ id: tab.id, name: tab.name, languageId: tab.languageId, dirty: isWorkspaceTabDirty(tab) }));
+    .map((tab) => ({
+      id: tab.id,
+      name: tab.name,
+      languageId: tab.languageId,
+      dirty: isWorkspaceTabDirty(tab),
+      ...(tab.syncStatus ? { syncStatus: tab.syncStatus } : {}),
+    }));
 }
 
 export function isWorkspaceTabDirty(tab: EditorWorkspaceTab): boolean {
@@ -585,6 +604,7 @@ export function updateWorkspaceTab(
     fullEditUiState: nextFullEditUiState,
     fileLinkedDocument: patch.fileLinkedDocument ?? current.fileLinkedDocument,
     savedText: patch.savedText ?? current.savedText,
+    syncStatus: patch.syncStatus ?? current.syncStatus,
   };
   return {
     ...workspace,

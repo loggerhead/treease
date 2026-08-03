@@ -12,7 +12,19 @@ export type SplitLayoutConfig = {
   minPaneWidthPx: number;
   dividerWidthPx: number;
   collapsedControlInsetPx: number;
+  collapsedPaneWidthPx: number;
 };
+
+type SplitLayoutDragRect = Pick<DOMRect, 'left' | 'width'>;
+
+export type SplitLayoutDragUpdate = {
+  state: SplitLayoutState;
+  offsetX: number;
+  containerWidth: number;
+  collapseSide: SplitLayoutCollapseSide | null;
+};
+
+export type SplitLayoutCollapseSide = 'left' | 'right';
 
 export function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
@@ -72,6 +84,60 @@ export function expandSplit(state: SplitLayoutState, containerWidth: number, con
   };
 }
 
+export function resizeSplit(
+  state: SplitLayoutState,
+  nextRatio: number,
+  containerWidth: number,
+  config: SplitLayoutConfig,
+): SplitLayoutState {
+  const nextLeftWidthPx = nextRatio * containerWidth;
+  const collapseThresholdPx = config.minPaneWidthPx / 2;
+  if (nextLeftWidthPx < collapseThresholdPx) return collapseEditor(state);
+  if (containerWidth - nextLeftWidthPx < collapseThresholdPx) return collapseViewer(state);
+
+  return syncSplitRatio(
+    { ...state, layoutMode: 'split', splitRatio: nextRatio },
+    containerWidth,
+    config,
+  );
+}
+
+export function createSplitLayoutDragController(config: SplitLayoutConfig) {
+  let dragRect: SplitLayoutDragRect | null = null;
+
+  function update(state: SplitLayoutState, clientX: number): SplitLayoutDragUpdate | null {
+    if (!dragRect?.width) return null;
+    const offsetX = clamp(clientX - dragRect.left, 0, dragRect.width);
+    const collapseThresholdPx = config.minPaneWidthPx / 2;
+    const collapseHintLimitPx = config.minPaneWidthPx * 1.5;
+    const rightWidthPx = dragRect.width - offsetX;
+    const collapseSide = dragRect.width > config.minPaneWidthPx * 2
+      && offsetX > collapseThresholdPx
+      && offsetX < collapseHintLimitPx
+      ? 'left'
+      : rightWidthPx > collapseThresholdPx && rightWidthPx < collapseHintLimitPx
+        ? 'right'
+        : null;
+    return {
+      state: resizeSplit(state, offsetX / dragRect.width, dragRect.width, config),
+      offsetX,
+      containerWidth: dragRect.width,
+      collapseSide,
+    };
+  }
+
+  return {
+    start(state: SplitLayoutState, clientX: number, rect: SplitLayoutDragRect): SplitLayoutDragUpdate | null {
+      dragRect = rect;
+      return update(state, clientX);
+    },
+    move: update,
+    end(): void {
+      dragRect = null;
+    },
+  };
+}
+
 export function syncSplitRatio(state: SplitLayoutState, containerWidth: number, config: SplitLayoutConfig): SplitLayoutState {
   const splitRatio = getClampedSplitRatio(state.splitRatio, containerWidth, config.minPaneWidthPx);
   return {
@@ -82,21 +148,25 @@ export function syncSplitRatio(state: SplitLayoutState, containerWidth: number, 
 }
 
 export function computePaneWidths(state: SplitLayoutState, containerWidth: number, config: SplitLayoutConfig) {
+  // A collapsed pane has no reserved visual rail; the configured width only positions its expand control.
+  const collapsedPaneWidthPx = Math.min(config.collapsedPaneWidthPx, Math.max(Math.floor(containerWidth / 2), 0));
+
   if (state.layoutMode === 'left-only') {
+    const leftPaneWidthPx = Math.max(containerWidth, 0);
     return {
-      leftPaneWidthPx: containerWidth,
+      leftPaneWidthPx,
       rightPaneWidthPx: 0,
-      splitterLeftPx: Math.max(containerWidth - config.dividerWidthPx, 0),
-      splitterControlLeftPx: Math.max(containerWidth - config.collapsedControlInsetPx, 0),
+      splitterLeftPx: Math.max(leftPaneWidthPx - config.dividerWidthPx, 0),
+      splitterControlLeftPx: Math.max(leftPaneWidthPx - collapsedPaneWidthPx / 2, 0),
     };
   }
 
   if (state.layoutMode === 'right-only') {
     return {
       leftPaneWidthPx: 0,
-      rightPaneWidthPx: containerWidth,
+      rightPaneWidthPx: Math.max(containerWidth, 0),
       splitterLeftPx: 0,
-      splitterControlLeftPx: config.collapsedControlInsetPx,
+      splitterControlLeftPx: collapsedPaneWidthPx / 2,
     };
   }
 

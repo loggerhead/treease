@@ -31,6 +31,7 @@ export type WorkspaceSession = {
     origin?: 'example' | 'user' | 'import';
     savedText?: string;
     linkedFileName?: string;
+    syncStatus?: 'synced' | 'syncing' | 'pending' | 'error' | 'offline';
   }>;
 };
 

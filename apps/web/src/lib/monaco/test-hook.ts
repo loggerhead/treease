@@ -10,6 +10,7 @@ type TestHookEditor = {
   revealPositionInCenter?: (position: { lineNumber: number; column: number }) => void;
   getScrollTop?: () => number;
   getScrollLeft?: () => number;
+  getVisibleStartLine?: () => number;
   setScrollPosition?: (position: { scrollTop: number; scrollLeft: number }) => void;
   executeEdits?: (source: string, edits: Array<{ range: unknown; text: string; forceMoveMarkers?: boolean }>) => void;
   onDidChangeModel?: (listener: () => void) => { dispose: () => void };
@@ -125,6 +126,7 @@ export function attachMonacoTestHook(editor: TestHookEditor, hookId: string, tok
       scrollTop: editor.getScrollTop?.() ?? 0,
       scrollLeft: editor.getScrollLeft?.() ?? 0,
     }),
+    getVisibleStartLine: () => editor.getVisibleStartLine?.() ?? 1,
     setScroll: (scrollTop: number, scrollLeft = 0) => {
       editor.setScrollPosition?.({ scrollTop, scrollLeft });
       editor.focus?.();
