@@ -1,6 +1,5 @@
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb';
 import {
-  claimUsageEvents,
   recordUsageEvent,
   TreeaseServerError,
   type RecordedUsageCapability,
@@ -106,16 +105,6 @@ async function flushUsageEventsInternal(): Promise<void> {
   if (isUsageCoolingDown()) return;
   const db = await getDb();
   const events = await db.getAllFromIndex('events', 'by-status', 'pending');
-  const clientIds = [...new Set(events.map((event) => event.clientId))];
-  for (const clientId of clientIds) {
-    if (isUsageCoolingDown()) return;
-    try {
-      await claimUsageEvents(clientId);
-    } catch (error) {
-      if (error instanceof TreeaseServerError && error.status === 429) return;
-      // A failed claim must not prevent the event queue from retrying later.
-    }
-  }
   for (const event of events) {
     if (isUsageCoolingDown()) return;
     try {

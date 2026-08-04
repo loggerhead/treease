@@ -4,7 +4,6 @@ import {
   billingCheckoutLinkSchema,
   billingPortalLinkSchema,
   billingPricingPrewarmResponseSchema,
-  claimUsageResponseSchema,
   currentSubscriptionSchema,
   errorResponseSchema,
   feedbackResponseSchema,
@@ -281,7 +280,8 @@ export async function getCurrentSubscription(): Promise<CurrentSubscription> {
 export async function getAccountSummary(): Promise<AccountSummary> {
   const token = await getAccessToken();
   if (!token) throw new BillingAuthenticationRequiredError();
-  const response = await fetch(`${apiOrigin}/v1/account`, {
+  const clientId = await getUsageClientId();
+  const response = await fetch(`${apiOrigin}/v1/account?clientId=${encodeURIComponent(clientId)}`, {
     headers: { authorization: `Bearer ${token}` },
   });
   if (!response.ok) throw await readError(response);
@@ -346,19 +346,6 @@ export async function recordUsageEvent(input: {
     body: JSON.stringify(input),
   });
   return readUsageResponse(response, usageSummarySchema);
-}
-
-export async function claimUsageEvents(clientId: string): Promise<number> {
-  throwIfUsageCoolingDown();
-  const token = await getAccessToken();
-  if (!token) return 0;
-  const response = await fetch(`${apiOrigin}/v1/usage/claim`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
-    body: JSON.stringify({ clientId }),
-  });
-  const body = await readJsonResponse(response, claimUsageResponseSchema);
-  return body.claimed;
 }
 
 export type PublicShare = {

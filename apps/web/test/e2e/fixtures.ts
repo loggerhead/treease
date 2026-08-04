@@ -56,7 +56,6 @@ export const test = base.extend<{ _browserErrorCheck: void }>({
     };
     await page.route('**/v1/usage?**', fulfillUsageSummary);
     await page.route('**/v1/usage/events', fulfillUsageSummary);
-    await page.route('**/v1/usage/claim', fulfillUsageSummary);
     const browserErrors: string[] = [];
     const onPageError = (error: Error | unknown) => {
       browserErrors.push(`[pageerror] ${collectPageError(error)}`);

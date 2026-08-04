@@ -194,8 +194,6 @@ export const recordedUsageSchema = z.object({
   metadata: z.record(z.string(), z.unknown()).default({}),
 }).strict();
 export const clientQuerySchema = z.object({ clientId: z.string().min(1).max(512).optional() });
-export const claimSchema = z.object({ clientId: z.string().min(1).max(512) }).strict();
-export const claimUsageResponseSchema = z.object({ claimed: z.number().int().nonnegative(), requestId: z.string().min(1).optional() }).strip();
 
 export const feedbackSubmissionSchema = z.object({
   category: z.enum(['bug', 'feature', 'question']),
