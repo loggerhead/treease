@@ -124,7 +124,7 @@
   shortcut="⌘ K"
   panelClass={compact
     ? 'fixed z-[10000] max-h-[calc(100dvh-40px)] w-[280px]'
-    : 'absolute left-0 bottom-[calc(100%+8px)] z-40 max-h-[calc(100dvh-var(--bottombar-height)-8px)] w-[280px]'}
+    : 'absolute left-0 bottom-[calc(100%+8px)] z-40 max-h-[calc(100dvh-42px-8px)] w-[280px]'}
   panelStyle={compact ? compactPanelStyle : ''}
   portalPanel={compact}
   listClassName="command-search-list"

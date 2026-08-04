@@ -11,6 +11,7 @@ export type NavigationTarget = Readonly<{
 
 export type NavigationPath = readonly PathSeg[];
 export type GraphCellTarget = 'key' | 'value' | 'node';
+export type NavigationOrigin = 'editor' | 'graph' | 'navigator' | 'search';
 
 export type NavigationResult =
   | { kind: 'applied' }
@@ -41,6 +42,7 @@ export type NavigationCommand = Readonly<{
   transaction: NavigationTransaction;
   path: NavigationPath;
   cellTarget: GraphCellTarget;
+  origin: NavigationOrigin;
 }>;
 
 /** Focus follows the entity that originated navigation; linked editor reveals must not steal it. */

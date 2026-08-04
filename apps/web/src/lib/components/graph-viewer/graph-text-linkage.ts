@@ -92,7 +92,6 @@ export function createGraphTextLinkageController(
   deps: GraphTextLinkageControllerDeps,
 ) {
   let revealPathToken = 0;
-  let revealToken = 0;
   let activeHighlightState: {
     path: PathSeg[];
     target?: GraphHighlightTarget;

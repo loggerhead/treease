@@ -249,8 +249,13 @@
 
   function handleEditorPointerDownCapture(): void {
     if (!unfocusedExternalRevealSelection || !editor) return;
-    if (editor.hasTextFocus()) return;
     editor.focus();
+    const position = editor.getPosition();
+    if (position && monaco) {
+      editor.setSelection(new monaco.Selection(position.lineNumber, position.column, position.lineNumber, position.column));
+      activeTempModel.update((current) => ({ ...current, selectionLength: 0 }));
+      queueMicrotask(() => activeTempModel.update((current) => ({ ...current, selectionLength: 0 })));
+    }
   }
 
   const getNestEnabled = () => $settings.parser.enableNest;
@@ -764,13 +769,11 @@
       userSelectionGesture = true;
       if (!unfocusedExternalRevealSelection || !editor || !model || !monaco) return;
       unfocusedExternalRevealSelection = false;
-      const position = event.target.position;
+      const position = event.target.position ?? editor.getPosition();
       if (!position) return;
-      queueMicrotask(() => {
-        if (!editor || !model || !monaco) return;
-        editor.setSelection(new monaco.Selection(position.lineNumber, position.column, position.lineNumber, position.column));
-        editor.setPosition(position);
-      });
+      if (!model || !monaco) return;
+      editor.setSelection(new monaco.Selection(position.lineNumber, position.column, position.lineNumber, position.column));
+      editor.setPosition(position);
     });
 
     editor.onDidChangeModelContent((event) => {

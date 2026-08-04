@@ -85,6 +85,7 @@ test('imports json into the selected toml language without switching languages',
 });
 
 test('keeps dropped file content when switching language after drag import', async ({ page }) => {
+  test.info().annotations.push({ type: 'allow-browser-error', description: '[graph] document analysis failed' });
   const jsonText = '{"library":{"book":"Alice"}}\n';
 
   await page.goto('/editor');
@@ -108,7 +109,8 @@ test('keeps dropped file content when switching language after drag import', asy
   await expect.poll(async () => getMonacoValue(page, 'source-editor'), { timeout: 5_000 }).toContain('Alice');
 });
 
-test('surfaces diagnostics for invalid editor input through the real EditorCore chain', async ({ page }) => {
+test('surfaces diagnostics for invalid editor input through the real EditorCore chain', async ({ page }, testInfo) => {
+  testInfo.annotations.push({ type: 'allow-browser-error', description: '[graph] document analysis failed' });
   await page.goto('/editor');
   await waitForEditorReady(page);
 

@@ -99,6 +99,10 @@ TabRuntimeRegistry
 editor reveal or Column materialization. `navigate` first commits the Navigator
 path/history and then performs the asynchronous Editor and Graph work. This
 ordering makes the path visible as one coherent state even if a scene remounts.
+Navigation consumers must preserve the focus established by the originating
+user interaction and must not claim focus merely because they processed an
+external path; focus changes only through direct user interaction with that
+entity.
 
 Search preview is temporary. Replacing or committing it clears the matching
 identity; cancelling restores only the preview baseline owned by that preview.

@@ -39,9 +39,9 @@
   }
 </script>
 
-<div class="editor-sidebar__item-wrap" bind:this={anchor}>
+<div class="sidebar__item-wrap" bind:this={anchor}>
   {#if customTrigger}
-    <button class={`editor-sidebar__context-trigger ${triggerClass}`} type="button" aria-label={ariaLabel} data-testid={testId} on:click={togglePanel}>
+    <button class={`sidebar__context-trigger ${triggerClass}`} type="button" aria-label={ariaLabel} data-testid={testId} on:click={togglePanel}>
       <slot name="trigger" />
     </button>
   {:else}
@@ -58,19 +58,19 @@
     </Item>
   {/if}
   {#if open}
-    <div class:editor-sidebar__popover--right-end={placement === 'right-end'} class={`editor-sidebar__popover ${panelClass}`}>
+    <div class:sidebar__popover--right-end={placement === 'right-end'} class={`sidebar__popover ${panelClass}`}>
       <slot name="panel" />
     </div>
   {/if}
 </div>
 
 <style>
-  .editor-sidebar__item-wrap {
+  .sidebar__item-wrap {
     position: relative;
     width: 100%;
   }
 
-  :global(.editor-sidebar__context-trigger) {
+  :global(.sidebar__context-trigger) {
     display: flex;
     width: 32px;
     height: 32px;
@@ -82,12 +82,12 @@
     cursor: pointer;
   }
 
-  :global(.editor-sidebar__context-trigger:hover),
-  :global(.editor-sidebar__context-trigger[data-state='open']) {
+  :global(.sidebar__context-trigger:hover),
+  :global(.sidebar__context-trigger[data-state='open']) {
     background: var(--panel-bg-alt);
   }
 
-  :global(.editor-sidebar__popover) {
+  :global(.sidebar__popover) {
     position: absolute;
     top: 0;
     left: 100%;
@@ -100,7 +100,7 @@
     box-shadow: 0 14px 35px rgb(29 39 53 / 12%);
   }
 
-  :global(.editor-sidebar__popover--right-end) {
+  :global(.sidebar__popover--right-end) {
     top: auto;
     bottom: 0;
   }

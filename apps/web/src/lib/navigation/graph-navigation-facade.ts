@@ -43,9 +43,9 @@ type PreviewSession = Readonly<{
 }>;
 
 type DeferredGraphCommand =
-  | Readonly<{ kind: 'locate'; target: NavigationTarget; path: NavigationPath; cellTarget: NavigationCommand['cellTarget'] }>
-  | Readonly<{ kind: 'navigate'; target: NavigationTarget; path: NavigationPath; cellTarget: NavigationCommand['cellTarget'] }>
-  | Readonly<{ kind: 'preview'; target: NavigationTarget; path: NavigationPath; cellTarget: NavigationCommand['cellTarget']; previewId: string; mode: GraphPreviewCommand['mode'] }>;
+  | Readonly<{ kind: 'locate'; target: NavigationTarget; path: NavigationPath; cellTarget: NavigationCommand['cellTarget']; origin: NavigationCommand['origin'] }>
+  | Readonly<{ kind: 'navigate'; target: NavigationTarget; path: NavigationPath; cellTarget: NavigationCommand['cellTarget']; origin: NavigationCommand['origin'] }>
+  | Readonly<{ kind: 'preview'; target: NavigationTarget; path: NavigationPath; cellTarget: NavigationCommand['cellTarget']; origin: NavigationCommand['origin']; previewId: string; mode: GraphPreviewCommand['mode'] }>;
 
 type DeferredGraphDetail =
   | Readonly<{ kind: 'locate' }>
@@ -173,7 +173,7 @@ export class GraphNavigationFacade implements GraphNavigationFacadeContract {
     if (!deferred || !sameTarget(deferred.target, command.target)) return { kind: 'no-op' };
     if (!this.options.runtime.isInteractive(command.target)) return { kind: 'deferred' };
     this.deferredByTab.delete(command.target.tabId);
-    const navigation: NavigationCommand = { ...command, path: deferred.path, cellTarget: deferred.cellTarget };
+    const navigation: NavigationCommand = { ...command, path: deferred.path, cellTarget: deferred.cellTarget, origin: deferred.origin };
     if (deferred.kind === 'locate') return this.locate(navigation);
     if (deferred.kind === 'navigate') return this.navigate(navigation);
     return this.preview({ ...navigation, previewId: deferred.previewId, mode: deferred.mode });
@@ -192,7 +192,7 @@ export class GraphNavigationFacade implements GraphNavigationFacadeContract {
   private async captureBaseline(context: GraphRuntimeContext): Promise<GraphPreviewBaseline | null> {
     try {
       return await this.options.runtime.capturePreviewBaseline(context);
-    } catch (error) {
+    } catch {
       return null;
     }
   }
@@ -226,6 +226,7 @@ export class GraphNavigationFacade implements GraphNavigationFacadeContract {
       target: command.target,
       path: [...command.path],
       cellTarget: command.cellTarget,
+      origin: command.origin,
     } as DeferredGraphCommand);
     return true;
   }

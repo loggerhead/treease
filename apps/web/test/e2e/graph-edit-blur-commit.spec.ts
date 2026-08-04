@@ -14,11 +14,9 @@ import {
 } from './utils';
 
 async function ensureGraphMode(page: Page) {
-  const graphModeButton = page.getByRole('button', { name: 'Graph mode', exact: true });
+  const graphModeButton = page.getByTestId('graph-surface-graph');
   if (await graphModeButton.isVisible().catch(() => false)) {
-    await graphModeButton.click();
-  } else {
-    await expect(page.getByRole('button', { name: 'Text mode', exact: true })).toBeVisible();
+    if ((await graphModeButton.getAttribute('aria-selected')) !== 'true') await graphModeButton.click();
   }
 }
 

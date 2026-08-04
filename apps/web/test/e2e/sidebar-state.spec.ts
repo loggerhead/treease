@@ -3,8 +3,8 @@ import { expect, test } from './fixtures';
 test('sidebar expansion only changes through its toggle', async ({ page }) => {
   await page.goto('/editor');
 
-  const sidebar = page.locator('.editor-sidebar');
-  const sidebarHost = page.locator('.editor-sidebar-host');
+  const sidebar = page.locator('.sidebar');
+  const sidebarHost = page.locator('.sidebar-host');
   const importButton = page.getByRole('button', { name: 'Import', exact: true });
   await expect(page.getByTestId('sidebar-collapse-toggle')).toBeVisible();
   await expect(sidebarHost).toHaveAttribute('data-expanded', 'true');

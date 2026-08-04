@@ -474,4 +474,26 @@ describe('editor analysis controller json block selection', () => {
     expect(getSelection()?.blockDocumentKey).toBe('doc-json:json-block:3:15:22');
     expect(getSelection()?.text).toBe('{"b":2}');
   });
+
+  it('does not replace an active JSON block selection when primary analysis settles', async () => {
+    const selection = {
+      sourceDocumentKey: 'doc-json',
+      blockDocumentKey: 'doc-json:json-block:3:7:14',
+      revision: 3,
+      language: 'json',
+      text: '{"a":1}',
+      startByte: 7,
+      endByte: 14,
+      startLineNumber: 2,
+      startColumn: 1,
+      endLineNumber: 2,
+      endColumn: 8,
+    } satisfies JsonBlockSelection;
+    const { controller, model, getSelection } = createController({ selection });
+
+    await controller.applyGraphAnalysis(model as any, 'json', 'doc-json', 3, resolvedAnalysis().analysis as any);
+
+    expect(getSelection()).toEqual(selection);
+    expect(mocked.resolveTreePathResult).not.toHaveBeenCalled();
+  });
 });

@@ -1,7 +1,7 @@
 import { supportedEditorLanguages, type SupportedEditorLanguageId } from '../../lib/monaco/language-support';
 
 export type EditorUrlActionCommandId = 'format' | 'minify' | 'sort' | 'escape' | 'unescape' | 'compare';
-export type EditorUrlUiToken = 'editor' | 'viewer' | 'topbar' | 'bottombar';
+export type EditorUrlUiToken = 'editor' | 'viewer' | 'topbar';
 export type EditorUrlPresetTelemetry = {
   rawSearch: string;
   recognized: {
@@ -26,7 +26,6 @@ export type EditorUrlPresetTelemetry = {
     editor: boolean;
     viewer: boolean;
     topbar: boolean;
-    bottombar: boolean;
   };
   finalAction: 'none' | `command:${EditorUrlActionCommandId}` | 'yq';
 };
@@ -37,7 +36,6 @@ export type ResolvedEditorUrlPreset = {
     editor: boolean;
     viewer: boolean;
     topbar: boolean;
-    bottombar: boolean;
   };
   initialViewerMode: 'graph' | 'text';
   language: SupportedEditorLanguageId | null;
@@ -58,7 +56,7 @@ type RawQueryValue = {
   value: string | null;
 };
 
-const allUiTokens: EditorUrlUiToken[] = ['editor', 'viewer', 'topbar', 'bottombar'];
+const allUiTokens: EditorUrlUiToken[] = ['editor', 'viewer', 'topbar'];
 const uiTokenSet = new Set<EditorUrlUiToken>(allUiTokens);
 const commandSet = new Set<EditorUrlActionCommandId>(['format', 'minify', 'sort', 'escape', 'unescape', 'compare']);
 const languageIdMap = new Map(supportedEditorLanguages.map((option) => [option.id.toLowerCase(), option.id as SupportedEditorLanguageId]));
@@ -194,7 +192,6 @@ export function resolveEditorUrlPreset(search: string): ResolvedEditorUrlPreset 
     editor: uiTokens.includes('editor'),
     viewer: uiTokens.includes('viewer'),
     topbar: uiTokens.includes('topbar'),
-    bottombar: uiTokens.includes('bottombar'),
   };
 
   const shouldForceViewer = rightTextEffective || rightTextUrlEffective || command === 'compare' || yqEffective;
@@ -202,7 +199,6 @@ export function resolveEditorUrlPreset(search: string): ResolvedEditorUrlPreset 
     editor: baseUi.editor,
     viewer: baseUi.viewer || shouldForceViewer,
     topbar: baseUi.topbar,
-    bottombar: baseUi.bottombar,
   };
 
   const initialViewerMode: 'graph' | 'text' = shouldForceViewer ? 'text' : 'graph';

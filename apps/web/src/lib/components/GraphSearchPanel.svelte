@@ -267,7 +267,7 @@
   {query}
   placeholder="Search graph"
   inputAriaLabel="Search graph"
-  inputTestId="graph-search-input"
+  inputTestId="graph-search-panel"
   {shortcut}
   panelClass={`${panelClass} z-40 w-[320px]`}
   panelStyle="transform-origin: top right;"

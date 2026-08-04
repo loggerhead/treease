@@ -498,9 +498,16 @@ export async function waitForEditorReady(page: Page, timeout = DEFAULT_UI_TIMEOU
   await expect(
     page
       .getByTestId('graph-surface-graph')
-      .or(page.getByRole('button', { name: 'Graph mode', exact: true }))
-      .or(page.getByRole('button', { name: 'Text mode', exact: true })),
+      .or(page.getByTestId('graph-surface-compare'))
+      .first(),
   ).toBeVisible({ timeout });
+}
+
+export async function openCommandSearch(page: Page) {
+  await page.getByTestId('command-search-button').click();
+  const input = page.getByTestId('command-search-input');
+  await expect(input).toBeVisible();
+  return input;
 }
 
 export async function waitForSettingsReady(page: Page, timeout = DEFAULT_UI_TIMEOUT) {

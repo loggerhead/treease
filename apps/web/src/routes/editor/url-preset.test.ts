@@ -27,7 +27,6 @@ describe('editor url preset', () => {
       editor: true,
       viewer: true,
       topbar: true,
-      bottombar: false,
     });
   });
 

@@ -477,7 +477,6 @@ export function createEditorAnalysisController(options: CreateEditorAnalysisCont
           source: 'editor',
           revision,
         });
-        await operation.step(() => updateTreePath(options.getEditor()?.getPosition() ?? null, { syncGraphHighlight: false }));
       },
       handleError: (error) => {
         const message = error instanceof Error ? error.message : String(error);

@@ -108,11 +108,11 @@ test('graph mode remounts graph after switching back from text mode', async ({ p
   await expect(page.getByTestId('graph-viewer-canvas')).toBeVisible({ timeout: 5_000 });
   await expect.poll(async () => (await getLatestGraphProbes(page)).length, { timeout: 5_000 }).toBeGreaterThan(0);
 
-  await page.getByRole('button', { name: 'Text mode', exact: true }).click();
+  await page.getByTestId('graph-surface-compare').click();
   await expect(page.getByTestId('monaco-right-editor')).toBeVisible({ timeout: 5_000 });
 
-  await page.getByRole('button', { name: 'Graph mode', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'Text mode', exact: true })).toBeVisible({ timeout: 5_000 });
+  await page.getByTestId('graph-surface-graph').click();
+  await expect(page.getByTestId('graph-surface-graph')).toHaveAttribute('aria-selected', 'true');
   await expect(page.getByTestId('graph-viewer-root')).toBeVisible({ timeout: 5_000 });
   await expect(page.getByTestId('graph-viewer-canvas')).toBeVisible({ timeout: 5_000 });
   await expect(page.getByTestId('graph-search-trigger')).toBeVisible({ timeout: 5_000 });
@@ -130,7 +130,7 @@ test('sync scroll toggle stops and resumes left/right text scroll mirroring', as
     language: 'yaml',
   });
 
-  await page.getByRole('button', { name: 'Text mode', exact: true }).click();
+  await page.getByTestId('graph-surface-compare').click();
   await expect(page.getByTestId('monaco-right-editor')).toBeVisible({ timeout: 5_000 });
   await page.getByRole('button', { name: 'Load compare file', exact: true }).click();
   await page.getByLabel('Right panel file input').setInputFiles({

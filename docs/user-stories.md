@@ -77,7 +77,7 @@ As a log-investigation or data-debugging user, I want the Graph to automatically
 
 As a structured-text editing user, I want to quickly run format, minify, and sort in the editor, so I can organize content into a form better suited for reading, transfer, or committing.
 
-- User behavior: Click an action in the bottom bar or trigger a text operation through command search.
+- User behavior: Click an action in the editor function bar or trigger a text operation through command search.
 - User expectation: The current text updates immediately to the corresponding result.
 - User value: No need to leave the current page or copy content into an external tool.
 - Expected experience:

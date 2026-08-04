@@ -116,9 +116,9 @@ const tutorials: TutorialArticle[] = [
         parameters: [
           {
             name: 'ui',
-            purpose: 'Controls whether the editor pane, viewer pane, top bar, and bottom bar are visible.',
-            href: encodeEditorHref({ ui: 'editor,viewer,topbar,bottombar' }),
-            displayHref: displayEditorHref({ ui: 'editor,viewer,topbar,bottombar' }),
+            purpose: 'Controls whether the editor pane, viewer pane, and graph top bar are visible.',
+            href: encodeEditorHref({ ui: 'editor,viewer,topbar' }),
+            displayHref: displayEditorHref({ ui: 'editor,viewer,topbar' }),
             note: 'Use this to create focused landing pages, such as viewer-only format pages or cleaner embedded docs demos.',
           },
           {

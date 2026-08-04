@@ -31,7 +31,7 @@ function createHarness() {
   const target = store.getTarget('tab')!;
   const transaction: NavigationTransaction = { id: 1, target, isCurrent: () => true };
   const command = (nextPath: NavigationPath): NavigationCommand & { history: 'merge' | 'push' } => (
-    { target, transaction, path: nextPath, cellTarget: 'value', history: 'push' }
+    { target, transaction, path: nextPath, cellTarget: 'value', origin: 'navigator', history: 'push' }
   );
   return { store, port, facade, target, command };
 }

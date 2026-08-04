@@ -1,4 +1,4 @@
-<!-- Responsibility: assemble Editor/Viewport/BottomBar, coordinate cross-component events, and handle DOM interaction. -->
+<!-- Responsibility: assemble the editor and graph surfaces, coordinate cross-component events, and handle DOM interaction. -->
 <script lang="ts">
   import type { PageData } from './$types';
   import { get } from 'svelte/store';
@@ -7,15 +7,17 @@
   import { fly } from 'svelte/transition';
   import Editor from '../../lib/components/Editor.svelte';
   import GraphTopBar from '../../lib/components/GraphTopBar.svelte';
-  import BottomBar from '../../lib/components/BottomBar.svelte';
-  import EditorFunctionBar from '../../lib/components/EditorFunctionBar.svelte';
-  import EditorSidebar from '../../lib/components/EditorSidebar.svelte';
+  import TabSwitcher from '../../lib/components/TabSwitcher.svelte';
+  import TreePathBar from '../../lib/components/TreePathBar.svelte';
+  import ColumnNavigatorControls from '../../lib/components/ColumnNavigatorControls.svelte';
+  import FunctionBar from '../../lib/components/FunctionBar.svelte';
+  import Sidebar from '../../lib/components/Sidebar.svelte';
   import ViewportPanel from '../../lib/components/ViewportPanel.svelte';
   import StructGenerationInput from '../../lib/components/StructGenerationInput.svelte';
   import LoginDialog from '../../lib/components/LoginDialog.svelte';
-  import AiInput from '../../lib/components/AiInput.svelte';
+  import AiInputPanel from '../../lib/components/AiInputPanel.svelte';
   import type { PricingUsageNotice } from '../../lib/components/PricingPlanGrid.svelte';
-  import YqExpressionInput from '../../lib/components/YqExpressionInput.svelte';
+  import YqInputBox from '../../lib/components/YqInputBox.svelte';
   import { settings, settingsStore } from '../../lib/settings/settings-store';
   import { DEFAULT_EDITOR_SPLIT_RATIO } from '../../lib/settings/editor-layout-state';
   import {
@@ -73,7 +75,10 @@
   import {
     GitCompareArrows,
     GitGraph,
+    Check,
+    CircleAlert,
   } from 'lucide-svelte';
+  import Tooltip from '../../lib/components/Tooltip.svelte';
   import { SplitLayoutCollapsedControl, SplitLayoutCollapseHint } from '../../lib/components/ui/split-layout';
   import { trackEvent } from '../../lib/analytics/ga4';
   import { startBillingCheckout } from '../../lib/billing/checkout-flow';
@@ -115,14 +120,14 @@
     createWorkspaceNavigationRuntime,
     type GraphRuntimeReadinessBinding,
   } from '../../lib/navigation/workspace-navigation-runtime';
-  import type { NavigationResult, NavigationTarget } from '../../lib/navigation/navigation-contract';
+  import type { NavigationResult, NavigationTarget, NavigationUserEvent } from '../../lib/navigation/navigation-contract';
 
   export let data: PageData;
 
   let editorRef: Editor | null = null;
-  let sidebarRef: EditorSidebar | null = null;
+  let sidebarRef: Sidebar | null = null;
   let viewerRef: ViewportPanel | null = null;
-  let yqInputRef: YqExpressionInput | null = null;
+  let yqInputBoxRef: YqInputBox | null = null;
   let splitLayoutContainer: HTMLDivElement | null = null;
   let containerWidth = 0;
   let tabSummaries: EditorWorkspaceTabSummary[] = [];
@@ -173,6 +178,7 @@
   let aiSuccess = '';
   let aiQuotaExhausted = false;
   let aiUpgradeBusy = false;
+  let documentInvalid = false;
   type PricingPlanGridComponent = typeof import('../../lib/components/PricingPlanGrid.svelte').default;
   let pricingPlanGridComponent: PricingPlanGridComponent | null = null;
   let pricingPlanGridLoad: Promise<PricingPlanGridComponent> | null = null;
@@ -185,7 +191,6 @@
   let showEditorPane = true;
   let showViewerPane = true;
   let showTopBar = true;
-  let showBottomBar = true;
   let urlPreset: ResolvedEditorUrlPreset | null = null;
   let mirrorViewerFromSource = false;
   let externalFileConflict: { tabId: string; name: string; externalText: string; localText: string; languageId: SupportedEditorLanguageId } | null = null;
@@ -246,7 +251,6 @@
     showEditorPane = nextPreset.ui.editor;
     showViewerPane = nextPreset.ui.viewer;
     showTopBar = nextPreset.ui.topbar;
-    showBottomBar = nextPreset.ui.bottombar;
     viewerViewMode = nextPreset.initialViewerMode;
     graphSurfaceMode = nextPreset.initialViewerMode === 'graph' ? 'graph' : 'compare';
     mirrorViewerFromSource = false;
@@ -776,9 +780,9 @@
     }
   }
 
-  function handleShowAiInput() {
+  function handleShowAiInputPanel() {
     if (aiInputOpen) {
-      handleCloseAiInput();
+      handleCloseAiInputPanel();
       return;
     }
     structGenerationOpen = false;
@@ -807,7 +811,7 @@
     void ensurePricingPlanGrid();
   }
 
-  function handleCloseAiInput() {
+  function handleCloseAiInputPanel() {
     if (aiBusy) return;
     aiInputOpen = false;
     aiError = '';
@@ -905,7 +909,7 @@
     yqInputOpen = true;
     yqError = '';
     void tick().then(() => {
-      void yqInputRef?.focus();
+      void yqInputBoxRef?.focus();
     });
   }
 
@@ -1129,7 +1133,7 @@
       editor: {
         locate: async (context, command, options) => {
           if (!context.isCurrent()) return { kind: 'stale' };
-          const revealed = await editorRef?.revealPath(command.path, {
+          const revealed = await editorRef?.revealPath([...command.path], {
             target: command.cellTarget,
             focus: options.focus,
             isCurrent: context.isCurrent,
@@ -1146,7 +1150,7 @@
             ...current,
             graphHighlight: {
               path: [...command.path], target: command.cellTarget,
-              revision: Math.max($editorRevision, $graphAppliedRevision), source: 'graph', navigate: false,
+              revision: Math.max($editorRevision, $graphAppliedRevision), source: command.origin === 'editor' ? 'editor' : 'graph', navigate: false,
               revealToken: ++graphRevealToken,
             },
           }));
@@ -1154,7 +1158,7 @@
         },
         reveal: async (context, command) => {
           if (!context.isCurrent()) return { kind: 'stale' };
-          return navigationResult(await viewerRef?.revealPath(command.path, { target: command.cellTarget }) === true);
+          return navigationResult(await viewerRef?.revealPath([...command.path], { target: command.cellTarget }) === true);
         },
         restoreSelection: async (context, baseline) => {
           if (!context.isCurrent()) return { kind: 'stale' };
@@ -1176,7 +1180,7 @@
           ) return { kind: 'stale' };
           activeTempModel.update((current) => ({ ...current, treePath: [...command.path] }));
           if (!command.materializeColumns) return { kind: 'applied' };
-          await viewerRef?.applyColumnNavigatorNavigationPath(command.path);
+          await viewerRef?.applyColumnNavigatorNavigationPath([...command.path]);
           return { kind: 'applied' };
         },
       },
@@ -1207,7 +1211,7 @@
     const previewId = `search:${serializePath(path)}`;
     if (kind === 'search-preview') activeSearchPreviewId = previewId;
     if (kind === 'search-commit') activeSearchPreviewId = null;
-    const event = kind === 'search-preview' || kind === 'search-commit'
+    const event: NavigationUserEvent = kind === 'search-preview' || kind === 'search-commit'
       ? { kind, target, path, cellTarget, previewId }
       : { kind, target, path, cellTarget };
     void navigationRuntime?.dispatch(event);
@@ -1509,6 +1513,7 @@
   ));
   $: ({ leftPaneCollapsed, rightPaneCollapsed, collapsedControlFlyX } = resolveSplitLayoutMotion(visibleLayoutMode));
   $: topBarVisible = showTopBar && workspaceCommandReady;
+  $: documentInvalid = Boolean($activeTempModel?.error) || ($activeTempModel?.diagnostics?.length ?? 0) > 0;
   $: tabSummaries = summarizeWorkspaceTabs($editorWorkspace);
   $: activeTabId = $editorWorkspace.activeTabId;
   $: if (workspaceBootstrapReady) ensureNavigationRuntime($editorWorkspace);
@@ -1665,7 +1670,7 @@
     </section>
   {:else}
   <div class="flex h-full min-h-0 min-w-0 overflow-hidden">
-    <EditorSidebar
+    <Sidebar
       bind:this={sidebarRef}
       {formatOptions}
       onRequestImportFile={handleRequestImportFile}
@@ -1695,15 +1700,13 @@
           {#if splitterCollapseHint === 'editor'}
             <SplitLayoutCollapseHint side="left" />
           {/if}
-          {#if showBottomBar}
-            <EditorFunctionBar
-              aiInputOpen={aiInputOpen}
-              onShowAiInput={handleShowAiInput}
-              onFormat={() => editorRef?.formatActive()}
-              onMinify={() => editorRef?.minifyActive()}
-              onCommandExecute={handleCommandExecute}
-            />
-          {/if}
+          <FunctionBar
+            aiInputOpen={aiInputOpen}
+            onShowAiInputPanel={handleShowAiInputPanel}
+            onFormat={() => editorRef?.formatActive()}
+            onMinify={() => editorRef?.minifyActive()}
+            onCommandExecute={handleCommandExecute}
+          />
           <div class="min-h-0 flex-1">
             {#if workspaceBootstrapReady}
               <Editor
@@ -1718,8 +1721,9 @@
               />
             {/if}
           </div>
-          {#if aiInputOpen}
-            <AiInput
+          <div class="auxiliary-input-container" data-testid="auxiliary-input-container">
+            {#if aiInputOpen}
+              <AiInputPanel
               value={aiInstruction}
               busy={aiBusy}
               error={aiError}
@@ -1734,11 +1738,11 @@
               }}
               onSubmit={handleSubmitAi}
               onUpgrade={() => void openPricingOverlay()}
-              onClose={handleCloseAiInput}
-            />
-          {:else if yqInputOpen}
-            <YqExpressionInput
-              bind:this={yqInputRef}
+              onClose={handleCloseAiInputPanel}
+              />
+            {:else if yqInputOpen}
+              <YqInputBox
+              bind:this={yqInputBoxRef}
               value={yqExpression}
               busy={yqBusy}
               error={yqError}
@@ -1748,9 +1752,9 @@
               }}
               onSubmit={handleSubmitYq}
               onClose={handleCloseYqInput}
-            />
-          {:else if structGenerationOpen}
-            <StructGenerationInput
+              />
+            {:else if structGenerationOpen}
+              <StructGenerationInput
               targetLanguage={structGenerationTarget}
               rootName={structGenerationRootName}
               busy={structGenerationBusy}
@@ -1759,22 +1763,25 @@
               onChangeRootName={(value) => (structGenerationRootName = value)}
               onSubmit={handleSubmitStructGeneration}
               onClose={handleCloseStructGeneration}
-            />
-          {/if}
-          {#if showBottomBar}
-            <BottomBar
-              pane="editor"
-              fileName={tabSummaries.find((tab) => tab.id === activeTabId)?.name ?? 'Untitled'}
-              tabs={tabSummaries}
-              {activeTabId}
-              canAddTab={tabSummaries.length < maxTabs}
-              onAddTab={workspaceCommands['workspace:new']}
-              onActivateTab={handleActivateTab}
-              onRenameTab={handleRenameTab}
-              onCloseTab={(id) => handleCloseTab(id)}
-              onRevealError={(line, column) => editorRef?.revealError(line, column)}
-            />
-          {/if}
+              />
+            {/if}
+            <div class="editor-status" data-testid="editor-status">
+              <span>{$activeTempModel?.cursor ?? 'Ln 1, Col 1'}{#if ($activeTempModel?.selectionLength ?? 0) > 0} ({$activeTempModel?.selectionLength} selected){/if}</span>
+              <Tooltip content={documentInvalid ? 'Document has errors' : 'Document is valid'} side="top"><button type="button" class:editor-status--invalid={documentInvalid} disabled={!documentInvalid} on:click={() => { const diagnostic = $activeTempModel?.diagnostics?.[0]; if (diagnostic) editorRef?.revealError(diagnostic.startLineNumber, diagnostic.startColumn) }}>{#if documentInvalid}<CircleAlert size={13} />Invalid{:else}<Check size={13} />Valid{/if}</button></Tooltip>
+            </div>
+          </div>
+          <TabSwitcher
+            placement="bottom"
+            tabs={tabSummaries}
+            activeTabId={activeTabId}
+            showTabDirty={true}
+            canAddTab={tabSummaries.length < maxTabs}
+            onAddTab={workspaceCommands['workspace:new']}
+            onActivateTab={handleActivateTab}
+            onRenameTab={handleRenameTab}
+            onCloseTab={(id) => handleCloseTab(id)}
+            showCommandSearch={false}
+          />
         </section>
       {/if}
 
@@ -1880,19 +1887,21 @@
             hideGraphToolbar={topBarVisible}
           />
           </div>
-          {#if showBottomBar}
-            <BottomBar
-              pane="graph"
-              surfaceMode={graphSurfaceMode}
-              graphVisible={showViewerPane}
-              columnNavigatorState={columnNavigatorState}
-              onColumnNavigatorBack={() => viewerRef?.goColumnNavigatorBack()}
-              onColumnNavigatorForward={() => viewerRef?.goColumnNavigatorForward()}
-              onCollapseColumnNavigator={() => viewerRef?.collapseColumnNavigator()}
-              onPinColumnNavigatorCollapsed={() => viewerRef?.pinColumnNavigatorCollapsed()}
-              onExpandColumnNavigator={() => viewerRef?.expandColumnNavigator()}
-              onTreePathSelect={handleTreePathSelect}
-            />
+          {#if graphSurfaceMode === 'graph'}
+            <div class="graph-pane__bottom" data-testid="graph-bottom-surfaces">
+              <TreePathBar
+                value={$activeTempModel?.treePath ?? []}
+                on:select={(event) => handleTreePathSelect(event.detail)}
+              />
+              <ColumnNavigatorControls
+                state={columnNavigatorState}
+                onBack={() => viewerRef?.goColumnNavigatorBack()}
+                onForward={() => viewerRef?.goColumnNavigatorForward()}
+                onCollapse={() => viewerRef?.collapseColumnNavigator()}
+                onPinCollapsed={() => viewerRef?.pinColumnNavigatorCollapsed()}
+                onExpand={() => viewerRef?.expandColumnNavigator()}
+              />
+            </div>
           {/if}
         </section>
       {/if}

@@ -98,7 +98,14 @@ export class NavigationCoordinator {
 
     if (!('path' in event)) return [{ kind: 'no-op' }];
 
-    const command = { target: event.target, transaction, path: event.path, cellTarget: event.cellTarget };
+    const origin = event.kind === 'editor-selection'
+      ? 'editor'
+      : event.kind === 'navigator-column' || event.kind === 'navigator-tree-path'
+        ? 'navigator'
+        : event.kind === 'search-preview' || event.kind === 'search-commit'
+          ? 'search'
+          : 'graph';
+    const command = { target: event.target, transaction, path: event.path, cellTarget: event.cellTarget, origin } as const;
     if (event.kind === 'search-preview') {
       const preview = { ...command, previewId: event.previewId } as const;
       const begun = this.options.facades.search.beginPreview(preview);
@@ -131,7 +138,12 @@ export class NavigationCoordinator {
     return [
       navigator,
       ...(await Promise.all([
-        this.options.facades.editor.navigate(command, { focus: event.kind === 'editor-selection' }),
+        // The producer already owns the editor location. Feeding an
+        // editor-originated command back into the editor would turn the
+        // user's cursor move into a path reveal and select that value range.
+        command.origin === 'editor'
+          ? Promise.resolve<NavigationResult>({ kind: 'no-op' })
+          : this.options.facades.editor.navigate(command, { focus: false }),
         this.options.facades.graph.navigate(command),
         previewEnd,
         event.kind === 'search-commit'

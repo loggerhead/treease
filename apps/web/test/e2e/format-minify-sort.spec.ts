@@ -2,6 +2,7 @@ import { expect, test } from './fixtures';
 import {
   getMonacoRenderedTokenColor,
   getMonacoValue,
+  openCommandSearch,
   readEditorState,
   setEditorContent,
   setMonacoPosition,
@@ -111,7 +112,7 @@ test('runs sort from command search and updates editor text', async ({ page }) =
   });
   await setMonacoPosition(page, 'source-editor', 1, 7);
 
-  const commandInput = page.getByRole('textbox', { name: 'Search command', exact: true });
+  const commandInput = await openCommandSearch(page);
   await commandInput.fill('sort');
   await commandInput.press('Enter');
   await commandInput.press('Enter');
@@ -136,12 +137,12 @@ test('runs yq preview from command search without overwriting source editor', as
     .poll(async () => (await readEditorState(page)).sourceText, { timeout: 5_000 })
     .toContain('items');
 
-  const commandInput = page.getByRole('textbox', { name: 'Search command', exact: true });
+  const commandInput = await openCommandSearch(page);
   await commandInput.fill('yq');
   await commandInput.press('Enter');
 
   await expect(page.getByTestId('yq-expression-panel')).toBeVisible({ timeout: 5_000 });
-  await waitForMonacoHook(page, 'yq-expression-input');
+  await waitForMonacoHook(page, 'yq-input-box');
 
   await page.keyboard.type('.items[0]');
   await page.getByRole('button', { name: 'Run', exact: true }).click();
@@ -154,7 +155,7 @@ test('runs yq preview from command search without overwriting source editor', as
     .poll(async () => (await readEditorState(page)).sourceText, { timeout: 5_000 })
     .toContain('items');
 
-  await expect(page.getByTestId('graph-mode-button')).toBeVisible({ timeout: 5_000 });
+  await expect(page.getByTestId('graph-surface-graph')).toBeVisible({ timeout: 5_000 });
   await expect(page.getByTestId('yq-expression-error')).toHaveCount(0);
 });
 
@@ -261,10 +262,9 @@ test('escape preserves submitted source text when nest parse is enabled', async 
     sourceText: '{"a":1}',
   });
 
-  const commandInput = page.getByRole('textbox', { name: 'Search command', exact: true });
+  const commandInput = await openCommandSearch(page);
   await commandInput.fill('escape');
-  await commandInput.press('Enter');
-  await commandInput.press('Enter');
+  await page.getByText('Escape', { exact: true }).click();
 
   await expect
     .poll(async () => {

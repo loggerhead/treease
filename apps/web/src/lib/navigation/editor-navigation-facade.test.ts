@@ -38,7 +38,7 @@ function transaction() {
 }
 
 function command(tx: NavigationTransaction): NavigationCommand {
-  return { target, transaction: tx, path: [], cellTarget: 'node' };
+  return { target, transaction: tx, path: [], cellTarget: 'node', origin: 'editor' };
 }
 
 function createFacade(runtime: EditorNavigationRuntimePort, visible = true) {

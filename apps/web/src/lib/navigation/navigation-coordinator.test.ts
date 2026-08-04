@@ -57,7 +57,7 @@ describe('NavigationCoordinator', () => {
     expect(facades.navigator.navigate).toHaveBeenCalledWith(expect.objectContaining({ history: 'push' }));
   });
 
-  it('permits editor focus only when the editor originated complete navigation', async () => {
+  it('does not feed editor-originated complete navigation back into the editor', async () => {
     const facades = createFacades();
     const coordinator = new NavigationCoordinator({
       facades,
@@ -67,7 +67,9 @@ describe('NavigationCoordinator', () => {
 
     await coordinator.dispatch(selection());
 
-    expect(facades.editor.navigate).toHaveBeenCalledWith(expect.anything(), { focus: true });
+    expect(facades.editor.navigate).not.toHaveBeenCalled();
+    expect(facades.graph.navigate).toHaveBeenCalledOnce();
+    expect(facades.navigator.navigate).toHaveBeenCalledOnce();
   });
 
   it('uses per-tab latest-wins without cancelling a different tab', async () => {

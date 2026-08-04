@@ -184,7 +184,7 @@
         padding: { top: 4, bottom: 4 }
       })
       cleanupYqEditorTestHook?.()
-      cleanupYqEditorTestHook = attachMonacoTestHook(editor, 'yq-expression-input', monaco.editor.tokenize)
+      cleanupYqEditorTestHook = attachMonacoTestHook(editor, 'yq-input-box', monaco.editor.tokenize)
       editor.onDidChangeModelContent((event) => {
         if (!model || syncingValue) return
         const raw = model.getValue()
@@ -211,7 +211,7 @@
           const scheduledTriggerVersion = ++suggestTriggerVersion
           queueMicrotask(() => {
             if (scheduledTriggerVersion !== suggestTriggerVersion) return
-            editor?.trigger('yq-expression-input', 'editor.action.triggerSuggest', {})
+            editor?.trigger('yq-input-box', 'editor.action.triggerSuggest', {})
           })
         }
       })

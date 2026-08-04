@@ -969,6 +969,7 @@
       }
       if (snapshotId == null) {
         columnNavigatorController.reset();
+        activeTempModel.update((current) => ({ ...current, treePath: [], graphHighlight: null }));
       }
       const requestId = graphTreeStateController.nextToken();
       graphTreeStateController.clear(requestId, 'graph', revision);
@@ -1544,7 +1545,6 @@
     if (isFullEditInteractionBlocked()) return;
     await columnNavigatorController.applyExternalPath(path);
     await tick();
-    columnNavigatorRoot?.focus();
   }
 
   const graphViewerRuntimeApi = {

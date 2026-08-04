@@ -67,10 +67,7 @@ async function sampleRenderedTokenColors(
 }
 
 async function ensureGraphMode(page: Page) {
-  const graphModeButton = page.getByRole("button", {
-    name: "Graph mode",
-    exact: true,
-  });
+  const graphModeButton = page.getByTestId('graph-surface-graph');
   if (await graphModeButton.isVisible().catch(() => false)) {
     await graphModeButton.click();
   }

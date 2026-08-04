@@ -10,7 +10,7 @@ import {
 const yamlText = 'user:\n  name: Alice\ncount: 42\n';
 
 async function openRightTextMode(page: Page) {
-  await page.getByRole('button', { name: 'Text mode', exact: true }).click();
+  await page.getByTestId('graph-surface-compare').click();
   await expect(page.getByTestId('monaco-right-editor')).toBeVisible({ timeout: 5_000 });
 }
 

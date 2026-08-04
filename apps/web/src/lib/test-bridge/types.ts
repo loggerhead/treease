@@ -231,7 +231,6 @@ export type TreeaseUrlPresetState = {
     editor: boolean;
     viewer: boolean;
     topbar: boolean;
-    bottombar: boolean;
   };
   finalAction: string;
   viewerMode: 'graph' | 'text';

@@ -22,7 +22,7 @@
   import { buildDiffPlans, type DiffPair, type DiffPlan } from '../graph/diff-plan'
   import type { RuntimeStateEventDetail } from '../runtime-loading'
   import GraphViewer from './GraphViewer.svelte'
-  import GraphSearchInput from './GraphSearchInput.svelte'
+  import GraphSearchPanel from './GraphSearchPanel.svelte'
   import SidecarEditor from './Editor/SidecarEditor.svelte'
   import {
     Search,
@@ -96,7 +96,7 @@
   let rightPanelFileInput: HTMLInputElement | null = null
   let sidecarEditor: SidecarEditor | null = null
   let graphViewer: any = null
-  let graphSearchInput: GraphSearchInput | null = null
+  let graphSearchPanel: GraphSearchPanel | null = null
   let effectiveViewMode: 'graph' | 'text' = 'graph'
   let entitlementOverlay: UsageBlock | null = null
   let pricingOverlayVisible = false
@@ -358,7 +358,7 @@
   }
 
   export function openGraphSearch(): void {
-    graphSearchInput?.openPanel?.()
+    graphSearchPanel?.openPanel?.()
   }
 
   export function openCompareFile(): void {
@@ -539,13 +539,13 @@
             title="Search"
             data-testid="graph-search-trigger"
             on:click={() => {
-              if (graphViewer?.isGraphInteractive?.()) graphSearchInput?.openPanel?.()
+              if (graphViewer?.isGraphInteractive?.()) graphSearchPanel?.openPanel?.()
             }}
           >
             <Search size={12} />
           </IconButton>
-          <GraphSearchInput
-            bind:this={graphSearchInput}
+          <GraphSearchPanel
+            bind:this={graphSearchPanel}
             documentKey={$documentKeyStore}
             language={languageIdValue}
             text={$sourceText}

@@ -536,9 +536,9 @@
   }
 
   :global(.account-profile-trigger .avatar-frame) {
-    width: 44px;
-    height: 44px;
-    flex: 0 0 44px;
+    width: 36px;
+    height: 36px;
+    flex: 0 0 36px;
     border-radius: 50%;
   }
 

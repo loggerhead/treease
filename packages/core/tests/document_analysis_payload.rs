@@ -164,7 +164,7 @@ fn wasm_shared_decoded_json_analysis_preserves_full_artifacts() {
         .expect("json fixture should decode");
 
     let (shared, diagnostics) =
-        treease_core::internal::wasm::document_analysis_shared::build_analysis_shared(
+        treease_core::document_analysis_shared::build_analysis_shared(
             "json",
             source,
             Some(&decoded),
@@ -210,7 +210,7 @@ fn decoded_json_analysis_matches_legacy_utf8_token_columns() {
 
     let analysis = build_decoded_analysis("doc-json-utf8", "json", source, &decoded);
     let expected: Vec<(u32, u32, u32, u32, u32)> =
-        treease_core::internal::stream::streaming_json::token_spans(source)
+        treease_core::stream::streaming_json::token_spans(source)
             .expect("legacy streaming token scan should succeed")
             .into_iter()
             .map(|span| {

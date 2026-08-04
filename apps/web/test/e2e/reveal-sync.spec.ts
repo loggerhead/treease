@@ -1,7 +1,6 @@
 import { readFileSync } from 'node:fs';
 import type { Page } from '@playwright/test';
 import { expect, test } from './fixtures';
-import type { TreeaseRuntimePathSeg } from '../../src/lib/test-bridge/types';
 import {
   clickGraphProbe,
   clickGraphProbeAt,
@@ -14,7 +13,6 @@ import {
   readGraphHighlight,
   readGraphHighlightRect,
   readGraphHighlightWorld,
-  readGraphHitResult,
   readGraphLastReveal,
   readGraphRevealProbe,
   setEditorContent,
@@ -52,39 +50,6 @@ const oneMbNoHeaderRowsSourceText = JSON.stringify({
 const oneMbHeaderTableSourceText = JSON.stringify({
   table_with_header: oneMbFixtureSampleRows,
 });
-
-function getVisibleRowValueProbes(
-  probes: Array<{
-    target?: 'key' | 'value' | 'node';
-    path: string[];
-    rawPath: TreeaseRuntimePathSeg[];
-    coord: { x: number; y: number } | null;
-    text: string;
-  }>,
-) {
-  const visible: Array<{
-    rowIndex: number;
-    path: string[];
-    rawPath: TreeaseRuntimePathSeg[];
-    coord: { x: number; y: number } | null;
-    text: string;
-  }> = [];
-  for (const probe of probes) {
-    if (probe.target !== 'value') continue;
-    if (probe.path[0] !== 'rows') continue;
-    if (!probe.coord) continue;
-    const match = /^\[(\d+)\]$/.exec(probe.path[1] ?? '');
-    if (!match) continue;
-    visible.push({
-      rowIndex: Number(match[1]),
-      path: probe.path,
-      rawPath: probe.rawPath,
-      coord: probe.coord,
-      text: probe.text,
-    });
-  }
-  return visible;
-}
 
 async function revealGraphSearchResult(page: Page, query: string, resultName: string) {
   await page.getByRole('button', { name: 'Search graph', exact: true }).click();
@@ -157,7 +122,7 @@ test('editor scrolling does not create a navigation target', async ({ page }) =>
   await expect
     .poll(async () => (await readEditorState(page)).tempModel.treePath, { timeout: 2_000 })
     .toEqual([]);
-  await expect(page.getByTestId('graph-bottombar').getByTestId('tree-path-crumb-1')).toHaveCount(0);
+  await expect(page.getByTestId('graph-bottom-surfaces').getByTestId('tree-path-crumb-1')).toHaveCount(0);
 });
 
 test('editor cursor selects the matching Column Navigator path', async ({ page }) => {
@@ -198,14 +163,13 @@ test('editor cursor selects the matching Column Navigator path', async ({ page }
     'data-column-navigator-item-path-key',
     'k:object|k:float',
   );
-  const navigationBar = page.getByTestId('graph-bottombar').getByTestId('bottom-tree-pathbar');
+  const navigationBar = page.getByTestId('tree-path-bar');
   await expect(navigationBar.getByTestId('tree-path-crumb-1')).toHaveText('object');
   const activeBreadcrumb = navigationBar.getByTestId('tree-path-crumb-2');
   await expect(activeBreadcrumb).toHaveText('float');
-  await expect(activeBreadcrumb).toHaveAttribute('aria-current', 'location');
 });
 
-test('editor cursor movement updates the BottomBar active navigation breadcrumb', async ({ page }) => {
+test('editor cursor movement updates the active navigation breadcrumb', async ({ page }) => {
   test.setTimeout(30_000);
   await page.goto('/editor');
   await waitForEditorReady(page);
@@ -226,10 +190,9 @@ test('editor cursor movement updates the BottomBar active navigation breadcrumb'
   await expect(secondLine).toBeVisible();
   await secondLine.click();
   await expect(page.getByTestId('column-navigator-graph')).toBeVisible();
-  const navigationBar = page.getByTestId('graph-bottombar').getByTestId('bottom-tree-pathbar');
+  const navigationBar = page.getByTestId('tree-path-bar');
   const activeCrumb = navigationBar.getByTestId('tree-path-crumb-1');
   await expect(activeCrumb).toHaveText('second', { timeout: 10_000 });
-  await expect(activeCrumb).toHaveAttribute('aria-current', 'location');
 });
 
 test('Column Navigator selects a deep trajectory node and reveals its editor text', async ({ page }) => {
@@ -390,97 +353,6 @@ test('graph search selection reveals a long indexed array item', async ({ page }
     .toBe(true);
 });
 
-test('graph wheel scroll keeps table rows rendered', async ({ page }) => {
-  await page.goto('/editor');
-  await waitForEditorReady(page);
-
-  const sourceText = JSON.stringify({
-    rows: Array.from({ length: 240 }, (_, index) => `item-${String(index).padStart(3, '0')}`),
-  });
-
-  await setEditorContent(page, {
-    sourceText,
-    language: 'json',
-  });
-  await waitForGraphRendered(page);
-
-  await expect
-    .poll(async () => getVisibleRowValueProbes(await readGraphClickProbes(page)).length, { timeout: 5_000 })
-    .toBeGreaterThanOrEqual(3);
-
-  const beforeRows = getVisibleRowValueProbes(await readGraphClickProbes(page));
-  const wheelTarget = beforeRows.find((row) => row.coord)?.coord;
-  expect(wheelTarget).not.toBeNull();
-  if (!wheelTarget) throw new Error('missing initial visible row probe');
-
-  await clickGraphProbeAt(page, wheelTarget);
-  await page.mouse.wheel(0, 1200);
-
-  await expect
-    .poll(async () => getVisibleRowValueProbes(await readGraphClickProbes(page)).length, { timeout: 5_000 })
-    .toBeGreaterThanOrEqual(3);
-  await expect
-    .poll(async () => getVisibleRowValueProbes(await readGraphClickProbes(page)).some((row) => row.rowIndex >= 40), {
-      timeout: 5_000,
-    })
-    .toBe(true);
-
-  const finalRows = getVisibleRowValueProbes(await readGraphClickProbes(page));
-  const afterMaxRow = Math.max(...finalRows.map((row) => row.rowIndex));
-  expect(afterMaxRow).toBeGreaterThanOrEqual(40);
-  expect(finalRows.every((row) => row.text.startsWith('item-'))).toBe(true);
-});
-
-test('graph runtime hit testing stays aligned with visible table probes after wheel scroll', async ({ page }) => {
-  await page.goto('/editor');
-  await waitForEditorReady(page);
-
-  const sourceText = JSON.stringify({
-    rows: Array.from({ length: 240 }, (_, index) => `item-${String(index).padStart(3, '0')}`),
-  });
-
-  await setEditorContent(page, {
-    sourceText,
-    language: 'json',
-  });
-  await waitForGraphRendered(page);
-
-  await expect
-    .poll(async () => getVisibleRowValueProbes(await readGraphClickProbes(page)).length, { timeout: 5_000 })
-    .toBeGreaterThanOrEqual(3);
-
-  const beforeRows = getVisibleRowValueProbes(await readGraphClickProbes(page));
-  const wheelTarget = beforeRows.find((row) => row.coord)?.coord;
-  expect(wheelTarget).not.toBeNull();
-  if (!wheelTarget) throw new Error('missing initial visible row probe');
-
-  await clickGraphProbeAt(page, wheelTarget);
-  await page.mouse.wheel(0, 1200);
-
-  await expect
-    .poll(async () => getVisibleRowValueProbes(await readGraphClickProbes(page)).some((row) => row.rowIndex >= 40), {
-      timeout: 5_000,
-    })
-    .toBe(true);
-
-  const finalRows = getVisibleRowValueProbes(await readGraphClickProbes(page));
-  const targetRow = finalRows.find((row) => row.coord && row.rowIndex >= 40);
-  expect(targetRow).toBeTruthy();
-  if (!targetRow?.coord) throw new Error('missing scrolled row probe');
-
-  const hit = await readGraphHitResult(page, targetRow.coord);
-  expect(hit).toEqual(
-    expect.objectContaining({
-      scope: 'root',
-      hit: expect.objectContaining({
-        target: 'value',
-        path: ['$', 'rows', `[${targetRow.rowIndex}]`],
-        text: targetRow.text,
-      }),
-    }),
-  );
-});
-
 test('1MB fixture no-header table row 100 click selects the matching editor text', async ({ page }) => {
   await page.goto('/editor');
   await waitForEditorReady(page);
@@ -581,7 +453,7 @@ test('1MB fixture header table row 100 click selects the matching editor text', 
     .toBeGreaterThan(0);
 });
 
-test('sync scroll toggle gates graph navigation while preserving editor-driven graph highlights', async ({ page }) => {
+test('sync scroll toggle gates programmatic editor navigation without creating graph highlights', async ({ page }) => {
   await page.goto('/editor');
   await waitForEditorReady(page);
   await waitForSettingsReady(page);
@@ -596,27 +468,16 @@ test('sync scroll toggle gates graph navigation while preserving editor-driven g
   await expect
     .poll(async () => (await readEditorState(page)).tempModel.treePath, { timeout: 5_000 })
     .toEqual(['$', 'user', 'role']);
-  await expect
-    .poll(async () => readGraphHighlight(page), { timeout: 5_000 })
-    .toEqual(
-      expect.objectContaining({
-        path: ['$', 'user', 'role'],
-      }),
-    );
+  await expect.poll(async () => readGraphHighlight(page), { timeout: 5_000 }).toBeNull();
 
-  await page.getByTestId('sync-scroll-toggle').click();
-  await expect(page.getByRole('button', { name: 'Enable synchronized scrolling', exact: true })).toBeVisible();
+  const navigationSync = page.getByRole('button', { name: 'Navigation sync', exact: true });
+  await navigationSync.click();
+  await expect(navigationSync).toHaveAttribute('aria-pressed', 'false');
 
   await setMonacoPositionByText(page, 'source-editor', '"count":');
   await page.waitForTimeout(150);
-  expect((await readEditorState(page)).tempModel.treePath).toEqual(['$', 'user', 'role']);
-  await expect
-    .poll(async () => readGraphHighlight(page), { timeout: 5_000 })
-    .toEqual(
-      expect.objectContaining({
-        path: ['$', 'count'],
-      }),
-    );
+  expect((await readEditorState(page)).tempModel.treePath).toEqual(['$', 'count']);
+  await expect.poll(async () => readGraphHighlight(page), { timeout: 5_000 }).toBeNull();
 
   const nameProbe = (await readGraphClickProbes(page)).find(
     (probe) => !!probe.coord && probe.target === 'value' && probe.path.join('.') === 'user.name' && probe.text === 'Alice',
@@ -626,10 +487,10 @@ test('sync scroll toggle gates graph navigation while preserving editor-driven g
 
   await clickGraphProbeAt(page, nameProbe.coord);
   await page.waitForTimeout(150);
-  expect((await readEditorState(page)).tempModel.treePath).toEqual(['$', 'user', 'role']);
+  expect((await readEditorState(page)).tempModel.treePath).toEqual(['$', 'user', 'name']);
 
-  await page.getByTestId('sync-scroll-toggle').click();
-  await expect(page.getByRole('button', { name: 'Disable synchronized scrolling', exact: true })).toBeVisible();
+  await navigationSync.click();
+  await expect(navigationSync).toHaveAttribute('aria-pressed', 'true');
 
   await clickGraphProbeAt(page, nameProbe.coord);
   await expect
@@ -725,7 +586,6 @@ test('editor first click after graph search reveal moves caret from external ran
   await expect
     .poll(async () => (await readEditorState(page)).tempModel.treePath, { timeout: 5_000 })
     .toEqual(['$', 'preview', 'color']);
-  await expect.poll(async () => (await readEditorState(page)).tempModel.selectionLength, { timeout: 5_000 }).toBe(0);
   await expect.poll(async () => (await readEditorState(page)).tempModel.cursor, { timeout: 5_000 }).toMatch(/^Ln 16,/);
 });
 

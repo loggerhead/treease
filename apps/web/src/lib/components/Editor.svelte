@@ -117,7 +117,11 @@
     editorCore?.revealLine(lineNumber, column);
   }
 
-  export function revealPath(path: PathSeg[], options: { target?: 'key' | 'value' | 'node' } | undefined) {
+  export function revealPath(path: PathSeg[], options: {
+    target?: 'key' | 'value' | 'node';
+    focus?: boolean;
+    isCurrent?: () => boolean;
+  } | undefined) {
     return editorCore?.revealPath(path, options);
   }
 

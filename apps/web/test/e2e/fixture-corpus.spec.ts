@@ -160,10 +160,10 @@ async function buildGraphAndGetNodes(
     language: opts.language,
   });
 
-  const graphModeButton = page.getByRole('button', { name: 'Graph mode', exact: true });
+  const graphModeButton = page.getByTestId('graph-surface-graph');
   if (await graphModeButton.isVisible().catch(() => false)) {
     await graphModeButton.click();
-    await expect(page.getByRole('button', { name: 'Text mode', exact: true })).toBeVisible({ timeout: 5_000 });
+    await expect(graphModeButton).toHaveAttribute('aria-selected', 'true');
   }
 
   const targetRevision = await page.evaluate(() => {
@@ -235,10 +235,10 @@ test.describe('fixture corpus sampling', () => {
           language: LANGUAGE_MAP[kind],
         });
 
-        const graphModeButton = page.getByRole('button', { name: 'Graph mode', exact: true });
+        const graphModeButton = page.getByTestId('graph-surface-graph');
         if (await graphModeButton.isVisible().catch(() => false)) {
           await graphModeButton.click();
-          await expect(page.getByRole('button', { name: 'Text mode', exact: true })).toBeVisible({ timeout: 5_000 });
+          await expect(graphModeButton).toHaveAttribute('aria-selected', 'true');
         }
 
         if (isBlankLikeContent(fixture.content)) {

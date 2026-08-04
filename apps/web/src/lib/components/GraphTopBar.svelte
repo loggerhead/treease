@@ -1,7 +1,7 @@
 <script lang="ts">
   import { ArrowRightLeft, FileInput, GitCompareArrows, ImageDown, Search, Share2, ZoomIn, ZoomOut } from 'lucide-svelte'
   import AccountMenu from './AccountMenu.svelte'
-  import GraphSearchInput from './GraphSearchInput.svelte'
+  import GraphSearchPanel from './GraphSearchPanel.svelte'
   import Tooltip from './Tooltip.svelte'
 
   export let viewMode: 'graph' | 'text' = 'graph'
@@ -28,7 +28,7 @@
   export let onCheckForUpdates: () => Promise<void> = async () => {}
   export let onOpenSettings: () => void = () => {}
 
-  let graphSearchInput: GraphSearchInput | null = null
+  let graphSearchPanel: GraphSearchPanel | null = null
   let graphSearchOpen = false
   $: activeSurfaceMode = surfaceMode ?? (viewMode === 'graph' ? 'graph' : 'compare')
 </script>
@@ -39,12 +39,12 @@
       {#if activeSurfaceMode === 'graph'}
       <div class="graph-topbar__search-wrap">
         <Tooltip content="Search graph" side="bottom" disabled={graphSearchOpen}><button class="graph-topbar__button" aria-label="Search graph" data-testid="graph-search-trigger" on:click={() => {
-          if (isGraphInteractive()) void graphSearchInput?.openPanel()
+          if (isGraphInteractive()) void graphSearchPanel?.openPanel()
         }}>
           <Search size={13} />
         </button></Tooltip>
-        <GraphSearchInput
-          bind:this={graphSearchInput}
+        <GraphSearchPanel
+          bind:this={graphSearchPanel}
           {documentKey}
           {language}
           {text}

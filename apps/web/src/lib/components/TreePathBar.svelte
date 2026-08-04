@@ -6,7 +6,7 @@
 
   export let value: PathSeg[] = [];
 
-  type TreePathCrumb = { label: string; value: string; segments: PathSeg[] };
+  type TreePathBarCrumb = { label: string; value: string; segments: PathSeg[] };
 
   let copied = false;
   const dispatch = createEventDispatcher();
@@ -43,7 +43,7 @@
   }
 
   function buildCrumbs(segments: PathSeg[]) {
-    const crumbs: TreePathCrumb[] = [{ label: '$', value: '$', segments: [] }];
+    const crumbs: TreePathBarCrumb[] = [{ label: '$', value: '$', segments: [] }];
     const currentSegments: PathSeg[] = [];
     for (const segment of segments) {
       currentSegments.push(segment);
@@ -57,7 +57,7 @@
   }
 
   let normalizedValue: PathSeg[] = [];
-  let crumbs: TreePathCrumb[] = [];
+  let crumbs: TreePathBarCrumb[] = [];
   let displayPath = '$';
 
   $: normalizedValue = Array.isArray(value) ? value : [];
@@ -65,10 +65,10 @@
   $: displayPath = buildReadablePath(normalizedValue);
 </script>
 
-<Breadcrumb.Root class="group h-full flex items-center">
+<Breadcrumb.Root class="group h-full flex items-center" data-testid="tree-path-bar">
   <Breadcrumb.List class="flex-nowrap whitespace-nowrap overflow-x-auto h-full items-center">
     {#each crumbs as crumb, index (index)}
-      {@const typedCrumb = crumb as TreePathCrumb}
+      {@const typedCrumb = crumb as TreePathBarCrumb}
       <Breadcrumb.Item class="inline-block cursor-pointer max-w-[var(--max-key-length)] truncate">
         <Breadcrumb.Link
           href="#"
@@ -88,9 +88,15 @@
     <button
       class="ml-1 inline-flex items-center opacity-0 transition-opacity duration-2000 ease-in-out group-hover:opacity-100"
       title="Copy tree path"
-      on:click={handleCopyClick}
+      onclick={handleCopyClick}
     >
       {#if copied}<Check size={12} class="text-(--text-primary)" />{:else}<Copy size={12} class="text-(--text-muted)" />{/if}
     </button>
   </Breadcrumb.List>
 </Breadcrumb.Root>
+
+<style>
+  button { display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; color: var(--text-muted); background: transparent; }
+  button:hover:not(:disabled) { color: var(--text-primary); background: var(--panel-bg-alt); }
+  button:disabled { opacity: .4; }
+</style>

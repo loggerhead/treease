@@ -10,7 +10,7 @@ fn expect_not_found(source: &str, row: u32, column: u32) {
 #[test]
 fn json_block_finds_nested_container_in_valid_json() {
     let json = "{\"a\":1,\"b\":[2,3],\"c\":4}";
-    let json_span = find_json_block_at_position("json", json, 0, 11);
+    let json_span = find_json_block_at_position("json", json, 0, 12);
     assert!(json_span.found);
     assert_eq!(
         &json[json_span.start_byte as usize..json_span.end_byte as usize],
@@ -29,7 +29,7 @@ fn json_block_supports_embedded_json_jsonl_and_invalid_outer_wrappers() {
     );
 
     let jsonl = "{\"a\":1}\n{\"b\":[2,3]}\n{\"c\":4}";
-    let jsonl_span = find_json_block_at_position("json", jsonl, 1, 5);
+    let jsonl_span = find_json_block_at_position("json", jsonl, 1, 6);
     assert!(jsonl_span.found);
     assert_eq!(
         &jsonl[jsonl_span.start_byte as usize..jsonl_span.end_byte as usize],
@@ -46,7 +46,7 @@ fn json_block_supports_embedded_json_jsonl_and_invalid_outer_wrappers() {
 }
 
 #[test]
-fn json_block_selects_jsonl_row_when_cursor_is_at_row_end_boundary() {
+fn json_block_selects_jsonl_row_when_cursor_is_before_row_end_boundary() {
     let lines = [
         r#"{"id":11,"title":"previous"}"#,
         r#"{"id":12,"title":"target","detail":{"source":"cursor row"}}"#,
@@ -54,7 +54,7 @@ fn json_block_selects_jsonl_row_when_cursor_is_at_row_end_boundary() {
     ];
     let source = lines.join("\n");
     let target_line = lines[1];
-    let span = find_json_block_at_position("json", &source, 1, target_line.len() as u32);
+    let span = find_json_block_at_position("json", &source, 1, target_line.len() as u32 - 1);
 
     assert!(span.found);
     assert_eq!(

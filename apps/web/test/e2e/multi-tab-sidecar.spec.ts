@@ -204,7 +204,7 @@ test('closing tabs removes only left tabs and never lists the right sidecar tab'
   await expect.poll(async () => (await leftTabIds(page)).length, { timeout: 5_000 }).toBe(2);
   const [firstTabId, secondTabId] = await leftTabIds(page);
 
-  await page.getByRole('button', { name: 'Text mode', exact: true }).click();
+  await page.getByTestId('graph-surface-compare').click();
   await expect(page.getByTestId('monaco-right-editor')).toBeVisible({ timeout: 5_000 });
   await setMonacoValue(page, 'right-editor', '{"right":true}');
 
@@ -238,7 +238,7 @@ test('closing tabs removes only left tabs and never lists the right sidecar tab'
 test('closing the last left tab creates a new blank primary and retains the sidecar', async ({ page }) => {
   await setEditorContent(page, { language: 'json', sourceText: '{"left":1}' });
   const [closedTabId] = await leftTabIds(page);
-  await page.getByRole('button', { name: 'Text mode', exact: true }).click();
+  await page.getByTestId('graph-surface-compare').click();
   await expect(page.getByTestId('monaco-right-editor')).toBeVisible({ timeout: 5_000 });
   await setMonacoValue(page, 'right-editor', '{"right":true}');
 

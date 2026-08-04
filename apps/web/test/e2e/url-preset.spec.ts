@@ -18,7 +18,6 @@ test('viewer-only preset still initializes hidden editor and executes commands',
     editor: false,
     viewer: true,
     topbar: false,
-    bottombar: false,
   });
   await expect(page.getByTestId('left-pane')).toHaveCount(0);
   await expect(page.getByTestId('right-pane')).toHaveCount(1);
