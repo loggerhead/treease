@@ -7,11 +7,13 @@
   --panel-bg-alt: #f1f6fa;
   --topbar-bg: #ffffff;
   --text-primary: #183b56;
-  --text-muted: #6b8193;
+  --text-muted: #5d7282;
   --border-strong: #c8d9e5;
   --border-muted: #dce7ee;
-  --accent: #2476b8;
+  --accent: #1f6ca9;
   --accent-soft: #e8f3fb;
+  --item-hover-bg: #eaf3f9;
+  --item-active-bg: #e2eff8;
   --danger: #c7504d;
   --control-height: 26px;
   --control-radius: 6px;
@@ -468,7 +470,7 @@ body {
 
 [data-slot="dropdown-menu-item"][data-highlighted],
 [data-slot="dropdown-menu-item"]:hover {
-  background: var(--panel-bg-alt);
+  background: var(--item-hover-bg);
 }
 
 .left-truncate {

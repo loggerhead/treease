@@ -11,7 +11,7 @@
 
 <CommandPrimitive.Item
 	class={cn(
-		"relative flex w-full cursor-default items-center gap-2 rounded-[8px] px-2.5 py-1.5 text-left text-[13px] outline-none select-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50 data-[highlighted]:bg-[#eef2f7] data-[highlighted]:text-[var(--text-primary)] data-[selected]:bg-[#eef2f7] data-[selected]:text-[var(--text-primary)]",
+		"relative flex w-full cursor-default items-center gap-2 rounded-[8px] px-2.5 py-1.5 text-left text-[13px] outline-none select-none transition-colors duration-150 data-[disabled]:pointer-events-none data-[disabled]:opacity-50 data-[highlighted]:bg-[var(--item-hover-bg)] data-[highlighted]:text-[var(--text-primary)] data-[selected]:bg-[var(--item-active-bg)] data-[selected]:text-[var(--text-primary)]",
 		className
 	)}
 	{...restProps}

@@ -31,6 +31,7 @@
               data-testid={itemTestId(results[row.index], row.index)}
               data-search-index={row.index}
               data-search-active={activeIndex === row.index ? 'true' : 'false'}
+              class="search-panel__item"
               aria-selected={activeIndex === row.index}
               onSelect={() => onItemSelect(row.index, results[row.index])}
             >
@@ -48,6 +49,7 @@
           data-testid={itemTestId(item, index)}
           data-search-index={index}
           data-search-active={activeIndex === index ? 'true' : 'false'}
+          class="search-panel__item"
           aria-selected={activeIndex === index}
           onSelect={() => onItemSelect(index, item)}
         >
@@ -60,11 +62,8 @@
 
 <style>
   :global([data-search-active='true']) {
-    background-color: #eef2f7 !important;
+    background-color: var(--item-active-bg) !important;
     color: var(--text-primary) !important;
   }
 
-  :global([data-search-active='false']) {
-    background-color: transparent !important;
-  }
 </style>

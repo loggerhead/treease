@@ -269,7 +269,7 @@
             data-search-index={index}
             data-testid={`graph-search-result-${item.nodeId ?? 'unresolved'}-${item.pathText}`}
             class:graph-search-result--active={activeIndex === index}
-            class="graph-search-result flex h-[40px] w-full cursor-default select-none items-center gap-2 rounded-[8px] px-2.5 py-1.5 text-left text-[13px] outline-none"
+            class="search-panel__item graph-search-result flex h-[40px] w-full cursor-default select-none items-center gap-2 rounded-[8px] px-2.5 py-1.5 text-left text-[13px] outline-none"
             on:mouseenter={() => activateResult(index)}
             on:click={() => {
               activateResult(index)
@@ -300,11 +300,8 @@
 
 <style>
   .graph-search-result--active {
-    background-color: #eef2f7;
+    background-color: var(--item-active-bg);
     color: var(--text-primary);
   }
 
-  .graph-search-result:not(.graph-search-result--active):hover {
-    background-color: #f7f9fc;
-  }
 </style>

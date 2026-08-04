@@ -225,3 +225,14 @@
     </div>
   {/if}
 </div>
+
+<style>
+  :global(.search-panel__item) {
+    transition: background-color 150ms ease, color 150ms ease;
+  }
+
+  :global(.search-panel__item:not(.graph-search-result--active):not([data-search-active='true']):hover) {
+    background-color: var(--item-hover-bg) !important;
+    color: var(--text-primary);
+  }
+</style>
