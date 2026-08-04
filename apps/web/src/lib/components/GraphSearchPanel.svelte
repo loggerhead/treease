@@ -33,7 +33,6 @@
   let results: GraphSearchResult[] = []
   let searchPanel: SearchPanel | null = null
   let panelRef: HTMLDivElement | null = null
-  let resultsList: HTMLDivElement | null = null
   let debounceHandle: ReturnType<typeof setTimeout> | null = null
   let searchToken = 0
   let lastSearchDependencySignature = ''
@@ -162,49 +161,10 @@
    * preview through the same graph-navigation callback; only keyboard asks the
    * result list to follow the active option.
    */
-  function activateResult(index: number, scrollIntoView = false): void {
+  function activateResult(index: number): void {
     if (!results[index]) return
     activeIndex = index
     previewResult(index)
-    if (scrollIntoView) void scrollActiveResultIntoView(index)
-  }
-
-  async function scrollActiveResultIntoView(index: number): Promise<void> {
-    await tick()
-    resultsList
-      ?.querySelector<HTMLElement>(`[data-graph-search-index="${index}"]`)
-      ?.scrollIntoView({ block: 'nearest' })
-  }
-
-  function moveActiveResult(offset: number): void {
-    if (!results.length) return
-    const nextIndex = (activeIndex + offset + results.length) % results.length
-    activateResult(nextIndex, true)
-  }
-
-  function handleSearchKeydown(event: KeyboardEvent): void {
-    if (event.key === 'ArrowDown') {
-      event.preventDefault()
-      moveActiveResult(1)
-      return
-    }
-    if (event.key === 'ArrowUp') {
-      event.preventDefault()
-      moveActiveResult(-1)
-      return
-    }
-    if (event.key === 'Enter') {
-      const item = results[activeIndex]
-      if (item && query.trim() === resolvedQuery) {
-        event.preventDefault()
-        selectResult(item)
-      }
-      return
-    }
-    if (event.key === 'Escape') {
-      event.preventDefault()
-      closePanel()
-    }
   }
 
   function selectResult(item: GraphSearchResult): void {
@@ -265,6 +225,8 @@
   bind:containerRef={panelRef}
   {open}
   {query}
+  {results}
+  activeIndex={activeIndex}
   placeholder="Search graph"
   inputAriaLabel="Search graph"
   inputTestId="graph-search-panel"
@@ -279,11 +241,18 @@
     const detail = event.detail as InputEvent
     setQuery((detail.target as HTMLInputElement).value)
   }}
-  onKeydown={(event: any) => handleSearchKeydown(event.detail as KeyboardEvent)}
+  onActiveIndexChange={(index) => {
+    activeIndex = index
+    previewResult(index)
+  }}
+  onEscape={closePanel}
+  onItemSelect={(index) => {
+    const item = results[index]
+    if (item && query.trim() === resolvedQuery) selectResult(item)
+  }}
 >
   <svelte:fragment slot="results">
     <div
-      bind:this={resultsList}
       id="graph-search-results"
       class="graph-search-list max-h-[300px] overflow-y-auto p-1"
       role="listbox"
@@ -297,7 +266,7 @@
             tabindex="-1"
             aria-label={`Graph search result ${item.pathText}`}
             aria-selected={activeIndex === index}
-            data-graph-search-index={index}
+            data-search-index={index}
             data-testid={`graph-search-result-${item.nodeId ?? 'unresolved'}-${item.pathText}`}
             class:graph-search-result--active={activeIndex === index}
             class="graph-search-result flex h-[40px] w-full cursor-default select-none items-center gap-2 rounded-[8px] px-2.5 py-1.5 text-left text-[13px] outline-none"

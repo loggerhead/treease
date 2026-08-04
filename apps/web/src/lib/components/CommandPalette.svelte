@@ -9,7 +9,6 @@
   export let value = ''
   export let compact = false
   export let compactLabel = ''
-  export let compactShortcut = ''
   export let onExecute: (id: CommandId) => void | Promise<void> = () => {}
 
   let open = false
@@ -65,14 +64,6 @@
     searchPanel?.focusInput?.()
   }
 
-  function handleGlobalKey(event: KeyboardEvent) {
-    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
-      event.preventDefault()
-      if (!open) void openPanel()
-      else closePanel()
-    }
-  }
-
   function handleDocumentPointerDown(event: PointerEvent) {
     const target = event.target as Node
     if (!panelRef || panelRef.contains(target)) return
@@ -93,7 +84,6 @@
 </script>
 
 <svelte:window
-  on:keydown={handleGlobalKey}
   on:pointerdown={handleDocumentPointerDown}
   on:resize={positionCompactPanel}
   on:scroll={positionCompactPanel}
@@ -112,7 +102,6 @@
   >
     <Search size={14} />
     {#if compactLabel}<span>{compactLabel}</span>{/if}
-    {#if compactShortcut}<kbd class="command-palette__shortcut">{compactShortcut}</kbd>{/if}
   </button>
 {/if}
 
@@ -124,7 +113,6 @@
   placeholder="Search Command"
   inputAriaLabel="Search command"
   inputTestId="command-search-input"
-  shortcut="⌘ K"
   panelClass={compact
     ? 'fixed z-[10000] max-h-[calc(100dvh-40px)] w-[280px]'
     : 'absolute left-0 bottom-[calc(100%+8px)] z-40 max-h-[calc(100dvh-42px-8px)] w-[280px]'}
@@ -145,20 +133,8 @@
     const detail = event.detail as InputEvent
     setQuery((detail.target as HTMLInputElement).value)
   }}
-  onKeydown={(event: any) => {
-    const keyEvent = event.detail as KeyboardEvent
-    if (!open && keyEvent.key === 'Enter') {
-      void openPanel()
-      return
-    }
-    if (!open) return
-    if (keyEvent.key === 'Escape') {
-      keyEvent.preventDefault()
-      closePanel()
-    }
-  }}
-  onItemSelect={(index) => {
-    const item = results[index]
+  onEscape={closePanel}
+  onItemSelect={(_index, item) => {
     if (item) void executeCommand(item.id)
   }}
   itemKey={(item) => item.id}
@@ -199,5 +175,4 @@
   .command-palette__trigger--labeled { width: auto; padding: 0 var(--space-2) 0 var(--space-3); }
   .command-palette__trigger:hover { border-color: var(--border-strong); background: var(--panel-bg-alt); }
   .command-palette__trigger:focus-visible { outline: none; box-shadow: var(--focus-ring); }
-  .command-palette__shortcut { margin-left: var(--space-1); color: var(--text-muted); font: inherit; font-size: var(--font-size-caption); letter-spacing: .01em; }
 </style>

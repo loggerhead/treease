@@ -18,8 +18,6 @@ import {
   waitForGraphRendered,
 } from './utils';
 
-const COMMAND_MOD = process.platform === 'darwin' ? 'Meta' : 'Control';
-
 async function settleGraphHover(page: Page) {
   await page.evaluate(
     () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))),
@@ -47,22 +45,6 @@ async function movePointerOffGraph(page: Page) {
   const zoomIn = page.getByRole('button', { name: 'Zoom in', exact: true });
   await expect(zoomIn).toBeVisible({ timeout: 5_000 });
   await zoomIn.hover();
-}
-
-async function dispatchWindowShortcut(page: Page, key: string, modifier: 'Meta' | 'Control') {
-  await page.evaluate(
-    ({ key, modifier }) => {
-      window.dispatchEvent(
-        new KeyboardEvent('keydown', {
-          key,
-          bubbles: true,
-          metaKey: modifier === 'Meta',
-          ctrlKey: modifier === 'Control',
-        }),
-      );
-    },
-    { key, modifier },
-  );
 }
 
 function resolvePosition(sourceText: string, marker: string): { lineNumber: number; column: number } {
@@ -108,7 +90,7 @@ test('tree path breadcrumb copies the full path and crumb click reveals parent p
     .toBe('$.user["profile-name"].first');
 });
 
-test('command search supports shortcut toggle, execute, and outside-click close', async ({ page }) => {
+test('command search supports click open, execute, and outside-click close', async ({ page }) => {
   await page.goto('/editor');
   await waitForEditorReady(page);
   await setEditorContent(page, {
@@ -116,8 +98,16 @@ test('command search supports shortcut toggle, execute, and outside-click close'
     language: 'json',
   });
 
-  await dispatchWindowShortcut(page, 'k', COMMAND_MOD);
-  await expect(page.getByText('Format').first()).toBeVisible({ timeout: 5_000 });
+  await page.getByTestId('command-search-button').click();
+  const commandList = page.locator('.command-search-list');
+  await expect(commandList).toBeVisible({ timeout: 5_000 });
+  await expect(commandList.getByText('Format', { exact: true })).toBeVisible({ timeout: 5_000 });
+  const commandOptions = commandList.getByRole('option');
+  const commandInput = page.getByTestId('command-search-input');
+  await expect(commandOptions.first()).toHaveAttribute('data-search-active', 'true');
+  await commandInput.press('ArrowUp');
+  await expect(commandOptions.first()).toHaveAttribute('data-search-active', 'false');
+  await expect(commandOptions.last()).toHaveAttribute('data-search-active', 'true');
 
   const compactInfo = page.getByRole('option', { name: 'Compact', exact: true }).locator('.ui-tooltip');
   await compactInfo.hover();
@@ -132,24 +122,17 @@ test('command search supports shortcut toggle, execute, and outside-click close'
     return Number(getComputedStyle(tooltip).zIndex) > Number(getComputedStyle(panel!).zIndex);
   })).toBe(true);
 
-  await dispatchWindowShortcut(page, 'k', COMMAND_MOD);
-  await expect(page.locator('.command-search-list')).toHaveCount(0);
-
-  const commandInput = page.getByRole('textbox', { name: 'Search command', exact: true });
-  await commandInput.press('Enter');
-  await expect(page.getByText('Format').first()).toBeVisible({ timeout: 5_000 });
   await commandInput.fill('sort');
-  await expect(page.getByText('Sort').first()).toBeVisible();
-  await expect(page.getByText('Format').first()).toBeHidden();
-  await commandInput.press('Enter');
-  await commandInput.press('Enter');
+  await expect(commandList.getByText('Sort', { exact: true })).toBeVisible();
+  await expect(commandList.getByText('Format', { exact: true })).toHaveCount(0);
+  await commandList.getByText('Sort', { exact: true }).click();
 
   await expect
     .poll(async () => Object.keys(JSON.parse((await readEditorState(page)).sourceText)).join(','), { timeout: 5_000 })
     .toBe('object,preview,table_with_header,table_without_header');
 
-  await commandInput.press('Enter');
-  await expect(page.getByText('Sort').first()).toBeVisible({ timeout: 5_000 });
+  await page.getByTestId('command-search-button').click();
+  await expect(commandList).toBeVisible({ timeout: 5_000 });
   await page.locator('main').click({ position: { x: 8, y: 8 } });
   await expect(page.locator('.command-search-list')).toHaveCount(0);
 });

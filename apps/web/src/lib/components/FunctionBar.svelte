@@ -33,7 +33,7 @@
         {#each supportedEditorLanguages as option}<Select.Item value={option.id} label={option.label} class="text-[12px]" />{/each}
       </Select.Content>
     </Select.Root>
-    <div class="function-bar__command"><CommandPalette compact compactLabel="Command" compactShortcut="⌘ K" onExecute={onCommandExecute} /></div>
+    <div class="function-bar__command"><CommandPalette compact compactLabel="Command" onExecute={onCommandExecute} /></div>
   </div>
   <div class="function-bar__processing">
     <Tooltip content="Format" side="bottom"><button class="function-bar__button" aria-label="Format" on:click={() => void onFormat()}><Wand2 size={13} /></button></Tooltip>

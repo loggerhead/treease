@@ -25,14 +25,16 @@
   export let inputTestId = ''
   export let inputClassName = 'h-[28px] rounded-none border-0 border-b border-[rgba(15,23,42,0.10)] bg-transparent px-2 text-[#6b7280] transition-colors focus-within:border-b-[rgba(15,23,42,0.16)]'
   export let results: any[] = []
+  export let activeIndex = -1
   export let useVirtualList = true
   export let estimateSize = 36
   export let overscan = 6
   export let onInput: (event: any) => void = () => {}
-  export let onKeydown: (event: any) => void = () => {}
   export let onFocus: (event: any) => void = () => {}
   export let onClick: (event: any) => void = () => {}
-  export let onItemSelect: (index: number) => void = () => {}
+  export let onItemSelect: (index: number, item: any) => void = () => {}
+  export let onActiveIndexChange: (index: number) => void = () => {}
+  export let onEscape: () => void = () => {}
   export let itemKey: (item: any, index: number) => string | number = (_item, index) => index
   export let itemValue: (item: any, index: number) => string = (item, index) => String(item?.id ?? item?.label ?? index)
   export let itemKeywords: (item: any, index: number) => string[] = () => []
@@ -45,6 +47,27 @@
 
   let searchRef: SearchInput | null = null
   let listRef: HTMLDivElement | null = null
+  let previousQuery = query
+
+  $: visibleResults = shouldFilter && query.trim()
+    ? results.filter((item, index) => {
+        const haystack = `${itemValue(item, index)} ${itemKeywords(item, index).join(' ')}`.toLowerCase()
+        return haystack.includes(query.trim().toLowerCase())
+      })
+    : results
+
+  $: if (query !== previousQuery) {
+    previousQuery = query
+    activeIndex = visibleResults.length ? 0 : -1
+    onActiveIndexChange(activeIndex)
+  }
+
+  $: if (!visibleResults.length) {
+    activeIndex = -1
+  } else if (activeIndex < 0 || activeIndex >= visibleResults.length) {
+    activeIndex = 0
+    onActiveIndexChange(activeIndex)
+  }
 
   export function focusInput() {
     searchRef?.focus()
@@ -68,7 +91,7 @@
   $: if ($virtualizer) {
     $virtualizer.setOptions({
       ...$virtualizer.options,
-      count: results.length,
+      count: visibleResults.length,
       getScrollElement: () => listRef,
       estimateSize: () => estimateSize,
       overscan
@@ -85,6 +108,48 @@
       }
     }
   }
+
+  function scrollActiveResultIntoView(index: number): void {
+    void tick().then(() => {
+      listRef?.querySelector<HTMLElement>(`[data-search-index="${index}"]`)
+        ?.scrollIntoView({ block: 'nearest' })
+    })
+  }
+
+  function moveActiveIndex(offset: number): void {
+    if (!visibleResults.length) return
+    activeIndex = (activeIndex + offset + visibleResults.length) % visibleResults.length
+    onActiveIndexChange(activeIndex)
+    scrollActiveResultIntoView(activeIndex)
+  }
+
+  function handleKeydown(event: KeyboardEvent): void {
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault()
+      event.stopPropagation()
+      moveActiveIndex(event.key === 'ArrowDown' ? 1 : -1)
+      return
+    }
+    if (event.key === 'Enter') {
+      const item = visibleResults[activeIndex]
+      if (item) {
+        event.preventDefault()
+        event.stopPropagation()
+        onItemSelect(activeIndex, item)
+      }
+      return
+    }
+    if (event.key === 'Escape') {
+      event.preventDefault()
+      event.stopPropagation()
+      onEscape()
+      return
+    }
+  }
+
+  function handleInputKeydown(event: CustomEvent): void {
+    handleKeydown(event.detail as KeyboardEvent)
+  }
 </script>
 
 <div class="relative" bind:this={containerRef}>
@@ -100,7 +165,7 @@
       on:focus={onFocus}
       on:click={onClick}
       on:input={onInput}
-      on:keydown={onKeydown}
+      on:keydown={handleInputKeydown}
     />
   {/if}
   {#if open}
@@ -118,7 +183,7 @@
         {loop}
       >
         {#if inputInline}
-          <SearchInput
+        <SearchInput
             bind:this={searchRef}
             value={query}
             {placeholder}
@@ -129,7 +194,7 @@
             on:focus={onFocus}
             on:click={onClick}
             on:input={onInput}
-            on:keydown={onKeydown}
+            on:keydown={handleInputKeydown}
           />
         {/if}
         <div class={inputInline ? 'mt-2' : ''}>
@@ -137,7 +202,8 @@
             <slot name="results" />
           {:else}
             <SearchResultsList
-              {results}
+              results={visibleResults}
+              {activeIndex}
               {useVirtualList}
               virtualizer={virtualizer}
               {listClassName}
