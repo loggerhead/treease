@@ -11,12 +11,14 @@ import {
 import {
   getColumnNavigatorHeight,
   getEditorSplitRatio,
+  getSidebarExpanded,
   mergeEditorLayoutState,
   omitEditorLayoutState,
   withColumnNavigatorHeight,
   withEditorSplitRatio,
+  withSidebarExpanded,
 } from './editor-layout-state';
-import { clearEditorSplitRatioCookie, writeEditorSplitRatioCookie } from './editor-layout-cookie';
+import { clearEditorSplitRatioCookie, clearSidebarExpandedCookie, writeEditorSplitRatioCookie, writeSidebarExpandedCookie } from './editor-layout-cookie';
 import { handleError } from '../utils/error-handler';
 
 const DB_NAME = 'treease-settings';
@@ -105,7 +107,7 @@ function migrateLegacySettingsDocument(document: SettingsDocument): SettingsDocu
   const nextUiColors = replaceLegacyDefaultColors(uiColors, {
     'editor.background': [['#ffffff', '#fdfcf9'], '#ffffff'],
     'editor.foreground': [['#0f172a', '#1d2735'], '#294c66'],
-    'editorLineNumber.foreground': [['#64748b', '#9aa4aa'], '#9caebb'],
+    'editorLineNumber.foreground': [['#64748b', '#9aa4aa'], '#64748b'],
     'editorLineNumber.activeForeground': [['#0f172a', '#687181'], '#6d8292'],
     'editorCursor.foreground': [['#0f172a', '#315c94'], '#286b90'],
     'editor.selectionBackground': [['#dbeafe', '#eaf0f8'], '#eaf4fb'],
@@ -240,10 +242,19 @@ function createSettingsStore() {
       await settingsStore.saveDocument(document);
     },
     getColumnNavigatorHeight: () => getColumnNavigatorHeight(get(internalStore).document),
+    saveSidebarExpanded: async (expanded: boolean) => {
+      const currentState = get(internalStore);
+      const document = withSidebarExpanded(currentState.document, expanded);
+      writeSidebarExpandedCookie(expanded);
+      if (document === currentState.document) return;
+      await settingsStore.saveDocument(document);
+    },
+    getSidebarExpanded: () => getSidebarExpanded(get(internalStore).document),
     reset: async () => {
       const document = mergeSettings(defaultSettings, {});
       internalStore.set({ document, settings: document, status: 'ready' });
       clearEditorSplitRatioCookie();
+      clearSidebarExpandedCookie();
       try {
         const db = await getDb();
         await db.put(STORE_NAME, document, SETTINGS_KEY);

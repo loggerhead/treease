@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { readEditorSplitRatioCookie } from './editor-layout-cookie';
+import { readEditorSplitRatioCookie, readSidebarExpandedCookie } from './editor-layout-cookie';
 
 describe('editor-layout-cookie', () => {
   it('accepts and clamps a decimal split ratio', () => {
@@ -11,5 +11,12 @@ describe('editor-layout-cookie', () => {
     expect(readEditorSplitRatioCookie(undefined)).toBeNull();
     expect(readEditorSplitRatioCookie('42')).toBeNull();
     expect(readEditorSplitRatioCookie('0.4px')).toBeNull();
+  });
+
+  it('accepts only explicit sidebar boolean cookie values', () => {
+    expect(readSidebarExpandedCookie('true')).toBe(true);
+    expect(readSidebarExpandedCookie('false')).toBe(false);
+    expect(readSidebarExpandedCookie(undefined)).toBeNull();
+    expect(readSidebarExpandedCookie('1')).toBeNull();
   });
 });

@@ -19,7 +19,7 @@
   import type { PricingUsageNotice } from '../../lib/components/PricingPlanGrid.svelte';
   import YqInputBox from '../../lib/components/YqInputBox.svelte';
   import { settings, settingsStore } from '../../lib/settings/settings-store';
-  import { DEFAULT_EDITOR_SPLIT_RATIO } from '../../lib/settings/editor-layout-state';
+  import { DEFAULT_EDITOR_SPLIT_RATIO, DEFAULT_SIDEBAR_EXPANDED } from '../../lib/settings/editor-layout-state';
   import {
     activeTempModel,
     initialTempModel,
@@ -140,6 +140,8 @@
   });
   let scrollSyncLock: 'editor' | 'viewer' | null = null;
   const serverSplitRatio = data.editorSplitRatio;
+  const serverSidebarExpanded = data.sidebarExpanded;
+  let sidebarExpanded = serverSidebarExpanded ?? DEFAULT_SIDEBAR_EXPANDED;
   let splitLayoutState = createSplitLayoutState(serverSplitRatio ?? DEFAULT_EDITOR_SPLIT_RATIO);
   let layoutReady = false;
   let layoutMode = splitLayoutState.layoutMode;
@@ -1037,6 +1039,11 @@
     void settingsStore.saveEditorSplitRatio(splitRatio);
   }
 
+  function handleSidebarToggle(expanded: boolean): void {
+    sidebarExpanded = expanded;
+    void settingsStore.saveSidebarExpanded(expanded);
+  }
+
   function handleApplyDiff(plan: DiffPlan) {
     editorRef?.applyDiffPlan(plan);
   }
@@ -1607,6 +1614,12 @@
         // IndexedDB is the legacy source only until this bootstrap value reaches the SSR cookie.
         void settingsStore.saveEditorSplitRatio(savedSplitRatio);
       }
+      const savedSidebarExpanded = settingsStore.getSidebarExpanded();
+      if (serverSidebarExpanded === null && savedSidebarExpanded !== null) {
+        sidebarExpanded = savedSidebarExpanded;
+        // IndexedDB is the legacy source only until this bootstrap value reaches the SSR cookie.
+        void settingsStore.saveSidebarExpanded(savedSidebarExpanded);
+      }
       layoutReady = true;
       await tick();
       if (shareID.present) {
@@ -1672,6 +1685,8 @@
   <div class="flex h-full min-h-0 min-w-0 overflow-hidden">
     <Sidebar
       bind:this={sidebarRef}
+      expanded={sidebarExpanded}
+      onToggleSidebar={handleSidebarToggle}
       {formatOptions}
       onRequestImportFile={handleRequestImportFile}
       onImportFileStream={handleImportFileStream}

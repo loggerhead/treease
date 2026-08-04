@@ -2,6 +2,7 @@ import type { SettingsDocument } from './ui-settings';
 
 export const DEFAULT_EDITOR_SPLIT_RATIO = 0.28;
 export const DEFAULT_COLUMN_NAVIGATOR_HEIGHT_PX = 220;
+export const DEFAULT_SIDEBAR_EXPANDED = true;
 
 const EDITOR_LAYOUT_STATE_KEY = '__treeaseEditorLayout';
 const MIN_SPLIT_RATIO = 0.2;
@@ -10,6 +11,7 @@ const MAX_SPLIT_RATIO = 0.8;
 type EditorLayoutState = {
   splitRatio?: unknown;
   columnNavigatorHeightPx?: unknown;
+  sidebarExpanded?: unknown;
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -62,6 +64,30 @@ export function withColumnNavigatorHeight(document: SettingsDocument, heightPx: 
     [EDITOR_LAYOUT_STATE_KEY]: {
       ...currentState,
       columnNavigatorHeightPx: normalized,
+    },
+  };
+}
+
+export function normalizeSidebarExpanded(value: unknown): boolean | null {
+  return typeof value === 'boolean' ? value : null;
+}
+
+export function getSidebarExpanded(document: SettingsDocument): boolean | null {
+  if (!isRecord(document)) return null;
+  const state = document[EDITOR_LAYOUT_STATE_KEY];
+  if (!isRecord(state)) return null;
+  return normalizeSidebarExpanded((state as EditorLayoutState).sidebarExpanded);
+}
+
+export function withSidebarExpanded(document: SettingsDocument, expanded: boolean): SettingsDocument {
+  const normalized = normalizeSidebarExpanded(expanded);
+  if (normalized === null) return document;
+  const currentState = isRecord(document[EDITOR_LAYOUT_STATE_KEY]) ? document[EDITOR_LAYOUT_STATE_KEY] : {};
+  return {
+    ...document,
+    [EDITOR_LAYOUT_STATE_KEY]: {
+      ...currentState,
+      sidebarExpanded: normalized,
     },
   };
 }

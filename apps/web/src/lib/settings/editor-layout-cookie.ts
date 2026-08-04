@@ -1,6 +1,7 @@
 import { normalizeEditorSplitRatio } from './editor-layout-state';
 
 export const EDITOR_SPLIT_RATIO_COOKIE = 'treease_editor_split_ratio';
+export const SIDEBAR_EXPANDED_COOKIE = 'treease_sidebar_expanded';
 const COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 365;
 
 export function readEditorSplitRatioCookie(value: string | undefined): number | null {
@@ -19,4 +20,22 @@ export function clearEditorSplitRatioCookie(): void {
   if (typeof document === 'undefined') return;
   const secure = window.location.protocol === 'https:' ? '; Secure' : '';
   document.cookie = `${EDITOR_SPLIT_RATIO_COOKIE}=; Path=/; Max-Age=0; SameSite=Lax${secure}`;
+}
+
+export function readSidebarExpandedCookie(value: string | undefined): boolean | null {
+  if (value === 'true') return true;
+  if (value === 'false') return false;
+  return null;
+}
+
+export function writeSidebarExpandedCookie(expanded: boolean): void {
+  if (typeof document === 'undefined') return;
+  const secure = window.location.protocol === 'https:' ? '; Secure' : '';
+  document.cookie = `${SIDEBAR_EXPANDED_COOKIE}=${expanded}; Path=/; Max-Age=${COOKIE_MAX_AGE_SECONDS}; SameSite=Lax${secure}`;
+}
+
+export function clearSidebarExpandedCookie(): void {
+  if (typeof document === 'undefined') return;
+  const secure = window.location.protocol === 'https:' ? '; Secure' : '';
+  document.cookie = `${SIDEBAR_EXPANDED_COOKIE}=; Path=/; Max-Age=0; SameSite=Lax${secure}`;
 }

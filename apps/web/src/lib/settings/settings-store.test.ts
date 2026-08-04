@@ -269,6 +269,19 @@ describe('settings-store', () => {
     expect(state.settings).not.toHaveProperty('__treeaseEditorLayout');
   });
 
+  it('persists sidebar expansion without applying it as a user setting', async () => {
+    await settingsStore.saveSidebarExpanded(false);
+    const state = settingsStore.get();
+    expect(settingsStore.getSidebarExpanded()).toBe(false);
+    expect(state.document).toEqual(expect.objectContaining({
+      __treeaseEditorLayout: expect.objectContaining({ sidebarExpanded: false })
+    }));
+    expect(state.settings).not.toHaveProperty('__treeaseEditorLayout');
+    expect(mockDbStore.user).toEqual(expect.objectContaining({
+      __treeaseEditorLayout: expect.objectContaining({ sidebarExpanded: false })
+    }));
+  });
+
   it('keeps editor layout state out of the Settings dialog document and preserves it on dialog save', async () => {
     await settingsStore.saveEditorSplitRatio(0.42);
     let dialogDocument: unknown;
@@ -281,6 +294,16 @@ describe('settings-store', () => {
     expect(settingsStore.get().document).toEqual(expect.objectContaining({
       parser: { enableNest: false },
       __treeaseEditorLayout: expect.objectContaining({ splitRatio: 0.42 })
+    }));
+  });
+
+  it('preserves sidebar expansion when the Settings dialog saves', async () => {
+    await settingsStore.saveSidebarExpanded(false);
+    await settingsStore.saveSettingsDialogDocument({ parser: { enableNest: false } });
+    expect(settingsStore.getSidebarExpanded()).toBe(false);
+    expect(settingsStore.get().document).toEqual(expect.objectContaining({
+      parser: { enableNest: false },
+      __treeaseEditorLayout: expect.objectContaining({ sidebarExpanded: false })
     }));
   });
 

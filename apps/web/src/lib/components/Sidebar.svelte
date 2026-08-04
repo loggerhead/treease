@@ -29,7 +29,8 @@
   export let onLogout: () => Promise<void> = async () => {}
   export let onCheckForUpdates: () => Promise<void> = async () => {}
 
-  let expanded = true
+  export let expanded = true
+  export let onToggleSidebar: (expanded: boolean) => void = () => {}
   let importOpen = false
   let exportOpen = false
   let importDropActive = false
@@ -54,7 +55,7 @@
   }
 
   function toggleSidebar(): void {
-    expanded = !expanded
+    onToggleSidebar(!expanded)
   }
 
   function handleImportFile(file: File | null | undefined): void {
@@ -101,14 +102,14 @@
       <div class="sidebar__main">
         <Tooltip content="Treease home" side="right" disabled={expanded}>
           <a class="sidebar__logo" href="/" aria-label="Treease home">
-            <img src={assetUrl(r2Assets.treeaseLogo)} alt="Treease" />
+            <img src={assetUrl(r2Assets.treeaseLogo)} alt="" />
             <span class="sidebar__label">Treease</span>
           </a>
         </Tooltip>
 
         <ContextItem bind:this={importItem} bind:open={importOpen} label="Import" ariaLabel="Import" testId="topbar-import-button" {expanded}>
           <FileUp size={16} slot="icon" />
-          <div slot="panel">
+          <div slot="panel" data-testid="import-panel">
             <div class="sidebar__popover-title">Import</div>
             <div class="sidebar__popover-row"><span>File type</span>
               <Select.Root type="single" items={formatOptions.map((option) => ({ value: option.id, label: option.label }))} bind:value={importFormat}>
@@ -133,7 +134,7 @@
 
         <ContextItem bind:this={exportItem} bind:open={exportOpen} label="Export" ariaLabel="Export" testId="topbar-export-button" {expanded}>
           <Download size={16} slot="icon" />
-          <div slot="panel">
+          <div slot="panel" data-testid="export-panel">
             <div class="sidebar__popover-title">Export</div>
             <div class="sidebar__popover-row"><span>Export to</span>
               <Select.Root type="single" items={formatOptions.map((option) => ({ value: option.id, label: option.label }))} bind:value={exportFormat}>
@@ -216,6 +217,8 @@
   .sidebar__popover-row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); color: var(--text-muted); font-size: var(--font-size-control); }
   .sidebar__drop { display: flex; width: 100%; height: 88px; align-items: center; justify-content: center; margin-top: var(--space-3); border: 1px dashed var(--border-muted); border-radius: var(--control-radius); color: var(--text-muted); background: var(--panel-bg-alt); font-size: var(--font-size-control); transition: var(--control-transition); }
   .sidebar__drop:hover, .sidebar__drop--active { border-color: var(--accent); color: var(--text-primary); background: var(--accent-soft); }
+  .sidebar-host:not([data-expanded='true']) :global(.sidebar__item-wrap),
+  .sidebar-host:not([data-expanded='true']) :global(.sidebar__item) { width: 32px; flex-basis: 32px; }
   .sidebar__popover-actions { display: flex; gap: var(--space-2); margin-top: var(--space-3); }
   .sidebar__popover-actions button { height: 28px; border: 1px solid var(--border-muted); border-radius: var(--control-radius); padding: 0 var(--space-3); color: var(--text-primary); background: var(--panel-bg); font-size: var(--font-size-control); transition: var(--control-transition); }
   .sidebar__popover-actions button:hover { border-color: var(--accent); background: var(--panel-bg-alt); }
