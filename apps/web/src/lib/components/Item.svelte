@@ -14,7 +14,7 @@
   export let className = ''
 </script>
 
-<Tooltip content={tooltip} side="right" disabled={expanded && !showTooltipWhenExpanded}>
+<Tooltip className="sidebar__item-tooltip" content={tooltip} side="right" disabled={expanded && !showTooltipWhenExpanded}>
   <button
     class={`sidebar__item ${className}`}
     class:sidebar__item--expanded={expanded}
@@ -60,7 +60,12 @@
     flex-basis: 100%;
   }
 
-  :global(.sidebar__item:hover),
+  :global(.sidebar__item-tooltip) {
+    display: flex;
+    width: 100%;
+  }
+
+  :global(.sidebar__item:hover:not(:disabled)),
   :global(.sidebar__item--active) {
     color: var(--text-primary);
     background: var(--panel-bg-alt);
