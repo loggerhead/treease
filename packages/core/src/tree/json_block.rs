@@ -40,6 +40,9 @@ pub fn find_json_block_at_position(
 
     let index = LineIndex::build(source);
     let cursor = index.line_column_to_offset(row, column);
+    if matches!(source.as_bytes().get(cursor), Some(b'{' | b'[')) {
+        return JsonBlockSpan::EMPTY;
+    }
     let Some((start, end)) = smallest_valid_json_container_span(source, cursor) else {
         return JsonBlockSpan::EMPTY;
     };
@@ -66,7 +69,7 @@ fn smallest_valid_json_container_span(source: &str, cursor: usize) -> Option<(us
             index += 1;
             continue;
         }
-        if index > cursor {
+        if index >= cursor {
             break;
         }
 
@@ -75,7 +78,7 @@ fn smallest_valid_json_container_span(source: &str, cursor: usize) -> Option<(us
             continue;
         };
         let end = close_index + 1;
-        if end < cursor {
+        if end <= cursor {
             index = end;
             continue;
         }
@@ -176,6 +179,69 @@ mod tests {
         );
         assert_eq!(
             find_json_block_at_position("json", "{\"a\":1", 0, 1),
+            JsonBlockSpan::EMPTY
+        );
+    }
+
+    #[test]
+    fn does_not_find_json_block_after_object_end() {
+        assert_eq!(
+            find_json_block_at_position("json", "{\"a\":1}", 0, 7),
+            JsonBlockSpan::EMPTY
+        );
+    }
+
+    #[test]
+    fn does_not_find_json_block_before_object_start() {
+        assert_eq!(
+            find_json_block_at_position("json", "{\"a\":1}", 0, 0),
+            JsonBlockSpan::EMPTY
+        );
+    }
+
+    #[test]
+    fn does_not_find_json_block_after_array_end() {
+        assert_eq!(
+            find_json_block_at_position("json", "[1]", 0, 3),
+            JsonBlockSpan::EMPTY
+        );
+    }
+
+    #[test]
+    fn does_not_find_json_block_before_array_start() {
+        assert_eq!(
+            find_json_block_at_position("json", "[1]", 0, 0),
+            JsonBlockSpan::EMPTY
+        );
+    }
+
+    #[test]
+    fn finds_json_block_before_array_end() {
+        assert!(find_json_block_at_position("json", "[1]", 0, 2).found);
+    }
+
+    #[test]
+    fn still_finds_json_block_before_container_end() {
+        assert!(find_json_block_at_position("json", "{\"a\":1}", 0, 5).found);
+    }
+
+    #[test]
+    fn does_not_find_json_block_after_container_end() {
+        assert_eq!(
+            find_json_block_at_position("json", "{\"a\":1}", 0, 7),
+            JsonBlockSpan::EMPTY
+        );
+    }
+
+    #[test]
+    fn still_finds_json_block_before_nested_end() {
+        assert!(find_json_block_at_position("json", "{\"a\":{\"b\":1}}", 0, 11).found);
+    }
+
+    #[test]
+    fn does_not_fall_back_to_outer_container_before_nested_start() {
+        assert_eq!(
+            find_json_block_at_position("json", "{\"a\":[1]}", 0, 5),
             JsonBlockSpan::EMPTY
         );
     }
