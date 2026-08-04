@@ -103,6 +103,6 @@
 
 <style>
   .ui-tooltip { position: relative; display: inline-flex; min-width: 0; }
-  .ui-tooltip__content { position: fixed; z-index: 10001; width: max-content; max-width: 280px; padding: 8px 10px; border-radius: 7px; color: white; background: #0f172a; box-shadow: 0 8px 20px rgba(15, 23, 42, .18); font-size: 11px; line-height: 1.4; opacity: 0; pointer-events: none; transition: opacity 120ms ease; }
+  .ui-tooltip__content { position: fixed; z-index: 10001; width: max-content; max-width: 280px; padding: 6px 8px; border-radius: 5px; color: white; background: #183b56; box-shadow: 0 6px 16px rgba(24, 59, 86, .16); font-size: var(--font-size-control); line-height: 1.35; opacity: 0; pointer-events: none; transition: opacity 120ms ease, transform 120ms ease; }
   .ui-tooltip__content--visible { opacity: 1; }
 </style>

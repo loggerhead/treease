@@ -169,11 +169,11 @@
 
 <section aria-labelledby="settings-dialog-title" data-testid="settings-dialog" class="settings-panel flex w-full flex-col gap-4">
       <header>
-        <h2 id="settings-dialog-title" class="text-lg leading-none font-semibold">Settings</h2>
+        <h2 id="settings-dialog-title" class="text-[16px] leading-none font-semibold tracking-[-0.01em]">Settings</h2>
       </header>
     <div class="flex flex-1 flex-col gap-3">
       <div
-        class="min-h-[480px] w-full flex-1 overflow-hidden rounded-[10px] border border-[var(--border-muted)] bg-[var(--panel-bg)]"
+        class="min-h-[480px] w-full flex-1 overflow-hidden rounded-[var(--surface-radius)] border border-[var(--border-muted)] bg-[var(--panel-bg)]"
         data-testid="monaco-settings-editor"
         data-monaco-test-hook="settings-editor"
         bind:this={editorContainer}
@@ -197,13 +197,13 @@
       </div>
       <footer class="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
       <button
-        class="min-w-[72px] rounded-[8px] border border-[var(--border-muted)] bg-[var(--panel-bg)] px-[14px] py-[6px] text-[12px] text-[var(--text-primary)]"
+        class="h-7 min-w-[72px] rounded-[var(--control-radius)] border border-[var(--border-muted)] bg-[var(--panel-bg)] px-3 text-[12px] text-[var(--text-primary)] transition-[color,background-color,border-color,box-shadow] hover:border-[var(--accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/15"
         on:click={handleReset}
         aria-label="Reset settings"
         title="Reset settings"
       >Reset</button>
       <button
-        class="min-w-[72px] rounded-[8px] border border-[#2563eb] bg-[#2563eb] px-[14px] py-[6px] text-[12px] text-white"
+        class="h-7 min-w-[72px] rounded-[var(--control-radius)] border border-[var(--accent)] bg-[var(--accent)] px-3 text-[12px] text-white transition-[color,background-color,border-color,box-shadow] hover:brightness-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/20"
         on:click={handleSave}
         aria-label="Save settings"
         title="Save settings"

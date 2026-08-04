@@ -33,7 +33,7 @@
         {#each supportedEditorLanguages as option}<Select.Item value={option.id} label={option.label} class="text-[12px]" />{/each}
       </Select.Content>
     </Select.Root>
-    <div class="function-bar__command"><CommandPalette compact compactLabel="Command" onExecute={onCommandExecute} /></div>
+    <div class="function-bar__command"><CommandPalette compact compactLabel="Command" compactShortcut="⌘ K" onExecute={onCommandExecute} /></div>
   </div>
   <div class="function-bar__processing">
     <Tooltip content="Format" side="bottom"><button class="function-bar__button" aria-label="Format" on:click={() => void onFormat()}><Wand2 size={13} /></button></Tooltip>
@@ -52,39 +52,39 @@
     flex: 0 0 var(--topbar-height);
     align-items: center;
     justify-content: space-between;
-    gap: 4px;
-    padding: 0 10px;
+    gap: var(--space-2);
+    padding: 0 var(--space-4);
     border-bottom: 1px solid var(--border-strong);
     background: var(--panel-bg);
     color: var(--text-muted);
   }
 
   .function-bar__navigation,
-  .function-bar__processing { display: inline-flex; min-width: 0; align-items: center; gap: 3px; }
+  .function-bar__processing { display: inline-flex; min-width: 0; align-items: center; gap: var(--space-1); }
   .function-bar__navigation { justify-content: flex-start; }
   .function-bar__processing { justify-content: flex-end; }
   :global(.function-bar__language) {
     display: inline-flex;
-    width: 72px;
-    height: 28px !important;
+    width: 108px;
+    height: var(--control-height) !important;
     flex: 0 0 auto;
     align-items: center;
     border: 1px solid var(--border-muted) !important;
-    border-radius: 6px !important;
-    padding: 0 8px !important;
+    border-radius: var(--control-radius) !important;
+    padding: 0 7px !important;
     color: var(--text-primary) !important;
     background: var(--panel-bg-alt) !important;
-    font-size: 11px !important;
+    font-size: var(--font-size-control) !important;
     font-weight: 500;
     box-shadow: none !important;
   }
-  :global(.function-bar__language [data-slot='select-value']) { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .function-bar__button, .function-bar__ai { display: inline-flex; height: 28px; align-items: center; justify-content: center; gap: 4px; border: 0; border-radius: 6px; padding: 0 5px; color: var(--text-muted); background: transparent; font-size: 11px; }
+  :global(.function-bar__language [data-slot='select-value']) { display: block; overflow: visible; text-overflow: clip; white-space: nowrap; }
+  .function-bar__button, .function-bar__ai { display: inline-flex; height: var(--control-height); align-items: center; justify-content: center; gap: 4px; border: 0; border-radius: var(--control-radius); padding: 0 5px; color: var(--text-muted); background: transparent; font-size: var(--font-size-control); transition: var(--control-transition); }
   .function-bar__button:hover { color: var(--text-primary); background: var(--panel-bg-alt); }
   .function-bar__command { display: flex; align-items: center; }
-  .function-bar__command :global(button) { width: auto; min-width: 28px; height: 28px; gap: 4px; padding: 0 5px; font-size: 11px; }
-  .function-bar__ai { color: #7b5424; background: #f8efdf; }
-  .function-bar__ai:hover, .function-bar__ai--active { background: #f3e4c9; }
+  .function-bar__ai { color: #6d5229; background: #f8f1e4; }
+  .function-bar__ai:hover, .function-bar__ai--active { background: #f2e5cd; }
+  .function-bar__button:focus-visible, .function-bar__ai:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 
   @media (max-width: 620px) {
     .function-bar__ai span { display: none; }

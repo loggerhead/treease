@@ -129,8 +129,8 @@ import { Cloud, CloudOff, CloudUpload, CircleAlert, LoaderCircle, Plus, X } from
     min-width: 0;
     height: var(--topbar-height);
     align-items: center;
-    gap: 8px;
-    padding: 0 10px;
+    gap: var(--space-3);
+    padding: 0 var(--space-4);
     border-bottom: 1px solid var(--border-strong);
     background: var(--topbar-bg);
     box-shadow: 0 1px 0 rgb(29 39 53 / 2%);
@@ -157,7 +157,7 @@ import { Cloud, CloudOff, CloudUpload, CircleAlert, LoaderCircle, Plus, X } from
   .tab-switcher--sidebar .tab-switcher__tabs {
     flex-direction: column;
     align-items: stretch;
-    gap: 3px;
+    gap: var(--space-2);
   }
 
   .tab-switcher--sidebar .tab-switcher__tab-list {
@@ -165,7 +165,7 @@ import { Cloud, CloudOff, CloudUpload, CircleAlert, LoaderCircle, Plus, X } from
     flex: 0 0 auto;
     flex-direction: column;
     align-items: stretch;
-    gap: 3px;
+    gap: var(--space-2);
     overflow: visible;
   }
 
@@ -189,7 +189,7 @@ import { Cloud, CloudOff, CloudUpload, CircleAlert, LoaderCircle, Plus, X } from
     margin-left: 0;
     flex: 1 1 auto;
     align-items: center;
-    gap: 4px;
+    gap: var(--space-1);
     overflow: visible;
   }
 
@@ -198,7 +198,7 @@ import { Cloud, CloudOff, CloudUpload, CircleAlert, LoaderCircle, Plus, X } from
     min-width: 0;
     flex: 1 1 auto;
     align-items: center;
-    gap: 4px;
+    gap: var(--space-1);
     overflow-x: auto;
     scrollbar-width: none;
   }
@@ -208,20 +208,20 @@ import { Cloud, CloudOff, CloudUpload, CircleAlert, LoaderCircle, Plus, X } from
   .editor-tab {
     display: inline-flex;
     min-width: 0;
-    height: 32px;
+    height: 28px;
     flex: 0 0 auto;
     align-items: center;
-    gap: 4px;
+    gap: var(--space-2);
     border: 1px solid transparent;
-    border-radius: 6px;
-    padding: 0 6px 0 9px;
+    border-radius: var(--control-radius);
+    padding: 0 var(--space-3) 0 var(--space-4);
     color: var(--text-muted);
-    transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease;
+    transition: var(--control-transition);
   }
 
   .editor-tab:hover { background: var(--panel-bg-alt); color: var(--text-primary); }
-  .editor-tab--active { border-color: color-mix(in srgb, var(--accent) 48%, var(--border-strong)); background: var(--accent-soft); color: var(--text-primary); box-shadow: 0 1px 2px rgb(29 39 53 / 5%); }
-  .editor-tab--renaming { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 16%, transparent); }
+  .editor-tab--active { border-color: color-mix(in srgb, var(--accent) 44%, var(--border-strong)); background: var(--accent-soft); color: var(--text-primary); box-shadow: 0 1px 2px rgb(24 59 86 / 5%); }
+  .editor-tab--renaming { border-color: var(--accent); box-shadow: var(--focus-ring); }
 
   .editor-tab__open, .editor-tab__close, .editor-tab__new {
     display: inline-flex;
@@ -232,20 +232,22 @@ import { Cloud, CloudOff, CloudUpload, CircleAlert, LoaderCircle, Plus, X } from
     color: inherit;
   }
 
-  .editor-tab__open { display: block; min-width: 0; max-width: 150px; flex: 0 1 auto; overflow: hidden; padding: 0; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
+  .editor-tab__open { display: block; min-width: 0; max-width: 150px; flex: 0 1 auto; overflow: hidden; padding: 0; text-overflow: ellipsis; white-space: nowrap; font-size: var(--font-size-control); }
   .editor-tab__sync { display: inline-flex; flex: 0 0 auto; align-items: center; color: var(--text-muted); }
   .editor-tab__sync--synced { color: #277558; }
   .editor-tab__sync--syncing { color: var(--accent); }
   .editor-tab__sync--pending { color: #9a6a1c; }
   .editor-tab__sync--error { color: var(--danger); }
   .editor-tab__sync--offline { color: var(--text-muted); }
-  .editor-tab__close { width: 19px; height: 19px; border-radius: 4px; }
+  .editor-tab__close { width: 18px; height: 18px; border-radius: 4px; }
   .editor-tab__close:hover { background: color-mix(in srgb, var(--accent) 11%, transparent); color: var(--accent); }
-  .editor-tab__new { width: 32px; height: 32px; flex: 0 0 auto; order: 2; border: 1px solid var(--border-muted); border-radius: 6px; color: var(--text-muted); }
-  .editor-tab__new:hover { background: var(--panel-bg-alt); color: var(--text-primary); }
+  .editor-tab__new { width: 24px; height: 24px; flex: 0 0 auto; order: 2; margin-left: var(--space-1); border-radius: 4px; color: var(--text-muted); transition: var(--control-transition); }
+  .editor-tab__new:hover { color: var(--accent); background: var(--accent-soft); }
+  .editor-tab__new:focus-visible { outline: none; box-shadow: var(--focus-ring); }
   .editor-tab__rename-wrap { position: relative; min-width: 0; }
-  .editor-tab__measure { visibility: hidden; white-space: pre; font-size: 11px; }
-  .editor-tab__rename { position: absolute; inset: 0; width: 100%; min-width: 70px; border: 0; outline: 0; background: transparent; color: inherit; font-size: 11px; }
+  .editor-tab__measure { visibility: hidden; white-space: pre; font-size: var(--font-size-control); }
+  .editor-tab__rename { position: absolute; inset: 0; width: 100%; min-width: 70px; border: 0; outline: 0; background: transparent; color: inherit; font-size: var(--font-size-control); }
+  .editor-tab:focus-within { box-shadow: var(--focus-ring); }
 
   @media (max-width: 620px) {
     .tab-switcher__tabs { gap: 3px; }

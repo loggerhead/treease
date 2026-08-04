@@ -93,11 +93,11 @@
     left: 100%;
     z-index: 60;
     width: 300px;
-    padding: 12px;
+    padding: var(--space-5);
     border: 1px solid var(--border-muted);
-    border-radius: 0 10px 10px 10px;
+    border-radius: 0 var(--surface-radius) var(--surface-radius) var(--surface-radius);
     background: var(--panel-bg);
-    box-shadow: 0 14px 35px rgb(29 39 53 / 12%);
+    box-shadow: 0 12px 28px rgb(24 59 86 / 12%);
   }
 
   :global(.sidebar__popover--right-end) {

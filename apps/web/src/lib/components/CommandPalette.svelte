@@ -9,6 +9,7 @@
   export let value = ''
   export let compact = false
   export let compactLabel = ''
+  export let compactShortcut = ''
   export let onExecute: (id: CommandId) => void | Promise<void> = () => {}
 
   let open = false
@@ -102,7 +103,8 @@
   <button
     bind:this={compactTrigger}
     type="button"
-    class="inline-flex h-[28px] w-[28px] items-center justify-center rounded-[6px] border border-[rgba(15,23,42,0.12)] bg-[var(--panel-bg)] text-[var(--text-primary)] transition-colors hover:bg-[var(--panel-bg-alt)] focus-visible:ring-2 focus-visible:ring-[var(--accent)]/25"
+    class:command-palette__trigger--labeled={Boolean(compactLabel)}
+    class="command-palette__trigger"
     aria-label="Search commands"
     title="Search commands (⌘K)"
     data-testid="command-search-button"
@@ -110,6 +112,7 @@
   >
     <Search size={14} />
     {#if compactLabel}<span>{compactLabel}</span>{/if}
+    {#if compactShortcut}<kbd class="command-palette__shortcut">{compactShortcut}</kbd>{/if}
   </button>
 {/if}
 
@@ -174,3 +177,27 @@
     </div>
   </svelte:fragment>
 </SearchPanel>
+
+<style>
+  .command-palette__trigger {
+    display: inline-flex;
+    width: var(--control-height);
+    height: var(--control-height);
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-1);
+    border: 1px solid var(--border-muted);
+    border-radius: var(--control-radius);
+    padding: 0;
+    color: var(--text-primary);
+    background: var(--panel-bg);
+    font-size: var(--font-size-control);
+    line-height: 1;
+    transition: var(--control-transition);
+  }
+
+  .command-palette__trigger--labeled { width: auto; padding: 0 var(--space-2) 0 var(--space-3); }
+  .command-palette__trigger:hover { border-color: var(--border-strong); background: var(--panel-bg-alt); }
+  .command-palette__trigger:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+  .command-palette__shortcut { margin-left: var(--space-1); color: var(--text-muted); font: inherit; font-size: var(--font-size-caption); letter-spacing: .01em; }
+</style>

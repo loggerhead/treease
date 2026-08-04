@@ -20,6 +20,35 @@ type ViewportSample = {
   scaleY: number;
 };
 
+async function startColumnNavigatorRailSampling(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const recorder = { active: true, samples: [] as number[] };
+    Object.assign(window, { __treeaseColumnNavigatorRailRecorder: recorder });
+    const sample = () => {
+      const rail = document.querySelector<HTMLElement>('.column-navigator-graph__track');
+      if (rail) recorder.samples.push(rail.scrollLeft);
+      if (recorder.active) requestAnimationFrame(sample);
+    };
+    sample();
+  });
+}
+
+async function stopColumnNavigatorRailSampling(page: Page): Promise<number[]> {
+  return page.evaluate(async () => {
+    await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+    const recorder = (window as unknown as { __treeaseColumnNavigatorRailRecorder?: { active: boolean; samples: number[] } })
+      .__treeaseColumnNavigatorRailRecorder;
+    if (!recorder) return [];
+    recorder.active = false;
+    return recorder.samples;
+  });
+}
+
+function railScrollRange(samples: number[]): number {
+  if (!samples.length) return 0;
+  return Math.max(...samples) - Math.min(...samples);
+}
+
 async function startViewportSampling(page: Page): Promise<void> {
   await page.evaluate(() => {
     const recorder = { active: true, samples: [] as ViewportSample[] };
@@ -125,4 +154,88 @@ test('moves the root graph smoothly during rapid alternating SKU Price navigatio
     panes.map((pane) => pane.getAttribute('data-column-navigator-path-key')),
   )).toEqual(paneKeysBefore);
   expect(await workspace.locator('.column-navigator-graph__track').evaluate((rail) => rail.scrollLeft)).toBe(railScrollLeftBefore);
+});
+
+test('keeps the Column Navigator detail editor mounted while stepping through one array', async ({ page }, testInfo) => {
+  test.setTimeout(60_000);
+  testInfo.annotations.push({ type: 'allow-browser-error', description: 'localhost:3000/v1/usage/events' });
+  await page.goto(EDITOR_URL);
+  await waitForEditorReady(page);
+  await setEditorContent(page, {
+    sourceText: readFileSync(SKU_CONFIG_FIXTURE, 'utf8'),
+    language: 'json',
+  });
+  await waitForGraphRendered(page, 30_000);
+
+  const firstRootProbe = (await readGraphClickProbes(page)).find(
+    (probe) => probe.target === 'value' && probe.path.join('.') === 'AE' && probe.coord,
+  );
+  if (!firstRootProbe?.coord) throw new Error('first root graph cell has no coordinate');
+  await clickGraphProbeAt(page, firstRootProbe.coord);
+  await waitForColumnNavigatorSettled(page, 'k:AE', 20_000);
+  await page.locator('[data-column-navigator-item-path-key="k:QA"]').click();
+  await waitForColumnNavigatorSettled(page, 'k:QA', 20_000);
+  await page.locator('[data-column-navigator-item-path-key="k:QA|k:Prices"]').click();
+  await waitForColumnNavigatorSettled(page, 'k:QA|k:Prices', 20_000);
+  await page.locator('[data-column-navigator-item-path-key="k:QA|k:Prices|i:0"]').click();
+  await waitForColumnNavigatorSettled(page, 'k:QA|k:Prices|i:0', 20_000);
+
+  const detail = page.getByTestId('column-navigator-monaco-editor');
+  await expect(detail).toBeVisible();
+  await detail.evaluate((element) => Object.assign(window, { __treeaseInitialColumnDetailEditor: element.querySelector('.monaco-editor') }));
+  const workspace = page.getByTestId('column-navigator-graph');
+  await workspace.focus();
+  for (let index = 1; index <= 6; index += 1) {
+    await page.keyboard.press('ArrowDown');
+    await waitForColumnNavigatorSettled(page, `k:QA|k:Prices|i:${index}`, 20_000);
+  }
+
+  await expect(detail).toBeVisible();
+  expect(await detail.evaluate((element) =>
+    element.querySelector('.monaco-editor') === (window as unknown as { __treeaseInitialColumnDetailEditor?: Element })
+      .__treeaseInitialColumnDetailEditor,
+  )).toBe(true);
+});
+
+test('keeps the Column Navigator rail x position stable while stepping through one array', async ({ page }, testInfo) => {
+  test.setTimeout(60_000);
+  testInfo.annotations.push({ type: 'allow-browser-error', description: 'localhost:3000/v1/usage/events' });
+  await page.goto(EDITOR_URL);
+  await waitForEditorReady(page);
+  await setEditorContent(page, {
+    sourceText: JSON.stringify({
+      items: Array.from({ length: 60 }, (_, index) => ({
+        role: `role-${index}`,
+        content: `content-${index}`,
+      })),
+    }),
+    language: 'json',
+  });
+  await waitForGraphRendered(page, 30_000);
+
+  const firstRootProbe = (await readGraphClickProbes(page)).find(
+    (probe) => probe.target === 'value' && probe.path.join('.') === 'items' && probe.coord,
+  );
+  if (!firstRootProbe?.coord) throw new Error('items graph cell has no coordinate');
+  await clickGraphProbeAt(page, firstRootProbe.coord);
+  await waitForColumnNavigatorSettled(page, 'k:items', 20_000);
+  await page.locator('[data-column-navigator-item-path-key="k:items|i:34"]').click();
+  await waitForColumnNavigatorSettled(page, 'k:items|i:34', 20_000);
+
+  const workspace = page.getByTestId('column-navigator-graph');
+  await workspace.focus();
+  await startColumnNavigatorRailSampling(page);
+  for (let index = 35; index <= 50; index += 1) {
+    await page.keyboard.press('ArrowDown');
+    await waitForColumnNavigatorSettled(page, `k:items|i:${index}`, 20_000);
+    await page.waitForTimeout(60);
+  }
+  const samples = await stopColumnNavigatorRailSampling(page);
+  await testInfo.attach('column-navigator-rail-scroll-samples', {
+    body: JSON.stringify(samples),
+    contentType: 'application/json',
+  });
+
+  expect(samples, 'Column Navigator rail samples').not.toHaveLength(0);
+  expect(railScrollRange(samples), 'same-array navigation must not move the Column Navigator rail').toBe(0);
 });

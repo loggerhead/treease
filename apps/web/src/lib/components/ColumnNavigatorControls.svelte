@@ -20,8 +20,9 @@
 {/if}
 
 <style>
-  .column-navigator-controls { display: inline-flex; align-items: center; gap: 2px; margin-right: 6px; }
-  button { display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; color: var(--text-muted); background: transparent; }
+  .column-navigator-controls { display: inline-flex; align-items: center; gap: 1px; margin-right: 4px; }
+  button { display: inline-flex; width: 22px; height: 22px; align-items: center; justify-content: center; border: 0; border-radius: 4px; color: var(--text-muted); background: transparent; transition: var(--control-transition); }
   button:hover:not(:disabled) { color: var(--text-primary); background: var(--panel-bg-alt); }
   button:disabled { opacity: .4; }
+  button:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 </style>

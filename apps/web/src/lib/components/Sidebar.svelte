@@ -193,36 +193,35 @@
 </div>
 
 <style>
-  .sidebar-host { position: relative; z-index: 50; width: var(--sidebar-rail-width); height: 100%; flex: 0 0 var(--sidebar-rail-width); transition: width 200ms ease, flex-basis 200ms ease; }
-  .sidebar-host[data-expanded='true'] { width: 184px; flex-basis: 184px; }
-  .sidebar { position: absolute; inset: 0 auto 0 0; width: var(--sidebar-rail-width); pointer-events: none; transition: width 200ms ease; }
-  .sidebar--expanded { width: 184px; }
-  .sidebar__nav { pointer-events: auto; display: flex; height: 100%; width: 100%; flex-direction: column; justify-content: space-between; gap: 8px; overflow: visible; border-right: 1px solid var(--border-strong); background: var(--panel-bg); box-shadow: 4px 0 16px rgb(29 39 53 / 6%); transition: width 180ms ease; }
-  .sidebar__main, .sidebar__footer { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 6px 4px; }
-  .sidebar-host[data-expanded='true'] .sidebar__main,
-  .sidebar-host[data-expanded='true'] .sidebar__footer { align-items: stretch; padding-inline: 12px; }
-  .sidebar__footer { gap: 5px; padding-bottom: 8px; }
-  .sidebar__logo { display: flex; width: 36px; height: 36px; box-sizing: border-box; align-items: center; justify-content: center; gap: 0; margin: 0 0 5px; overflow: hidden; border-radius: 6px; padding: 0; color: var(--text-primary); text-decoration: none; }
-  .sidebar__logo img { width: 30px; height: 30px; flex: 0 0 30px; object-fit: contain; transform: translateX(2px); }
-  .sidebar--expanded .sidebar__logo { width: 100%; height: 36px; justify-content: flex-start; padding: 0 4px; }
-  .sidebar--expanded .sidebar__logo img { width: 30px; height: 30px; flex-basis: 30px; transform: none; }
-  .sidebar__logo .sidebar__label { overflow: hidden; opacity: 0; text-overflow: ellipsis; transition: opacity 120ms ease; }
+  .sidebar-host { position: relative; z-index: 50; width: var(--sidebar-rail-width); height: 100%; flex: 0 0 var(--sidebar-rail-width); transition: width 180ms cubic-bezier(.2,.8,.2,1), flex-basis 180ms cubic-bezier(.2,.8,.2,1); }
+  .sidebar-host[data-expanded='true'] { width: 168px; flex-basis: 168px; }
+  .sidebar { position: absolute; inset: 0 auto 0 0; width: var(--sidebar-rail-width); pointer-events: none; transition: width 180ms cubic-bezier(.2,.8,.2,1); }
+  .sidebar--expanded { width: 168px; }
+  .sidebar__nav { pointer-events: auto; display: flex; height: 100%; width: 100%; flex-direction: column; justify-content: space-between; gap: var(--space-3); overflow: visible; border-right: 1px solid var(--border-strong); background: var(--panel-bg); box-shadow: 3px 0 12px rgb(24 59 86 / 4%); transition: width 180ms cubic-bezier(.2,.8,.2,1); }
+  .sidebar__main, .sidebar__footer { display: flex; width: 100%; box-sizing: border-box; flex-direction: column; align-items: stretch; gap: var(--space-2); padding: var(--space-2); }
+  .sidebar__footer { gap: var(--space-2); padding-bottom: var(--space-3); }
+  .sidebar__logo { display: flex; width: 32px; height: 32px; box-sizing: border-box; align-items: center; justify-content: flex-start; gap: var(--space-3); margin: var(--space-1) 0 var(--space-3); overflow: hidden; border-radius: var(--control-radius); padding: 0; color: var(--text-primary); text-decoration: none; }
+  /* The brand mark matches the compact account avatar in both sidebar states. */
+  .sidebar__logo img { width: 32px; height: 32px; flex: 0 0 32px; object-fit: contain; transform: none; }
+  .sidebar--expanded .sidebar__logo { width: 100%; }
+  .sidebar__logo .sidebar__label { overflow: hidden; opacity: 0; font-size: var(--font-size-title); font-weight: 600; letter-spacing: -.02em; line-height: 1; text-overflow: ellipsis; transition: opacity 120ms ease; }
   .sidebar--expanded .sidebar__logo .sidebar__label { opacity: 1; }
-  .sidebar__rule { height: 1px; margin: 5px 3px; background: var(--border-muted); }
-  .sidebar__account { display: flex; width: 100%; height: 58px; align-items: center; justify-content: center; border-radius: 6px; }
+  .sidebar__rule { width: 100%; height: 1px; flex: 0 0 1px; margin: var(--space-2) 0; background: var(--border-muted); }
+  .sidebar__account { display: flex; width: 32px; height: 46px; align-items: center; justify-content: center; margin-left: 0; border-radius: var(--control-radius); }
   .sidebar__account:hover { background: var(--panel-bg-alt); }
-  .sidebar--expanded .sidebar__account { width: 100%; height: 58px; justify-content: flex-start; }
+  .sidebar--expanded .sidebar__account { width: 100%; height: 46px; margin-left: 0; justify-content: flex-start; }
   .sidebar--expanded .sidebar__account :global(.editor-account-anchor--profile),
-  .sidebar--expanded .sidebar__account :global(.account-profile-trigger) { width: 100%; height: 58px; }
-  .sidebar__popover-title { margin-bottom: 10px; color: var(--text-primary); font-size: 15px; font-weight: 650; }
-  .sidebar__popover-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--text-muted); font-size: 11px; }
-  .sidebar__drop { display: flex; width: 100%; height: 100px; align-items: center; justify-content: center; margin-top: 12px; border: 1px dashed var(--border-muted); border-radius: 8px; color: var(--text-muted); background: var(--panel-bg-alt); font-size: 11px; }
+  .sidebar--expanded .sidebar__account :global(.account-profile-trigger) { width: 100%; height: 46px; }
+  .sidebar__popover-title { margin-bottom: var(--space-3); color: var(--text-primary); font-size: 14px; font-weight: 650; letter-spacing: -.01em; }
+  .sidebar__popover-row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); color: var(--text-muted); font-size: var(--font-size-control); }
+  .sidebar__drop { display: flex; width: 100%; height: 88px; align-items: center; justify-content: center; margin-top: var(--space-3); border: 1px dashed var(--border-muted); border-radius: var(--control-radius); color: var(--text-muted); background: var(--panel-bg-alt); font-size: var(--font-size-control); transition: var(--control-transition); }
   .sidebar__drop:hover, .sidebar__drop--active { border-color: var(--accent); color: var(--text-primary); background: var(--accent-soft); }
-  .sidebar__popover-actions { display: flex; gap: 7px; margin-top: 12px; }
-  .sidebar__popover-actions button { height: 27px; border: 1px solid var(--border-muted); border-radius: 6px; padding: 0 9px; color: var(--text-primary); background: var(--panel-bg); font-size: 11px; }
-  .sidebar__popover-actions button:hover { background: var(--panel-bg-alt); }
-  :global(.sidebar__popover--feedback) { width: min(520px, calc(100vw - 52px)); max-height: calc(100vh - 200px); overflow-y: auto; padding: 18px; }
-  :global(.sidebar__popover--share) { width: min(384px, calc(100vw - 52px)); padding: 18px; }
-  :global(.sidebar__popover--settings) { width: min(640px, calc(100vw - 52px)); max-height: calc(100vh - 132px); overflow-y: auto; padding: 18px; }
+  .sidebar__popover-actions { display: flex; gap: var(--space-2); margin-top: var(--space-3); }
+  .sidebar__popover-actions button { height: 28px; border: 1px solid var(--border-muted); border-radius: var(--control-radius); padding: 0 var(--space-3); color: var(--text-primary); background: var(--panel-bg); font-size: var(--font-size-control); transition: var(--control-transition); }
+  .sidebar__popover-actions button:hover { border-color: var(--accent); background: var(--panel-bg-alt); }
+  .sidebar__popover-actions button:focus-visible, .sidebar__drop:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+  :global(.sidebar__popover--feedback) { width: min(500px, calc(100vw - 52px)); max-height: calc(100vh - 160px); overflow-y: auto; padding: var(--space-6); }
+  :global(.sidebar__popover--share) { width: min(368px, calc(100vw - 52px)); padding: var(--space-6); }
+  :global(.sidebar__popover--settings) { width: min(620px, calc(100vw - 52px)); max-height: calc(100vh - 120px); overflow-y: auto; padding: var(--space-6); }
   @media (max-width: 760px) { .sidebar-host { width: 44px; flex-basis: 44px; } .sidebar-host[data-expanded='true'] { width: 158px; flex-basis: 158px; } .sidebar--expanded { width: 158px; } }
 </style>

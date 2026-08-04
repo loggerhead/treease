@@ -34,28 +34,28 @@
 <style>
   :global(.sidebar__item) {
     display: flex;
-    width: 36px;
-    height: 36px;
+    width: 100%;
+    height: 32px;
     box-sizing: border-box;
-    flex: 0 0 36px;
+    flex: 0 0 100%;
     align-items: center;
-    gap: 9px;
+    gap: var(--space-4);
     overflow: hidden;
     border: 0;
-    border-radius: 6px;
-    padding: 0 10px;
+    border-radius: var(--control-radius);
+    /* The 8px inset centers a 16px icon in the 32px collapsed control. */
+    padding: 0 var(--space-4);
     color: var(--text-muted);
     background: transparent;
     text-align: left;
     white-space: nowrap;
     cursor: pointer;
-    transition: color 120ms ease, background-color 120ms ease;
+    transition: var(--control-transition);
   }
 
   :global(.sidebar__item.sidebar__item--expanded) {
-    width: 160px;
-    flex-basis: 160px;
-    padding-inline: 4px;
+    width: 100%;
+    flex-basis: 100%;
   }
 
   :global(.sidebar__item:hover),
@@ -74,6 +74,8 @@
     background: var(--accent-soft);
   }
 
+  :global(.sidebar__item:focus-visible) { outline: none; box-shadow: var(--focus-ring); }
+
   :global(.sidebar__item svg) {
     display: block;
     width: 16px;
@@ -84,7 +86,9 @@
   :global(.sidebar__item-label) {
     overflow: hidden;
     opacity: 0;
-    font-size: 11px;
+    font-size: var(--font-size-ui);
+    font-weight: 500;
+    line-height: 1;
     text-overflow: ellipsis;
     transition: opacity 120ms ease;
   }
@@ -95,8 +99,8 @@
 
   @media (max-width: 760px) {
     :global(.sidebar__item.sidebar__item--expanded) {
-      width: 134px;
-      flex-basis: 134px;
+      width: 100%;
+      flex-basis: 100%;
     }
   }
 </style>

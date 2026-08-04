@@ -182,17 +182,17 @@
   }[category];
 </script>
 
-<section aria-labelledby="feedback-dialog-title" data-testid="feedback-dialog" class="feedback-panel flex max-h-[calc(100vh-16px)] flex-col gap-6 overflow-y-auto">
+<section aria-labelledby="feedback-dialog-title" data-testid="feedback-dialog" class="feedback-panel flex max-h-[calc(100vh-16px)] flex-col gap-4 overflow-y-auto">
     <header>
-      <h2 id="feedback-dialog-title" class="text-lg leading-none font-semibold">Send Feedback</h2>
+      <h2 id="feedback-dialog-title" class="text-[16px] leading-none font-semibold tracking-[-0.01em]">Send Feedback</h2>
     </header>
 
-    <div class="flex flex-col gap-5">
-        <fieldset class="flex flex-col gap-3 pb-1">
-          <legend class="text-sm font-medium">Category</legend>
-          <div class="grid grid-cols-3 gap-3">
+    <div class="flex flex-col gap-4">
+        <fieldset class="flex flex-col gap-2 pb-1">
+          <legend class="text-[12px] font-semibold">Category</legend>
+          <div class="grid grid-cols-3 gap-2">
             {#each [['bug', '🐛 Bug'], ['feature', '✨ Feature'], ['question', '❓ Question']] as option}
-              <label class="flex cursor-pointer items-center gap-2 rounded-[9px] border border-[var(--border-muted)] px-3 py-2 text-sm has-[:checked]:border-[var(--accent)] has-[:checked]:bg-[var(--panel-bg-alt)]">
+              <label class="flex min-h-7 cursor-pointer items-center gap-2 rounded-[var(--control-radius)] border border-[var(--border-muted)] px-2 py-1.5 text-[13px] has-[:checked]:border-[var(--accent)] has-[:checked]:bg-[var(--accent-soft)]">
                 <input type="radio" name="feedback-category" value={option[0]} bind:group={category} />
                 {option[1]}
               </label>
@@ -200,19 +200,19 @@
           </div>
         </fieldset>
 
-        <label class="flex flex-col gap-2 text-sm font-medium">
+        <label class="flex flex-col gap-2 text-[12px] font-semibold">
           Description
-          <textarea bind:value={description} class="min-h-28 resize-y rounded-[9px] border border-[var(--border-muted)] bg-[var(--panel-bg)] px-3 py-2.5 font-normal outline-none focus:border-[var(--accent)]" placeholder={descriptionPlaceholder}></textarea>
+          <textarea bind:value={description} class="min-h-24 resize-y rounded-[var(--control-radius)] border border-[var(--border-muted)] bg-[var(--panel-bg)] px-3 py-2 font-normal outline-none focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent)]/15" placeholder={descriptionPlaceholder}></textarea>
         </label>
 
-        <label class="flex flex-col gap-2 text-sm font-medium" for="feedback-email">
+        <label class="flex flex-col gap-2 text-[12px] font-semibold" for="feedback-email">
           <span>Email <span class="font-normal text-[var(--text-muted)]">(optional, for follow-up)</span></span>
-          <input id="feedback-email" bind:value={email} type="email" autocomplete="email" placeholder="you@example.com" class="rounded-[9px] border border-[var(--border-muted)] bg-[var(--panel-bg)] px-3 py-2.5 font-normal outline-none focus:border-[var(--accent)]" on:input={() => (emailAutofilled = true)} />
+          <input id="feedback-email" bind:value={email} type="email" autocomplete="email" placeholder="you@example.com" class="h-8 rounded-[var(--control-radius)] border border-[var(--border-muted)] bg-[var(--panel-bg)] px-3 font-normal outline-none focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent)]/15" on:input={() => (emailAutofilled = true)} />
         </label>
 
-        <div class="rounded-[12px] border border-[var(--border-muted)] bg-[var(--panel-bg-alt)] p-3">
-          <div class="mb-3 flex items-center justify-between gap-3">
-            <label class="flex items-center gap-2 text-sm font-medium">
+        <div class="rounded-[var(--surface-radius)] border border-[var(--border-muted)] bg-[var(--panel-bg-alt)] p-3">
+          <div class="mb-2 flex items-center justify-between gap-3">
+            <label class="flex items-center gap-2 text-[12px] font-semibold">
               <input type="checkbox" bind:checked={includeScreenshot} />
               Include screenshot
             </label>
@@ -222,7 +222,7 @@
             </Button>
           </div>
           {#if screenshotBusy}
-            <div class="flex h-36 items-center justify-center rounded-[9px] border border-dashed border-[var(--border-muted)] text-sm text-[var(--text-muted)]">
+            <div class="flex h-36 items-center justify-center rounded-[9px] border border-dashed border-[var(--border-muted)] text-[12px] text-[var(--text-muted)]">
               <LoaderCircle size={16} class="mr-2 animate-spin" />Generating screenshot…
             </div>
           {:else if screenshot}
@@ -234,8 +234,8 @@
               </div>
             </div>
           {:else}
-            <div class="flex h-36 items-center justify-center rounded-[9px] border border-dashed border-[var(--border-muted)] text-sm text-[var(--text-muted)]">
-              <button type="button" class="flex h-full w-full flex-col items-center justify-center gap-2 text-sm text-[var(--text-muted)] transition-colors hover:text-[var(--accent)]" on:click={requestScreenshotReplacement} aria-label="Upload screenshot">
+            <div class="flex h-36 items-center justify-center rounded-[9px] border border-dashed border-[var(--border-muted)] text-[12px] text-[var(--text-muted)]">
+              <button type="button" class="flex h-full w-full flex-col items-center justify-center gap-2 text-[12px] text-[var(--text-muted)] transition-colors hover:text-[var(--accent)]" on:click={requestScreenshotReplacement} aria-label="Upload screenshot">
                 <Upload size={18} />
                 <span>Click to upload a screenshot</span>
               </button>
@@ -243,18 +243,18 @@
           {/if}
         </div>
 
-        <label class="flex items-center gap-2 text-sm text-[var(--text-muted)]">
+        <label class="flex items-center gap-2 text-[12px] text-[var(--text-muted)]">
           <input type="checkbox" bind:checked={sendConsoleLogs} />
           Send console logs
         </label>
 
         {#if errorMessage}
-          <p class="rounded-[8px] bg-red-50 px-3 py-2 text-sm text-red-700">{errorMessage}</p>
+          <p class="rounded-[8px] bg-red-50 px-3 py-2 text-[12px] text-red-700">{errorMessage}</p>
         {/if}
     </div>
     <footer class="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-      <Button variant="outline" on:click={() => (open = false)}><X size={14} class="mr-1.5" />Cancel</Button>
-      <Button disabled={submitBusy || screenshotBusy} on:click={submit}>
+      <Button size="sm" variant="outline" on:click={() => (open = false)}><X size={14} class="mr-1.5" />Cancel</Button>
+      <Button size="sm" disabled={submitBusy || screenshotBusy} on:click={submit}>
         {#if submitBusy}<LoaderCircle size={14} class="mr-1.5 animate-spin" />{/if}
         Submit feedback
       </Button>

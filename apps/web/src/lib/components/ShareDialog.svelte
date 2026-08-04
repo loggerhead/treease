@@ -72,14 +72,14 @@
 
 <section aria-labelledby="share-dialog-title" data-testid="share-dialog" class="share-panel flex flex-col gap-4">
     <header>
-      <h2 id="share-dialog-title" class="text-lg leading-none font-semibold">Share this document</h2>
+      <h2 id="share-dialog-title" class="text-[16px] leading-none font-semibold tracking-[-0.01em]">Share this document</h2>
     </header>
     <div class="flex flex-col gap-4 text-[13px] text-[var(--text-muted)]">
       <p>Create a read-only snapshot link that anyone can open without signing in.</p>
-      <div class="flex items-center justify-between gap-3">
+      <div class="flex items-center justify-between gap-2">
         <span>Link expires in</span>
         {#if isPaidUser}
-          <select bind:value={expiresInDays} class="rounded-[8px] border border-[var(--border-muted)] bg-white px-2 py-1.5 text-[var(--text-primary)]" aria-label="Link expiration">
+          <select bind:value={expiresInDays} class="h-7 rounded-[var(--control-radius)] border border-[var(--border-muted)] bg-white px-2 text-[var(--text-primary)] outline-none focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent)]/15" aria-label="Link expiration">
             <option value={1}>1 day</option>
             <option value={7}>7 days</option>
             <option value={30}>30 days</option>
@@ -90,7 +90,7 @@
         {/if}
       </div>
       {#if shareUrl}
-        <div class="flex items-center gap-2 rounded-[10px] border border-[var(--border-muted)] bg-[var(--panel-bg-alt)] p-2">
+        <div class="flex items-center gap-2 rounded-[var(--surface-radius)] border border-[var(--border-muted)] bg-[var(--panel-bg-alt)] p-2">
           <Link2 size={14} class="shrink-0 text-[var(--accent)]" />
           <input readonly value={shareUrl} class="min-w-0 flex-1 bg-transparent text-[12px] text-[var(--text-primary)] outline-none" aria-label="Share URL" />
           <Button variant="outline" size="xs" iconOnly={true} aria-label="Copy share URL" on:click={copyLink}>
@@ -100,8 +100,8 @@
       {/if}
     </div>
     <footer class="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-      <Button variant="outline" on:click={() => (open = false)}>Close</Button>
-      <Button disabled={busy || !createResource} on:click={handleCreate}>
+      <Button size="sm" variant="outline" on:click={() => (open = false)}>Close</Button>
+      <Button size="sm" disabled={busy || !createResource} on:click={handleCreate}>
         {#if busy}<LoaderCircle size={13} class="mr-1 animate-spin" />{/if}
         {shareUrl ? 'Create a new link' : 'Create share link'}
       </Button>

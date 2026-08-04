@@ -536,9 +536,9 @@
   }
 
   :global(.account-profile-trigger .avatar-frame) {
-    width: 36px;
-    height: 36px;
-    flex: 0 0 36px;
+    width: 32px;
+    height: 32px;
+    flex: 0 0 32px;
     border-radius: 50%;
   }
 
@@ -551,8 +551,8 @@
   }
 
   :global(.account-compact-trigger) {
-    width: 36px;
-    height: 36px;
+    width: 32px;
+    height: 32px;
     justify-content: center;
   }
 

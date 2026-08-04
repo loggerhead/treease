@@ -453,3 +453,14 @@ Do not edit it by hand; run `pnpm docs:map:gen`.
   - H3: US-17 Generate a Structure Definition
   - H2: Product Boundaries
   - H2: Maintenance Rules
+
+## workspace-ui-style.md
+
+- Route: /workspace-ui-style
+- Headings:
+  - H1: Workspace UI Style Guide
+  - H2: Direction
+  - H2: Use the existing scale
+  - H2: States and motion
+  - H2: Reference components
+  - H2: Review checklist
