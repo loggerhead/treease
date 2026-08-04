@@ -1,7 +1,7 @@
 <!-- Responsibility: own the Leafer lifecycle, controller assembly, cross-boundary orchestration, and DOM template. -->
 <script lang="ts">
   import { onDestroy, onMount, tick, createEventDispatcher } from 'svelte';
-  import { ChevronRight } from 'lucide-svelte';
+  import { ChevronRight, FileUp, Keyboard, MousePointer2 } from 'lucide-svelte';
   import {
     documentKey as documentKeyStore,
     editorIO,
@@ -1889,28 +1889,30 @@
       <GraphRuntimeLoading />
     {:else if isEmptyDocument && !errorMessage}
       <div class="graph-empty-state" data-testid="graph-empty-state">
-        <div class="graph-empty-state__art" aria-hidden="true">
-          <svg viewBox="0 0 296 116" role="presentation">
-            <path class="graph-empty-state__edge graph-empty-state__edge--soft" d="M43 76 100 39 168 67 238 30" />
-            <path class="graph-empty-state__edge" d="M43 76 100 39 168 67 238 30M100 39 137 90" />
-            <circle class="graph-empty-state__node graph-empty-state__node--accent" cx="43" cy="76" r="11" />
-            <circle class="graph-empty-state__node" cx="100" cy="39" r="14" />
-            <circle class="graph-empty-state__node graph-empty-state__node--accent" cx="168" cy="67" r="11" />
-            <circle class="graph-empty-state__node" cx="238" cy="30" r="13" />
-            <circle class="graph-empty-state__node graph-empty-state__node--small" cx="137" cy="90" r="7" />
-          </svg>
-        </div>
         <div class="graph-empty-state__body">
+          <div class="graph-empty-state__mark" aria-hidden="true"><span></span><span></span><span></span></div>
           <span class="graph-empty-state__eyebrow">GRAPH VIEW</span>
-          <h2>Turn your data into a map</h2>
-          <p>Open a file or load an example to see relationships here.</p>
+          <h2>Turn your data into a graph</h2>
+          <div class="graph-empty-state__tips" aria-label="Graph tips">
+            <div class="graph-empty-state__tip">
+              <span class="graph-empty-state__tip-icon" aria-hidden="true"><MousePointer2 size={13} strokeWidth={2} /></span>
+              <span><strong>Canvas</strong> Hold <kbd>Space</kbd> and drag to move</span>
+            </div>
+            <div class="graph-empty-state__tip">
+              <span class="graph-empty-state__tip-icon" aria-hidden="true"><Keyboard size={13} strokeWidth={2} /></span>
+              <span><strong>Navigator</strong> Use <kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd> to browse · <kbd>[</kbd><kbd>]</kbd> history</span>
+            </div>
+            <div class="graph-empty-state__tip">
+              <span class="graph-empty-state__tip-icon" aria-hidden="true"><FileUp size={13} strokeWidth={2} /></span>
+              <span><strong>Quick start</strong> Drop a file here to open it.</span>
+            </div>
+          </div>
           <div class="graph-empty-state__actions">
-            <button type="button" class="graph-empty-state__button graph-empty-state__button--primary" on:click={handleEmptyStateLoadExample}>
-              Load example
-              <span aria-hidden="true">↗</span>
-            </button>
-            <button type="button" class="graph-empty-state__button graph-empty-state__button--secondary" on:click={handleEmptyStateOpenFile}>
+            <button type="button" class="graph-empty-state__button graph-empty-state__button--primary" on:click={handleEmptyStateOpenFile}>
               Open file
+            </button>
+            <button type="button" class="graph-empty-state__button graph-empty-state__button--secondary" on:click={handleEmptyStateLoadExample}>
+              Load example
             </button>
           </div>
         </div>
@@ -2238,101 +2240,50 @@
     justify-content: center;
     padding: 48px 24px 70px;
     pointer-events: none;
-    background: radial-gradient(ellipse 520px 360px at 50% 48%, rgb(255 255 255 / 60%), transparent 72%);
-  }
-
-  .graph-empty-state::before {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    width: 360px;
-    height: 360px;
-    border: 1px solid rgb(95 151 180 / 8%);
-    border-radius: 50%;
-    content: '';
-    transform: translate(-50%, -58%);
-    pointer-events: none;
+    background: radial-gradient(ellipse 460px 300px at 50% 48%, rgb(255 255 255 / 58%), transparent 74%);
   }
 
   .graph-empty-state__body {
     position: relative;
     z-index: 0;
     display: flex;
-    width: min(420px, 100%);
+    width: min(400px, 100%);
     flex-direction: column;
     align-items: center;
-    margin-top: -26px;
-    padding: 35px 32px 27px;
-    border: 1px solid rgb(133 169 188 / 28%);
-    border-radius: 22px;
-    background: linear-gradient(145deg, rgb(255 255 255 / 86%), rgb(247 251 253 / 78%));
-    box-shadow: 0 24px 54px rgb(29 61 78 / 10%), 0 2px 8px rgb(29 61 78 / 4%);
-    backdrop-filter: blur(14px);
+    padding: 22px 24px 20px;
+    border: 1px solid var(--border-strong);
+    border-radius: 14px;
+    background: rgb(255 255 255 / 92%);
+    box-shadow: 0 14px 32px rgb(29 61 78 / 10%), 0 1px 3px rgb(29 61 78 / 5%);
+    backdrop-filter: blur(10px);
     text-align: center;
     pointer-events: auto;
     animation: graph-empty-state-in 420ms cubic-bezier(.22, 1, .36, 1) both;
   }
 
-  .graph-empty-state__art {
-    position: relative;
-    z-index: 1;
-    width: 340px;
-    height: 122px;
-    margin-top: 0;
-    margin-bottom: 0;
-    pointer-events: none;
+  .graph-empty-state__mark {
+    display: flex;
+    width: 34px;
+    height: 24px;
+    align-items: flex-end;
+    justify-content: center;
+    gap: 3px;
+    margin-bottom: 10px;
+    padding: 4px 6px;
+    border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--border-strong));
+    border-radius: 7px;
+    background: var(--accent-soft);
   }
 
-  .graph-empty-state__art::before {
-    position: absolute;
-    top: 10px;
-    left: 50%;
-    width: 190px;
-    height: 90px;
-    border-radius: 50%;
-    background: rgb(220 239 246 / 52%);
-    content: '';
-    filter: blur(22px);
-    transform: translateX(-50%);
+  .graph-empty-state__mark span {
+    width: 4px;
+    border-radius: 2px 2px 1px 1px;
+    background: var(--accent);
   }
 
-  .graph-empty-state__art svg {
-    position: relative;
-    display: block;
-    width: 100%;
-    height: 100%;
-  }
-
-  .graph-empty-state__edge {
-    fill: none;
-    stroke: #7395aa;
-    stroke-width: 1.7;
-    stroke-linecap: round;
-    stroke-linejoin: round;
-  }
-
-  .graph-empty-state__edge--soft {
-    stroke: #b8d1de;
-    stroke-width: 5;
-    opacity: .42;
-  }
-
-  .graph-empty-state__node {
-    fill: rgb(255 255 255 / 92%);
-    stroke: #7898ad;
-    stroke-width: 2;
-  }
-
-  .graph-empty-state__node--accent {
-    fill: #e5f3f7;
-    stroke: var(--accent);
-  }
-
-  .graph-empty-state__node--small {
-    fill: #dcecf2;
-    stroke: #a4c0d0;
-    stroke-width: 1.5;
-  }
+  .graph-empty-state__mark span:nth-child(1) { height: 7px; opacity: .55; }
+  .graph-empty-state__mark span:nth-child(2) { height: 13px; }
+  .graph-empty-state__mark span:nth-child(3) { height: 10px; opacity: .75; }
 
   .graph-empty-state__eyebrow {
     margin-top: 0;
@@ -2346,17 +2297,57 @@
     margin: 8px 0 0;
     color: #163449;
     font-family: Georgia, 'Times New Roman', serif;
-    font-size: 21px;
-    font-weight: 600;
-    letter-spacing: -.025em;
+    font-family: inherit;
+    font-size: 18px;
+    font-weight: 720;
+    letter-spacing: -.018em;
   }
 
-  .graph-empty-state p {
-    max-width: 300px;
-    margin: 8px 0 0;
-    color: #71879a;
-    font-size: 12px;
-    line-height: 1.55;
+  .graph-empty-state__tips {
+    display: grid;
+    width: 100%;
+    gap: 6px;
+    margin-top: 14px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border-subtle);
+    text-align: left;
+  }
+
+  .graph-empty-state__tip {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--text-muted);
+    font-size: 11px;
+    line-height: 1.35;
+  }
+
+  .graph-empty-state__tip-icon {
+    display: inline-grid;
+    width: 22px;
+    height: 22px;
+    flex: 0 0 auto;
+    place-items: center;
+    border: 1px solid var(--border-subtle);
+    border-radius: 6px;
+    color: var(--accent);
+    background: var(--accent-soft);
+  }
+
+  .graph-empty-state__tip strong { color: var(--text-primary); font-weight: 650; }
+  .graph-empty-state__tip kbd {
+    display: inline-flex;
+    min-width: 17px;
+    height: 17px;
+    align-items: center;
+    justify-content: center;
+    margin: 0 1px;
+    padding: 0 3px;
+    border: 1px solid var(--border-strong);
+    border-radius: 4px;
+    color: var(--text-primary);
+    background: var(--panel-bg-alt);
+    font: 10px ui-monospace, SFMono-Regular, Menlo, monospace;
   }
 
   .graph-empty-state__actions {
@@ -2399,7 +2390,12 @@
   .graph-empty-state__button--secondary {
     color: #315b73;
     border-color: #c8d8e2;
-    background: rgb(255 255 255 / 76%);
+    background: var(--accent-soft);
+  }
+
+  .graph-empty-state__button--secondary:hover:not(:disabled) {
+    border-color: color-mix(in srgb, var(--accent) 38%, var(--border-strong));
+    background: color-mix(in srgb, var(--accent-soft) 72%, #fff);
   }
 
   .graph-empty-state__button:focus-visible {
@@ -2414,7 +2410,6 @@
 
   @media (max-width: 720px) {
     .graph-empty-state__body { width: min(350px, 100%); }
-    .graph-empty-state__art { width: 260px; }
   }
 
   .column-navigator-graph {
