@@ -33,6 +33,14 @@ function keyPath(...keys: string[]) {
   return keys.map(keySeg);
 }
 
+function indexSeg(index: number) {
+  return { tag: PathSegTag.INDEX, key: '' as any, index };
+}
+
+function indexedPath(key: string, index: number) {
+  return [keySeg(key), indexSeg(index)];
+}
+
 function deferred<T>() {
   let resolve!: (value: T) => void;
   const promise = new Promise<T>((nextResolve) => {
@@ -49,7 +57,7 @@ function readyPathValue(
   return { status: 'ready', data: { valueType, sourceText: displayText, displayText, semanticTokens } };
 }
 
-function item(path: ReturnType<typeof keyPath>, valueType: 'object' | 'array' | 'string' | 'number' = 'object') {
+function item(path: Array<{ tag: PathSegTag; key: string; index: number }>, valueType: 'object' | 'array' | 'string' | 'number' = 'object') {
   return {
     path,
     pathKey: path.map((segment) => `k:${segment.key}`).join('|'),
@@ -61,8 +69,8 @@ function item(path: ReturnType<typeof keyPath>, valueType: 'object' | 'array' | 
   };
 }
 
-function pathKey(path: Array<{ key?: string }>): string {
-  return path.map((segment) => segment.key).join('.');
+function pathKey(path: Array<{ tag?: PathSegTag; key?: string; index?: number }>): string {
+  return path.map((segment) => segment.tag === PathSegTag.INDEX ? `[${segment.index}]` : segment.key).join('.');
 }
 
 function installDocument(values: Record<string, ReturnType<typeof readyPathValue>>, items: Record<string, unknown[]>) {
@@ -342,6 +350,37 @@ describe('path-driven column navigator controller', () => {
 
     expect(controller.getActivePath()).toEqual(keyPath('alpha'));
     expect(publishNavigation).toHaveBeenCalledOnce();
+  });
+
+  it('keeps array sibling navigation inside the existing pane structure', async () => {
+    installDocument(
+      {
+        '': readyPathValue('object', '{1}'),
+        items: readyPathValue('array', '[2]'),
+        'items.[0]': readyPathValue('string', '"first"'),
+        'items.[1]': readyPathValue('string', '"second"'),
+      },
+      {
+        '': [item(keyPath('items'), 'array')],
+        items: [item(indexedPath('items', 0), 'string'), item(indexedPath('items', 1), 'string')],
+      },
+    );
+    const markSubgraphRequested = vi.fn();
+    const markSubgraphMaterialized = vi.fn();
+    const { controller, states } = createController({ markSubgraphRequested, markSubgraphMaterialized });
+    await controller.openPath(indexedPath('items', 0));
+    mocks.queryDirectChildren.mockClear();
+    markSubgraphRequested.mockClear();
+    markSubgraphMaterialized.mockClear();
+    const stateCount = states.length;
+
+    await controller.moveSibling(1);
+
+    expect(mocks.queryDirectChildren).not.toHaveBeenCalled();
+    expect(markSubgraphRequested).not.toHaveBeenCalled();
+    expect(markSubgraphMaterialized).not.toHaveBeenCalled();
+    expect(states.slice(stateCount)).not.toContainEqual(expect.objectContaining({ isLoading: true }));
+    expect(states.at(-1)?.chain.map((pane: any) => pane.pathKey)).toEqual(['$', 'k:items', 'k:items|i:1']);
   });
 
   it('binds subtree text to the detail editor while the selected container keeps its column', async () => {

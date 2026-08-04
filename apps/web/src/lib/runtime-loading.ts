@@ -2,6 +2,8 @@ export type RuntimeStateEventDetail = {
   ready: boolean;
   loading: boolean;
   error: boolean;
+  /** The graph runtime may load before its scene accepts navigation commands. */
+  interactiveReady?: boolean;
   phase?: string;
 };
 

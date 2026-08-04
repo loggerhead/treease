@@ -33,6 +33,7 @@ function createHarness() {
   const editorLocate = vi.fn(async () => ({ kind: 'applied' as const }));
   const graph = new Map<string, { selection: string; viewport: string }>();
   const graphRuntime: GraphNavigationRuntimePort = {
+    isInteractive: () => true,
     capturePreviewBaseline: async ({ target }) => ({ ...(graph.get(target.tabId) ?? { selection: '', viewport: '' }) }),
     highlight: async ({ target }) => {
       const state = graph.get(target.tabId) ?? { selection: '', viewport: '' };

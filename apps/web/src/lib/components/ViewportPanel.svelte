@@ -426,6 +426,10 @@
     return await graphViewer?.waitForGraphReady?.() ?? false;
   }
 
+  export function isGraphInteractive(): boolean {
+    return graphViewer?.isGraphInteractive?.() ?? false;
+  }
+
   export function showEntitlementOverlay(block: UsageBlock): void {
     entitlementOverlay = block
     pricingOverlayVisible = true
@@ -534,7 +538,9 @@
             aria-label="Search graph"
             title="Search"
             data-testid="graph-search-trigger"
-            on:click={() => graphSearchInput?.openPanel?.()}
+            on:click={() => {
+              if (graphViewer?.isGraphInteractive?.()) graphSearchInput?.openPanel?.()
+            }}
           >
             <Search size={12} />
           </IconButton>

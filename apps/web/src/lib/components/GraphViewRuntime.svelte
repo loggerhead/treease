@@ -370,7 +370,8 @@
     columnNavigatorPath: PathSeg[];
   } | null = null;
   let columnNavigatorHintFadeTimer: ReturnType<typeof setTimeout> | null = null;
-  let lastSubgraphScrollKey = '';
+  let lastSubgraphSelectionScrollKey = '';
+  let lastSubgraphPaneScrollKey = '';
 
   function syncRenderedColumnNavigatorPanes(nextPanes: VisibleColumnNavigatorPaneState[]): void {
     const nextColumns = nextPanes.filter((pane) => pane.kind === 'column');
@@ -469,10 +470,20 @@
     showCanvasHint();
   }
   $: {
-    const nextScrollKey = `${workspacePathKey(columnNavigatorActivePath)}|${columnNavigatorVisiblePanes.length}`;
-    if (!columnNavigatorCollapsed && nextScrollKey !== lastSubgraphScrollKey) {
-      lastSubgraphScrollKey = nextScrollKey;
+    const nextSelectionScrollKey = workspacePathKey(columnNavigatorActivePath);
+    if (!columnNavigatorCollapsed && nextSelectionScrollKey !== lastSubgraphSelectionScrollKey) {
+      lastSubgraphSelectionScrollKey = nextSelectionScrollKey;
       void scrollSubgraphSelectionIntoView();
+    }
+  }
+  $: {
+    const nextPaneScrollKey = columnNavigatorVisiblePanes
+      .filter((pane) => pane.kind === 'column')
+      .map((pane) => pane.pathKey)
+      .join('|');
+    if (!columnNavigatorCollapsed && nextPaneScrollKey !== lastSubgraphPaneScrollKey) {
+      lastSubgraphPaneScrollKey = nextPaneScrollKey;
+      void scrollSubgraphPanesIntoView();
     }
   }
   const fullBuildReasonSet = new Set([
@@ -797,6 +808,20 @@
     };
   }
 
+  /** Scene commits happen outside Svelte assignments, so publish from the render boundary. */
+  function publishGraphRuntimeState(): void {
+    const interactiveReady = graphRuntimeReady && getGraphInteractionState().interactiveReady === true;
+    const runtimeStateSignature = `${graphRuntimeReady ? 'ready' : 'loading'}|${interactiveReady ? 'interactive' : 'pending'}|${errorMessage}`;
+    if (runtimeStateSignature === lastRuntimeStateSignature) return;
+    lastRuntimeStateSignature = runtimeStateSignature;
+    dispatch('runtime-state', {
+      ready: graphRuntimeReady,
+      loading: !graphRuntimeReady && !errorMessage,
+      error: Boolean(errorMessage),
+      interactiveReady,
+    });
+  }
+
   function resolveGraphReadinessWaiters(signals: {
     graphRuntimeReady: boolean;
     errorMessage: string;
@@ -828,6 +853,10 @@
       };
       graphReadinessWaiters.add(waiter);
     });
+  }
+
+  export function isGraphInteractive(): boolean {
+    return graphRuntimeReady && getGraphInteractionState().interactiveReady === true;
   }
 
   function syncGraphReadinessFromInteraction() {
@@ -1065,14 +1094,19 @@
       const result = await graphSceneController.applyGraphDelta(delta, version);
       canvasHintGraphReady = true;
       if (!isFullEditInteractionBlocked()) graphMinimapRuntimeController.update();
+      publishGraphRuntimeState();
       return result;
     },
-    flushPendingRenderWork: () => graphSceneController.flushPendingRenderWork(),
+    flushPendingRenderWork: async () => {
+      await graphSceneController.flushPendingRenderWork();
+      publishGraphRuntimeState();
+    },
     cancelActiveRenderWork: () => graphSceneController.cancelActiveRenderWork(),
     replaceRenderedGraph: (value) => {
       const result = graphSceneController.replaceAll(value);
       canvasHintGraphReady = true;
       if (!isFullEditInteractionBlocked()) graphMinimapRuntimeController.update();
+      publishGraphRuntimeState();
       return result;
     },
     getLastRenderedGraph: () => graphSceneController.getLastGraphData(),
@@ -1279,10 +1313,32 @@
     await tick();
     const selected = columnNavigatorRoot?.querySelector<HTMLElement>('[data-column-navigator-selected="true"]');
     selected?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  }
+
+  async function scrollSubgraphPanesIntoView(): Promise<void> {
+    await tick();
+    const rail = columnNavigatorRail;
     const terminalPane = columnNavigatorRail?.querySelector<HTMLElement>(
       ':scope > [data-testid="column-navigator-pane"]:last-of-type',
     );
-    terminalPane?.scrollIntoView({ block: 'nearest', inline: 'center' });
+    if (!rail || !terminalPane) return;
+
+    // Keep the newest column beside the detail editor, but leave an already-visible
+    // column untouched. Re-centering on every path change makes sibling navigation jitter.
+    const detailLeft = hasColumnNavigatorDetail
+      ? columnNavigatorDetailDividerLeftPx
+      : rail.clientWidth;
+    const terminalRight = terminalPane.offsetLeft + terminalPane.offsetWidth - rail.scrollLeft;
+    if (terminalRight <= detailLeft) return;
+
+    const maxScrollLeft = Math.max(0, rail.scrollWidth - rail.clientWidth);
+    const desiredScrollLeft = Math.min(
+      maxScrollLeft,
+      Math.max(0, terminalPane.offsetLeft + terminalPane.offsetWidth - detailLeft),
+    );
+    if (Math.abs(rail.scrollLeft - desiredScrollLeft) > 0.5) {
+      rail.scrollLeft = desiredScrollLeft;
+    }
   }
 
   function pathSegmentLabel(path: PathSeg[]): string {
@@ -1721,17 +1777,7 @@
     }
   }
 
-  $: {
-    const runtimeStateSignature = `${graphRuntimeReady ? 'ready' : 'loading'}|${errorMessage}`;
-    if (runtimeStateSignature !== lastRuntimeStateSignature) {
-      lastRuntimeStateSignature = runtimeStateSignature;
-      dispatch('runtime-state', {
-        ready: graphRuntimeReady,
-        loading: !graphRuntimeReady && !errorMessage,
-        error: Boolean(errorMessage),
-      });
-    }
-  }
+  $: publishGraphRuntimeState();
 
   function handleFileDrop(event: globalThis.DragEvent): void {
     event.preventDefault();

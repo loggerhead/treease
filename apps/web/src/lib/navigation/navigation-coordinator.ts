@@ -29,6 +29,7 @@ function summarize(results: readonly NavigationResult[]): NavigationResult['kind
   if (results.some((result) => result.kind === 'stale')) return 'stale';
   if (results.some((result) => result.kind === 'cancelled')) return 'cancelled';
   if (results.some((result) => result.kind === 'applied')) return 'applied';
+  if (results.some((result) => result.kind === 'deferred')) return 'deferred';
   return 'no-op';
 }
 
@@ -44,6 +45,14 @@ export class NavigationCoordinator {
     const beforeStart = statusResult(this.options.targetReader, event.target);
     if (beforeStart) return this.result(behavior, event.target, [beforeStart]);
 
+    if (event.kind === 'graph-ready') {
+      // Graph readiness is an observation, not user navigation. Reuse the
+      // current transaction so a late scene commit cannot stale editor work.
+      const transaction = this.capture(event.target);
+      const graph = await this.options.facades.graph.flush({ target: event.target, transaction });
+      return this.result(behavior, event.target, [graph]);
+    }
+
     if (behavior === 'none') return this.result(behavior, event.target, [{ kind: 'no-op' }]);
 
     const transaction = this.begin(event.target);
@@ -55,6 +64,16 @@ export class NavigationCoordinator {
   private begin(target: NavigationTarget): NavigationTransaction {
     const id = ++this.#nextTransactionId;
     this.#latestTransactionByTab.set(target.tabId, id);
+    return {
+      id,
+      target,
+      isCurrent: () => this.#latestTransactionByTab.get(target.tabId) === id && this.options.targetReader.status(target) === 'current',
+    };
+  }
+
+  private capture(target: NavigationTarget): NavigationTransaction {
+    const id = this.#latestTransactionByTab.get(target.tabId) ?? ++this.#nextTransactionId;
+    if (!this.#latestTransactionByTab.has(target.tabId)) this.#latestTransactionByTab.set(target.tabId, id);
     return {
       id,
       target,

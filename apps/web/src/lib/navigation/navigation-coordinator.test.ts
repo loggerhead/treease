@@ -19,7 +19,7 @@ function resolved(): Promise<NavigationResult> {
 function createFacades(): NavigationFacades {
   return {
     editor: { navigate: vi.fn(resolved) },
-    graph: { locate: vi.fn(resolved), navigate: vi.fn(resolved), preview: vi.fn(resolved), cancelPreview: vi.fn(resolved) },
+    graph: { locate: vi.fn(resolved), navigate: vi.fn(resolved), preview: vi.fn(resolved), cancelPreview: vi.fn(resolved), flush: vi.fn(resolved) },
     navigator: { locate: vi.fn(resolved), navigate: vi.fn(resolved) },
     search: { beginPreview: vi.fn((): NavigationResult => ({ kind: 'applied' })), endPreview: vi.fn(resolved), discardPreview: vi.fn(resolved) },
   };
@@ -96,5 +96,32 @@ describe('NavigationCoordinator', () => {
 
     expect(result).toMatchObject({ outcome: 'closed', results: [{ kind: 'closed' }] });
     expect(facades.graph.locate).not.toHaveBeenCalled();
+  });
+
+  it('flushes only the graph command when the graph scene becomes interactive', async () => {
+    const facades = createFacades();
+    const result = await createCoordinator(facades).dispatch({ kind: 'graph-ready', target: target() });
+
+    expect(result).toMatchObject({ behavior: 'none', outcome: 'applied' });
+    expect(facades.graph.flush).toHaveBeenCalledOnce();
+    expect(facades.editor.navigate).not.toHaveBeenCalled();
+    expect(facades.navigator.navigate).not.toHaveBeenCalled();
+  });
+
+  it('does not stale an in-flight navigation when graph readiness is observed', async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const facades = createFacades();
+    vi.mocked(facades.graph.locate).mockImplementation(async () => {
+      await gate;
+      return { kind: 'applied' };
+    });
+    const coordinator = createCoordinator(facades);
+
+    const pending = coordinator.dispatch(selection());
+    await coordinator.dispatch({ kind: 'graph-ready', target: target() });
+    release();
+
+    await expect(pending).resolves.toMatchObject({ outcome: 'applied' });
   });
 });

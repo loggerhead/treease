@@ -11,6 +11,8 @@
   export let documentKey = ''
   export let language = ''
   export let text = ''
+  /** Reads the mounted scene directly; this component never keeps its own readiness cache. */
+  export let isGraphInteractive: () => boolean = () => false
   export let onSearchSelect: (event: CustomEvent<any>) => void = () => {}
   export let onSearchPreview: (result: any) => void = () => {}
   export let onSearchCancel: () => void = () => {}
@@ -36,7 +38,9 @@
     <div class="graph-topbar__tools">
       {#if activeSurfaceMode === 'graph'}
       <div class="graph-topbar__search-wrap">
-        <Tooltip content="Search nodes" side="bottom" disabled={graphSearchOpen}><button class="graph-topbar__button" aria-label="Search nodes" data-testid="graph-search-trigger" on:click={() => void graphSearchInput?.openPanel()}>
+        <Tooltip content="Search graph" side="bottom" disabled={graphSearchOpen}><button class="graph-topbar__button" aria-label="Search graph" data-testid="graph-search-trigger" on:click={() => {
+          if (isGraphInteractive()) void graphSearchInput?.openPanel()
+        }}>
           <Search size={13} />
         </button></Tooltip>
         <GraphSearchInput

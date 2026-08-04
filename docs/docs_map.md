@@ -231,6 +231,26 @@ Do not edit it by hand; run `pnpm docs:map:gen`.
   - H2: VI. Explicit Errors
   - H2: Checklist
 
+## contracts/navigation.md
+
+- Route: /contracts/navigation
+- Headings:
+  - H1: Navigation Contract
+  - H2: Scope and terms
+  - H2: Modules and dependency direction
+  - H2: State model and authority
+  - H2: Event and behavior contract
+  - H2: Data flow and result semantics
+  - H2: Freshness, lifecycle, and safety invariants
+  - H2: Stable user-facing behavior
+  - H2: Review checklist
+
+## contracts/product-surface-glossary.md
+
+- Route: /contracts/product-surface-glossary
+- Headings:
+  - H1: Surface Glossary
+
 ## contracts/share-workspace.md
 
 - Route: /contracts/share-workspace
@@ -417,6 +437,7 @@ Do not edit it by hand; run `pnpm docs:map:gen`.
   - H3: US-02 Locate and View JSON Blocks in Mixed Text
   - H3: US-03 Organize Text in the Editor
   - H3: US-04 Locate Fields in the Graph and Tree Path
+  - H3: US-04a Keep Navigation Consistent Across Surfaces and Tabs
   - H3: US-05 Preview Values by Hovering in the Editor
   - H3: US-06 Open the Column Navigator from the Graph
   - H3: US-07 Navigate Nested Paths in the Column Navigator

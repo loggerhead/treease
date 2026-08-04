@@ -5,7 +5,7 @@ import { queryDirectChildren, queryPathValue } from '../../../services/SnapshotP
 import { buildPathKey } from '../../../graph/graph-viewer-path';
 import { createViewRuntimeOperation, type ViewRuntimeOperation } from '../../../guards/view-runtime-operation';
 import { getClampedPaneSize } from '../../ui/split-layout';
-import type { PathSeg } from '../../../store/tree-path';
+import { isPathSegIndex, type PathSeg } from '../../../store/tree-path';
 import type { StructuredValueEditIntent } from '../graph-value-edit';
 import {
   buildColumnNavigatorDirectItems,
@@ -360,6 +360,69 @@ export function createColumnNavigatorController(deps: ColumnNavigatorControllerD
     }, SIBLING_REVEAL_DEBOUNCE_MS);
   }
 
+  function hasStableSiblingPaneStructure(item: ColumnNavigatorColumnItem): boolean {
+    const currentIndex = activePath.at(-1);
+    const nextIndex = item.path.at(-1);
+    const parentPath = activePath.slice(0, -1);
+    const currentContent = chain.at(-1);
+    const parentColumn = chain.at(-2);
+    return Boolean(
+      !item.isContainer &&
+      currentIndex &&
+      nextIndex &&
+      isPathSegIndex(currentIndex) &&
+      isPathSegIndex(nextIndex) &&
+      samePath(parentPath, item.path.slice(0, -1)) &&
+      currentContent?.kind === 'content' &&
+      samePath(currentContent.path, activePath) &&
+      parentColumn?.kind === 'column' &&
+      samePath(parentColumn.path, parentPath),
+    );
+  }
+
+  async function selectSibling(path: PathSeg[]): Promise<void> {
+    void navigationOperation?.cancel();
+    void refreshOperation?.cancel();
+    const operation = createWorkspaceOperation();
+    navigationOperation = operation;
+    const pendingEditTask = pendingEditTaskMap.get(workspacePathKey(activePath));
+    if (pendingEditTask) {
+      await pendingEditTask;
+      if (!operation.isCurrent()) return;
+    }
+    activePath = clonePath(path);
+    recordHistory(path);
+    emitState();
+    const result = await operation.run({
+      execute: ({ step }) => step(async () => {
+        const read = await readPath(path);
+        if (!read?.isContent) throw new Error('Scalar sibling selection must resolve to navigator content.');
+        return read.content;
+      }),
+      land: (content) => {
+        if (disposed) return;
+        const terminalPane = chain.at(-1);
+        if (!terminalPane || terminalPane.kind !== 'content') return;
+        chain[chain.length - 1] = {
+          ...terminalPane,
+          path: clonePath(path),
+          pathKey: workspacePathKey(path),
+          title: formatColumnNavigatorPath(path),
+          content,
+        };
+        queueSiblingReveal(activePath);
+        emitState();
+      },
+    });
+    if (result.status === 'failed') {
+      deps.handleError(result.error, {
+        component: 'GraphViewer',
+        operation: 'selectColumnNavigatorSibling',
+        metadata: { pathKey: workspacePathKey(path) },
+      });
+    }
+  }
+
   async function navigate(
     path: PathSeg[],
     options: { recordHistory: boolean; reveal: 'immediate' | 'debounced' | 'none' },
@@ -455,6 +518,10 @@ export function createColumnNavigatorController(deps: ColumnNavigatorControllerD
     const nextIndex = (currentIndex + delta + parent.items.length) % parent.items.length;
     const item = parent.items[nextIndex];
     if (item && item.pathKey !== workspacePathKey(activePath)) {
+      if (hasStableSiblingPaneStructure(item)) {
+        await selectSibling(item.path);
+        return;
+      }
       await navigate(item.path, { recordHistory: true, reveal: 'debounced' });
     }
   }

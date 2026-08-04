@@ -62,6 +62,10 @@
     return await runtime?.waitForGraphReady() ?? false;
   }
 
+  export function isGraphInteractive(): boolean {
+    return runtime?.isGraphInteractive() ?? false;
+  }
+
   export function getColumnNavigatorActivePath(): PathSeg[] {
     return runtime?.getColumnNavigatorActivePath() ?? [];
   }

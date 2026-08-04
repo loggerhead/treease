@@ -2,6 +2,7 @@ import type {
   GraphNavigationFacade as GraphNavigationFacadeContract,
   GraphPreviewCommand,
   NavigationCommand,
+  NavigationPath,
   NavigationResult,
   NavigationTarget,
   NavigationTargetReader,
@@ -24,6 +25,8 @@ export type GraphRuntimeContext = Readonly<{
  * They must not resolve a scene from active-tab state.
  */
 export interface GraphNavigationRuntimePort {
+  /** True only after the scene for this target has committed interactive bindings. */
+  isInteractive(target: NavigationTarget): boolean;
   capturePreviewBaseline(context: GraphRuntimeContext): Promise<GraphPreviewBaseline>;
   highlight(context: GraphRuntimeContext, command: NavigationCommand): Promise<NavigationResult>;
   reveal(context: GraphRuntimeContext, command: NavigationCommand): Promise<NavigationResult>;
@@ -38,6 +41,16 @@ type PreviewSession = Readonly<{
   baseline: GraphPreviewBaseline;
   ownsViewport: boolean;
 }>;
+
+type DeferredGraphCommand =
+  | Readonly<{ kind: 'locate'; target: NavigationTarget; path: NavigationPath; cellTarget: NavigationCommand['cellTarget'] }>
+  | Readonly<{ kind: 'navigate'; target: NavigationTarget; path: NavigationPath; cellTarget: NavigationCommand['cellTarget'] }>
+  | Readonly<{ kind: 'preview'; target: NavigationTarget; path: NavigationPath; cellTarget: NavigationCommand['cellTarget']; previewId: string; mode: GraphPreviewCommand['mode'] }>;
+
+type DeferredGraphDetail =
+  | Readonly<{ kind: 'locate' }>
+  | Readonly<{ kind: 'navigate' }>
+  | Readonly<{ kind: 'preview'; previewId: string; mode: GraphPreviewCommand['mode'] }>;
 
 type GraphNavigationFacadeOptions = Readonly<{
   runtime: GraphNavigationRuntimePort;
@@ -66,6 +79,7 @@ function combined(first: NavigationResult, second: NavigationResult): Navigation
 /** Owns Graph-only preview baseline and viewport-transition freshness. */
 export class GraphNavigationFacade implements GraphNavigationFacadeContract {
   private readonly previews = new Map<string, PreviewSession>();
+  private readonly deferredByTab = new Map<string, DeferredGraphCommand>();
 
   constructor(private readonly options: GraphNavigationFacadeOptions) {}
 
@@ -73,6 +87,7 @@ export class GraphNavigationFacade implements GraphNavigationFacadeContract {
     const context = this.context(command);
     const invalid = this.invalid(context);
     if (invalid) return invalid;
+    if (this.deferWhenUnavailable(command, { kind: 'locate' })) return { kind: 'deferred' };
     await this.discardPreview(command, context);
     return this.invoke(context, () => this.options.runtime.highlight(context, command));
   }
@@ -81,6 +96,7 @@ export class GraphNavigationFacade implements GraphNavigationFacadeContract {
     const context = this.context(command);
     const invalid = this.invalid(context);
     if (invalid) return invalid;
+    if (this.deferWhenUnavailable(command, { kind: 'navigate' })) return { kind: 'deferred' };
     await this.discardPreview(command, context);
     const highlight = await this.invoke(context, () => this.options.runtime.highlight(context, command));
     if (!completed(highlight)) return highlight;
@@ -92,6 +108,7 @@ export class GraphNavigationFacade implements GraphNavigationFacadeContract {
     const invalid = this.invalid(context);
     if (invalid) return invalid;
 
+    if (this.deferWhenUnavailable(command, { kind: 'preview', previewId: command.previewId, mode: command.mode })) return { kind: 'deferred' };
     const key = targetKey(command.target);
     let session = this.previews.get(key);
     if (!session) {
@@ -116,6 +133,11 @@ export class GraphNavigationFacade implements GraphNavigationFacadeContract {
     const context = this.context(command);
     const invalid = this.invalid(context);
     if (invalid) return invalid;
+    const deferred = this.deferredByTab.get(command.target.tabId);
+    if (deferred?.kind === 'preview' && sameTarget(deferred.target, command.target) && deferred.previewId === command.previewId) {
+      this.deferredByTab.delete(command.target.tabId);
+      return { kind: 'applied' };
+    }
     const key = targetKey(command.target);
     const session = this.previews.get(key);
     if (!session || session.previewId !== command.previewId) return { kind: 'no-op' };
@@ -142,6 +164,19 @@ export class GraphNavigationFacade implements GraphNavigationFacadeContract {
       this.previews.set(key, { ...session, ownsViewport: false });
     }
     return cancelled;
+  }
+
+  async flush(command: Pick<NavigationCommand, 'target' | 'transaction'>): Promise<NavigationResult> {
+    const invalid = this.invalid(this.context(command));
+    if (invalid) return invalid;
+    const deferred = this.deferredByTab.get(command.target.tabId);
+    if (!deferred || !sameTarget(deferred.target, command.target)) return { kind: 'no-op' };
+    if (!this.options.runtime.isInteractive(command.target)) return { kind: 'deferred' };
+    this.deferredByTab.delete(command.target.tabId);
+    const navigation: NavigationCommand = { ...command, path: deferred.path, cellTarget: deferred.cellTarget };
+    if (deferred.kind === 'locate') return this.locate(navigation);
+    if (deferred.kind === 'navigate') return this.navigate(navigation);
+    return this.preview({ ...navigation, previewId: deferred.previewId, mode: deferred.mode });
   }
 
   private context(command: Pick<NavigationCommand, 'target' | 'transaction'>): GraphRuntimeContext {
@@ -179,5 +214,19 @@ export class GraphNavigationFacade implements GraphNavigationFacadeContract {
     } catch (error) {
       return this.invalid(context) ?? { kind: 'failed', error };
     }
+  }
+
+  private deferWhenUnavailable(
+    command: NavigationCommand,
+    detail: DeferredGraphDetail,
+  ): boolean {
+    if (this.options.runtime.isInteractive(command.target)) return false;
+    this.deferredByTab.set(command.target.tabId, {
+      ...detail,
+      target: command.target,
+      path: [...command.path],
+      cellTarget: command.cellTarget,
+    } as DeferredGraphCommand);
+    return true;
   }
 }

@@ -15,6 +15,7 @@ export const navigationBehaviorPolicy: NavigationBehaviorPolicy = {
       case 'search-cancel':
         return 'cancel-preview';
       case 'graph-viewport-gesture':
+      case 'graph-ready':
       case 'editor-edit':
       case 'editor-scroll':
       case 'tab-activated':

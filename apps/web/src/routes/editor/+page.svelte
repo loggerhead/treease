@@ -111,7 +111,10 @@
   import { createViewRuntimeOperation } from '../../lib/guards/view-runtime-operation';
   import { LARGE_FILE_PROCESSING_THRESHOLD_BYTES } from '../../lib/config/large-file';
   import type { CommandId } from '../../lib/command-registry';
-  import { createWorkspaceNavigationRuntime } from '../../lib/navigation/workspace-navigation-runtime';
+  import {
+    createWorkspaceNavigationRuntime,
+    type GraphRuntimeReadinessBinding,
+  } from '../../lib/navigation/workspace-navigation-runtime';
   import type { NavigationResult, NavigationTarget } from '../../lib/navigation/navigation-contract';
 
   export let data: PageData;
@@ -504,6 +507,7 @@
 
   function handleViewerRuntimeState(payload: RuntimeStateEventDetail) {
     viewerRuntimeLoading = payload.loading;
+    if (payload.interactiveReady === true && !payload.error) void graphReadinessBinding?.reportInteractive();
     if (!payload.loading && !payload.error && viewerViewMode === 'graph' && $editorRevision !== lastTrackedGraphViewRevision) {
       lastTrackedGraphViewRevision = $editorRevision;
       trackEvent('graph_view', { language: editorRef?.getActiveLanguage() ?? $languageIdStore });
@@ -1077,6 +1081,7 @@
   let graphRevealToken = 0;
   let activeSearchPreviewId: string | null = null;
   let navigationRuntime: ReturnType<typeof createWorkspaceNavigationRuntime> | null = null;
+  let graphReadinessBinding: GraphRuntimeReadinessBinding | null = null;
 
   function navigationTabs() {
     const workspace = getWorkspaceState();
@@ -1089,6 +1094,21 @@
   function navigationTarget(): NavigationTarget | null {
     if (workspaceBootstrapReady) ensureNavigationRuntime($editorWorkspace);
     return navigationRuntime?.target(getWorkspaceState().activeTabId) ?? null;
+  }
+
+  function syncGraphReadinessBinding(_workspaceVersion: unknown): void {
+    ensureNavigationRuntime(_workspaceVersion);
+    const target = navigationRuntime?.target(getWorkspaceState().activeTabId) ?? null;
+    if (
+      target
+      && graphReadinessBinding?.target.tabId === target.tabId
+      && graphReadinessBinding.target.documentKey === target.documentKey
+      && graphReadinessBinding.target.generation === target.generation
+      && graphReadinessBinding.target.revision === target.revision
+    ) return;
+
+    graphReadinessBinding?.dispose();
+    graphReadinessBinding = target ? navigationRuntime?.bindGraphRuntime(target) ?? null : null;
   }
 
   function navigationResult(applied: boolean): NavigationResult {
@@ -1118,6 +1138,7 @@
         },
       },
       graph: {
+        isInteractive: (target) => getWorkspaceState().activeTabId === target.tabId && viewerRef?.isGraphInteractive() === true,
         capturePreviewBaseline: async () => ({ selection: get(activeTempModel).graphHighlight, viewport: null }),
         highlight: async (context, command) => {
           if (!context.isCurrent()) return { kind: 'stale' };
@@ -1491,6 +1512,11 @@
   $: tabSummaries = summarizeWorkspaceTabs($editorWorkspace);
   $: activeTabId = $editorWorkspace.activeTabId;
   $: if (workspaceBootstrapReady) ensureNavigationRuntime($editorWorkspace);
+  $: if (workspaceBootstrapReady && viewerRef) syncGraphReadinessBinding($editorWorkspace);
+  $: if (!viewerRef && graphReadinessBinding) {
+    graphReadinessBinding.dispose();
+    graphReadinessBinding = null;
+  }
 
   onMount(() => {
     const resetRequested = isEditorResetRequested(window.location.search);
@@ -1806,6 +1832,7 @@
                 documentKey={$documentKeyStore}
                 language={$languageIdStore}
                 text={$sourceTextStore}
+                isGraphInteractive={() => viewerRef?.isGraphInteractive() === true}
                 onSearchSelect={(event) => viewerRef?.revealGraphSearchResult(event.detail)}
                 onSearchPreview={(result) => viewerRef?.previewGraphSearchResult(result)}
                 onSearchCancel={cancelSearchPreview}

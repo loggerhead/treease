@@ -98,6 +98,29 @@ As a developer debugging deeply nested structures, I want to search or click nod
   - Selecting a Graph search result navigates the editor and Graph to the corresponding node.
   - Clicking a parent path segment in Tree Path navigates the editor and Graph to the corresponding node.
 
+### US-04a Keep Navigation Consistent Across Surfaces and Tabs
+
+As a user investigating structured data, I want text, Graph, Column Navigator,
+Tree Path, and Search to refer to the same field without delayed work from another
+Tab changing my view, so I can navigate quickly without losing context.
+
+- User behavior: Select a field from any navigation surface, preview a search
+  match, commit or cancel that preview, then switch, close, or replace Tabs.
+- User expectation: Every action applies to the document and field that was
+  selected when the action began. Preview is reversible, committed navigation is
+  durable for the current Tab, and a background or former Tab never steals focus
+  or overwrites the visible location.
+- User value: Fast cross-surface navigation remains trustworthy while comparing
+  or editing several documents.
+- Expected experience:
+  - Lightweight location changes do not unnecessarily scroll, focus, or expand
+    the view; complete navigation does so only when requested by the interaction.
+  - Search preview can be cancelled to restore its prior view, while committing
+    it selects the matching field normally.
+  - A newer action in one Tab wins over an older pending action in that same Tab.
+  - Switching, closing, or replacing a Tab prevents late navigation from the old
+    document from appearing elsewhere.
+
 ### US-05 Preview Values by Hovering in the Editor
 
 As a user reading data, I want to see previews for images, URLs, dates, colors, Base64, JWT, Unicode, and more when hovering over value nodes in the editor, so I can make fewer trips to external tools.

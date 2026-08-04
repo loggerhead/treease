@@ -31,6 +31,7 @@ function createRuntime() {
     return Promise.resolve({ kind: 'applied' } as const);
   };
   const runtime: GraphNavigationRuntimePort = {
+    isInteractive: () => true,
     capturePreviewBaseline: async () => baseline,
     highlight: (context) => write(context, 'highlight', () => { graph.selection = 'preview'; }),
     reveal: (context) => write(context, 'reveal', () => { graph.viewport = 'preview'; }),
@@ -96,6 +97,33 @@ describe('GraphNavigationFacade', () => {
     release();
 
     await expect(pending).resolves.toEqual({ kind: 'stale' });
+    expect(graph.calls).toEqual([]);
+  });
+
+  it('retains only the latest graph command until the scene is interactive', async () => {
+    const { graph, runtime } = createRuntime();
+    let interactive = false;
+    runtime.isInteractive = () => interactive;
+    const tx = transaction();
+    const facade = new GraphNavigationFacade({ runtime, targetReader: { status: () => 'current' } });
+
+    await expect(facade.locate(command(tx.value))).resolves.toEqual({ kind: 'deferred' });
+    await expect(facade.navigate(command(tx.value))).resolves.toEqual({ kind: 'deferred' });
+    expect(graph.calls).toEqual([]);
+
+    interactive = true;
+    await expect(facade.flush({ target, transaction: tx.value })).resolves.toEqual({ kind: 'applied' });
+    expect(graph.calls).toEqual(['highlight', 'reveal']);
+  });
+
+  it('discards a deferred search preview when it is cancelled before graph readiness', async () => {
+    const { graph, runtime } = createRuntime();
+    runtime.isInteractive = () => false;
+    const tx = transaction();
+    const facade = new GraphNavigationFacade({ runtime, targetReader: { status: () => 'current' } });
+
+    await facade.preview({ ...command(tx.value), previewId: 'preview', mode: 'viewport' });
+    await expect(facade.cancelPreview({ target, transaction: tx.value, previewId: 'preview' })).resolves.toEqual({ kind: 'applied' });
     expect(graph.calls).toEqual([]);
   });
 });

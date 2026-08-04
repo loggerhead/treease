@@ -15,6 +15,8 @@ export type GraphCellTarget = 'key' | 'value' | 'node';
 export type NavigationResult =
   | { kind: 'applied' }
   | { kind: 'no-op' }
+  /** The graph scene is loading; its facade retained the latest command for this target. */
+  | { kind: 'deferred' }
   | { kind: 'stale' }
   | { kind: 'cancelled' }
   | { kind: 'closed' }
@@ -66,6 +68,8 @@ export interface GraphNavigationFacade {
   navigate(command: NavigationCommand): Promise<NavigationResult>;
   preview(command: GraphPreviewCommand): Promise<NavigationResult>;
   cancelPreview(command: PreviewCancellationCommand): Promise<NavigationResult>;
+  /** Replays the latest graph-only command once the captured scene becomes interactive. */
+  flush(command: NavigationScopeCommand): Promise<NavigationResult>;
 }
 
 export type NavigatorHistoryMode = 'merge' | 'push';
@@ -99,6 +103,7 @@ export type NavigationUserEvent =
   | Readonly<{ kind: 'search-commit'; target: NavigationTarget; path: NavigationPath; cellTarget: GraphCellTarget; previewId: string }>
   | Readonly<{ kind: 'search-cancel'; target: NavigationTarget; previewId: string }>
   | Readonly<{ kind: 'graph-viewport-gesture'; target: NavigationTarget }>
+  | Readonly<{ kind: 'graph-ready'; target: NavigationTarget }>
   | Readonly<{ kind: 'editor-edit'; target: NavigationTarget }>
   | Readonly<{ kind: 'editor-scroll'; target: NavigationTarget }>
   | Readonly<{ kind: 'tab-activated'; target: NavigationTarget }>

@@ -72,6 +72,44 @@ flowchart TB
 - `packages/graph-viewer-runtime` is shared by Web and the extension for graph rendering and interaction only. It consumes already-normalized graph data; it does not own document snapshots, projection normalization, freshness, or Document Runtime authority.
 - `apps/cli` reuses `treease-core` computation while independently owning command-line arguments, I/O, and user-visible CLI contracts.
 
+## Web Navigation Boundary
+
+Navigation is a Web interaction domain, not a GraphViewer shortcut. Its stable
+contracts live in [Navigation Contract](./docs/contracts/navigation.md); the
+Column Navigator's own projection and edit rules remain in
+[Column Navigator Contract](./docs/contracts/column-navigator.md).
+
+```mermaid
+flowchart LR
+  UI["Editor, Graph, Navigator and Search UI adapters"] --> Facts["Captured user facts\nNavigationUserEvent"]
+  Facts --> Coordinator["NavigationCoordinator\npolicy, transaction and result aggregation"]
+  Coordinator --> Editor["Editor facade\neditorState + editor runtime"]
+  Coordinator --> Graph["Graph facade\nviewport and preview runtime"]
+  Coordinator --> Navigator["Navigator facade\nnavigatorState + Column Navigator port"]
+  Coordinator --> Search["Search facade\nsearchState"]
+
+  Store["TabNavigationStore\ntab-local navigation slices"] --> Editor
+  Store --> Navigator
+  Store --> Search
+  Store --> Registry["TabRuntimeRegistry\ndisposable runtime bindings"]
+
+  Editor --> Ports["Entity-local runtime ports"]
+  Graph --> Ports
+  Navigator --> Ports
+```
+
+- UI adapters capture a complete target at the interaction boundary and publish
+  facts. They do not choose cross-entity behavior or write another entity's
+  navigation slice.
+- `NavigationCoordinator` depends only on the public facade contracts and the
+  target reader. It has no dependency on entity-internal state or UI components.
+- Each facade owns only its named state slice and invokes only its entity-local
+  runtime port. `TabNavigationStore` grants slice-scoped write access rather than
+  exposing a general store mutator.
+- `TabRuntimeRegistry` owns disposable, non-persisted runtime resources. It is
+  invalidated by Tab replacement and closure, while `ActiveTabProjection` is a
+  read-only view of the active navigation Tab.
+
 ## Reading the Diagram
 
 - Solid arrows represent dependency or host relationships; dashed arrows represent generated artifacts or runtime calls. Web never calls internal implementations in `packages/core/src` or the Hosted API repository directly.

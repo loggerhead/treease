@@ -29,6 +29,13 @@ export type WorkspaceNavigationRuntimePorts = Readonly<{
 
 export type WorkspaceNavigationTab = TabNavigationTabInput;
 
+/** A target-bound bridge for facts emitted by a mounted graph runtime. */
+export type GraphRuntimeReadinessBinding = Readonly<{
+  target: NavigationTarget;
+  reportInteractive(): Promise<NavigationDispatchResult> | undefined;
+  dispose(): void;
+}>;
+
 const initialNavigatorState: NavigatorNavigationState = {
   activePath: [], history: [], historyIndex: -1, columnsMaterialized: false, expanded: false,
 };
@@ -71,6 +78,26 @@ export function createWorkspaceNavigationRuntime(
       }),
     },
   });
+  const bindGraphRuntime = (target: NavigationTarget): GraphRuntimeReadinessBinding => {
+    let active = true;
+    const registration = runtime.register(target, 'navigation-graph-readiness', {
+      value: target,
+      dispose: () => { active = false; },
+    });
+    if (registration.kind !== 'applied') active = false;
+
+    return {
+      target,
+      reportInteractive: () => active
+        ? coordinator.dispatch({ kind: 'graph-ready', target })
+        : undefined,
+      dispose: () => {
+        active = false;
+        registration.dispose();
+      },
+    };
+  };
+
   return {
     store,
     runtime,
@@ -93,5 +120,6 @@ export function createWorkspaceNavigationRuntime(
     },
     dispatch: (event: NavigationUserEvent): Promise<NavigationDispatchResult> => coordinator.dispatch(event),
     target: (tabId: string) => store.getTarget(tabId),
+    bindGraphRuntime,
   };
 }

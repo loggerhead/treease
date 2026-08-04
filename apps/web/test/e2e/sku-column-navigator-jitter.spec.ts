@@ -94,6 +94,11 @@ test('moves the root graph smoothly during rapid alternating SKU Price navigatio
   await waitForColumnNavigatorSettled(page, 'k:QA|k:Prices|i:0', 20_000);
 
   const workspace = page.getByTestId('column-navigator-graph');
+  const columnPanes = workspace.locator('[data-testid="column-navigator-pane"]');
+  const paneKeysBefore = await columnPanes.evaluateAll((panes) =>
+    panes.map((pane) => pane.getAttribute('data-column-navigator-path-key')),
+  );
+  const railScrollLeftBefore = await workspace.locator('.column-navigator-graph__track').evaluate((rail) => rail.scrollLeft);
   await workspace.focus();
   await startViewportSampling(page);
   await workspace.evaluate((element) => {
@@ -115,4 +120,9 @@ test('moves the root graph smoothly during rapid alternating SKU Price navigatio
 
   expect(samples, 'root graph viewport samples').not.toHaveLength(0);
   expect(greatestViewportFrameStep(samples), 'root graph viewport must not jump between animation frames').toBeLessThanOrEqual(80);
+  expect(await columnPanes.count()).toBe(paneKeysBefore.length);
+  expect(await columnPanes.evaluateAll((panes) =>
+    panes.map((pane) => pane.getAttribute('data-column-navigator-path-key')),
+  )).toEqual(paneKeysBefore);
+  expect(await workspace.locator('.column-navigator-graph__track').evaluate((rail) => rail.scrollLeft)).toBe(railScrollLeftBefore);
 });
