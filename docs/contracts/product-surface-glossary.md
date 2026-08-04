@@ -33,6 +33,7 @@ among the primary product containers visible in the UI. Indented entries are con
     - **Graph View Controls** — 图谱视图控制组：Graph Top Bar 右侧。承载当前 Graph 或 Compare 工作区的视图级控制入口，并作为视图控制的扩展容器。
       - **Graph Search Panel** — 图搜索面板：Graph View Controls 搜索入口下方的浮层。承载面向当前图谱的搜索输入、结果和导航交互。
   - **Graph** — 图谱：Graph Pane 中央主体区域。承载当前结构化文档的结构化可视化与交互工作区。
+    - **Graph Empty State Guide** — 图谱空状态引导：Graph 为空或尚未载入结构化文档时显示在 Graph 中央的引导表面。用简短的关系图示、状态说明和“Load example”“Open file”等首要操作，帮助用户理解 Graph 的价值并完成首次载入；不承载实际图谱数据或导航状态。
   - **Compare Surface** — 对比工作区：Graph Pane 中央主体区域，在对比模式下显示。承载双文档对照场景的交互内容与状态。
   - **Column Navigator** — 列导航器：Graph Pane 底部主体区域。承载沿结构化路径展开的嵌套内容浏览与编辑工作区。
   - **Tree Path Bar** — Tree Path 路径栏：Graph Pane 底部、Column Navigator 下方。承载当前结构路径的定位信息与路径级操作入口。

@@ -27,6 +27,7 @@
   export let onLogout: () => Promise<void> = async () => {}
   export let onCheckForUpdates: () => Promise<void> = async () => {}
   export let onOpenSettings: () => void = () => {}
+  export let controlsDisabled = false
 
   let graphSearchPanel: GraphSearchPanel | null = null
   let graphSearchOpen = false
@@ -38,7 +39,7 @@
     <div class="graph-topbar__tools">
       {#if activeSurfaceMode === 'graph'}
       <div class="graph-topbar__search-wrap">
-        <Tooltip content="Search graph" side="bottom" disabled={graphSearchOpen}><button class="graph-topbar__button" aria-label="Search graph" data-testid="graph-search-trigger" on:click={() => {
+        <Tooltip content="Search graph" side="bottom" disabled={graphSearchOpen}><button class="graph-topbar__button" aria-label="Search graph" data-testid="graph-search-trigger" disabled={controlsDisabled} on:click={() => {
           if (isGraphInteractive()) void graphSearchPanel?.openPanel()
         }}>
           <Search size={13} />
@@ -55,13 +56,13 @@
           on:select={onSearchSelect}
         />
       </div>
-      <Tooltip content="Zoom in" side="bottom"><button class="graph-topbar__button" aria-label="Zoom in" data-testid="zoom-in-button" on:click={onZoomIn}>
+      <Tooltip content="Zoom in" side="bottom"><button class="graph-topbar__button" aria-label="Zoom in" data-testid="zoom-in-button" disabled={controlsDisabled} on:click={onZoomIn}>
         <ZoomIn size={13} />
       </button></Tooltip>
-      <Tooltip content="Zoom out" side="bottom"><button class="graph-topbar__button" aria-label="Zoom out" data-testid="zoom-out-button" on:click={onZoomOut}>
+      <Tooltip content="Zoom out" side="bottom"><button class="graph-topbar__button" aria-label="Zoom out" data-testid="zoom-out-button" disabled={controlsDisabled} on:click={onZoomOut}>
         <ZoomOut size={13} />
       </button></Tooltip>
-      <Tooltip content="Export image" side="bottom-left"><button class="graph-topbar__button" aria-label="Export image" on:click={onExportImage}>
+      <Tooltip content="Export image" side="bottom-left"><button class="graph-topbar__button" aria-label="Export image" disabled={controlsDisabled} on:click={onExportImage}>
         <ImageDown size={13} />
       </button></Tooltip>
     {:else}
@@ -114,7 +115,8 @@
   .graph-topbar__button, .graph-topbar__share { display: inline-flex; height: var(--control-height); align-items: center; justify-content: center; border: 0; border-radius: 4px; color: var(--text-primary); background: transparent; }
   .graph-topbar__button { width: 24px; transition: var(--control-transition); }
   .graph-topbar__share { gap: 4px; padding: 0 7px; font-size: var(--font-size-control); font-weight: 650; letter-spacing: .01em; }
-  .graph-topbar__button:hover { color: var(--text-primary); background: var(--panel-bg); box-shadow: 0 1px 3px rgb(29 39 53 / 9%); }
+  .graph-topbar__button:hover:not(:disabled) { color: var(--text-primary); background: var(--panel-bg); box-shadow: 0 1px 3px rgb(29 39 53 / 9%); }
+  .graph-topbar__button:disabled { cursor: not-allowed; opacity: .42; }
   .graph-topbar__share { transition: var(--control-transition); }
   .graph-topbar__share:hover { color: var(--text-primary); background: var(--panel-bg-alt); }
   .graph-topbar__button:focus-visible, .graph-topbar__share:focus-visible { outline: none; box-shadow: var(--focus-ring); }

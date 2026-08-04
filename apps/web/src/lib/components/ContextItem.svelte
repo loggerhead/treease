@@ -12,6 +12,7 @@
   export let placement: 'right-start' | 'right-end' = 'right-start'
   export let customTrigger = false
   export let triggerClass = ''
+  export let disabled = false
 
   let anchor: HTMLDivElement | null = null
 
@@ -41,7 +42,7 @@
 
 <div class="sidebar__item-wrap" bind:this={anchor}>
   {#if customTrigger}
-    <button class={`sidebar__context-trigger ${triggerClass}`} type="button" aria-label={ariaLabel} data-testid={testId} on:click={togglePanel}>
+    <button class={`sidebar__context-trigger ${triggerClass}`} type="button" aria-label={ariaLabel} data-testid={testId} disabled={disabled} on:click={togglePanel}>
       <slot name="trigger" />
     </button>
   {:else}
@@ -51,6 +52,7 @@
       {tooltip}
       {expanded}
       active={open}
+      {disabled}
       testId={testId}
       onClick={togglePanel}
     >
@@ -86,6 +88,8 @@
   :global(.sidebar__context-trigger[data-state='open']) {
     background: var(--panel-bg-alt);
   }
+
+  :global(.sidebar__context-trigger:disabled) { cursor: not-allowed; opacity: .42; }
 
   :global(.sidebar__popover) {
     position: absolute;

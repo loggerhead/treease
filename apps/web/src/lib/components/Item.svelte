@@ -8,6 +8,7 @@
   export let showTooltipWhenExpanded = false
   export let active = false
   export let pressed: boolean | undefined = undefined
+  export let disabled = false
   export let testId: string | undefined = undefined
   export let onClick: () => void = () => {}
   export let className = ''
@@ -22,6 +23,7 @@
     type="button"
     aria-label={ariaLabel}
     aria-pressed={pressed}
+    {disabled}
     data-testid={testId}
     on:click={onClick}
   >
@@ -63,6 +65,8 @@
     color: var(--text-primary);
     background: var(--panel-bg-alt);
   }
+
+  :global(.sidebar__item:disabled) { cursor: not-allowed; opacity: .42; }
 
   :global(.sidebar__item--active) {
     color: var(--accent);

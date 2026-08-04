@@ -28,6 +28,7 @@
   export let onLogin: () => void = () => {}
   export let onLogout: () => Promise<void> = async () => {}
   export let onCheckForUpdates: () => Promise<void> = async () => {}
+  export let emptyDocument = false
 
   export let expanded = true
   export let onToggleSidebar: (expanded: boolean) => void = () => {}
@@ -132,7 +133,7 @@
           </div>
         </ContextItem>
 
-        <ContextItem bind:this={exportItem} bind:open={exportOpen} label="Export" ariaLabel="Export" testId="topbar-export-button" {expanded}>
+        <ContextItem bind:this={exportItem} bind:open={exportOpen} label="Export" ariaLabel="Export" testId="topbar-export-button" {expanded} disabled={emptyDocument}>
           <Download size={16} slot="icon" />
           <div slot="panel" data-testid="export-panel">
             <div class="sidebar__popover-title">Export</div>
@@ -143,8 +144,8 @@
               </Select.Root>
             </div>
             <div class="sidebar__popover-actions">
-              <button aria-label="Download export file" on:click={handleExportDownload}>Download</button>
-              {#if currentLanguage !== exportFormat}<button aria-label="Preview export result" on:click={handleExportPreview}>Preview</button>{/if}
+              <button aria-label="Download export file" disabled={emptyDocument} on:click={handleExportDownload}>Download</button>
+              {#if currentLanguage !== exportFormat}<button aria-label="Preview export result" disabled={emptyDocument} on:click={handleExportPreview}>Preview</button>{/if}
             </div>
           </div>
         </ContextItem>
@@ -168,7 +169,7 @@
             <FeedbackDialog bind:open={feedbackOpen} />
           </div>
         </ContextItem>
-        <ContextItem bind:open={shareOpen} label="Share" ariaLabel="Share" testId="share-trigger" placement="right-end" panelClass="sidebar__popover--share" {expanded}>
+        <ContextItem bind:open={shareOpen} label="Share" ariaLabel="Share" testId="share-trigger" placement="right-end" panelClass="sidebar__popover--share" {expanded} disabled={emptyDocument}>
           <Share2 size={16} slot="icon" />
           <div slot="panel">
             <ShareDialog bind:open={shareOpen} createResource={createShareResource} />

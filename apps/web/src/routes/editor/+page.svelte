@@ -181,6 +181,7 @@
   let aiQuotaExhausted = false;
   let aiUpgradeBusy = false;
   let documentInvalid = false;
+  let documentEmpty = false;
   type PricingPlanGridComponent = typeof import('../../lib/components/PricingPlanGrid.svelte').default;
   let pricingPlanGridComponent: PricingPlanGridComponent | null = null;
   let pricingPlanGridLoad: Promise<PricingPlanGridComponent> | null = null;
@@ -1521,6 +1522,7 @@
   $: ({ leftPaneCollapsed, rightPaneCollapsed, collapsedControlFlyX } = resolveSplitLayoutMotion(visibleLayoutMode));
   $: topBarVisible = showTopBar && workspaceCommandReady;
   $: documentInvalid = Boolean($activeTempModel?.error) || ($activeTempModel?.diagnostics?.length ?? 0) > 0;
+  $: documentEmpty = $sourceTextStore.trim() === '';
   $: tabSummaries = summarizeWorkspaceTabs($editorWorkspace);
   $: activeTabId = $editorWorkspace.activeTabId;
   $: if (workspaceBootstrapReady) ensureNavigationRuntime($editorWorkspace);
@@ -1699,6 +1701,7 @@
       onLogin={() => (loginOpen = true)}
       onLogout={handleLogout}
       onCheckForUpdates={handleCheckForUpdates}
+      emptyDocument={documentEmpty}
     />
     <div class="relative h-full min-h-0 min-w-0 flex-1 overflow-hidden">
       <div bind:this={splitLayoutContainer} bind:clientWidth={containerWidth} class="app-split-layout">
@@ -1717,6 +1720,7 @@
           {/if}
           <FunctionBar
             aiInputOpen={aiInputOpen}
+            emptyDocument={documentEmpty}
             onShowAiInputPanel={handleShowAiInputPanel}
             onFormat={() => editorRef?.formatActive()}
             onMinify={() => editorRef?.minifyActive()}
@@ -1851,6 +1855,7 @@
                 showGlobal={false}
                 viewMode={viewerViewMode}
                 surfaceMode={graphSurfaceMode}
+                controlsDisabled={documentEmpty && graphSurfaceMode === 'graph'}
                 documentKey={$documentKeyStore}
                 language={$languageIdStore}
                 text={$sourceTextStore}
@@ -1900,16 +1905,19 @@
             pricingActionLabel={(plan) => aiUpgradeBusy ? 'Opening checkout…' : plan.ctaLabel}
             onEntitlementBlocked={handleEntitlementBlocked}
             hideGraphToolbar={topBarVisible}
+            emptyDocument={documentEmpty}
           />
           </div>
           {#if graphSurfaceMode === 'graph'}
             <div class="graph-pane__bottom" data-testid="graph-bottom-surfaces">
               <TreePathBar
                 value={$activeTempModel?.treePath ?? []}
+                disabled={documentEmpty}
                 on:select={(event) => handleTreePathSelect(event.detail)}
               />
               <ColumnNavigatorControls
                 state={columnNavigatorState}
+                disabled={documentEmpty}
                 onBack={() => viewerRef?.goColumnNavigatorBack()}
                 onForward={() => viewerRef?.goColumnNavigatorForward()}
                 onCollapse={() => viewerRef?.collapseColumnNavigator()}

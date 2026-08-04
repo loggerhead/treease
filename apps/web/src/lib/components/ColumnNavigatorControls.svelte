@@ -8,14 +8,15 @@
   export let onCollapse: () => void = () => {};
   export let onPinCollapsed: () => void = () => {};
   export let onExpand: () => void = () => {};
+  export let disabled = false;
 </script>
 
 {#if state}
   <div class="column-navigator-controls" data-testid="column-navigator-controls">
-    <button type="button" aria-label="Back in workspace history" data-testid="column-navigator-back" disabled={!state.canGoBack} onclick={() => void onBack()}><ChevronLeft size={13} /></button>
-    <button type="button" aria-label="Forward in workspace history" data-testid="column-navigator-forward" disabled={!state.canGoForward} onclick={() => void onForward()}><ChevronRight size={13} /></button>
-    <button type="button" aria-label={state.collapsed ? 'Expand column navigator' : 'Collapse column navigator'} data-testid={state.collapsed ? 'column-navigator-expand' : 'column-navigator-collapse'} onclick={state.collapsed ? onExpand : onCollapse}>{#if state.collapsed}<ChevronUp size={14} />{:else}<ChevronDown size={14} />{/if}</button>
-    <button type="button" aria-label="Keep navigator collapsed" data-testid="column-navigator-pin-collapsed" disabled={state.collapsed} onclick={onPinCollapsed}><X size={14} /></button>
+    <button type="button" aria-label="Back in workspace history" data-testid="column-navigator-back" disabled={disabled || !state.canGoBack} onclick={() => void onBack()}><ChevronLeft size={13} /></button>
+    <button type="button" aria-label="Forward in workspace history" data-testid="column-navigator-forward" disabled={disabled || !state.canGoForward} onclick={() => void onForward()}><ChevronRight size={13} /></button>
+    <button type="button" aria-label={state.collapsed ? 'Expand column navigator' : 'Collapse column navigator'} data-testid={state.collapsed ? 'column-navigator-expand' : 'column-navigator-collapse'} disabled={disabled} onclick={state.collapsed ? onExpand : onCollapse}>{#if state.collapsed}<ChevronUp size={14} />{:else}<ChevronDown size={14} />{/if}</button>
+    <button type="button" aria-label="Keep navigator collapsed" data-testid="column-navigator-pin-collapsed" disabled={disabled || state.collapsed} onclick={onPinCollapsed}><X size={14} /></button>
   </div>
 {/if}
 

@@ -68,6 +68,7 @@
   export let onLoadExample: (example: string, language: SupportedEditorLanguageId) => void | Promise<void> = () => {}
   export let ensureSharedWorkspacePromoted: (target: SharedWorkspaceMutationTarget) => Promise<boolean> = async () => true
   export let hideGraphToolbar = false
+  export let emptyDocument = false
 
   type GraphSearchResult = {
     nodeId?: number
@@ -533,9 +534,10 @@
         class="shadow-none"
       >
         <div class="relative" data-button-group-item>
-          <IconButton
-            class="text-[var(--text-primary)]"
-            aria-label="Search graph"
+            <IconButton
+              class="text-[var(--text-primary)]"
+              aria-label="Search graph"
+              disabled={emptyDocument}
             title="Search"
             data-testid="graph-search-trigger"
             on:click={() => {
@@ -558,6 +560,7 @@
         <IconButton
           class="text-[var(--text-primary)]"
           aria-label="Zoom in"
+          disabled={emptyDocument}
           title="Zoom in"
           data-testid="zoom-in-button"
           on:click={() => graphViewer?.zoomIn?.()}
@@ -567,6 +570,7 @@
         <IconButton
           class="text-[var(--text-primary)]"
           aria-label="Zoom out"
+          disabled={emptyDocument}
           title="Zoom out"
           data-testid="zoom-out-button"
           on:click={() => graphViewer?.zoomOut?.()}
@@ -577,6 +581,7 @@
           class="text-[var(--text-primary)]"
           aria-label="Export image"
           title="Export image"
+          disabled={emptyDocument}
           on:click={() => graphViewer?.exportImage?.()}
         >
           <ImageDown size={12} />

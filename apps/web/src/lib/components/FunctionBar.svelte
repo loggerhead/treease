@@ -13,6 +13,7 @@
   export let onMinify: () => void | Promise<void> = () => {};
   export let onCommandExecute: (id: CommandId) => void | Promise<void> = () => {};
   export let aiInputOpen = false;
+  export let emptyDocument = false;
 
   const languageItems = supportedEditorLanguages.map((option) => ({ value: option.id, label: option.label }));
 
@@ -36,9 +37,9 @@
     <div class="function-bar__command"><CommandPalette compact compactLabel="Command" onExecute={onCommandExecute} /></div>
   </div>
   <div class="function-bar__processing">
-    <Tooltip content="Format" side="bottom"><button class="function-bar__button" aria-label="Format" on:click={() => void onFormat()}><Wand2 size={13} /></button></Tooltip>
-    <Tooltip content="Minify" side="bottom"><button class="function-bar__button" aria-label="Minify" on:click={() => void onMinify()}><Shrink size={13} /></button></Tooltip>
-    <button class:function-bar__ai--active={aiInputOpen} class="function-bar__ai" aria-label="Ask AI" aria-expanded={aiInputOpen} title="Ask AI" on:click={() => void onShowAiInputPanel()}><Sparkles size={13} /><span>AI</span></button>
+    <Tooltip content="Format" side="bottom"><button class="function-bar__button" aria-label="Format" disabled={emptyDocument} on:click={() => void onFormat()}><Wand2 size={13} /></button></Tooltip>
+    <Tooltip content="Minify" side="bottom"><button class="function-bar__button" aria-label="Minify" disabled={emptyDocument} on:click={() => void onMinify()}><Shrink size={13} /></button></Tooltip>
+    <button class:function-bar__ai--active={aiInputOpen} class="function-bar__ai" aria-label="Ask AI" aria-expanded={aiInputOpen} title="Ask AI" disabled={emptyDocument} on:click={() => void onShowAiInputPanel()}><Sparkles size={13} /><span>AI</span></button>
   </div>
 </div>
 
@@ -80,10 +81,11 @@
   }
   :global(.function-bar__language [data-slot='select-value']) { display: block; overflow: visible; text-overflow: clip; white-space: nowrap; }
   .function-bar__button, .function-bar__ai { display: inline-flex; height: var(--control-height); align-items: center; justify-content: center; gap: 4px; border: 0; border-radius: var(--control-radius); padding: 0 5px; color: var(--text-muted); background: transparent; font-size: var(--font-size-control); transition: var(--control-transition); }
-  .function-bar__button:hover { color: var(--text-primary); background: var(--panel-bg-alt); }
+  .function-bar__button:hover:not(:disabled) { color: var(--text-primary); background: var(--panel-bg-alt); }
+  .function-bar__button:disabled, .function-bar__ai:disabled { cursor: not-allowed; opacity: .42; }
   .function-bar__command { display: flex; align-items: center; }
   .function-bar__ai { color: #6d5229; background: #f8f1e4; }
-  .function-bar__ai:hover, .function-bar__ai--active { background: #f2e5cd; }
+  .function-bar__ai:hover:not(:disabled), .function-bar__ai--active { background: #f2e5cd; }
   .function-bar__button:focus-visible, .function-bar__ai:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 
   @media (max-width: 620px) {
