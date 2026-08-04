@@ -108,14 +108,14 @@ const initialEditorState: EditorState = {
 registerGraphSelectionCoordinator({
   onTempModelChange: (next) => {
     workspaceStore.update((workspace) => {
-      const primaryTab = workspace.tabsById[workspace.primaryTabId];
-      if (!primaryTab) return workspace;
+      const activeTab = workspace.tabsById[workspace.activeTabId];
+      if (!activeTab) return workspace;
       return {
         ...workspace,
         tabsById: {
           ...workspace.tabsById,
-          [primaryTab.id]: {
-            ...primaryTab,
+          [activeTab.id]: {
+            ...activeTab,
             tempModel: next,
           },
         },
@@ -126,9 +126,9 @@ registerGraphSelectionCoordinator({
 
 registerWorkspaceCoordinator({
   onWorkspaceChange: (next) => {
-    const primaryTab = next.tabsById[next.primaryTabId];
-    if (!primaryTab) return;
-    setTempModelState(primaryTab.tempModel);
+    const activeTab = next.tabsById[next.activeTabId];
+    if (!activeTab) return;
+    setTempModelState(activeTab.tempModel);
   },
 });
 

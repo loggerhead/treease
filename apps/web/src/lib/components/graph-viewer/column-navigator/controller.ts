@@ -45,7 +45,7 @@ export type ColumnNavigatorControllerDeps = {
   getShellHeight: () => number;
   clearSearchHighlight: () => void;
   clearActiveGraphSelection: () => void;
-  emitReveal: (path: PathSeg[], target: 'key' | 'value' | 'node', trigger: 'breadcrumb') => void;
+  publishNavigation: (path: PathSeg[], target: 'key' | 'value' | 'node', trigger: 'breadcrumb') => void;
   handleError: (
     error: unknown,
     context: { component: string; operation: string; metadata?: Record<string, unknown> },
@@ -356,7 +356,7 @@ export function createColumnNavigatorController(deps: ColumnNavigatorControllerD
       siblingRevealTimer = null;
       const revealPath = queuedSiblingRevealPath;
       queuedSiblingRevealPath = null;
-      if (revealPath?.length) deps.emitReveal(revealPath, 'value', 'breadcrumb');
+      if (revealPath?.length) deps.publishNavigation(revealPath, 'value', 'breadcrumb');
     }, SIBLING_REVEAL_DEBOUNCE_MS);
   }
 
@@ -404,7 +404,7 @@ export function createColumnNavigatorController(deps: ColumnNavigatorControllerD
           sourceRevision: deps.getRevision(),
           materializedRevision: deps.getRevision(),
         });
-        if (options.reveal === 'immediate' && activePath.length) deps.emitReveal(activePath, 'value', 'breadcrumb');
+        if (options.reveal === 'immediate' && activePath.length) deps.publishNavigation(activePath, 'value', 'breadcrumb');
         if (options.reveal === 'debounced') queueSiblingReveal(activePath);
         emitState();
       },
@@ -429,6 +429,12 @@ export function createColumnNavigatorController(deps: ColumnNavigatorControllerD
   async function selectPath(path: PathSeg[]): Promise<void> {
     clearQueuedSiblingReveal();
     await navigate(path, { recordHistory: true, reveal: 'immediate' });
+  }
+
+  async function applyExternalPath(path: PathSeg[]): Promise<void> {
+    clearQueuedSiblingReveal();
+    if (!keepCollapsed) collapsed = false;
+    await navigate(path, { recordHistory: false, reveal: 'none' });
   }
 
   function selectedItem(): ColumnNavigatorColumnItem | null {
@@ -669,6 +675,7 @@ export function createColumnNavigatorController(deps: ColumnNavigatorControllerD
     getVisiblePanes: visiblePanes,
     openPath,
     selectPath,
+    applyExternalPath,
     moveSibling,
     enterSelected,
     navigateParent,

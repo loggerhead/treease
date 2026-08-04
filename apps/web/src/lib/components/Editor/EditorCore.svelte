@@ -16,7 +16,7 @@
     sourceText,
     type EditorMutation,
   } from '../../store/document-session-store';
-  import { activeTempModel, treeState, type GraphHighlightTarget } from '../../store/graph-selection-store';
+  import { activeTempModel, treeState } from '../../store/graph-selection-store';
   import {
     initialFullEditUiState,
     jsonBlockSelection,
@@ -78,14 +78,12 @@
   } from '../../store/editor-workspace';
   import { EDITOR_CONFIG } from '../../config/constants';
   import { monacoChangesToDocumentTextEdits, type MonacoTextChange } from '../../../shared/document-text-edits';
-  import { serializePath } from '../../../shared/document-anchor-utils';
   import { createTreeaseMonacoEditorOptions } from './editor-options';
   import type { DocumentOrigin } from '../../document-origin';
   import type { SharedWorkspaceMutationTarget } from '../../share/share-workspace-lifecycle';
 
   export let onScroll: (payload: { scrollTop: number; scrollLeft: number }) => void = () => {};
-  export let enableRevealSync = true;
-  export let enableScrollRevealSync = false;
+  export let onNavigation: (path: PathSeg[], target: 'key' | 'value' | 'node') => void = () => {};
   export let synchronizedRuntimeLoading = false;
   export let runBidirectionalEdit: <T>(source: string, execute: () => Promise<T>, reason?: string) => Promise<T> = async (_source, execute) => execute();
   export let onRequestImportFile: (payload: { sourceFormat: string; targetFormat: string; accept: string[] }) => Promise<void> = async () => {};
@@ -118,14 +116,12 @@
   let languageIdValue: SupportedEditorLanguageId = editorLanguageFallback;
   let shouldSuppressLanguageExample = false;
   let lastMutationId = 0;
-  let lastExternalTreeSelectionSignature = '';
-  let externalTreeSelectionGeneration = 0;
   let diffDecorations: Monaco.editor.IEditorDecorationsCollection | null = null;
   let jsonBlockDecorations: Monaco.editor.IEditorDecorationsCollection | null = null;
   let diffBlankZoneIds: string[] = [];
   let suppressGraphHighlightSync = 0;
+  let userSelectionGesture = false;
   let suppressTreePathUpdate = 0;
-  let lastViewportTreePathPosition = '';
   let unfocusedExternalRevealSelection = false;
   let wholeDocumentReplacementToken = 0;
   let formattingOptionsValue;
@@ -255,15 +251,6 @@
     if (!unfocusedExternalRevealSelection || !editor) return;
     if (editor.hasTextFocus()) return;
     editor.focus();
-  }
-
-  function buildExternalTreeSelectionSignature(graphHighlight: {
-    path: PathSeg[];
-    target?: GraphHighlightTarget;
-    revision: number;
-    source: string;
-  }): string {
-    return `${graphHighlight.source}|${graphHighlight.target ?? 'auto'}|${graphHighlight.revision}|${serializePath(graphHighlight.path)}`;
   }
 
   const getNestEnabled = () => $settings.parser.enableNest;
@@ -540,6 +527,7 @@
     getJsonBlockSelection: () => jsonBlockSelectionValue,
     setJsonBlockSelection: (selection) => jsonBlockSelection.set(selection),
     updateActiveTempModel: updateCurrentTempModel,
+    publishNavigation: onNavigation,
     setTreeState: (value) => treeState.set(value),
     primeSemanticTokensForDocument: (documentKey, semanticTokens) =>
       primeSemanticTokensForDocument(documentKey, semanticTokens),
@@ -592,7 +580,6 @@
     },
   });
 
-  $: if (!enableScrollRevealSync) lastViewportTreePathPosition = '';
   $: formattingOptionsValue = $settings.formatting;
   $: editorRevisionValue = $editorRevision;
   $: editorRuntimeOverlay = resolveEditorRuntimeOverlay({
@@ -620,28 +607,6 @@
   $: if ($editorMutation && $editorMutation.id !== lastMutationId) {
     lastMutationId = $editorMutation.id;
     void applyEditorMutation($editorMutation.mutation);
-  }
-
-  $: {
-    const graphHighlight = $activeTempModel?.graphHighlight ?? null;
-    const graphRevealSyncBlocked = !enableRevealSync && graphHighlight?.source !== 'editor';
-    if (!graphHighlight?.path?.length || graphHighlight.source === 'editor' || graphRevealSyncBlocked) {
-      externalTreeSelectionGeneration += 1;
-      lastExternalTreeSelectionSignature = '';
-    } else if (editor && model) {
-      const signature = buildExternalTreeSelectionSignature(graphHighlight);
-      if (signature !== lastExternalTreeSelectionSignature) {
-        lastExternalTreeSelectionSignature = signature;
-        const generation = ++externalTreeSelectionGeneration;
-        void revealPath(graphHighlight.path, {
-          target: graphHighlight.target,
-          focus: false,
-          isCurrent: () => generation === externalTreeSelectionGeneration,
-        }).catch(() => {
-          // revealPath already reports the failure via toast + temp model state.
-        });
-      }
-    }
   }
 
   function setupLanguageSubscription(
@@ -794,6 +759,9 @@
     });
 
     editor.onMouseDown((event) => {
+      // Monaco sometimes reports a real pointer selection with reason=NotSet.
+      // The pointer gesture is the proof; focus alone is never sufficient.
+      userSelectionGesture = true;
       if (!unfocusedExternalRevealSelection || !editor || !model || !monaco) return;
       unfocusedExternalRevealSelection = false;
       const position = event.target.position;
@@ -1001,39 +969,25 @@
     };
 
     editor.onDidChangeCursorPosition((event) => {
-      const isFocused = typeof editor?.hasTextFocus === 'function' ? editor.hasTextFocus() : true;
       updateCursorStatus(
         event.position,
         editor?.getSelection() ?? null,
-        suppressGraphHighlightSync === 0 &&
-          (shouldSyncGraphHighlightFromCursorReason(event.reason) || (event.reason === 0 && isFocused)),
+        suppressGraphHighlightSync === 0 && (shouldSyncGraphHighlightFromCursorReason(event.reason) || userSelectionGesture),
       );
+      userSelectionGesture = false;
     });
     editor.onDidChangeCursorSelection((event) => {
       const position = editor?.getPosition() ?? event.selection.getPosition();
-      const isFocused = typeof editor?.hasTextFocus === 'function' ? editor.hasTextFocus() : true;
       updateCursorStatus(
         position,
         event.selection,
-        suppressGraphHighlightSync === 0 &&
-          (shouldSyncGraphHighlightFromCursorReason(event.reason) || (event.reason === 0 && isFocused)),
+        suppressGraphHighlightSync === 0 && (shouldSyncGraphHighlightFromCursorReason(event.reason) || userSelectionGesture),
       );
+      userSelectionGesture = false;
     });
     editor.onDidScrollChange((event) => {
       onScroll({ scrollTop: event.scrollTop, scrollLeft: event.scrollLeft });
       syncColorViewportState('scroll');
-      if (!enableScrollRevealSync || !event.scrollTopChanged) return;
-      const visibleStartLine = editor?.getVisibleRanges()[0]?.startLineNumber;
-      if (!visibleStartLine || !model) return;
-      const line = model.getLineContent(visibleStartLine);
-      const firstContentColumn = Math.max(1, line.search(/\S/) + 1);
-      const positionKey = `${visibleStartLine}:${firstContentColumn}`;
-      if (positionKey === lastViewportTreePathPosition) return;
-      lastViewportTreePathPosition = positionKey;
-      void editorAnalysisController.updateTreePath(
-        { lineNumber: visibleStartLine, column: firstContentColumn },
-        { syncGraphHighlight: true }
-      );
     });
   }
 

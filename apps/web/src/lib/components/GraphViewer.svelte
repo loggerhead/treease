@@ -19,7 +19,6 @@
     pathText: string;
   };
 
-  export let enableRevealSync = true;
   export let active = true;
   export let synchronizedRuntimeLoading = false;
   export let readonly = false;
@@ -30,7 +29,7 @@
   export let ensureSharedWorkspacePromoted: (target: SharedWorkspaceMutationTarget) => Promise<boolean> = async () => true;
 
   const dispatch = createEventDispatcher<{
-    reveal: unknown;
+    navigation: unknown;
     'runtime-state': RuntimeStateEventDetail;
     'column-navigator-state': ColumnNavigatorState;
   }>();
@@ -95,6 +94,10 @@
     await runtime?.selectColumnNavigatorPath(path);
   }
 
+  export async function applyColumnNavigatorNavigationPath(path: PathSeg[]): Promise<void> {
+    await runtime?.applyColumnNavigatorNavigationPath(path);
+  }
+
   export async function exportImage(): Promise<void> {
     await runtime?.exportImage();
   }
@@ -114,7 +117,6 @@
 
 <GraphViewRuntime
   bind:this={runtime}
-  {enableRevealSync}
   {active}
   {synchronizedRuntimeLoading}
   {readonly}
@@ -123,7 +125,7 @@
   {onLoadExample}
   {onEntitlementBlocked}
   {ensureSharedWorkspacePromoted}
-  on:reveal={(event) => dispatch('reveal', event.detail)}
+  on:navigation={(event) => dispatch('navigation', event.detail)}
   on:runtime-state={(event) => dispatch('runtime-state', event.detail)}
   on:column-navigator-state={(event) => dispatch('column-navigator-state', event.detail)}
 />

@@ -10,6 +10,7 @@ import { supportedEditorLanguageSet, type SupportedEditorLanguageId } from '../.
 import { callSharedWasmWorker } from '../../wasm/wasm-worker-singleton';
 import type { DocumentAnalysisResult, JsonBlockAtPositionResult } from '../../../shared/worker-protocol/protocol';
 import { getWorkspaceSnapshotId } from '../../store/workspace-store';
+import type { PathSeg } from '../../store/tree-path';
 import type { JsonBlockSelection } from '../../store/full-edit-ui-store';
 import {
   applyDocumentAnalysisToEditor,
@@ -66,6 +67,7 @@ type CreateEditorAnalysisControllerOptions = {
   getJsonBlockSelection: () => JsonBlockSelection | null;
   setJsonBlockSelection: (selection: JsonBlockSelection | null) => void;
   updateActiveTempModel: (updater: (current: any) => any) => void;
+  publishNavigation?: (path: PathSeg[], target: 'key' | 'value' | 'node') => void;
   setTreeState: (value: { tree: TreeNode | null; value: unknown; source: 'editor'; revision: number }) => void;
   primeSemanticTokensForDocument: (documentKey: string, semanticTokens: ArrayBuffer) => void;
   clearSemanticTokensForDocument: (documentKey?: string) => void;
@@ -367,14 +369,18 @@ export function createEditorAnalysisController(options: CreateEditorAnalysisCont
       },
       land: async (resolved) => {
         if (!resolved) return;
-        options.updateActiveTempModel((current) => ({
-          ...applyResolvedTreePath(current, {
-            treePath: resolved.treePath,
-            target: resolved.graphHighlightTarget,
-            revision: options.getEditorRevision(),
-            syncGraphHighlight,
-          }),
-        }));
+        if (syncGraphHighlight) {
+          options.publishNavigation?.(resolved.treePath, resolved.graphHighlightTarget ?? 'node');
+        } else {
+          options.updateActiveTempModel((current) => ({
+            ...applyResolvedTreePath(current, {
+              treePath: resolved.treePath,
+              target: resolved.graphHighlightTarget,
+              revision: options.getEditorRevision(),
+              syncGraphHighlight: false,
+            }),
+          }));
+        }
         options.markCursorPathSettled?.(cursorPathPayload);
         if (syncGraphHighlight && !shouldUpdateJsonBlockSelection) {
           await operation.step(() =>

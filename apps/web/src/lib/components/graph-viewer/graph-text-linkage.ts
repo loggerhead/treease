@@ -58,7 +58,6 @@ type GraphTextLinkageControllerDeps = {
   updateActiveTempModel: (updater: (current: any) => any) => void;
   getEditorRevision: () => number;
   getGraphAppliedRevision: () => number;
-  getEnableRevealSync?: () => boolean;
   dispatchReveal: (
     path: PathSeg[],
     target?: GraphHighlightTarget,
@@ -224,47 +223,14 @@ export function createGraphTextLinkageController(
     }
   }
 
-  function syncTreeSelection(
+  /** A Graph user fact crosses the entity boundary without mutating shared navigation state. */
+  function publishNavigation(
     path: PathSeg[],
     target?: GraphHighlightTarget,
     trigger?: string,
-    options?: RevealDispatchOptions,
+    _options?: RevealDispatchOptions,
   ): void {
     if (!path?.length) return;
-    const revealSyncEnabled = deps.getEnableRevealSync?.() !== false;
-    const source = trigger === 'search' || trigger === 'breadcrumb' ? trigger : 'graph';
-    const isSearchReveal = source === 'search';
-    const publishGraphHighlight = revealSyncEnabled || isSearchReveal;
-    const updateTreePath = revealSyncEnabled || !isSearchReveal;
-    deps.updateActiveTempModel((current) => ({
-      ...current,
-      ...(updateTreePath ? { treePath: path } : {}),
-      ...(publishGraphHighlight
-        ? {
-            graphHighlight: {
-              path,
-              target,
-              revision: Math.max(
-                deps.getEditorRevision(),
-                deps.getGraphAppliedRevision(),
-              ),
-              source,
-              navigate: options?.navigate ?? revealSyncEnabled,
-              revealToken: ++revealToken,
-            },
-          }
-        : {}),
-    }));
-  }
-
-  function emitReveal(
-    path: PathSeg[],
-    target?: GraphHighlightTarget,
-    trigger?: string,
-    options?: RevealDispatchOptions,
-  ): void {
-    if (!path?.length) return;
-    syncTreeSelection(path, target, trigger, options);
     deps.setGraphRevealTestState(path, target);
     deps.dispatchReveal(path, target, trigger);
   }
@@ -691,7 +657,7 @@ export function createGraphTextLinkageController(
     resolveTreePathByPosition,
     ensurePathIndex,
     hydrateResolvedGraphPaths,
-    emitReveal,
+    publishNavigation,
     revealPath,
     refreshActiveHighlight,
     reconcileActiveHighlight,

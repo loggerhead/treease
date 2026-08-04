@@ -7,15 +7,14 @@
   import type { SharedWorkspaceMutationTarget } from '../share/share-workspace-lifecycle';
   import EditorCore from './Editor/EditorCore.svelte';
   export let onScroll: (payload: { scrollTop: number; scrollLeft: number }) => void = () => {};
-  export let enableRevealSync = true;
-  export let enableScrollRevealSync = false;
+  export let onNavigation: (path: PathSeg[], target: 'key' | 'value' | 'node') => void = () => {};
   export let synchronizedRuntimeLoading = false;
   export let runBidirectionalEdit: <T>(source: string, execute: () => Promise<T>, reason?: string) => Promise<T> = async (_source, execute) => execute();
   export let onRequestImportFile: (payload: { sourceFormat: string; targetFormat: string; accept: string[] }) => Promise<void> = async () => {};
   export let onDirectDraftMutation: (target: SharedWorkspaceMutationTarget) => void = () => {};
   export let ensureSharedWorkspacePromoted: (target: SharedWorkspaceMutationTarget) => Promise<boolean> = async () => true;
 
-  const dispatch = createEventDispatcher<{ reveal: unknown; 'runtime-state': RuntimeStateEventDetail }>();
+  const dispatch = createEventDispatcher<{ 'runtime-state': RuntimeStateEventDetail }>();
 
   let editorCore: EditorCore;
 
@@ -157,10 +156,6 @@
     return editorCore?.unescapeActive();
   }
 
-  function handleReveal(event: CustomEvent) {
-    dispatch('reveal', event.detail);
-  }
-
   function handleRuntimeState(event: CustomEvent<RuntimeStateEventDetail>) {
     dispatch('runtime-state', event.detail);
   }
@@ -168,14 +163,12 @@
 
 <EditorCore
   bind:this={editorCore}
-  {enableRevealSync}
-  {enableScrollRevealSync}
   {synchronizedRuntimeLoading}
   {runBidirectionalEdit}
   {onDirectDraftMutation}
   {ensureSharedWorkspacePromoted}
   {onRequestImportFile}
   {onScroll}
-  on:reveal={handleReveal}
+  {onNavigation}
   on:runtime-state={handleRuntimeState}
 />

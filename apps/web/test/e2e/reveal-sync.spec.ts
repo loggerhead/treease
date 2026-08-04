@@ -135,7 +135,7 @@ test('graph click updates tree path and selects editor text from emitted reveal 
   await expect.poll(async () => (await readEditorState(page)).tempModel.selectionLength, { timeout: 5_000 }).toBeGreaterThan(0);
 });
 
-test('editor scrolling updates the BottomBar active navigation breadcrumb and reveals its graph target', async ({ page }) => {
+test('editor scrolling does not create a navigation target', async ({ page }) => {
   await page.goto('/editor');
   await waitForEditorReady(page);
   await waitForSettingsReady(page);
@@ -154,37 +154,22 @@ test('editor scrolling updates the BottomBar active navigation breadcrumb and re
   await setMonacoScroll(page, 'source-editor', 1_600);
   const visibleStartLine = await getMonacoVisibleStartLine(page, 'source-editor');
   expect(visibleStartLine).toBeGreaterThan(2);
-  const expectedKey = `field_${String(visibleStartLine - 2).padStart(3, '0')}`;
-
-  // The reported behavior is the BottomBar selection, not merely the editor
-  // store.  Assert the rendered active breadcrumb to exercise that UI seam.
-  const navigationBar = page.getByTestId('graph-bottombar').getByTestId('bottom-tree-pathbar');
-  await expect(navigationBar).toBeVisible();
-  const activeCrumb = navigationBar.getByTestId('tree-path-crumb-1');
-  await expect(activeCrumb).toHaveText(expectedKey, { timeout: 10_000 });
-  await expect(activeCrumb).toHaveAttribute('aria-current', 'location');
   await expect
-    .poll(async () => (await readEditorState(page)).tempModel.treePath, { timeout: 10_000 })
-    .toEqual(['$', expectedKey]);
-  await expect
-    .poll(async () => await readGraphHighlightWorld(page), { timeout: 10_000 })
-    .toEqual(expect.objectContaining({ path: ['$', expectedKey], target: 'key' }));
-  await expect
-    .poll(async () => {
-      const highlightWorld = await readGraphHighlightWorld(page);
-      if (!highlightWorld) return false;
-      return (
-        Math.abs(highlightWorld.highlight.x - highlightWorld.viewportCenter.x) < 80 &&
-        Math.abs(highlightWorld.highlight.y - highlightWorld.viewportCenter.y) < 80
-      );
-    }, { timeout: 10_000 })
-    .toBe(true);
+    .poll(async () => (await readEditorState(page)).tempModel.treePath, { timeout: 2_000 })
+    .toEqual([]);
+  await expect(page.getByTestId('graph-bottombar').getByTestId('tree-path-crumb-1')).toHaveCount(0);
 });
 
 test('editor cursor selects the matching Column Navigator path', async ({ page }) => {
+  test.setTimeout(30_000);
   await page.goto('/editor');
   await waitForEditorReady(page);
   await waitForSettingsReady(page);
+  await page.evaluate(async () => {
+    const current = window._treease?.settings.getState().settings;
+    if (!current) throw new Error('settings bridge unavailable');
+    await window._treease.settings.save({ interaction: { ...current.interaction, enableSyncScroll: true } });
+  });
   await page.getByTestId('graph-surface-graph').click();
   await setEditorContent(page, {
     sourceText: '{\n  "object": {\n    "int": 42,\n    "float": 0.125\n  },\n  "table_with_header": [{ "h1": 11, "h2": 12 }]\n}',
@@ -221,9 +206,15 @@ test('editor cursor selects the matching Column Navigator path', async ({ page }
 });
 
 test('editor cursor movement updates the BottomBar active navigation breadcrumb', async ({ page }) => {
+  test.setTimeout(30_000);
   await page.goto('/editor');
   await waitForEditorReady(page);
   await waitForSettingsReady(page);
+  await page.evaluate(async () => {
+    const current = window._treease?.settings.getState().settings;
+    if (!current) throw new Error('settings bridge unavailable');
+    await window._treease.settings.save({ interaction: { ...current.interaction, enableSyncScroll: true } });
+  });
   await page.getByTestId('graph-surface-graph').click();
   await setEditorContent(page, {
     sourceText: '{\n  "first": 1,\n  "second": 2\n}',

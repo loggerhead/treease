@@ -35,8 +35,7 @@ type CreateGraphRuntimeProbeControllerOptions = {
   ensurePathIndex: (path: any[]) => Promise<void>;
   resolveTreePathByPosition: (row: number, column: number) => Promise<any[]>;
   resolveInteractiveCellPath: (cell: GraphCell, fallbackPath: any[]) => Promise<any[]>;
-  emitReveal: (path: any[], target: 'key' | 'value' | 'node', source: 'click' | 'runtime-query') => void;
-  onRegisteredTargetClick?: (payload: { path: any[]; target: 'key' | 'value' | 'node'; cell: GraphCell; scope: 'root' }) => void | Promise<void>;
+  publishNavigation: (path: any[], target: 'key' | 'value' | 'node', source: 'click' | 'runtime-query') => void;
   commitProbe: (probe: { cell: GraphCell; kind: GraphCellKind }, text: string) => Promise<boolean>;
 };
 
@@ -123,13 +122,7 @@ export function createGraphRuntimeProbeController(options: CreateGraphRuntimePro
       await options.ensurePathIndex(interactivePath);
     }
     setGraphRevealTestState(interactivePath, targetKind);
-    options.emitReveal(interactivePath, targetKind, 'click');
-    await options.onRegisteredTargetClick?.({
-      path: interactivePath,
-      target: targetKind,
-      cell: targetCell,
-      scope,
-    });
+    options.publishNavigation(interactivePath, targetKind, 'click');
   }
 
   function bindClickReveal(
@@ -301,7 +294,7 @@ export function createGraphRuntimeProbeController(options: CreateGraphRuntimePro
     const interactivePath = probe.target === 'node' ? path : await options.resolveInteractiveCellPath(probe.cell, path);
     if (!interactivePath.length) return;
     await options.ensurePathIndex(interactivePath);
-    options.emitReveal(interactivePath, probe.target, 'runtime-query');
+    options.publishNavigation(interactivePath, probe.target, 'runtime-query');
   }
 
   async function commitRuntimeProbe(probeId: string, text: string): Promise<boolean> {

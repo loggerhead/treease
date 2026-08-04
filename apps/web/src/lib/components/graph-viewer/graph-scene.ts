@@ -58,7 +58,7 @@ type GraphSceneControllerDeps = {
     cell: any,
     fallbackPath: any[],
   ) => Promise<any[]>;
-  emitReveal: (
+  publishNavigation: (
     path: any[],
     target: "key" | "value" | "node",
     source: "click" | "test-hook",

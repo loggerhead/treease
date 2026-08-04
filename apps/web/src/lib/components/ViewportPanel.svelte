@@ -47,14 +47,13 @@
 
   export let viewMode: 'graph' | 'text' = 'graph'
   export let onRevealError: (line: number, column: number) => void = () => {}
-  export let onGraphReveal: (payload: { path: PathSeg[]; target?: 'key' | 'value' | 'node'; trigger?: 'click' | 'search' | 'breadcrumb' }) => void =
+  export let onGraphNavigation: (payload: { path: PathSeg[]; target?: 'key' | 'value' | 'node'; trigger?: 'click' | 'search-preview' | 'search-commit' | 'breadcrumb' }) => void =
     () => {}
   export let onApplyDiff: (plan: DiffPlan) => void = () => {}
   export let onTextScroll: (payload: { scrollTop: number; scrollLeft: number }) => void = () => {}
   export let onSwap: (payload: { rightText: string; rightLanguage: SupportedEditorLanguageId }) => void = () => {}
   export let onGraphRuntimeState: (payload: RuntimeStateEventDetail) => void = () => {}
   export let onColumnNavigatorState: (payload: ColumnNavigatorState) => void = () => {}
-  export let enableRevealSync = true
   export let synchronizedRuntimeLoading = false
   export let graphOnly = false
   export let readonlyGraph = false
@@ -413,9 +412,9 @@
     revealGraphSearchResult(event.detail)
   }
 
-  function handleGraphReveal(event: CustomEvent<any>): void {
+  function handleGraphNavigation(event: CustomEvent<any>): void {
     const path = event?.detail?.path ?? []
-    if (path.length) onGraphReveal(event.detail)
+    if (path.length) onGraphNavigation(event.detail)
   }
 
   export function revealPath(path: PathSeg[], options: { target?: 'key' | 'value' | 'node' } | undefined): Promise<boolean> {
@@ -473,6 +472,10 @@
 
   export async function selectColumnNavigatorPath(path: PathSeg[]): Promise<void> {
     await graphViewer?.selectColumnNavigatorPath?.(path);
+  }
+
+  export async function applyColumnNavigatorNavigationPath(path: PathSeg[]): Promise<void> {
+    await graphViewer?.applyColumnNavigatorNavigationPath?.(path);
   }
 
   export function setTextScrollPosition(position: { scrollTop: number; scrollLeft: number }) {
@@ -670,7 +673,6 @@
   >
     <GraphViewer
       bind:this={graphViewer}
-      {enableRevealSync}
       active={graphOnly || effectiveViewMode === 'graph'}
       {synchronizedRuntimeLoading}
       readonly={readonlyGraph}
@@ -679,7 +681,7 @@
       {onLoadExample}
       onEntitlementBlocked={handleEntitlementBlocked}
       {ensureSharedWorkspacePromoted}
-      on:reveal={handleGraphReveal}
+      on:navigation={handleGraphNavigation}
       on:runtime-state={handleGraphViewerRuntimeState}
       on:column-navigator-state={(event) => onColumnNavigatorState(event.detail)}
     />

@@ -88,7 +88,7 @@ function createController(overrides: Record<string, unknown> = {}) {
     getShellHeight: () => 800,
     clearSearchHighlight: vi.fn(),
     clearActiveGraphSelection: vi.fn(),
-    emitReveal: vi.fn(),
+    publishNavigation: vi.fn(),
     handleError: vi.fn(),
     applyStructuredValueEdit: vi.fn(async () => true),
     waitForCommittedDocument: vi.fn(async () => true),
@@ -323,10 +323,10 @@ describe('path-driven column navigator controller', () => {
         ],
       },
     );
-    const emitReveal = vi.fn();
-    const { controller, states } = createController({ emitReveal });
+    const publishNavigation = vi.fn();
+    const { controller, states } = createController({ publishNavigation });
     await controller.openPath(keyPath('alpha'));
-    emitReveal.mockClear();
+    publishNavigation.mockClear();
     const stateCountBeforeMoves = states.length;
 
     vi.useFakeTimers();
@@ -334,14 +334,14 @@ describe('path-driven column navigator controller', () => {
       const moves = Array.from({ length: 30 }, () => controller.moveSibling(1));
       await Promise.all(moves);
       expect(states.slice(stateCountBeforeMoves).filter((state) => state.isLoading)).toHaveLength(30);
-      expect(emitReveal).not.toHaveBeenCalled();
+    expect(publishNavigation).not.toHaveBeenCalled();
       await vi.advanceTimersByTimeAsync(48);
     } finally {
       vi.useRealTimers();
     }
 
     expect(controller.getActivePath()).toEqual(keyPath('alpha'));
-    expect(emitReveal).toHaveBeenCalledOnce();
+    expect(publishNavigation).toHaveBeenCalledOnce();
   });
 
   it('binds subtree text to the detail editor while the selected container keeps its column', async () => {

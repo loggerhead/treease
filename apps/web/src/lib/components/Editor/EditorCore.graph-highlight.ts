@@ -9,12 +9,9 @@ export const editorDrivenCursorReasons = {
 } as const;
 
 export function shouldSyncGraphHighlightFromCursorReason(reason: number): boolean {
-  return (
-    reason === editorDrivenCursorReasons.explicit ||
-    reason === editorDrivenCursorReasons.paste ||
-    reason === editorDrivenCursorReasons.undo ||
-    reason === editorDrivenCursorReasons.redo
-  );
+  // Monaco reports paste/undo/redo as cursor movements. They are document
+  // edits, not navigation facts, so only an explicit cursor gesture qualifies.
+  return reason === editorDrivenCursorReasons.explicit;
 }
 
 export function applyResolvedTreePath(

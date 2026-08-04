@@ -82,17 +82,12 @@ describe('graph-text-linkage', () => {
 
   it('preserves a breadcrumb reveal as a viewport-navigation source', () => {
     const path = [{ tag: 0, key: 'preview', index: 0 }] as any[];
-    const updateActiveTempModel = vi.fn();
-    const controller = createGraphTextLinkageController(createBaseDeps({ updateActiveTempModel }));
+    const dispatchReveal = vi.fn();
+    const controller = createGraphTextLinkageController(createBaseDeps({ dispatchReveal }));
 
-    controller.emitReveal(path, 'value', 'breadcrumb');
+    controller.publishNavigation(path, 'value', 'breadcrumb');
 
-    const update = updateActiveTempModel.mock.calls[0][0];
-    expect(update({} as any).graphHighlight).toMatchObject({
-      path,
-      target: 'value',
-      source: 'breadcrumb',
-    });
+    expect(dispatchReveal).toHaveBeenCalledWith(path, 'value', 'breadcrumb');
   });
 
   it('uses table anchor index to materialize an offscreen search cell before highlight', async () => {
@@ -134,7 +129,7 @@ describe('graph-text-linkage', () => {
     );
 
     const revealed = await controller.revealPath(path, { target: 'value', navigate: true });
-    if (revealed) controller.emitReveal(path, 'value', 'search');
+    if (revealed) controller.publishNavigation(path, 'value', 'search');
 
     expect(scrollTableCellAnchorIntoView).toHaveBeenCalledWith({
       nodeId: 9,

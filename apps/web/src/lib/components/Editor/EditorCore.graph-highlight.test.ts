@@ -102,8 +102,8 @@ describe('EditorCore graph highlight sync', () => {
     expect(shouldSyncGraphHighlightFromCursorReason(0)).toBe(false);
     expect(shouldSyncGraphHighlightFromCursorReason(1)).toBe(false);
     expect(shouldSyncGraphHighlightFromCursorReason(editorDrivenCursorReasons.explicit)).toBe(true);
-    expect(shouldSyncGraphHighlightFromCursorReason(editorDrivenCursorReasons.paste)).toBe(true);
-    expect(shouldSyncGraphHighlightFromCursorReason(editorDrivenCursorReasons.undo)).toBe(true);
-    expect(shouldSyncGraphHighlightFromCursorReason(editorDrivenCursorReasons.redo)).toBe(true);
+    expect(shouldSyncGraphHighlightFromCursorReason(editorDrivenCursorReasons.paste)).toBe(false);
+    expect(shouldSyncGraphHighlightFromCursorReason(editorDrivenCursorReasons.undo)).toBe(false);
+    expect(shouldSyncGraphHighlightFromCursorReason(editorDrivenCursorReasons.redo)).toBe(false);
   });
 });

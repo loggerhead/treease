@@ -165,7 +165,6 @@
   import type { SharedWorkspaceMutationTarget } from '../share/share-workspace-lifecycle';
 
   type LeaferAppOrLeafer = LeaferApp | Leafer;
-  export let enableRevealSync = true;
   export let active = true;
   export let synchronizedRuntimeLoading = false;
   export let readonly = false;
@@ -259,7 +258,7 @@
   let LeaferEventCtor: typeof LeaferEvent | undefined;
   let PointerEventCtor: typeof LeaferPointerEvent | undefined;
   const dispatch = createEventDispatcher<{
-    reveal: unknown;
+    navigation: unknown;
     'runtime-state': RuntimeStateEventDetail;
     'column-navigator-state': ColumnNavigatorState;
   }>();
@@ -634,16 +633,12 @@
     ensurePathIndex: (path) => ensurePathIndex(path),
     resolveTreePathByPosition: (row, column) => resolveTreePathByPosition(row, column),
     resolveInteractiveCellPath,
-    emitReveal: (path, target, source) => {
+    publishNavigation: (path, target, source) => {
       if (source === 'runtime-query') {
-        emitReveal(path, target, 'click');
+        publishNavigation(path, target, 'click');
         return;
       }
-      emitReveal(path, target, source);
-    },
-    onRegisteredTargetClick: async ({ path, scope }) => {
-      if (scope !== 'root') return;
-      await openColumnNavigatorPath(path, -1);
+      publishNavigation(path, target, source);
     },
     commitProbe: async ({ cell, kind }, text) => {
       if (kind !== 'key' && kind !== 'value') return false;
@@ -679,8 +674,7 @@
     updateActiveTempModel: (updater) => activeTempModel.update(updater),
     getEditorRevision: () => editorRevisionValue,
     getGraphAppliedRevision: () => $graphAppliedRevision,
-    getEnableRevealSync: () => enableRevealSync,
-    dispatchReveal: (path, target, trigger) => dispatch('reveal', { path, target, trigger }),
+    dispatchReveal: (path, target, trigger) => dispatch('navigation', { path, target, trigger }),
     handleError,
     ...createGraphTextLinkageRenderDeps(graphRenderState, (anchor) =>
       graphSceneController.scrollTableToRow(anchor.nodeId, anchor.rowIndex),
@@ -691,7 +685,7 @@
   const clearRenderedSearchHighlights = graphTextLinkageController.clearRenderedSearchHighlights;
   const resolveTreePathByPosition = graphTextLinkageController.resolveTreePathByPosition;
   const ensurePathIndex = graphTextLinkageController.ensurePathIndex;
-  const emitReveal = graphTextLinkageController.emitReveal;
+  const publishNavigation = graphTextLinkageController.publishNavigation;
 
   const graphEditAdapter = createWebGraphEditAdapter({
     getCurrentData: () => null,
@@ -750,7 +744,7 @@
     clearActiveGraphSelection: () => {
       activeTempModel.update((current) => clearGraphSelectionForFullEdit(current));
     },
-    emitReveal: (path, target) => emitReveal(path, target, 'breadcrumb'),
+    publishNavigation: (path, target) => publishNavigation(path, target, 'breadcrumb'),
     handleError,
     applyStructuredValueEdit,
     waitForCommittedDocument,
@@ -1051,7 +1045,7 @@
     getSuppressGraphPointerUntil: () => suppressGraphPointerUntil,
     resolveTreePathByPosition,
     resolveInteractiveCellPath,
-    emitReveal,
+    publishNavigation,
     registerCellBox,
     unregisterCellBox,
     registerRowBox,
@@ -1231,10 +1225,6 @@
     columnNavigatorController.pinCollapsed();
   }
 
-  async function openColumnNavigatorPath(path: PathSeg[], parentAbsoluteIndex: number): Promise<void> {
-    await columnNavigatorController.openPath(path, parentAbsoluteIndex);
-  }
-
   async function commitColumnNavigatorValueEdit(
     pane: ColumnNavigatorPaneState,
     draft: string | undefined,
@@ -1412,9 +1402,7 @@
   export function previewSearchResult(result: GraphSearchResult): void {
     if (isFullEditInteractionBlocked() || !result?.path?.length) return;
     beginSearchPreview();
-    graphTextLinkageController.emitReveal(result.path, result.target, 'search', {
-      navigate: enableRevealSync,
-    });
+    graphTextLinkageController.publishNavigation(result.path, result.target, 'search-preview');
   }
 
   export function commitSearchPreview(): void {
@@ -1442,7 +1430,7 @@
 
   export function revealSearchResult(result: GraphSearchResult): void {
     if (isFullEditInteractionBlocked() || !result?.path?.length) return;
-    graphTextLinkageController.emitReveal(result.path, result.target, 'search', { navigate: true });
+    graphTextLinkageController.publishNavigation(result.path, result.target, 'search-commit', { navigate: true });
     commitSearchPreview();
   }
 
@@ -1494,6 +1482,13 @@
   export async function selectColumnNavigatorPath(path: PathSeg[]): Promise<void> {
     if (isFullEditInteractionBlocked()) return;
     await selectColumnNavigatorPathInternal(path);
+  }
+
+  export async function applyColumnNavigatorNavigationPath(path: PathSeg[]): Promise<void> {
+    if (isFullEditInteractionBlocked()) return;
+    await columnNavigatorController.applyExternalPath(path);
+    await tick();
+    columnNavigatorRoot?.focus();
   }
 
   const graphViewerRuntimeApi = {
@@ -1705,31 +1700,11 @@
       lastAppliedGraphHighlightSignature = graphHighlightSignature;
       lastAppliedGraphHighlightRevision = appliedRevision;
       graphSceneController.syncGraphHighlight(graphHighlight);
-      if (!enableRevealSync && graphHighlight.source === 'editor') {
-        columnNavigatorController.recordExternalPath(graphHighlight.path);
-      }
-      const isSearchHighlight = graphHighlight.source === 'search';
-      if (enableRevealSync || isSearchHighlight) {
-        revealPath(graphHighlight.path, {
-          target: graphHighlight.target,
-          navigate: isSearchHighlight
-            ? graphHighlight.navigate === true
-            : graphHighlight.source === 'editor' || graphHighlight.source === 'breadcrumb',
-        });
-        if (graphHighlight.source === 'editor') {
-          void columnNavigatorController.openPath(graphHighlight.path);
-        }
-        // A newly committed graph may not have registered its replacement boxes
-        // when the old visual selection is cleared. The linkage controller
-        // restores that visual state from the retained logical path, then uses
-        // the snapshot projection (not box presence) to decide whether it can
-        // be discarded.
-        void graphTextLinkageController.reconcileActiveHighlight({
-          documentKey: documentKeyValue,
-          snapshotId: graphRenderCoordinator.getActiveSnapshotId(),
-          graphAppliedRevision: appliedRevision,
-        });
-      }
+      void graphTextLinkageController.reconcileActiveHighlight({
+        documentKey: documentKeyValue,
+        snapshotId: graphRenderCoordinator.getActiveSnapshotId(),
+        graphAppliedRevision: appliedRevision,
+      });
     }
   }
 
@@ -2101,7 +2076,7 @@
                   readOnly={readonly || columnNavigatorLoading}
                   onScroll={() => {}}
                   onContentChange={(text) => {
-                    emitReveal(columnNavigatorDetailPane!.path, 'value', 'click');
+                    publishNavigation(columnNavigatorDetailPane!.path, 'value', 'click');
                     void commitColumnNavigatorValueEdit(columnNavigatorDetailPane!, text);
                   }}
                   onEditorBlur={(text) => void commitColumnNavigatorValueEdit(columnNavigatorDetailPane!, text)}

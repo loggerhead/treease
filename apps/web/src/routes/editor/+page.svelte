@@ -21,8 +21,6 @@
   import {
     activeTempModel,
     initialTempModel,
-    type GraphHighlightTarget,
-    type TreeSelectionSource,
   } from '../../lib/store/graph-selection-store';
   import { initialFullEditUiState } from '../../lib/store/full-edit-ui-store';
   import {
@@ -113,6 +111,8 @@
   import { createViewRuntimeOperation } from '../../lib/guards/view-runtime-operation';
   import { LARGE_FILE_PROCESSING_THRESHOLD_BYTES } from '../../lib/config/large-file';
   import type { CommandId } from '../../lib/command-registry';
+  import { createWorkspaceNavigationRuntime } from '../../lib/navigation/workspace-navigation-runtime';
+  import type { NavigationResult, NavigationTarget } from '../../lib/navigation/navigation-contract';
 
   export let data: PageData;
 
@@ -163,8 +163,6 @@
   let columnNavigatorState: ColumnNavigatorState | null = null;
   let synchronizedRuntimeLoading = true;
   let syncScrollEnabled = true;
-  let graphNavigationSyncEnabled = true;
-  let graphScrollRevealSyncEnabled = false;
   let aiInputOpen = false;
   let aiInstruction = '';
   let aiBusy = false;
@@ -235,8 +233,6 @@
     return !nextPreset.ui.editor && nextPreset.ui.viewer;
   }
 
-  $: graphNavigationSyncEnabled = graphSurfaceMode !== 'graph' || syncScrollEnabled;
-  $: graphScrollRevealSyncEnabled = graphSurfaceMode === 'graph' && syncScrollEnabled;
 
   function selectGraphSurfaceMode(nextMode: GraphSurfaceMode): void {
     graphSurfaceMode = nextMode;
@@ -1079,59 +1075,135 @@
   }
 
   let graphRevealToken = 0;
+  let activeSearchPreviewId: string | null = null;
+  let navigationRuntime: ReturnType<typeof createWorkspaceNavigationRuntime> | null = null;
 
-  function updateTreeSelection(
-    path: PathSeg[],
-    options: { target?: GraphHighlightTarget; source?: TreeSelectionSource } | undefined,
-  ) {
-    if (!path.length) return;
-    activeTempModel.update((current) => ({
-      ...current,
-      treePath: path,
-      graphHighlight: {
-        path,
-        target: options?.target,
-        revision: Math.max($editorRevision, $graphAppliedRevision),
-        source: options?.source ?? 'graph',
-        revealToken: ++graphRevealToken,
-      },
-    }));
+  function navigationTabs() {
+    const workspace = getWorkspaceState();
+    return workspace.tabOrder
+      .map((id) => workspace.tabsById[id])
+      .filter((tab): tab is NonNullable<typeof tab> => Boolean(tab))
+      .map((tab) => ({ id: tab.id, documentKey: tab.documentKey, revision: tab.revision }));
   }
 
-  function handleEditorReveal(event: CustomEvent<{ path: PathSeg[]; target?: 'key' | 'value' | 'node' }>) {
-    const path = event?.detail?.path ?? [];
-    if (!path.length || !graphNavigationSyncEnabled) return;
-    viewerRef?.revealPath?.(path, { target: event.detail?.target });
+  function navigationTarget(): NavigationTarget | null {
+    if (workspaceBootstrapReady) ensureNavigationRuntime($editorWorkspace);
+    return navigationRuntime?.target(getWorkspaceState().activeTabId) ?? null;
+  }
+
+  function navigationResult(applied: boolean): NavigationResult {
+    return applied ? { kind: 'applied' } : { kind: 'no-op' };
+  }
+
+  function ensureNavigationRuntime(_workspaceVersion: unknown): void {
+    if (navigationRuntime) {
+      navigationRuntime.sync(navigationTabs(), getWorkspaceState().activeTabId);
+      return;
+    }
+    const workspace = getWorkspaceState();
+    navigationRuntime = createWorkspaceNavigationRuntime('editor-workspace', navigationTabs(), workspace.activeTabId, {
+      // Read the settings source at dispatch time so an immediately persisted
+      // interaction preference cannot race Svelte's reactive assignment.
+      completeNavigationEnabled: () => get(settings).interaction.enableSyncScroll,
+      isVisible: (target) => getWorkspaceState().activeTabId === target.tabId,
+      editor: {
+        locate: async (context, command, options) => {
+          if (!context.isCurrent()) return { kind: 'stale' };
+          const revealed = await editorRef?.revealPath(command.path, {
+            target: command.cellTarget,
+            focus: options.focus,
+            isCurrent: context.isCurrent,
+          });
+          return navigationResult(revealed !== false);
+        },
+      },
+      graph: {
+        capturePreviewBaseline: async () => ({ selection: get(activeTempModel).graphHighlight, viewport: null }),
+        highlight: async (context, command) => {
+          if (!context.isCurrent()) return { kind: 'stale' };
+          activeTempModel.update((current) => ({
+            ...current,
+            graphHighlight: {
+              path: [...command.path], target: command.cellTarget,
+              revision: Math.max($editorRevision, $graphAppliedRevision), source: 'graph', navigate: false,
+              revealToken: ++graphRevealToken,
+            },
+          }));
+          return { kind: 'applied' };
+        },
+        reveal: async (context, command) => {
+          if (!context.isCurrent()) return { kind: 'stale' };
+          return navigationResult(await viewerRef?.revealPath(command.path, { target: command.cellTarget }) === true);
+        },
+        restoreSelection: async (context, baseline) => {
+          if (!context.isCurrent()) return { kind: 'stale' };
+          activeTempModel.update((current) => ({ ...current, graphHighlight: baseline.selection as typeof current.graphHighlight }));
+          return { kind: 'applied' };
+        },
+        restoreViewport: async () => ({ kind: 'no-op' }),
+        cancelViewportTransition: async () => ({ kind: 'applied' }),
+      },
+      navigator: {
+        apply: async (command) => {
+          const workspace = getWorkspaceState();
+          const tab = workspace.tabsById[command.target.tabId];
+          if (
+            workspace.activeTabId !== command.target.tabId ||
+            !tab ||
+            tab.documentKey !== command.target.documentKey ||
+            tab.revision !== command.target.revision
+          ) return { kind: 'stale' };
+          activeTempModel.update((current) => ({ ...current, treePath: [...command.path] }));
+          if (!command.materializeColumns) return { kind: 'applied' };
+          await viewerRef?.applyColumnNavigatorNavigationPath(command.path);
+          return { kind: 'applied' };
+        },
+      },
+    });
+  }
+
+  function handleEditorNavigation(path: PathSeg[], cellTarget: 'key' | 'value' | 'node'): void {
+    const target = navigationTarget();
+    if (!path.length || !target) return;
+    void navigationRuntime?.dispatch({ kind: 'editor-selection', target, path, cellTarget });
   }
   function handleGraphReveal(payload: {
     path: PathSeg[];
     target?: 'key' | 'value' | 'node';
-    trigger?: 'click' | 'search' | 'breadcrumb';
+    trigger?: 'click' | 'search-preview' | 'search-commit' | 'breadcrumb';
   }) {
     const path = payload?.path ?? [];
-    if (!path.length || !graphNavigationSyncEnabled) return;
-
-    // `emitReveal` in graph-text-linkage already sets graphHighlight via
-    // syncTreeSelection before dispatching the reveal event. Skip this
-    // redundant update when the path matches — otherwise EditorCore.revealPath
-    // fires twice with different object references, causing duplicate
-    // resolvePathSelectionRangeSafe calls that race on the WASM worker.
-    const currentPath = get(activeTempModel)?.treePath ?? [];
-    if (currentPath.length && serializePath(currentPath) === serializePath(path)) {
-      return;
-    }
-
-    updateTreeSelection(path, {
-      target: payload?.target,
-      source: payload?.trigger === 'search' || payload?.trigger === 'breadcrumb'
-        ? payload.trigger
-        : 'graph',
-    });
+    const target = navigationTarget();
+    if (!path.length || !target) return;
+    const cellTarget = payload.target ?? 'node';
+    const kind = payload.trigger === 'breadcrumb'
+      ? 'navigator-tree-path'
+      : payload.trigger === 'search-preview'
+        ? 'search-preview'
+        : payload.trigger === 'search-commit'
+          ? 'search-commit'
+          : 'graph-cell';
+    const previewId = `search:${serializePath(path)}`;
+    if (kind === 'search-preview') activeSearchPreviewId = previewId;
+    if (kind === 'search-commit') activeSearchPreviewId = null;
+    const event = kind === 'search-preview' || kind === 'search-commit'
+      ? { kind, target, path, cellTarget, previewId }
+      : { kind, target, path, cellTarget };
+    void navigationRuntime?.dispatch(event);
   }
 
   function handleTreePathSelect(path: PathSeg[]) {
-    if (!path.length) return;
-    void viewerRef?.selectColumnNavigatorPath(path);
+    const target = navigationTarget();
+    if (!path.length || !target) return;
+    void navigationRuntime?.dispatch({ kind: 'navigator-tree-path', target, path, cellTarget: 'value' });
+  }
+
+  function cancelSearchPreview(): void {
+    const target = navigationTarget();
+    const previewId = activeSearchPreviewId;
+    activeSearchPreviewId = null;
+    if (target && previewId) void navigationRuntime?.dispatch({ kind: 'search-cancel', target, previewId });
+    void viewerRef?.cancelGraphSearchPreview();
   }
 
   function handleAddTab() {
@@ -1418,6 +1490,7 @@
   $: topBarVisible = showTopBar && workspaceCommandReady;
   $: tabSummaries = summarizeWorkspaceTabs($editorWorkspace);
   $: activeTabId = $editorWorkspace.activeTabId;
+  $: if (workspaceBootstrapReady) ensureNavigationRuntime($editorWorkspace);
 
   onMount(() => {
     const resetRequested = isEditorResetRequested(window.location.search);
@@ -1609,13 +1682,11 @@
             {#if workspaceBootstrapReady}
               <Editor
                 bind:this={editorRef}
-                enableRevealSync={graphNavigationSyncEnabled}
-                enableScrollRevealSync={graphScrollRevealSyncEnabled}
                 {synchronizedRuntimeLoading}
                 onDirectDraftMutation={observeSharedDraftMutation}
                 {ensureSharedWorkspacePromoted}
                 onRequestImportFile={handleRequestImportFile}
-                on:reveal={handleEditorReveal}
+                onNavigation={handleEditorNavigation}
                 on:runtime-state={handleEditorRuntimeEvent}
                 onScroll={handleEditorScroll}
               />
@@ -1737,7 +1808,7 @@
                 text={$sourceTextStore}
                 onSearchSelect={(event) => viewerRef?.revealGraphSearchResult(event.detail)}
                 onSearchPreview={(result) => viewerRef?.previewGraphSearchResult(result)}
-                onSearchCancel={() => void viewerRef?.cancelGraphSearchPreview()}
+                onSearchCancel={cancelSearchPreview}
                 onOpenCompareFile={() => viewerRef?.openCompareFile()}
                 onSwapEditors={() => viewerRef?.swapCompareEditors()}
                 onCompare={() => void viewerRef?.compareEditors()}
@@ -1759,10 +1830,9 @@
           <ViewportPanel
             bind:this={viewerRef}
             bind:viewMode={viewerViewMode}
-            enableRevealSync={graphNavigationSyncEnabled}
             {synchronizedRuntimeLoading}
             onRevealError={(line, column) => editorRef?.revealError(line, column)}
-            onGraphReveal={handleGraphReveal}
+            onGraphNavigation={handleGraphReveal}
             onGraphRuntimeState={handleViewerRuntimeState}
             onColumnNavigatorState={handleColumnNavigatorState}
             onTextScroll={handleViewerScroll}
@@ -1845,13 +1915,11 @@
   <div class="pointer-events-none absolute -left-[10000px] top-0 h-px w-px overflow-hidden opacity-0" aria-hidden="true">
     <Editor
       bind:this={editorRef}
-      enableRevealSync={graphNavigationSyncEnabled}
-      enableScrollRevealSync={graphScrollRevealSyncEnabled}
       {synchronizedRuntimeLoading}
       onDirectDraftMutation={observeSharedDraftMutation}
       {ensureSharedWorkspacePromoted}
       onRequestImportFile={handleRequestImportFile}
-      on:reveal={handleEditorReveal}
+      onNavigation={handleEditorNavigation}
       on:runtime-state={handleEditorRuntimeEvent}
       onScroll={handleEditorScroll}
     />
