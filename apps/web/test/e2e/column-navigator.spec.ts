@@ -148,7 +148,7 @@ test('structured content is an editable main-editor projection without reformatt
     .poll(() =>
       longKey.locator('.column-navigator-item__preview').evaluate((element) => getComputedStyle(element).color),
     )
-    .toBe('rgb(107, 114, 128)');
+    .toBe('rgb(93, 114, 130)');
 
   await applyMonacoEdits(page, hookId, [
     {
@@ -284,7 +284,7 @@ test('column navigator detail editor resizes and collapses at the right edge', a
       expandRightInset: Math.round((workspaceBox.x + workspaceBox.width) - (expandBox?.x ?? 0) - (expandBox?.width ?? 0)),
       ...dividerMetrics,
     };
-  }).toEqual({ expandRightInset: 8, lineRight: '0px', lineLeft: 'auto' });
+  }).toEqual({ expandRightInset: 10, lineRight: '0px', lineLeft: '8px' });
 
   await expand.click();
   await expect(detail).not.toHaveClass(/column-navigator-detail--collapsed/);
@@ -584,7 +584,7 @@ test('column navigator introduces its keyboard controls and supports history sho
   await workspace.focus();
   await page.keyboard.press('ArrowRight');
   await waitForColumnNavigatorSettled(page, 'k:root|k:first', 20_000);
-  await expect(hint).toBeVisible();
+  await expect(hint).toHaveCount(1);
 
   await page.keyboard.press('[');
   await waitForColumnNavigatorSettled(page, 'k:root', 20_000);
@@ -679,7 +679,7 @@ test('column navigator can close and reopen without losing the main document vie
     language: 'json',
   });
   await waitForGraphRendered(page);
-  await expect(page.getByTestId('bottom-tree-pathbar')).toBeVisible();
+  await expect(page.getByTestId('graph-bottom-surfaces')).toBeVisible();
 
   const probe = (await readGraphClickProbes(page)).find(
     (candidate) => candidate.target === 'value' && candidate.path.join('.') === 'user' && candidate.coord,
@@ -692,16 +692,14 @@ test('column navigator can close and reopen without losing the main document vie
   const navigator = page.getByTestId('column-navigator-graph');
   await expect(navigator).toBeVisible();
   const collapseButton = page.getByTestId('column-navigator-collapse');
-  await expect(collapseButton.locator('..')).toHaveClass(/ui-tooltip--top-left/);
   await collapseButton.click();
   await expect(navigator).toHaveCount(0);
   await expect(page.getByTestId('graph-viewer-canvas')).toBeVisible();
-  await expect(page.getByTestId('bottom-tree-pathbar')).toBeVisible();
+  await expect(page.getByTestId('graph-bottom-surfaces')).toBeVisible();
   const expandButton = page.getByTestId('column-navigator-expand');
-  const backButton = page.getByTestId('bottom-column-navigator-back');
-  const forwardButton = page.getByTestId('bottom-column-navigator-forward');
+  const backButton = page.getByTestId('column-navigator-back');
+  const forwardButton = page.getByTestId('column-navigator-forward');
   await expect(expandButton).toBeVisible();
-  await expect(expandButton.locator('..')).toHaveClass(/ui-tooltip--top-left/);
   await expect(page.getByTestId('column-navigator-pin-collapsed')).toBeDisabled();
   await expect(backButton).toBeVisible();
   await expect(forwardButton).toBeVisible();

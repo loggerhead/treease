@@ -117,6 +117,7 @@ async function flushUsageEventsInternal(): Promise<void> {
       await db.put('events', { ...event, status: 'uploaded' });
     } catch (error) {
       if (error instanceof TreeaseServerError && error.status === 429) return;
+      console.error('[usage] failed to report usage event', error);
       // Keep the event pending; the next flush retries the same idempotency key.
     }
   }

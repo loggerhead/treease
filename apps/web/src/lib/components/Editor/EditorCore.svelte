@@ -92,6 +92,7 @@
 
   type WholeDocumentReplacementOptions = {
     sourceWritebackPolicy?: 'intake' | 'submitted';
+    effectiveEnableNest?: boolean;
     formatSourceOnClose?: boolean;
     shouldResolveLanguage?: boolean;
     markUserInput?: boolean;
@@ -1173,6 +1174,7 @@
       text: value,
       reason: 'whole-document-replacement',
       sourceWritebackPolicy: options.sourceWritebackPolicy,
+      effectiveEnableNest: options.effectiveEnableNest,
       formatSourceOnClose: options.formatSourceOnClose,
       documentKey: nextDocumentKey,
       isFresh: () => tabRuntime?.get(target.tabId) === target.model && !target.model.isDisposed(),
@@ -1535,6 +1537,7 @@
       const result = JSON.stringify(text);
       queueWholeDocumentReplacement(result, {
         sourceWritebackPolicy: 'submitted',
+        effectiveEnableNest: false,
         formatSourceOnClose: false,
         shouldResolveLanguage: false,
         markUserInput: true,
@@ -1563,6 +1566,7 @@
       }
       queueWholeDocumentReplacement(result, {
         sourceWritebackPolicy: 'submitted',
+        effectiveEnableNest: false,
         formatSourceOnClose: false,
         shouldResolveLanguage: false,
         markUserInput: true,

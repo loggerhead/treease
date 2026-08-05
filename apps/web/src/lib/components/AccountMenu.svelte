@@ -108,9 +108,9 @@
       account = nextAccount.user;
       subscription = nextAccount.subscription;
       usage = await applyLocalUsage(nextAccount.usage);
-    } catch {
+    } catch (error) {
       if (request !== accountRequest || accountUserId !== userId) return;
-      toast.error('Account information is temporarily unavailable. Please try again later.');
+      console.error('[account] failed to load account or usage information', error);
     } finally {
       if (request === accountRequest && accountUserId === userId) {
         subscriptionLoading = false;
@@ -131,9 +131,9 @@
       const nextUsage = await applyLocalUsage(await getUsageSummary(clientId));
       if (request !== usageRequest || accountUserId !== userId) return;
       usage = nextUsage;
-    } catch {
+    } catch (error) {
       if (request !== usageRequest || accountUserId !== userId) return;
-      toast.error('Usage information is temporarily unavailable. Please try again later.');
+      console.error('[usage] failed to refresh usage information', error);
     } finally {
       if (request === usageRequest && accountUserId === userId) usageLoading = false;
     }

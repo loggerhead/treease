@@ -97,6 +97,7 @@
       class:ui-tooltip__content--visible={visible}
       class="ui-tooltip__content"
       role="tooltip"
+      aria-hidden={!visible}
     >{content}</span>
   {/if}
 </span>

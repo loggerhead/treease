@@ -1,5 +1,5 @@
 import { expect, test, type Page } from './fixtures';
-import { evaluateTreease, getMonacoValue, readEditorWorkspace, waitForEditorReady } from './utils';
+import { evaluateTreease, getMonacoValue, readEditorWorkspace, waitForEditorReady, waitForMonacoHook } from './utils';
 
 const shareId = '7f4f2e7b-2d5d-4b76-8d52-91e8b6b3a201';
 
@@ -76,7 +76,7 @@ test('share browsing leaves the local session untouched', async ({ page }) => {
   await page.goto('about:blank');
   await mockShare(page);
   await page.goto(`/editor?shareID=${shareId}`);
-  await waitForEditorReady(page);
+  await waitForMonacoHook(page, 'source-editor');
   await expect.poll(() => readJsonEditorValue(page)).toEqual({ shared: 1 });
 
   await page.waitForTimeout(500);
@@ -90,7 +90,7 @@ test('first direct edit publishes merged topology once and refresh restores it',
   await page.goto('about:blank');
   await mockShare(page);
   await page.goto(`/editor?shareID=${shareId}`);
-  await waitForEditorReady(page);
+  await waitForMonacoHook(page, 'source-editor');
   await expect.poll(() => readJsonEditorValue(page)).toEqual({ shared: 1 });
 
   await evaluateTreease(page, (treease) => {

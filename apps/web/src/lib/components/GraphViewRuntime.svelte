@@ -1313,7 +1313,14 @@
   async function scrollSubgraphSelectionIntoView(): Promise<void> {
     await tick();
     const selected = columnNavigatorRoot?.querySelector<HTMLElement>('[data-column-navigator-selected="true"]');
-    selected?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    const scroller = selected?.closest<HTMLElement>('.column-navigator-pane__items');
+    if (!selected || !scroller) return;
+    // Keep sibling navigation inside its column; scrollIntoView can move the
+    // horizontal rail as well as the selected column's vertical list.
+    const selectedTop = selected.offsetTop;
+    const selectedBottom = selectedTop + selected.offsetHeight;
+    if (selectedTop < scroller.scrollTop) scroller.scrollTop = selectedTop;
+    else if (selectedBottom > scroller.scrollTop + scroller.clientHeight) scroller.scrollTop = selectedBottom - scroller.clientHeight;
   }
 
   async function scrollSubgraphPanesIntoView(): Promise<void> {

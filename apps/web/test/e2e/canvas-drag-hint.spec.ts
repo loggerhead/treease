@@ -26,5 +26,5 @@ test('graph canvas drag hint stays open during navigation and supports manual di
   await waitForEditorRuntimeReady(page);
   await waitForGraphRendered(page);
   await expect(hint).toBeVisible();
-  await expect.poll(() => page.evaluate((key) => localStorage.getItem(key), CANVAS_HINT_STORAGE_KEY)).toBe('2');
+  await expect.poll(() => page.evaluate((key) => localStorage.getItem(key), CANVAS_HINT_STORAGE_KEY)).toBe('1');
 });

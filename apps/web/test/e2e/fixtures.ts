@@ -56,6 +56,9 @@ export const test = base.extend<{ _browserErrorCheck: void }>({
     };
     await page.route('**/v1/usage?**', fulfillUsageSummary);
     await page.route('**/v1/usage/events', fulfillUsageSummary);
+    await page.route('**/v1/billing/pricing-prewarm**', async (route) => {
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ plans: [], checkouts: [] }) });
+    });
     const browserErrors: string[] = [];
     const onPageError = (error: Error | unknown) => {
       browserErrors.push(`[pageerror] ${collectPageError(error)}`);

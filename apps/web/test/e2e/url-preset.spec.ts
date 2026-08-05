@@ -7,7 +7,7 @@ test.describe.configure({ timeout: 20_000 });
 test('viewer-only preset still initializes hidden editor and executes commands', async ({ page }) => {
   await page.goto('/editor?ui=viewer&text=%7B%22b%22%3A2,%22a%22%3A1%7D&command=format');
 
-  await waitForMonacoHook(page, 'source-editor');
+  await waitForMonacoHook(page, 'right-editor');
   await waitForMonacoHook(page, 'right-editor');
   await expect
     .poll(async () => (await readEditorState(page)).sourceText.includes('\n'))
@@ -26,7 +26,7 @@ test('viewer-only preset still initializes hidden editor and executes commands',
 test('editor and viewer preset keeps the split workspace visible', async ({ page }) => {
   await page.goto('/editor?ui=editor,viewer');
 
-  await waitForEditorReady(page);
+  await waitForMonacoHook(page, 'source-editor');
   await expect(page.getByTestId('left-pane')).toBeVisible();
   await expect(page.getByTestId('right-pane')).toBeVisible();
   await expect(page.getByTestId('splitter-divider')).toBeVisible();

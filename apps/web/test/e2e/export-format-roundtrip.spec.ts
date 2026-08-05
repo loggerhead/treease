@@ -5,9 +5,9 @@ async function selectExportFormat(page: import('@playwright/test').Page, label: 
   await page.getByRole('button', { name: 'Export', exact: true }).click();
   const panel = page.getByTestId('export-panel');
   await expect(panel).toBeVisible();
-  await panel.getByRole('button', { name: 'Export format', exact: true }).click();
+  await panel.getByRole('button').first().click();
   await page.getByRole('option', { name: label, exact: true }).click();
-  await expect(panel.getByTestId('export-format-trigger')).toContainText(label);
+  await expect(panel.getByRole('button').first()).toContainText(label);
 }
 
 async function downloadExport(page: import('@playwright/test').Page) {

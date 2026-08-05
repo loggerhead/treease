@@ -5,6 +5,7 @@
   import { buildReadablePath, isPathSegIndex, pathSegKeyValue, type PathSeg } from '../store/tree-path';
 
   export let value: PathSeg[] = [];
+  export let disabled = false;
 
   type TreePathBarCrumb = { label: string; value: string; segments: PathSeg[] };
 
@@ -13,6 +14,7 @@
   let copyTimer: ReturnType<typeof setTimeout> | null = null;
 
   function handleTreePathClick(segments: PathSeg[]) {
+    if (disabled) return;
     dispatch('select', segments);
   }
 
@@ -22,6 +24,7 @@
   }
 
   function handleCopyClick() {
+    if (disabled) return;
     if (!navigator?.clipboard) return;
     navigator.clipboard.writeText(displayPath).then(() => {
       copied = true;
@@ -65,14 +68,14 @@
   $: displayPath = buildReadablePath(normalizedValue);
 </script>
 
-<Breadcrumb.Root class="group h-full flex items-center" data-testid="tree-path-bar">
+<Breadcrumb.Root class={`group h-full flex items-center ${disabled ? 'tree-path-bar--disabled' : ''}`} data-testid="tree-path-bar" aria-disabled={disabled}>
   <Breadcrumb.List class="flex-nowrap whitespace-nowrap overflow-x-auto h-full items-center">
     {#each crumbs as crumb, index (index)}
       {@const typedCrumb = crumb as TreePathBarCrumb}
       <Breadcrumb.Item class="inline-block cursor-pointer max-w-[var(--max-key-length)] truncate">
         <Breadcrumb.Link
           href="#"
-          class="block truncate"
+          class={`block truncate ${disabled ? 'tree-path-bar__link--disabled' : ''}`}
           onclick={(event: MouseEvent) => handleCrumbClick(event, typedCrumb.segments)}
           aria-label={`Tree path ${typedCrumb.value}`}
           data-testid={`tree-path-crumb-${index}`}
@@ -85,13 +88,16 @@
         <Breadcrumb.Separator />
       {/if}
     {/each}
-    <button
-      class="ml-1 inline-flex items-center opacity-0 transition-opacity duration-2000 ease-in-out group-hover:opacity-100"
-      title="Copy tree path"
-      onclick={handleCopyClick}
-    >
-      {#if copied}<Check size={12} class="text-(--text-primary)" />{:else}<Copy size={12} class="text-(--text-muted)" />{/if}
-    </button>
+    <Breadcrumb.Item>
+      <button
+        class="ml-1 inline-flex items-center opacity-0 transition-opacity duration-2000 ease-in-out group-hover:opacity-100"
+        title="Copy tree path"
+        disabled={disabled}
+        onclick={handleCopyClick}
+      >
+        {#if copied}<Check size={12} class="text-(--text-primary)" />{:else}<Copy size={12} class="text-(--text-muted)" />{/if}
+      </button>
+    </Breadcrumb.Item>
   </Breadcrumb.List>
 </Breadcrumb.Root>
 
@@ -100,4 +106,6 @@
   button:hover:not(:disabled) { color: var(--text-primary); background: var(--panel-bg-alt); }
   button:disabled { opacity: .4; }
   button:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+  :global(.tree-path-bar--disabled) { opacity: .48; }
+  :global(.tree-path-bar__link--disabled) { cursor: not-allowed; pointer-events: none; }
 </style>

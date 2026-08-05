@@ -92,6 +92,7 @@ type FullEditSession = {
   reason: FullEditReason;
   transportKind: FullEditTransportKind;
   sourceWritebackPolicy: SourceWritebackPolicy;
+  effectiveEnableNest?: boolean;
   formatSourceOnClose: boolean;
   decoder: TextDecoder;
   inputByteLength: number;
@@ -225,9 +226,9 @@ export function createEditorFullEditController(options: CreateEditorFullEditCont
     alignObjectArrays: true,
   };
 
-  function documentJobSettingsFor(formatSourceOnClose = true) {
+  function documentJobSettingsFor(formatSourceOnClose = true, effectiveEnableNest = options.getNestEnabled()) {
     return buildDocumentJobSettings({
-      enableNest: options.getNestEnabled(),
+      enableNest: effectiveEnableNest,
       formatting: {
         ...defaultFormattingOptions,
         ...(options.getFormattingOptions?.() as Partial<typeof defaultFormattingOptions> | null | undefined),
@@ -355,7 +356,7 @@ export function createEditorFullEditController(options: CreateEditorFullEditCont
         documentKey: session.documentKey,
         language: session.language,
         revision: session.revision,
-        settings: documentJobSettingsFor(session.formatSourceOnClose),
+        settings: documentJobSettingsFor(session.formatSourceOnClose, session.effectiveEnableNest),
         builderConfig: options.getGraphBuilderConfig(),
         intent: { kind: 'analyzeSource', text: session.visibleText },
         freshness,
@@ -500,6 +501,7 @@ export function createEditorFullEditController(options: CreateEditorFullEditCont
     transportKind: FullEditTransportKind;
     editorReadOnly: boolean;
     sourceWritebackPolicy: SourceWritebackPolicy;
+    effectiveEnableNest?: boolean;
     formatSourceOnClose: boolean;
     editorFlushByteThreshold?: number;
     documentKey?: string;
@@ -569,6 +571,7 @@ export function createEditorFullEditController(options: CreateEditorFullEditCont
       reason: params.reason,
       transportKind: params.transportKind,
       sourceWritebackPolicy: params.sourceWritebackPolicy,
+      effectiveEnableNest: params.effectiveEnableNest,
       formatSourceOnClose: params.formatSourceOnClose,
       decoder: new TextDecoder(),
       inputByteLength: 0,
@@ -640,6 +643,7 @@ export function createEditorFullEditController(options: CreateEditorFullEditCont
     >;
     transportKind?: FullEditTransportKind;
     sourceWritebackPolicy?: SourceWritebackPolicy;
+    effectiveEnableNest?: boolean;
     formatSourceOnClose?: boolean;
     documentKey?: string;
     documentTransitioned?: boolean;
@@ -673,6 +677,7 @@ export function createEditorFullEditController(options: CreateEditorFullEditCont
     >;
     transportKind?: FullEditTransportKind;
     sourceWritebackPolicy?: SourceWritebackPolicy;
+    effectiveEnableNest?: boolean;
     formatSourceOnClose?: boolean;
     documentKey?: string;
     documentTransitioned?: boolean;
@@ -713,6 +718,7 @@ export function createEditorFullEditController(options: CreateEditorFullEditCont
     >;
     transportKind?: FullEditTransportKind;
     sourceWritebackPolicy?: SourceWritebackPolicy;
+    effectiveEnableNest?: boolean;
     formatSourceOnClose?: boolean;
     documentKey?: string;
     documentTransitioned?: boolean;
@@ -727,6 +733,7 @@ export function createEditorFullEditController(options: CreateEditorFullEditCont
       transportKind: params.transportKind ?? 'memory',
       editorReadOnly: params.editorReadOnly,
       sourceWritebackPolicy: params.sourceWritebackPolicy ?? 'intake',
+      effectiveEnableNest: params.effectiveEnableNest,
       formatSourceOnClose: params.formatSourceOnClose ?? true,
       documentKey: params.documentKey,
       documentTransitioned: params.documentTransitioned,
@@ -767,7 +774,7 @@ export function createEditorFullEditController(options: CreateEditorFullEditCont
       revision: session.revision,
       language: session.language,
       text: params.text,
-      settings: documentJobSettingsFor(session.formatSourceOnClose),
+      settings: documentJobSettingsFor(session.formatSourceOnClose, session.effectiveEnableNest),
       builderConfig: options.getGraphBuilderConfig(),
       totalBytes: bytes.byteLength,
     });

@@ -112,7 +112,7 @@ test('tab rename keeps the display width and exposes active editing state', asyn
 
 test('bottom file menu exposes rename and close actions', async ({ page }) => {
   const [firstTabId] = await leftTabIds(page);
-  await page.getByTestId('editor-tab-switcher').click();
+  await page.getByTestId('tab-switcher').click();
   await page.getByTestId(`editor-tab-actions-${firstTabId}`).click();
   await expect(page.getByTestId(`editor-tab-actions-menu-${firstTabId}`)).toBeVisible();
   await page.getByTestId(`editor-tab-action-rename-${firstTabId}`).click();
@@ -125,7 +125,7 @@ test('bottom file menu exposes rename and close actions', async ({ page }) => {
   await page.getByTestId('new-tab-button').click();
   await expect.poll(async () => (await leftTabIds(page)).length, { timeout: 5_000 }).toBe(2);
   const [, secondTabId] = await leftTabIds(page);
-  await page.getByTestId('editor-tab-switcher').click();
+  await page.getByTestId('tab-switcher').click();
   await page.getByTestId(`editor-tab-actions-${secondTabId}`).click();
   page.once('dialog', (dialog) => void dialog.accept());
   await page.getByTestId(`editor-tab-action-close-${secondTabId}`).click();

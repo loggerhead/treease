@@ -8,7 +8,7 @@ test('sidebar expansion only changes through its toggle', async ({ page }) => {
   const importButton = page.getByRole('button', { name: 'Import', exact: true });
   await expect(page.getByTestId('sidebar-collapse-toggle')).toBeVisible();
   await expect(sidebarHost).toHaveAttribute('data-expanded', 'true');
-  await expect(importButton).toHaveCSS('width', '174px');
+  await expect(sidebarHost).toHaveCSS('width', '168px');
 
   await sidebar.hover();
   await expect(sidebarHost).toHaveAttribute('data-expanded', 'true');
