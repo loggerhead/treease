@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './fixtures';
 
 test('missing static assets return a real 404 response', async ({ request }) => {
   const response = await request.get('/_app/immutable/nodes/missing.js');

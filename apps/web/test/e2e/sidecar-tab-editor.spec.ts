@@ -89,9 +89,11 @@ test('right editor receives semantic token colors after auto-formatted full-edit
 
   const state = await readEditorState(page);
   const workspace = await readEditorWorkspace(page);
+  const sidecarId = workspace.tabsById[workspace.activeTabId]?.sidecarTabId;
   expect(state.sourceText).toBe('primary: true\n');
-  expect(workspace.tabsById['tab-sidecar'].languageId).toBe('json');
-  expect(workspace.tabsById['tab-sidecar'].sourceText).toContain('\n  "sidecar"');
+  expect(sidecarId).toBeTruthy();
+  expect(workspace.tabsById[sidecarId!].languageId).toBe('json');
+  expect(workspace.tabsById[sidecarId!].sourceText).toContain('\n  "sidecar"');
 });
 
 test('right editor preserves semantic token colors after manual edits', async ({ page }) => {
@@ -166,6 +168,8 @@ test('right editor preserves semantic token colors after manual edits', async ({
 
   const state = await readEditorState(page);
   const workspace = await readEditorWorkspace(page);
+  const sidecarId = workspace.tabsById[workspace.activeTabId]?.sidecarTabId;
   expect(state.sourceText).toBe('{"primary":true}');
-  expect(workspace.tabsById['tab-sidecar'].sourceText).toContain('"float": 0.1');
+  expect(sidecarId).toBeTruthy();
+  expect(workspace.tabsById[sidecarId!].sourceText).toContain('"float": 0.1');
 });

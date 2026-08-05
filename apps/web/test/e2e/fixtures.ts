@@ -1,4 +1,5 @@
 import { expect, test as base, type ConsoleMessage, type Page, type TestInfo } from '@playwright/test';
+import { addCoverageReport } from 'monocart-reporter';
 
 const usageSummary = {
   tier: 'free',
@@ -49,7 +50,7 @@ function filterAllowedBrowserErrors(testInfo: TestInfo, errors: string[]): strin
   return errors.filter((error) => !allowed.some((needle) => error.includes(needle)));
 }
 
-export const test = base.extend<{ _browserErrorCheck: void }>({
+export const test = base.extend<{ _browserErrorCheck: void; _e2eCoverage: void }>({
   _browserErrorCheck: [async ({ page }, use, testInfo) => {
     const fulfillUsageSummary = async (route: import('@playwright/test').Route) => {
       await route.fulfill({ contentType: 'application/json', body: JSON.stringify(usageSummary) });
@@ -82,6 +83,21 @@ export const test = base.extend<{ _browserErrorCheck: void }>({
     await attachBrowserErrors(testInfo, unexpectedBrowserErrors);
     expect(unexpectedBrowserErrors).toEqual([]);
   }, { auto: true }],
+  _e2eCoverage: [async ({ page, browserName }, use, testInfo) => {
+    const enabled = process.env.TREEASE_E2E_COVERAGE === '1' && browserName === 'chromium';
+    if (!enabled) {
+      await use();
+      return;
+    }
+
+    await page.coverage.startJSCoverage({ resetOnNavigation: false });
+    try {
+      await use();
+    } finally {
+      const coverage = await page.coverage.stopJSCoverage();
+      await addCoverageReport(coverage, testInfo);
+    }
+  }, { auto: true, scope: 'test' }],
 });
 
 export { expect, type Page, type ConsoleMessage };

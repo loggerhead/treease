@@ -9,7 +9,7 @@ function createRuntime(
   highlight: GraphNavigationRuntimePort['highlight'],
 ) {
   return createWorkspaceNavigationRuntime('workspace', [
-    { id: 'tab', documentKey: 'document-a', revision: 1 },
+    { id: 'tab', documentKey: 'document-a', generation: 0, revision: 1 },
   ], 'tab', {
     completeNavigationEnabled: () => false,
     isVisible: () => true,
@@ -28,6 +28,17 @@ function createRuntime(
 }
 
 describe('workspace graph runtime readiness binding', () => {
+  it('adopts the workspace lifecycle generation instead of deriving a replacement generation', () => {
+    const runtime = createRuntime(() => true, async () => ({ kind: 'applied' }));
+    const first = runtime.target('tab')!;
+
+    runtime.sync([{ id: 'tab', documentKey: 'document-a', generation: 4, revision: 1 }], 'tab');
+
+    const current = runtime.target('tab')!;
+    expect(current).toMatchObject({ documentKey: first.documentKey, generation: 4, revision: first.revision });
+    expect(runtime.store.status(first)).toBe('stale');
+  });
+
   it('reports readiness only for the target captured when the graph runtime mounted', async () => {
     let interactive = false;
     const highlight = vi.fn(async () => ({ kind: 'applied' as const }));
@@ -38,7 +49,7 @@ describe('workspace graph runtime readiness binding', () => {
     await expect(runtime.dispatch({ kind: 'editor-selection', target: originalTarget, path, cellTarget: 'node' }))
       .resolves.toMatchObject({ results: expect.arrayContaining([{ kind: 'deferred' }]) });
 
-    runtime.sync([{ id: 'tab', documentKey: 'document-b', revision: 1 }], 'tab');
+    runtime.sync([{ id: 'tab', documentKey: 'document-b', generation: 1, revision: 1 }], 'tab');
     expect(staleBinding.reportInteractive()).toBeUndefined();
     expect(highlight).not.toHaveBeenCalled();
 

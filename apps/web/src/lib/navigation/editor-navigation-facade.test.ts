@@ -24,7 +24,7 @@ const target: NavigationTarget = {
 function createStore() {
   return createTabNavigationStore<Slices>({
     workspaceId: target.workspaceId,
-    initialTabs: [{ id: target.tabId, documentKey: target.documentKey, revision: target.revision }],
+    initialTabs: [{ id: target.tabId, documentKey: target.documentKey, generation: target.generation, revision: target.revision }],
     createEntityState: () => ({
       editorState: { selection: null, lastNavigationSelection: null }, graphState: { untouched: true }, navigatorState: { untouched: true }, searchState: { untouched: true },
     }),

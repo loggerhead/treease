@@ -170,8 +170,13 @@ test('keeps the Column Navigator detail editor mounted while stepping through on
   const firstRootProbe = (await readGraphClickProbes(page)).find(
     (probe) => probe.target === 'value' && probe.path.join('.') === 'AE' && probe.coord,
   );
-  if (!firstRootProbe?.coord) throw new Error('first root graph cell has no coordinate');
-  await clickGraphProbeAt(page, firstRootProbe.coord);
+  if (!firstRootProbe?.id) throw new Error('first root graph probe is unavailable');
+  // This test covers the Column Navigator lifecycle. Invoke the Graph
+  // controller's registered probe so the first transition is not coupled to
+  // a transformed Leafer canvas coordinate.
+  await page.evaluate(async (probeId) => {
+    await window._treease?.graph.activateProbe(probeId);
+  }, firstRootProbe.id);
   await waitForColumnNavigatorSettled(page, 'k:AE', 20_000);
   await page.locator('[data-column-navigator-item-path-key="k:QA"]').click();
   await waitForColumnNavigatorSettled(page, 'k:QA', 20_000);

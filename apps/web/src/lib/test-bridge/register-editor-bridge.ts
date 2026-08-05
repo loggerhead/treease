@@ -1,5 +1,7 @@
 import { PathSegTag } from '@core-wasm/index'
-import { activeTempModel, type GraphHighlightTarget } from '../store/graph-selection-store';
+import { get } from 'svelte/store';
+import type { GraphHighlightTarget } from '../store/graph-selection-store';
+import { activeSidecarTempModel } from '../store/active-sidecar-state';
 import {
   documentKey,
   getDocumentSessionState,
@@ -10,6 +12,7 @@ import { getEditorStateSnapshot } from '../store/editor-store';
 import { activeFullEditUiState as fullEditUiState } from '../store/active-full-edit-ui-store';
 import type { PathSeg } from '../store/tree-path';
 import { getWorkspaceState } from '../store/workspace-store';
+import { captureActiveSidecarTarget, updateSidecarTempModel } from '../store/sidecar-tab-state';
 import { toWasmPathSeg } from '../../shared/brand-bridge';
 import type { TreeaseBridgePathSeg, TreeaseMonacoHook } from './types';
 import { syncRuntimeReadinessFromEditorState } from './runtime-readiness';
@@ -62,23 +65,28 @@ export function installEditorStoreBridge(): void {
   editorRevision.subscribe(() => syncBridgeState());
   fullEditUiState.subscribe(() => syncBridgeState());
   registerTreeaseEditorStoreBridge({
-    getState: () => getEditorStateSnapshot(),
+    // The bridge exposes the rendered right-pane state. It must not read the
+    // legacy main-tab TempModel now that graph interaction belongs to sidecar.
+    getState: () => ({ ...getEditorStateSnapshot(), tempModel: get(activeSidecarTempModel) }),
     getWorkspace: () => getWorkspaceState(),
     setLanguageId: (value: string) => setLanguageId(value as any),
     setTempGraphSelection: (path: TreeaseBridgePathSeg[], target?: GraphHighlightTarget | 'node') => {
       const normalized = normalizeBridgePath(path);
       const state = getDocumentSessionState();
       const revision = Math.max(state.editorRevision, state.graphAppliedRevision);
-      activeTempModel.update((current) => ({
-        ...current,
-        treePath: normalized,
-        graphHighlight: {
-          path: normalized,
-          target,
-          revision,
-          source: 'graph',
-        },
-      }));
+      const sidecarTarget = captureActiveSidecarTarget();
+      if (sidecarTarget) {
+        updateSidecarTempModel(sidecarTarget, (current) => ({
+          ...current,
+          treePath: normalized,
+          graphHighlight: {
+            path: normalized,
+            target,
+            revision,
+            source: 'graph',
+          },
+        }));
+      }
       syncBridgeState();
     },
   });

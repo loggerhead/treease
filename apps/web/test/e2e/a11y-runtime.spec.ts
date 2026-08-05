@@ -1,5 +1,5 @@
 import AxeBuilder from '@axe-core/playwright';
-import { expect, test } from '@playwright/test';
+import { expect, test } from './fixtures';
 import { waitForEditorReady } from './utils';
 
 test('editor import controls are keyboard-operable', async ({ page }) => {

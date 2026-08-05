@@ -20,10 +20,21 @@
   import YqInputBox from '../../lib/components/YqInputBox.svelte';
   import { settings, settingsStore } from '../../lib/settings/settings-store';
   import { DEFAULT_EDITOR_SPLIT_RATIO, DEFAULT_SIDEBAR_EXPANDED } from '../../lib/settings/editor-layout-state';
+  import { initialTempModel } from '../../lib/store/graph-selection-store';
+  import { activeSidecarTempModel } from '../../lib/store/active-sidecar-state';
+  import { type TabTarget } from '../../lib/store/tab-target';
   import {
-    activeTempModel,
-    initialTempModel,
-  } from '../../lib/store/graph-selection-store';
+    captureActiveSidecarTarget,
+    captureSidecarTarget,
+    readSidecarTempModel,
+    isVisibleSidecarTarget,
+    updateSidecarCompareOutcome,
+    updateSidecarNavigator,
+    updateSidecarSurfaceMode,
+    updateSidecarTempModel,
+    updateSidecarTreePath,
+    updateSidecarViewport,
+  } from '../../lib/store/sidecar-tab-state';
   import { initialFullEditUiState } from '../../lib/store/full-edit-ui-store';
   import {
     documentKey as documentKeyStore,
@@ -95,7 +106,7 @@
     summarizeWorkspaceTabs,
     type EditorWorkspaceTabSummary,
   } from '../../lib/store/editor-workspace';
-  import { clearCompareState, compareState } from '../../lib/store/compare-state';
+  import { compareState } from '../../lib/store/compare-state';
   import {
     generateStruct,
     getUsageSummary,
@@ -168,6 +179,9 @@
   type GraphSurfaceMode = 'graph' | 'compare';
   let viewerViewMode: 'graph' | 'text' = 'graph';
   let graphSurfaceMode: GraphSurfaceMode = 'graph';
+  let renderedSidecarTabId = '';
+  let restoredNavigatorSidecarTabId = '';
+  let restoredViewportSidecarTabId = '';
   let editorRuntimeLoading = true;
   let viewerRuntimeLoading = true;
   let columnNavigatorState: ColumnNavigatorState | null = null;
@@ -245,17 +259,22 @@
   }
 
 
-  function selectGraphSurfaceMode(nextMode: GraphSurfaceMode): void {
+  function selectGraphSurfaceMode(nextMode: GraphSurfaceMode, options: { persist?: boolean } = {}): void {
     graphSurfaceMode = nextMode;
     viewerViewMode = nextMode === 'graph' ? 'graph' : 'text';
+    if (options.persist === false) return;
+    const sidecarTarget = captureActiveSidecarTarget();
+    if (sidecarTarget) updateSidecarSurfaceMode(sidecarTarget, nextMode);
   }
 
   function applyUrlPresetUi(nextPreset: ResolvedEditorUrlPreset): void {
     showEditorPane = nextPreset.ui.editor;
     showViewerPane = nextPreset.ui.viewer;
     showTopBar = nextPreset.ui.topbar;
-    viewerViewMode = nextPreset.initialViewerMode;
-    graphSurfaceMode = nextPreset.initialViewerMode === 'graph' ? 'graph' : 'compare';
+    // URL preset bootstrap only controls the initially rendered surface. It
+    // must not asynchronously overwrite the state already owned by whichever
+    // tab pair happens to be active when settings finish loading.
+    selectGraphSurfaceMode(nextPreset.initialViewerMode === 'graph' ? 'graph' : 'compare', { persist: false });
     mirrorViewerFromSource = false;
     lastMirroredViewerText = '';
   }
@@ -266,19 +285,6 @@
       warnings: [...nextPreset.telemetry.ignored, ...nextPreset.notes],
       viewerMode: nextPreset.initialViewerMode,
     });
-  }
-
-  async function waitForEditorCommandResult(previousText: string): Promise<string> {
-    let nextText = getActiveDocumentText() || editorRef?.getActiveText() || previousText;
-    if (nextText !== previousText) return nextText;
-    const deadline = Date.now() + 10_000;
-    while (Date.now() < deadline) {
-      await tick();
-      await new Promise<void>((resolve) => setTimeout(resolve, 16));
-      nextText = getActiveDocumentText() || editorRef?.getActiveText() || previousText;
-      if (nextText !== previousText) return nextText;
-    }
-    return nextText;
   }
 
   async function fetchUrlPresetSourceOrReport(rawUrl: string): Promise<UrlPresetSource | null> {
@@ -349,12 +355,13 @@
         await viewerRef?.waitForIdle?.();
         await viewerRef?.runCompare?.();
       } else {
-        const previousText = getActiveDocumentText();
         await urlCommandHandlers[nextPreset.command]();
         await editorRef?.waitForIdle?.();
         if (shouldMirrorCommandResultToViewer(nextPreset)) {
           mirrorViewerFromSource = true;
-          const nextText = await waitForEditorCommandResult(previousText);
+          // format/minify/sort complete their main-document transaction before
+          // waitForIdle resolves; use that committed authority directly.
+          const nextText = getActiveDocumentText() || editorRef?.getActiveText() || '';
           lastMirroredViewerText = nextText;
           await showViewerTextPreview(nextText, editorRef?.getActiveLanguage() ?? effectiveLanguage);
         }
@@ -371,21 +378,23 @@
   async function restoreShare(shareID: string): Promise<void> {
     shareLoading = true;
     shareLoadError = '';
+    let restoreTarget: TabTarget | null = null;
     try {
       const { resource } = await getPublicShare(shareID);
       await tick();
       if (!editorRef || !viewerRef) throw new Error('Editor is not ready.');
+      restoreTarget = captureActiveSidecarTarget();
       await restoreShareResource(resource, {
         editor: editorRef,
         viewer: viewerRef,
         setViewMode: (mode) => {
-          viewerViewMode = mode;
-          graphSurfaceMode = mode === 'graph' ? 'graph' : 'compare';
+          selectGraphSurfaceMode(mode === 'graph' ? 'graph' : 'compare');
         },
-        clearCompareState,
+        clearCompareState: () => {
+          if (restoreTarget) updateSidecarCompareOutcome(restoreTarget, { kind: 'none' });
+        },
         restoreTreePath: (path) => {
-          activeTempModel.update((current) => ({ ...current, treePath: fromSharePath(path) }));
-          return true;
+          return restoreTarget ? updateSidecarTreePath(restoreTarget, fromSharePath(path)) : false;
         },
         restoreGraphFocus: (path, target) => {
           const localPath = fromSharePath(path);
@@ -399,7 +408,7 @@
     } catch (error) {
       sharedWorkspaceLifecycle?.failRestore(error);
       shareLoadError = error instanceof Error ? error.message : 'Unable to load shared content.';
-      clearCompareState();
+      if (restoreTarget) updateSidecarCompareOutcome(restoreTarget, { kind: 'none' });
     } finally {
       shareLoading = false;
     }
@@ -410,8 +419,10 @@
     const left = { text: editorRef.getActiveText() ?? '', languageId: editorRef.getActiveLanguage() ?? $languageIdStore };
     const rightText = viewerRef?.getActiveText();
     const rightLanguage = viewerRef?.getActiveLanguage();
-    const treePath = toSharePath(get(activeTempModel).treePath);
-    const graphHighlight = get(activeTempModel).graphHighlight;
+    const sidecarTarget = captureActiveSidecarTarget();
+    const sidecarTempModel = sidecarTarget ? readSidecarTempModel(sidecarTarget) ?? initialTempModel : initialTempModel;
+    const treePath = toSharePath(sidecarTempModel.treePath);
+    const graphHighlight = sidecarTempModel.graphHighlight;
     const selection = editorRef.getSelection();
     const interaction: ShareInteraction = {
       treePath,
@@ -485,8 +496,7 @@
     text: string,
     language: SupportedEditorLanguageId | undefined = undefined,
   ): Promise<void> {
-    graphSurfaceMode = 'compare';
-    viewerViewMode = 'text';
+    selectGraphSurfaceMode('compare');
     await viewerRef?.showTextPreview(text, language);
   }
 
@@ -514,15 +524,54 @@
 
   function handleViewerRuntimeState(payload: RuntimeStateEventDetail) {
     viewerRuntimeLoading = payload.loading;
-    if (payload.interactiveReady === true && !payload.error) void graphReadinessBinding?.reportInteractive();
+    if (payload.interactiveReady === true && !payload.error) {
+      void graphReadinessBinding?.reportInteractive();
+      if (renderedSidecarTabId && restoredViewportSidecarTabId !== renderedSidecarTabId) {
+        restoredViewportSidecarTabId = renderedSidecarTabId;
+        restoreActiveSidecarViewport(renderedSidecarTabId);
+      }
+    }
     if (!payload.loading && !payload.error && viewerViewMode === 'graph' && $editorRevision !== lastTrackedGraphViewRevision) {
       lastTrackedGraphViewRevision = $editorRevision;
       trackEvent('graph_view', { language: editorRef?.getActiveLanguage() ?? $languageIdStore });
     }
   }
 
-  function handleColumnNavigatorState(payload: ColumnNavigatorState): void {
-    columnNavigatorState = payload;
+  function handleColumnNavigatorState(payload: { tabId: string; state: ColumnNavigatorState }): void {
+    const target = captureSidecarTarget(payload.tabId);
+    if (!target || !updateSidecarNavigator(target, {
+      activePath: payload.state.activePath, history: payload.state.history, historyIndex: payload.state.historyIndex,
+      collapsed: payload.state.collapsed, expanded: !payload.state.collapsed, columnsMaterialized: payload.state.chain.length > 0,
+    })) return;
+    if (payload.tabId === renderedSidecarTabId) columnNavigatorState = payload.state;
+  }
+
+  function handleGraphViewportState(payload: { tabId: string; viewport: { x: number; y: number; scaleX: number; scaleY: number } | null }): void {
+    const target = captureSidecarTarget(payload.tabId);
+    if (target) updateSidecarViewport(target, payload.viewport);
+  }
+
+  function restoreActiveSidecarViewport(sidecarTabId: string): void {
+    const workspace = getWorkspaceState();
+    const mainTab = workspace.tabsById[workspace.activeTabId];
+    const sidecar = mainTab?.sidecarTabId === sidecarTabId ? workspace.tabsById[sidecarTabId] : null;
+    if (!mainTab || !sidecar?.sidecarState) return;
+    viewerRef?.restoreGraphViewport(sidecar.sidecarState.graph.viewport);
+  }
+
+  async function restoreActiveSidecarNavigator(sidecarTabId: string): Promise<void> {
+    const workspace = getWorkspaceState();
+    const mainTab = workspace.tabsById[workspace.activeTabId];
+    const sidecar = mainTab?.sidecarTabId === sidecarTabId ? workspace.tabsById[sidecarTabId] : null;
+    const navigator = sidecar?.sidecarState?.navigator;
+    if (!mainTab || !navigator || !viewerRef) return;
+    await viewerRef.restoreColumnNavigatorNavigationState({
+      activePath: navigator.activePath,
+      history: navigator.history,
+      historyIndex: navigator.historyIndex,
+      collapsed: navigator.collapsed,
+    });
+    if (getWorkspaceState().activeTabId !== mainTab.id || getWorkspaceState().tabsById[mainTab.id]?.sidecarTabId !== sidecarTabId) return;
   }
 
   $: runtimeGateViewMode = showViewerPane ? viewerViewMode : 'text';
@@ -837,7 +886,8 @@
     }
 
     try {
-      const currentPath = get(activeTempModel).treePath;
+      const sidecarTarget = captureActiveSidecarTarget();
+      const currentPath = sidecarTarget ? readSidecarTempModel(sidecarTarget)?.treePath ?? [] : [];
       const suggestion = await operation.step(() => suggestYq({
         instruction,
         editorTextSnapshot: sourceText,
@@ -1097,20 +1147,25 @@
 
   function navigationTabs() {
     const workspace = getWorkspaceState();
-    return workspace.tabOrder
-      .map((id) => workspace.tabsById[id])
-      .filter((tab): tab is NonNullable<typeof tab> => Boolean(tab))
-      .map((tab) => ({ id: tab.id, documentKey: tab.documentKey, revision: tab.revision }));
+    return Object.values(workspace.tabsById)
+      .filter((tab) => tab.role !== 'sidecar' || Boolean(tab.ownerMainTabId))
+      .map((tab) => ({ id: tab.id, documentKey: tab.documentKey, generation: tab.generation ?? 0, revision: tab.revision }));
   }
 
-  function navigationTarget(): NavigationTarget | null {
-    if (workspaceBootstrapReady) ensureNavigationRuntime($editorWorkspace);
-    return navigationRuntime?.target(getWorkspaceState().activeTabId) ?? null;
+  function navigationTarget(role: 'main' | 'sidecar' = 'main'): NavigationTarget | null {
+    // Navigation is a projection of the workspace lifecycle. Synchronize it
+    // from the authoritative store immediately before capturing this operation
+    // target; Svelte's DOM flush is not part of that lifecycle boundary.
+    if (workspaceBootstrapReady) ensureNavigationRuntime(getWorkspaceState());
+    const workspace = getWorkspaceState();
+    const main = workspace.tabsById[workspace.activeTabId];
+    const tabId = role === 'sidecar' ? main?.sidecarTabId : main?.id;
+    return tabId ? navigationRuntime?.target(tabId) ?? null : null;
   }
 
   function syncGraphReadinessBinding(_workspaceVersion: unknown): void {
     ensureNavigationRuntime(_workspaceVersion);
-    const target = navigationRuntime?.target(getWorkspaceState().activeTabId) ?? null;
+    const target = navigationTarget('sidecar');
     if (
       target
       && graphReadinessBinding?.target.tabId === target.tabId
@@ -1137,7 +1192,13 @@
       // Read the settings source at dispatch time so an immediately persisted
       // interaction preference cannot race Svelte's reactive assignment.
       completeNavigationEnabled: () => get(settings).interaction.enableSyncScroll,
-      isVisible: (target) => getWorkspaceState().activeTabId === target.tabId,
+      isVisible: (target) => {
+        const workspace = getWorkspaceState();
+        const tab = workspace.tabsById[target.tabId];
+        return tab?.role === 'sidecar'
+          ? isVisibleSidecarTarget(target)
+          : workspace.activeTabId === target.tabId;
+      },
       editor: {
         locate: async (context, command, options) => {
           if (!context.isCurrent()) return { kind: 'stale' };
@@ -1150,27 +1211,30 @@
         },
       },
       graph: {
-        isInteractive: (target) => getWorkspaceState().activeTabId === target.tabId && viewerRef?.isGraphInteractive() === true,
-        capturePreviewBaseline: async () => ({ selection: get(activeTempModel).graphHighlight, viewport: null }),
+        isInteractive: (target) => isVisibleSidecarTarget(target) && viewerRef?.isGraphInteractive() === true,
+        capturePreviewBaseline: async (context) => {
+          return { selection: readSidecarTempModel(context.target)?.graphHighlight ?? null, viewport: null };
+        },
         highlight: async (context, command) => {
           if (!context.isCurrent()) return { kind: 'stale' };
-          activeTempModel.update((current) => ({
+          if (!updateSidecarTempModel(context.target, (current) => ({
             ...current,
             graphHighlight: {
               path: [...command.path], target: command.cellTarget,
               revision: Math.max($editorRevision, $graphAppliedRevision), source: command.origin === 'editor' ? 'editor' : 'graph', navigate: false,
               revealToken: ++graphRevealToken,
             },
-          }));
+          }))) return { kind: 'stale' };
           return { kind: 'applied' };
         },
         reveal: async (context, command) => {
           if (!context.isCurrent()) return { kind: 'stale' };
+          if (!isVisibleSidecarTarget(context.target)) return { kind: 'applied' };
           return navigationResult(await viewerRef?.revealPath([...command.path], { target: command.cellTarget }) === true);
         },
         restoreSelection: async (context, baseline) => {
           if (!context.isCurrent()) return { kind: 'stale' };
-          activeTempModel.update((current) => ({ ...current, graphHighlight: baseline.selection as typeof current.graphHighlight }));
+          if (!updateSidecarTempModel(context.target, (current) => ({ ...current, graphHighlight: baseline.selection as typeof current.graphHighlight }))) return { kind: 'stale' };
           return { kind: 'applied' };
         },
         restoreViewport: async () => ({ kind: 'no-op' }),
@@ -1181,13 +1245,12 @@
           const workspace = getWorkspaceState();
           const tab = workspace.tabsById[command.target.tabId];
           if (
-            workspace.activeTabId !== command.target.tabId ||
             !tab ||
             tab.documentKey !== command.target.documentKey ||
             tab.revision !== command.target.revision
           ) return { kind: 'stale' };
-          activeTempModel.update((current) => ({ ...current, treePath: [...command.path] }));
-          if (!command.materializeColumns) return { kind: 'applied' };
+          if (!updateSidecarTreePath(command.target, [...command.path])) return { kind: 'stale' };
+          if (!command.materializeColumns || !isVisibleSidecarTarget(command.target)) return { kind: 'applied' };
           await viewerRef?.applyColumnNavigatorNavigationPath([...command.path]);
           return { kind: 'applied' };
         },
@@ -1196,7 +1259,9 @@
   }
 
   function handleEditorNavigation(path: PathSeg[], cellTarget: 'key' | 'value' | 'node'): void {
-    const target = navigationTarget();
+    // Editor selection reads the main snapshot, but its graph/navigator result
+    // is right-pane UI state. Capture the paired sidecar at this event boundary.
+    const target = navigationTarget('sidecar');
     if (!path.length || !target) return;
     void navigationRuntime?.dispatch({ kind: 'editor-selection', target, path, cellTarget });
   }
@@ -1206,7 +1271,7 @@
     trigger?: 'click' | 'search-preview' | 'search-commit' | 'breadcrumb';
   }) {
     const path = payload?.path ?? [];
-    const target = navigationTarget();
+    const target = navigationTarget('sidecar');
     if (!path.length || !target) return;
     const cellTarget = payload.target ?? 'node';
     const kind = payload.trigger === 'breadcrumb'
@@ -1226,13 +1291,13 @@
   }
 
   function handleTreePathSelect(path: PathSeg[]) {
-    const target = navigationTarget();
+    const target = navigationTarget('sidecar');
     if (!path.length || !target) return;
     void navigationRuntime?.dispatch({ kind: 'navigator-tree-path', target, path, cellTarget: 'value' });
   }
 
   function cancelSearchPreview(): void {
-    const target = navigationTarget();
+    const target = navigationTarget('sidecar');
     const previewId = activeSearchPreviewId;
     activeSearchPreviewId = null;
     if (target && previewId) void navigationRuntime?.dispatch({ kind: 'search-cancel', target, previewId });
@@ -1521,10 +1586,25 @@
   ));
   $: ({ leftPaneCollapsed, rightPaneCollapsed, collapsedControlFlyX } = resolveSplitLayoutMotion(visibleLayoutMode));
   $: topBarVisible = showTopBar && workspaceCommandReady;
-  $: documentInvalid = Boolean($activeTempModel?.error) || ($activeTempModel?.diagnostics?.length ?? 0) > 0;
+  $: documentInvalid = Boolean($activeSidecarTempModel?.error) || ($activeSidecarTempModel?.diagnostics?.length ?? 0) > 0;
   $: documentEmpty = $sourceTextStore.trim() === '';
   $: tabSummaries = summarizeWorkspaceTabs($editorWorkspace);
   $: activeTabId = $editorWorkspace.activeTabId;
+  $: {
+    const mainTab = $editorWorkspace.tabsById[$editorWorkspace.activeTabId];
+    const sidecar = mainTab?.sidecarTabId ? $editorWorkspace.tabsById[mainTab.sidecarTabId] : null;
+    if (sidecar?.id && sidecar.id !== renderedSidecarTabId) {
+      renderedSidecarTabId = sidecar.id;
+      graphSurfaceMode = sidecar.sidecarState?.surfaceMode ?? 'graph';
+      viewerViewMode = graphSurfaceMode === 'graph' ? 'graph' : 'text';
+      columnNavigatorState = null;
+      restoredViewportSidecarTabId = '';
+    }
+  }
+  $: if (viewerRef && renderedSidecarTabId && restoredNavigatorSidecarTabId !== renderedSidecarTabId) {
+    restoredNavigatorSidecarTabId = renderedSidecarTabId;
+    void restoreActiveSidecarNavigator(renderedSidecarTabId);
+  }
   $: if (workspaceBootstrapReady) ensureNavigationRuntime($editorWorkspace);
   $: if (workspaceBootstrapReady && viewerRef) syncGraphReadinessBinding($editorWorkspace);
   $: if (!viewerRef && graphReadinessBinding) {
@@ -1785,8 +1865,8 @@
               />
             {/if}
             <div class="editor-status" data-testid="editor-status">
-              <span class="editor-status__cursor">{$activeTempModel?.cursor ?? 'Ln 1, Col 1'}{#if ($activeTempModel?.selectionLength ?? 0) > 0}{' '}({$activeTempModel?.selectionLength} selected){/if}</span>
-              <Tooltip content={documentInvalid ? 'Document has errors' : 'Document is valid'} side="top"><button type="button" class:editor-status--invalid={documentInvalid} disabled={!documentInvalid} on:click={() => { const diagnostic = $activeTempModel?.diagnostics?.[0]; if (diagnostic) editorRef?.revealError(diagnostic.startLineNumber, diagnostic.startColumn) }}>{#if documentInvalid}<CircleAlert size={13} />Invalid{:else}<Check size={13} />Valid{/if}</button></Tooltip>
+              <span class="editor-status__cursor">{$activeSidecarTempModel?.cursor ?? 'Ln 1, Col 1'}{#if ($activeSidecarTempModel?.selectionLength ?? 0) > 0}{' '}({$activeSidecarTempModel?.selectionLength} selected){/if}</span>
+              <Tooltip content={documentInvalid ? 'Document has errors' : 'Document is valid'} side="top"><button type="button" class:editor-status--invalid={documentInvalid} disabled={!documentInvalid} on:click={() => { const diagnostic = $activeSidecarTempModel?.diagnostics?.[0]; if (diagnostic) editorRef?.revealError(diagnostic.startLineNumber, diagnostic.startColumn) }}>{#if documentInvalid}<CircleAlert size={13} />Invalid{:else}<Check size={13} />Valid{/if}</button></Tooltip>
             </div>
           </div>
           <TabSwitcher
@@ -1888,7 +1968,9 @@
             onRevealError={(line, column) => editorRef?.revealError(line, column)}
             onGraphNavigation={handleGraphReveal}
             onGraphRuntimeState={handleViewerRuntimeState}
+            sidecarTabId={renderedSidecarTabId}
             onColumnNavigatorState={handleColumnNavigatorState}
+            onGraphViewportState={handleGraphViewportState}
             onTextScroll={handleViewerScroll}
             onApplyDiff={handleApplyDiff}
             onSwap={handleSwapEditors}
@@ -1911,7 +1993,7 @@
           {#if graphSurfaceMode === 'graph'}
             <div class="graph-pane__bottom" data-testid="graph-bottom-surfaces">
               <TreePathBar
-                value={$activeTempModel?.treePath ?? []}
+                value={$activeSidecarTempModel?.treePath ?? []}
                 disabled={documentEmpty}
                 on:select={(event) => handleTreePathSelect(event.detail)}
               />

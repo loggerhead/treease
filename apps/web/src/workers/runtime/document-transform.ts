@@ -6,14 +6,27 @@ export async function handleFormat(
   message: Extract<WorkerRequest, { type: 'format' }>,
 ): Promise<string> {
   const { resolvedText } = readWorkerTextInput(message);
-  const result = await formatJson({
-    language: message.language,
-    text: resolvedText,
-    indent: message.options?.indent,
-    nest: withNestOptions(message).nest,
-    sortKeys: message.options?.sortKeys,
-  });
-  return result.text;
+  try {
+    const result = await formatJson({
+      language: message.language,
+      text: resolvedText,
+      indent: message.options?.indent,
+      smart: message.options?.smart,
+      maxLineLength: message.options?.maxLineLength,
+      maxInlineComplexity: message.options?.maxInlineComplexity,
+      maxArrayInlineItems: message.options?.maxArrayInlineItems,
+      alignObjectArrays: message.options?.alignObjectArrays,
+      nest: withNestOptions(message).nest,
+      sortKeys: message.options?.sortKeys,
+    });
+    return result.text;
+  } catch (error) {
+    // A compare-sidecar deliberately accepts incomplete source so Compare can
+    // render its parse/raw outcome. This opt-in transport outcome avoids
+    // presenting expected invalid input as a worker failure.
+    if (message.options?.allowInvalidSource === true) return resolvedText;
+    throw error;
+  }
 }
 
 export async function handleMinify(

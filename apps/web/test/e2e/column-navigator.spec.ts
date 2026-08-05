@@ -401,7 +401,13 @@ test('column navigator highlights null roots and keeps string editing caret stab
   expect(nilProbe).toBeTruthy();
   if (!nilProbe?.coord) throw new Error('object.nil probe missing');
 
-  await clickGraphProbeAt(page, nilProbe.coord);
+  // The assertion covers Graph navigation → Column Navigator. The Leafer
+  // canvas has no stable DOM hit target after its first pane reflow, so invoke
+  // the registered Graph probe instead of coupling this data-flow test to a
+  // transformed client coordinate.
+  await page.evaluate(async (probeId) => {
+    await window._treease?.graph.activateProbe(probeId);
+  }, nilProbe.id);
   await waitForColumnNavigatorSettled(page, 'k:object|k:nil');
 
   await expect
@@ -415,7 +421,9 @@ test('column navigator highlights null roots and keeps string editing caret stab
   expect(nameProbe).toBeTruthy();
   if (!nameProbe?.coord) throw new Error('user.name probe missing');
 
-  await clickGraphProbeAt(page, nameProbe.coord);
+  await page.evaluate(async (probeId) => {
+    await window._treease?.graph.activateProbe(probeId);
+  }, nameProbe.id);
   await waitForColumnNavigatorSettled(page, 'k:user|k:name');
 
   await applyMonacoEdits(page, 'column-navigator-content:k:user|k:name', [

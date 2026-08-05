@@ -7,9 +7,9 @@ import { editorStore, type FullEditUiState } from '../../store/editor-store-inte
 import { createWorkspaceTabFullEditSink } from './editor-full-edit-sink';
 
 const primaryTabId = 'tab-primary';
-const sidecarTabId = 'tab-sidecar';
+const sidecarTabId = 'tab-primary:sidecar';
 const primaryDocumentKey = 'primary-doc:0';
-const sidecarDocumentKey = 'sidecar:tab-sidecar:0';
+const sidecarDocumentKey = 'sidecar:tab-primary:sidecar:0';
 
 function expectLegacyPrimaryFullEditState(expected: Partial<FullEditUiState> = { active: false, phase: 'idle' }) {
   const state = editorStore.get();
@@ -27,11 +27,6 @@ describe('editor-full-edit-sink', () => {
     editorStore.actions.initWorkspaceFromPrimaryTab({
       id: primaryTabId,
       name: 'Untitled 1',
-    });
-    editorStore.actions.ensureSidecarWorkspaceTab({
-      id: sidecarTabId,
-      name: 'Right Editor',
-      sourceText: '{}',
     });
   });
 

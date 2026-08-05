@@ -449,12 +449,6 @@ describe('editor-store', () => {
         id: 'tab-primary',
         name: 'Untitled 1',
       });
-      editorStore.actions.ensureSidecarWorkspaceTab({
-        id: 'tab-sidecar',
-        name: 'Right Editor',
-        sourceText: 'a: 1\n',
-      });
-
       const before = get(activeTempModel);
       try {
         before.treePath.push({ key: 'mutate-attempt' } as any);
@@ -771,12 +765,6 @@ describe('editor-store', () => {
         languageId: 'yaml' as any,
         sourceText: 'name: second\n',
       });
-      editorStore.actions.ensureSidecarWorkspaceTab({
-        id: 'tab-sidecar',
-        name: 'Right Editor',
-        sourceText: 'sidecar: true\n',
-      });
-
       expect(editorStore.actions.getWorkspaceTabSummaries()).toEqual([
         { id: 'tab-primary', name: 'Untitled 1', languageId: 'json', dirty: false },
         { id: 'tab-second', name: 'Untitled 2', languageId: 'yaml', dirty: false },
@@ -792,12 +780,7 @@ describe('editor-store', () => {
         name: 'Untitled 1',
       });
 
-      editorStore.actions.ensureSidecarWorkspaceTab({
-        id: 'tab-sidecar',
-        name: 'Right Editor',
-        sourceText: 'a: 1\n',
-      });
-      editorStore.actions.updateWorkspaceTab('tab-sidecar', {
+      editorStore.actions.updateWorkspaceTab('tab-primary:sidecar', {
         sourceText: 'a: 2\n',
         revision: 4,
         snapshotId: 44,
@@ -807,7 +790,7 @@ describe('editor-store', () => {
       expect(state.sourceText).toBe('{"primary":true}');
       expect(state.documentKey).toBe('tab-primary:0');
       expect(state.editorRevision).toBe(0);
-      expect(state.workspace.tabsById['tab-sidecar']).toMatchObject({
+      expect(state.workspace.tabsById['tab-primary:sidecar']).toMatchObject({
         role: 'sidecar',
         languageId: 'json',
         sourceText: 'a: 2\n',
@@ -822,18 +805,12 @@ describe('editor-store', () => {
         id: 'tab-primary',
         name: 'Untitled 1',
       });
-      editorStore.actions.ensureSidecarWorkspaceTab({
-        id: 'tab-sidecar',
-        name: 'Right Editor',
-        sourceText: 'a: 1\n',
-      });
-
-      editorStore.actions.updateWorkspaceTab('tab-sidecar', {
+      editorStore.actions.updateWorkspaceTab('tab-primary:sidecar', {
         languageId: 'yaml' as any,
         sourceText: 'changed',
       });
 
-      expect(editorStore.get().workspace.tabsById['tab-sidecar']).toMatchObject({
+      expect(editorStore.get().workspace.tabsById['tab-primary:sidecar']).toMatchObject({
         languageId: 'yaml',
         sourceText: 'changed',
       });
@@ -889,38 +866,28 @@ describe('editor-store', () => {
       });
     });
 
-    it('syncs sidecar language when primary language changes', () => {
+    it('keeps paired sidecar compare language independent from primary language changes', () => {
       editorStore.actions.setLanguageId('json');
       editorStore.actions.initWorkspaceFromPrimaryTab({
         id: 'tab-primary',
         name: 'Untitled 1',
       });
-      editorStore.actions.ensureSidecarWorkspaceTab({
-        id: 'tab-sidecar',
-        name: 'Right Editor',
-        sourceText: '{}',
-      });
-
       editorStore.actions.setLanguageId('toml');
 
-      expect(editorStore.get().workspace.tabsById['tab-sidecar'].languageId).toBe('toml');
+      const state = editorStore.get().workspace;
+      expect(state.tabsById[state.tabsById['tab-primary'].sidecarTabId!].languageId).toBe('json');
     });
 
-    it('syncs sidecar language when the languageId field store is written directly', () => {
+    it('keeps paired sidecar compare language independent when the primary language store changes', () => {
       editorStore.actions.setLanguageId('json');
       editorStore.actions.initWorkspaceFromPrimaryTab({
         id: 'tab-primary',
         name: 'Untitled 1',
       });
-      editorStore.actions.ensureSidecarWorkspaceTab({
-        id: 'tab-sidecar',
-        name: 'Right Editor',
-        sourceText: '{}',
-      });
-
       languageId.set('yaml');
 
-      expect(editorStore.get().workspace.tabsById['tab-sidecar'].languageId).toBe('yaml');
+      const state = editorStore.get().workspace;
+      expect(state.tabsById[state.tabsById['tab-primary'].sidecarTabId!].languageId).toBe('json');
     });
 
     it('resetTempModel restores defaults', () => {

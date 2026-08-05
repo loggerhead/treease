@@ -55,6 +55,9 @@ A local column or value result read from the current snapshot and path.
 ### Local Draft
 
 The local draft currently being edited in the Column Detail Editor.
+It uses a private tab-shaped Monaco backing store (`Column Detail Draft`) solely
+for model lifetime. It is not a paired sidecar Tab, has no independent document
+authority, and commits through the selected main document.
 
 ### Pending Commit
 

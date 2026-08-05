@@ -35,9 +35,15 @@ runtime rules, not an implementation sequence.
 At every observable point, the header, active/primary Tab, installed Monaco model,
 `editorIO`, Graph, and Document Runtime refer to the same `documentKey`.
 
-The left Tab topology and the right sidecar topology are separate. A sidecar is
-not placed in left `tabOrder`; closing a left Tab does not close, activate, or
-serialize the sidecar as a left Tab.
+Main Tabs and sidecars are entities in one `TabId` space. Their explicit
+bidirectional relationship fields, never array position or id format, form a tab pair.
+`role` controls only left-tab visibility and pane projection. A sidecar is not
+placed in left `tabOrder` or serialized as a left Tab, but it is created and
+destroyed with its linked main Tab.
+
+`Column Detail Draft` is a separate private Monaco backing entity for the
+Column Navigator. Its `column-detail-draft` role is neither a left Tab nor a
+paired sidecar, and it never participates in Tab-pair transitions.
 
 Tab transitions are pure workspace transformations. They do not call Svelte,
 Monaco, Worker, or Document Runtime and return a closed effect shape:
@@ -51,6 +57,12 @@ type TabTopologyEffect =
 The transition never uses a null, empty string, fallback Tab, or sentinel id to
 represent a missing successor.
 
+There is no runtime `ensure` or rebind operation for sidecars. A production
+sidecar is introduced only by pair creation or restore, receives a new document
+identity only through main-document replacement, and is removed only by pair
+closure. Legacy fixture/session adaptation must validate and normalize topology
+before publication; it may not attach an existing sidecar to a different main.
+
 ## Transitions
 
 - **Create** generates a new `tabId` and `documentKey`, adds and activates the Tab,
@@ -59,13 +71,14 @@ represent a missing successor.
 - **Activate** rejects a missing Tab or sidecar id, updates active/primary/pane
   selection atomically, selects or creates the target model from its mirror, then
   restores document work with `documentKey + revision` freshness.
-- **Close inactive** removes only the requested left Tab, leaves the active model
-  unchanged, publishes the workspace, then disposes the removed model.
+- **Close inactive** removes the requested main Tab and its linked sidecar,
+  invalidates both entities' runtime bindings and operations, leaves the active
+  model unchanged, publishes the workspace, then disposes the removed model.
 - **Close active with a successor** computes the successor before disposal,
   installs its model first, publishes the new authority state, invalidates the
   closed Tab's operations, and only then disposes the old model.
-- **Close the last left Tab** removes it and creates a fresh blank primary Tab with
-  a new `tabId` and `documentKey`. The blank text is committed through the normal
+- **Close the last left Tab** removes its entire pair and creates a fresh blank
+  main/sidecar pair with new identities. The blank text is committed through the normal
   `Commit Transaction` so Document Runtime owns clear semantics. No example text
   or closed-document identity is reused.
 
@@ -90,3 +103,6 @@ editor settings/layout. Desktop uses the same WorkspaceHost seam.
   in [Editor Operation Lifecycle](./editor-operation-lifecycle.md).
 - No second workspace store, Tab list, active id, or synchronization facade may be
   introduced.
+- Async work captures one target `{ tabId, documentKey, generation, revision }`.
+  A hidden target may complete and update its own tab-local state; only a visible
+  target may project to Monaco, Graph DOM, focus, scroll, or notifications.

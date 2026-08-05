@@ -75,6 +75,11 @@ pub struct FormatTextInput {
     language: String,
     text: String,
     indent: Option<i32>,
+    smart: Option<bool>,
+    max_line_length: Option<i32>,
+    max_inline_complexity: Option<i32>,
+    max_array_inline_items: Option<i32>,
+    align_object_arrays: Option<bool>,
     nest: Option<bool>,
     sort_keys: Option<bool>,
 }
@@ -139,6 +144,11 @@ fn format_text_impl(input: &FormatTextInput) -> Result<String, String> {
     let opts = crate::wasm::default_common_format_options();
     let options = CommonFormatOptions {
         indent: input.indent.unwrap_or(opts.indent),
+        smart: input.smart.unwrap_or(opts.smart),
+        max_line_length: input.max_line_length.unwrap_or(opts.max_line_length),
+        max_inline_complexity: input.max_inline_complexity.unwrap_or(opts.max_inline_complexity),
+        max_array_inline_items: input.max_array_inline_items.unwrap_or(opts.max_array_inline_items),
+        align_object_arrays: input.align_object_arrays.unwrap_or(opts.align_object_arrays),
         nest: input.nest.unwrap_or(opts.nest),
         ..opts
     };
@@ -806,6 +816,11 @@ mod tests {
                 language: "json".into(),
                 text: "{\"b\":2,\"a\":1}".into(),
                 indent: Some(2),
+                smart: None,
+                max_line_length: None,
+                max_inline_complexity: None,
+                max_array_inline_items: None,
+                align_object_arrays: None,
                 nest: None,
                 sort_keys: Some(true),
             })
@@ -817,11 +832,32 @@ mod tests {
                 language: "json".into(),
                 text: "{\"nested\":\"{\\\"inner\\\":42}\"}".into(),
                 indent: Some(2),
+                smart: None,
+                max_line_length: None,
+                max_inline_complexity: None,
+                max_array_inline_items: None,
+                align_object_arrays: None,
                 nest: Some(true),
                 sort_keys: Some(false),
             })
             .expect("nest-aware format text should succeed"),
             "{\n  \"nested\": {\"inner\": 42}\n}\n",
+        );
+        assert_eq!(
+            format_text_impl(&FormatTextInput {
+                language: "json".into(),
+                text: "{\"sidecar\":{\"nested\":true},\"count\":2}".into(),
+                indent: Some(2),
+                smart: Some(true),
+                max_line_length: Some(100),
+                max_inline_complexity: Some(1),
+                max_array_inline_items: Some(6),
+                align_object_arrays: Some(true),
+                nest: Some(false),
+                sort_keys: Some(false),
+            })
+            .expect("smart format should succeed"),
+            "{\n  \"sidecar\": {\"nested\": true},\n  \"count\": 2\n}\n",
         );
         assert_eq!(
             minify_text_impl(&MinifyTextInput {

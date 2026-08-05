@@ -15,6 +15,7 @@ import {
 import type {
   ColumnNavigatorColumnItem,
   ColumnNavigatorContentState,
+  ColumnNavigatorNavigationState,
   ColumnNavigatorPaneState,
   ColumnNavigatorState,
   VisibleColumnNavigatorPaneState,
@@ -22,7 +23,6 @@ import type {
 
 const COLUMN_NAVIGATOR_MIN_HEIGHT = 100;
 const COLUMN_NAVIGATOR_MAX_HEIGHT_FRACTION = 0.75;
-const SIBLING_REVEAL_DEBOUNCE_MS = 48;
 const ROOT_PATH_KEY = '$';
 
 export type ColumnNavigatorProjectionInput = {
@@ -118,8 +118,6 @@ export function createColumnNavigatorController(deps: ColumnNavigatorControllerD
   let disposed = false;
   let navigationOperation: ViewRuntimeOperation | null = null;
   let refreshOperation: ViewRuntimeOperation | null = null;
-  let queuedSiblingRevealPath: PathSeg[] | null = null;
-  let siblingRevealTimer: ReturnType<typeof setTimeout> | null = null;
   const pathValueCache = new Map<
     string,
     { signature: string; promise: Promise<{ content: ColumnNavigatorContentState; isContent: boolean } | null> }
@@ -143,6 +141,8 @@ export function createColumnNavigatorController(deps: ColumnNavigatorControllerD
       collapsed,
       isLoading,
       activePath: clonePath(activePath),
+      history: history.map(clonePath),
+      historyIndex,
       chain: chain.map(clonePane),
       visiblePanes: panes,
       canGoBack: historyIndex > 0,
@@ -343,23 +343,6 @@ export function createColumnNavigatorController(deps: ColumnNavigatorControllerD
     emitState();
   }
 
-  function clearQueuedSiblingReveal(): void {
-    queuedSiblingRevealPath = null;
-    if (siblingRevealTimer) clearTimeout(siblingRevealTimer);
-    siblingRevealTimer = null;
-  }
-
-  function queueSiblingReveal(path: PathSeg[]): void {
-    queuedSiblingRevealPath = clonePath(path);
-    if (siblingRevealTimer) clearTimeout(siblingRevealTimer);
-    siblingRevealTimer = setTimeout(() => {
-      siblingRevealTimer = null;
-      const revealPath = queuedSiblingRevealPath;
-      queuedSiblingRevealPath = null;
-      if (revealPath?.length) deps.publishNavigation(revealPath, 'value', 'breadcrumb');
-    }, SIBLING_REVEAL_DEBOUNCE_MS);
-  }
-
   function hasStableSiblingPaneStructure(item: ColumnNavigatorColumnItem): boolean {
     const currentIndex = activePath.at(-1);
     const nextIndex = item.path.at(-1);
@@ -410,7 +393,6 @@ export function createColumnNavigatorController(deps: ColumnNavigatorControllerD
           title: formatColumnNavigatorPath(path),
           content,
         };
-        queueSiblingReveal(activePath);
         emitState();
       },
     });
@@ -468,7 +450,6 @@ export function createColumnNavigatorController(deps: ColumnNavigatorControllerD
           materializedRevision: deps.getRevision(),
         });
         if (options.reveal === 'immediate' && activePath.length) deps.publishNavigation(activePath, 'value', 'breadcrumb');
-        if (options.reveal === 'debounced') queueSiblingReveal(activePath);
         emitState();
       },
     });
@@ -484,18 +465,15 @@ export function createColumnNavigatorController(deps: ColumnNavigatorControllerD
   }
 
   async function openPath(path: PathSeg[], _parentAbsoluteIndex = -1): Promise<void> {
-    clearQueuedSiblingReveal();
     if (!keepCollapsed) collapsed = false;
     await navigate(path, { recordHistory: true, reveal: 'none' });
   }
 
   async function selectPath(path: PathSeg[]): Promise<void> {
-    clearQueuedSiblingReveal();
     await navigate(path, { recordHistory: true, reveal: 'immediate' });
   }
 
   async function applyExternalPath(path: PathSeg[]): Promise<void> {
-    clearQueuedSiblingReveal();
     if (!keepCollapsed) collapsed = false;
     await navigate(path, { recordHistory: false, reveal: 'none' });
   }
@@ -522,7 +500,7 @@ export function createColumnNavigatorController(deps: ColumnNavigatorControllerD
         await selectSibling(item.path);
         return;
       }
-      await navigate(item.path, { recordHistory: true, reveal: 'debounced' });
+      await navigate(item.path, { recordHistory: true, reveal: 'none' });
     }
   }
 
@@ -708,7 +686,6 @@ export function createColumnNavigatorController(deps: ColumnNavigatorControllerD
   }
 
   function reset(): void {
-    clearQueuedSiblingReveal();
     projectionEpoch += 1;
     void navigationOperation?.cancel();
     void refreshOperation?.cancel();
@@ -725,6 +702,19 @@ export function createColumnNavigatorController(deps: ColumnNavigatorControllerD
     deps.clearActiveGraphSelection();
     pathValueCache.clear();
     directChildrenCache.clear();
+    emitState();
+  }
+
+  async function restoreNavigationState(state: ColumnNavigatorNavigationState): Promise<void> {
+    reset();
+    history = state.history.map(clonePath);
+    historyIndex = Math.max(-1, Math.min(state.historyIndex, history.length - 1));
+    keepCollapsed = state.collapsed;
+    collapsed = state.collapsed;
+    if (state.activePath.length) {
+      await openPath(state.activePath);
+      return;
+    }
     emitState();
   }
 
@@ -754,6 +744,7 @@ export function createColumnNavigatorController(deps: ColumnNavigatorControllerD
     expand,
     commitValueEdit,
     syncProjection,
+    restoreNavigationState,
     reset,
     dispose,
     syncHeightToShell,

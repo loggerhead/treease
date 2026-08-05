@@ -12,7 +12,20 @@ export default defineConfig({
   },
   fullyParallel: true,
   workers: CI ? 1 : '50%',
-  reporter: 'dot',
+  reporter: process.env.TREEASE_E2E_COVERAGE === '1'
+    ? [
+        ['dot'],
+        ['monocart-reporter', {
+          name: 'Treease E2E Coverage',
+          outputFile: './e2e-coverage/index.html',
+          coverage: {
+            outputDir: './e2e-coverage',
+            reports: ['v8', 'html', 'lcovonly'],
+            sourceFilter: (sourcePath: string) => /[/\\]src[/\\]/.test(sourcePath),
+          },
+        }],
+      ]
+    : 'dot',
   use: {
     baseURL: 'http://localhost:8080',
     trace: 'off',

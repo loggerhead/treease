@@ -7,7 +7,7 @@ type Slices = NavigationEntitySlices & { editorState: null; graphState: null; na
 function createStore() {
   return createTabNavigationStore<Slices>({
     workspaceId: 'workspace',
-    initialTabs: [{ id: 'one', documentKey: 'one', revision: 0 }],
+    initialTabs: [{ id: 'one', documentKey: 'one', generation: 0, revision: 0 }],
     createEntityState: () => ({ editorState: null, graphState: null, navigatorState: null, searchState: null }),
   });
 }
@@ -20,7 +20,7 @@ describe('TabRuntimeRegistry', () => {
     let disposed = 0;
 
     expect(registry.register(target, 'graph', { value: { scene: 'old' }, dispose: () => disposed++ }).kind).toBe('applied');
-    const replacement = store.replaceDocument('one', { documentKey: 'replacement', revision: 0 })!;
+    const replacement = store.replaceDocument('one', { documentKey: 'replacement', generation: 1, revision: 0 })!;
 
     expect(disposed).toBe(1);
     expect(registry.get(target, 'graph')).toBeNull();

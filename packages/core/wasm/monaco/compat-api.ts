@@ -15,6 +15,11 @@ export async function formatText(language: string, text: string, options?: Forma
       language,
       text,
       indent: options?.indent ?? null,
+      smart: options?.smart ?? null,
+      maxLineLength: options?.maxLineLength ?? null,
+      maxInlineComplexity: options?.maxInlineComplexity ?? null,
+      maxArrayInlineItems: options?.maxArrayInlineItems ?? null,
+      alignObjectArrays: options?.alignObjectArrays ?? null,
       nest: options?.nest ?? null,
       sortKeys: options?.sortKeys ?? null,
     } as any),
@@ -172,6 +177,11 @@ export type FormatJsonInput = {
   language: string;
   text: string;
   indent?: number | null;
+  smart?: boolean | null;
+  maxLineLength?: number | null;
+  maxInlineComplexity?: number | null;
+  maxArrayInlineItems?: number | null;
+  alignObjectArrays?: boolean | null;
   nest?: boolean | null;
   sortKeys?: boolean | null;
 };
@@ -199,6 +209,11 @@ export async function parseValueToTreeJson(input: ParseValueToTreeJsonInput): Pr
 export async function formatJson(input: FormatJsonInput): Promise<FormatJsonOutput> {
   const text = await formatText(input.language, input.text, {
     indent: input.indent ?? undefined,
+    smart: input.smart ?? undefined,
+    maxLineLength: input.maxLineLength ?? undefined,
+    maxInlineComplexity: input.maxInlineComplexity ?? undefined,
+    maxArrayInlineItems: input.maxArrayInlineItems ?? undefined,
+    alignObjectArrays: input.alignObjectArrays ?? undefined,
     nest: input.nest ?? undefined,
     sortKeys: input.sortKeys ?? undefined,
   });

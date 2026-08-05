@@ -3,9 +3,16 @@ import {
   dropFile,
   getMonacoValue,
   readEditorState,
+  readEditorWorkspace,
   waitForEditorReady,
   waitForGraphRendered,
 } from './utils';
+
+async function readActiveSidecarText(page: Page): Promise<string> {
+  const workspace = await readEditorWorkspace(page);
+  const sidecarId = workspace.tabsById[workspace.activeTabId]?.sidecarTabId;
+  return sidecarId ? workspace.tabsById[sidecarId]?.sourceText ?? '' : '';
+}
 
 const yamlText = 'user:\n  name: Alice\ncount: 42\n';
 
@@ -88,6 +95,6 @@ test('dragging file onto right editor loads original file text without changing 
   });
 
   await expect.poll(async () => getMonacoValue(page, 'right-editor'), { timeout: 5_000 }).toBe(yamlText);
-  await expect.poll(async () => (await readEditorState(page)).tempModel.scratchText, { timeout: 5_000 }).toBe(yamlText);
+  await expect.poll(async () => readActiveSidecarText(page), { timeout: 5_000 }).toBe(yamlText);
   await expect.poll(async () => (await readEditorState(page)).languageId, { timeout: 5_000 }).toBe('json');
 });

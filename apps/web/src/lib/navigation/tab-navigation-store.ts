@@ -25,10 +25,12 @@ export type TabNavigationState<Slices extends NavigationEntitySlices> = {
 export type TabNavigationTabInput = {
   id: string;
   documentKey: string;
+  /** Supplied by the workspace lifecycle; this projection must not infer it. */
+  generation: number;
   revision: number;
 };
 
-export type TabNavigationDocumentReplacement = Pick<TabNavigationTabInput, 'documentKey' | 'revision'>;
+export type TabNavigationDocumentReplacement = Pick<TabNavigationTabInput, 'documentKey' | 'generation' | 'revision'>;
 
 export type TabNavigationWriteResult = { kind: 'applied' } | { kind: 'closed' } | { kind: 'stale' };
 
@@ -104,7 +106,7 @@ export function createTabNavigationStore<Slices extends NavigationEntitySlices>(
       workspaceId: options.workspaceId,
       tabId: input.id,
       documentKey: input.documentKey,
-      generation: 0,
+      generation: input.generation,
       revision: input.revision,
     };
     initialTabs[input.id] = freezeForRead({ ...target, state: options.createEntityState(target) });
@@ -175,7 +177,7 @@ export function createTabNavigationStore<Slices extends NavigationEntitySlices>(
         workspaceId: options.workspaceId,
         tabId: input.id,
         documentKey: input.documentKey,
-        generation: 0,
+        generation: input.generation,
         revision: input.revision,
       };
       updateState((current) => createState(
@@ -213,7 +215,7 @@ export function createTabNavigationStore<Slices extends NavigationEntitySlices>(
         workspaceId: options.workspaceId,
         tabId,
         documentKey: replacement.documentKey,
-        generation: previous.generation + 1,
+        generation: replacement.generation,
         revision: replacement.revision,
       };
       updateState((current) => createState(

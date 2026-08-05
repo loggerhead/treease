@@ -7,7 +7,33 @@ import type { PathSeg } from './tree-path';
 import type { DocumentOrigin } from '../document-origin';
 
 export type EditorPaneId = 'left' | 'right';
-export type EditorWorkspaceTabRole = 'primary' | 'sidecar' | 'background';
+export type EditorWorkspaceTabRole = 'primary' | 'sidecar' | 'background' | 'column-detail-draft';
+type EditorWorkspaceMainTabRole = 'primary' | 'background';
+
+export type SidecarPaneState = {
+  surfaceMode: 'graph' | 'compare';
+  graph: {
+    viewport: { x: number; y: number; scaleX: number; scaleY: number } | null;
+  };
+  navigator: {
+    activePath: PathSeg[];
+    history: PathSeg[][];
+    historyIndex: number;
+    collapsed: boolean;
+    expanded: boolean;
+    columnsMaterialized: boolean;
+  };
+  compare: {
+    scrollTop: number;
+    scrollLeft: number;
+    outcome: CompareOutcomeState;
+  };
+};
+
+export type CompareOutcomeState =
+  | { kind: 'none' }
+  | { kind: 'equal'; mode: 'tree' | 'text' }
+  | { kind: 'different'; mode: 'tree' | 'text' };
 
 /** Remote persistence state; intentionally independent of local dirty state. */
 export type CloudSyncStatus = 'synced' | 'syncing' | 'pending' | 'error' | 'offline';
@@ -21,8 +47,16 @@ export type FileLinkedDocument = {
 export type EditorWorkspaceTab = {
   id: string;
   role: EditorWorkspaceTabRole;
+  /** A left tab and this tab's right-side state form one inseparable tab pair. */
+  sidecarTabId?: string;
+  /** Present only on paired sidecars. */
+  ownerMainTabId?: string;
+  /** Present only on paired sidecars; every field is right-pane local. */
+  sidecarState?: SidecarPaneState;
   name: string;
   documentKey: string;
+  /** Increments whenever this tab entity receives a replacement document. */
+  generation?: number;
   languageId: SupportedEditorLanguageId;
   sourceText: string;
   origin?: DocumentOrigin;
@@ -63,6 +97,7 @@ export type WorkspaceEditorTabInput = {
   id: string;
   name: string;
   documentKey: string;
+  generation?: number;
   languageId: SupportedEditorLanguageId;
   sourceText: string;
   origin?: DocumentOrigin;
@@ -99,7 +134,23 @@ export type EditorWorkspaceTabPatch = {
   fileLinkedDocument?: FileLinkedDocument;
   savedText?: string;
   syncStatus?: CloudSyncStatus;
+  sidecarState?: SidecarPaneState;
 };
+
+/** Verifies the explicit one-to-one topology; ids and tab order are never used as pairing evidence. */
+export function hasValidTabPairs(workspace: EditorWorkspaceState): boolean {
+  for (const mainId of workspace.tabOrder) {
+    const main = workspace.tabsById[mainId];
+    const sidecar = main?.sidecarTabId ? workspace.tabsById[main.sidecarTabId] : null;
+    if (!isMainWorkspaceTab(main) || !sidecar || sidecar.role !== 'sidecar' || sidecar.ownerMainTabId !== main.id) return false;
+  }
+  return Object.values(workspace.tabsById).every((tab) => tab.role !== 'sidecar'
+    || (Boolean(tab.ownerMainTabId) && workspace.tabsById[tab.ownerMainTabId!]?.sidecarTabId === tab.id && !workspace.tabOrder.includes(tab.id)));
+}
+
+function isMainWorkspaceTab(tab: EditorWorkspaceTab | undefined): tab is EditorWorkspaceTab {
+  return tab?.role === 'primary' || tab?.role === 'background';
+}
 
 /**
  * The only pure transition allowed to replace a left document's identity.
@@ -113,8 +164,12 @@ export type TargetDocumentTransition = {
   next: Pick<EditorWorkspaceTab, 'documentKey' | 'languageId' | 'revision' | 'sourceText'>;
 };
 
-function sidecarDocumentKey(tabId: string): string {
-  return `sidecar:${tabId}:0`;
+function sidecarDocumentKey(tabId: string, generation: string | number = 0): string {
+  return `sidecar:${tabId}:${generation}`;
+}
+
+function pairedSidecarTabId(mainTabId: string): string {
+  return `${mainTabId}:sidecar`;
 }
 
 function clonePathSegs(path: PathSeg[]): PathSeg[] {
@@ -145,6 +200,29 @@ function cloneTempModel(tempModel: TempModel): TempModel {
   };
 }
 
+function createInitialSidecarPaneState(): SidecarPaneState {
+  return {
+    surfaceMode: 'graph',
+    graph: { viewport: null },
+    navigator: { activePath: [], history: [], historyIndex: -1, collapsed: false, expanded: false, columnsMaterialized: false },
+    compare: { scrollTop: 0, scrollLeft: 0, outcome: { kind: 'none' } },
+  };
+}
+
+function cloneSidecarPaneState(state: SidecarPaneState | undefined): SidecarPaneState | undefined {
+  if (!state) return undefined;
+  return {
+    ...state,
+    navigator: {
+      ...state.navigator,
+      activePath: clonePathSegs(state.navigator.activePath),
+      history: state.navigator.history.map(clonePathSegs),
+    },
+    graph: { viewport: state.graph.viewport ? { ...state.graph.viewport } : null },
+    compare: { ...state.compare },
+  };
+}
+
 function cloneFullEditUiState(fullEditUiState: FullEditUiState): FullEditUiState {
   return { ...fullEditUiState };
 }
@@ -152,6 +230,7 @@ function cloneFullEditUiState(fullEditUiState: FullEditUiState): FullEditUiState
 function cloneTab(tab: EditorWorkspaceTab): EditorWorkspaceTab {
   return {
     ...tab,
+    sidecarState: cloneSidecarPaneState(tab.sidecarState),
     tempModel: cloneTempModel(tab.tempModel),
     fullEditUiState: cloneFullEditUiState(tab.fullEditUiState),
   };
@@ -168,7 +247,7 @@ function assignLeftTabRoles(
 ): void {
   for (const leftTabId of tabOrder) {
     const tab = tabsById[leftTabId];
-    if (!tab || tab.role === 'sidecar') continue;
+    if (!isMainWorkspaceTab(tab)) continue;
     const role = leftTabId === primaryTabId ? 'primary' : 'background';
     if (tab.role !== role) {
       tabsById[leftTabId] = {
@@ -215,7 +294,7 @@ function createInactiveFullEditUiState(): FullEditUiState {
 
 function createEditorTabFromInput(
   input: WorkspaceEditorTabInput,
-  role: Exclude<EditorWorkspaceTabRole, 'sidecar'>,
+  role: EditorWorkspaceMainTabRole,
   existing?: EditorWorkspaceTab,
 ): EditorWorkspaceTab {
   return {
@@ -223,6 +302,7 @@ function createEditorTabFromInput(
     role,
     name: input.name,
     documentKey: input.documentKey,
+    generation: input.generation ?? existing?.generation ?? 0,
     languageId: input.languageId,
     sourceText: input.sourceText,
     origin: input.origin ?? existing?.origin ?? 'user',
@@ -242,24 +322,65 @@ function createEditorTabFromInput(
     fileLinkedDocument: input.fileLinkedDocument ?? existing?.fileLinkedDocument,
     savedText: input.savedText ?? existing?.savedText,
     syncStatus: input.syncStatus ?? existing?.syncStatus,
+    sidecarState: cloneSidecarPaneState(existing?.sidecarState),
   };
 }
 
+function createPairedSidecar(mainTab: EditorWorkspaceTab, id: string): EditorWorkspaceTab {
+  return {
+    id,
+    role: 'sidecar',
+    ownerMainTabId: mainTab.id,
+    sidecarState: createInitialSidecarPaneState(),
+    name: `${mainTab.name} sidecar`,
+    documentKey: sidecarDocumentKey(id),
+    languageId: mainTab.languageId,
+    // This is compare input only. The paired main tab remains the sole source-text authority.
+    sourceText: '',
+    origin: 'user',
+    revision: 0,
+    graphAppliedRevision: 0,
+    snapshotId: null,
+    tempModel: createCleanTempModel(''),
+    fullEditUiState: createInactiveFullEditUiState(),
+    fileLinkedDocument: undefined,
+    savedText: undefined,
+  };
+}
+
+function pairMainTab(
+  tabsById: Record<string, EditorWorkspaceTab>,
+  mainTab: EditorWorkspaceTab,
+): Record<string, EditorWorkspaceTab> {
+  const sidecarId = mainTab.sidecarTabId ?? pairedSidecarTabId(mainTab.id);
+  const sidecar = tabsById[sidecarId];
+  if (sidecar && sidecar.role === 'sidecar' && sidecar.ownerMainTabId === mainTab.id) {
+    if (mainTab.sidecarTabId === sidecarId) return tabsById;
+    return { ...tabsById, [mainTab.id]: { ...mainTab, sidecarTabId: sidecarId } };
+  }
+  const pairedMain = { ...mainTab, sidecarTabId: sidecarId };
+  const createdSidecar = createPairedSidecar(pairedMain, sidecarId);
+  return { ...tabsById, [pairedMain.id]: pairedMain, [createdSidecar.id]: createdSidecar };
+}
+
 export function createEditorWorkspaceState(primaryTab: EditorWorkspaceTab): EditorWorkspaceState {
-  const normalizedPrimary: EditorWorkspaceTab = {
+  const unpairedPrimary: EditorWorkspaceTab = {
     ...cloneTab(primaryTab),
     role: 'primary',
+    sidecarTabId: undefined,
+    ownerMainTabId: undefined,
+    sidecarState: undefined,
   };
+  const tabsById = pairMainTab({ [unpairedPrimary.id]: unpairedPrimary }, unpairedPrimary);
+  const normalizedPrimary = tabsById[unpairedPrimary.id]!;
   return {
-    tabsById: {
-      [normalizedPrimary.id]: normalizedPrimary,
-    },
+    tabsById,
     primaryTabId: normalizedPrimary.id,
     activeTabId: normalizedPrimary.id,
     tabOrder: [normalizedPrimary.id],
     paneTabIds: {
       left: normalizedPrimary.id,
-      right: null,
+      right: normalizedPrimary.sidecarTabId ?? null,
     },
     snapshotBindingsByDocumentKey: {},
   };
@@ -269,49 +390,18 @@ export function reinitializeWorkspaceFromPrimaryTab(
   workspace: EditorWorkspaceState,
   primaryTab: EditorWorkspaceTab,
 ): EditorWorkspaceState {
-  const nextWorkspace = createEditorWorkspaceState(primaryTab);
-  const keptTabs = Object.values(workspace.tabsById)
-    .filter((tab): tab is EditorWorkspaceTab => tab.role === 'sidecar')
-    .map((tab) => cloneTab(tab));
-
-  if (keptTabs.length === 0) {
-    return nextWorkspace;
-  }
-
-  const tabsById = { ...nextWorkspace.tabsById };
-  for (const sidecarTab of keptTabs) {
-    tabsById[sidecarTab.id] = sidecarTab;
-  }
-
-  const retainedDocumentKeys = new Set([
-    nextWorkspace.tabsById[nextWorkspace.primaryTabId]?.documentKey,
-    ...keptTabs.map((tab) => tab.documentKey),
-  ]);
-  const snapshotBindingsByDocumentKey = Object.fromEntries(
-    Object.entries(workspace.snapshotBindingsByDocumentKey).filter(([documentKey]) => retainedDocumentKeys.has(documentKey)),
-  );
-
-  return {
-    ...nextWorkspace,
-    tabsById,
-    paneTabIds: {
-      ...nextWorkspace.paneTabIds,
-      right:
-        workspace.paneTabIds.right && tabsById[workspace.paneTabIds.right]?.role === 'sidecar'
-          ? workspace.paneTabIds.right
-          : null,
-    },
-    snapshotBindingsByDocumentKey,
-  };
+  // Reinitialization is a new workspace topology, not a way to retain a
+  // previous document's right-side state. Its fresh primary gets a fresh pair.
+  return createEditorWorkspaceState(primaryTab);
 }
 
 export function syncWorkspaceEditorTab(
   workspace: EditorWorkspaceState,
   input: WorkspaceEditorTabInput,
-  role: Exclude<EditorWorkspaceTabRole, 'sidecar'>,
+  role: EditorWorkspaceMainTabRole,
 ): EditorWorkspaceState {
   const existing = workspace.tabsById[input.id];
-  if (existing?.role === 'sidecar') return workspace;
+  if (existing && !isMainWorkspaceTab(existing)) return workspace;
   const effectiveRole = input.id === workspace.primaryTabId || input.id === workspace.activeTabId ? 'primary' : role;
   const nextTabOrder = appendTabOrder(workspace.tabOrder, input.id);
   const nextTabsById = {
@@ -340,14 +430,13 @@ export function syncWorkspaceEditorTab(
 }
 
 export function addWorkspaceTab(workspace: EditorWorkspaceState, input: WorkspaceEditorTabInput): EditorWorkspaceState {
-  if (workspace.tabsById[input.id]?.role === 'sidecar') return workspace;
+  if (workspace.tabsById[input.id] && !isMainWorkspaceTab(workspace.tabsById[input.id])) return workspace;
   const existing = workspace.tabsById[input.id];
+  const mainTab = createEditorTabFromInput(input, existing?.role === 'primary' ? 'primary' : 'background', existing);
+  const tabsById = pairMainTab({ ...workspace.tabsById, [input.id]: mainTab }, mainTab);
   return {
     ...workspace,
-    tabsById: {
-      ...workspace.tabsById,
-      [input.id]: createEditorTabFromInput(input, existing?.role === 'primary' ? 'primary' : 'background', existing),
-    },
+    tabsById,
     tabOrder: appendTabOrder(workspace.tabOrder, input.id),
   };
 }
@@ -371,7 +460,7 @@ export function activateWorkspaceTabTransition(
   tabId: string,
 ): TabTopologyTransition | null {
   const target = workspace.tabsById[tabId];
-  if (!target || target.role === 'sidecar') return null;
+  if (!isMainWorkspaceTab(target)) return null;
   return {
     workspace: activateWorkspaceTab(workspace, tabId),
     effect: { kind: 'activate-existing', tabId },
@@ -380,8 +469,16 @@ export function activateWorkspaceTabTransition(
 
 export function activateWorkspaceTab(workspace: EditorWorkspaceState, tabId: string): EditorWorkspaceState {
   const target = workspace.tabsById[tabId];
-  if (!target || target.role === 'sidecar') return workspace;
-  if (workspace.primaryTabId === tabId && workspace.activeTabId === tabId && workspace.paneTabIds.left === tabId) return workspace;
+  if (!isMainWorkspaceTab(target)) return workspace;
+  const pairedSidecarId = target.sidecarTabId;
+  const pairedSidecar = pairedSidecarId ? workspace.tabsById[pairedSidecarId] : null;
+  if (!pairedSidecarId || !pairedSidecar || pairedSidecar.role !== 'sidecar' || pairedSidecar.ownerMainTabId !== tabId) return workspace;
+  if (
+    workspace.primaryTabId === tabId &&
+    workspace.activeTabId === tabId &&
+    workspace.paneTabIds.left === tabId &&
+    workspace.paneTabIds.right === pairedSidecarId
+  ) return workspace;
   const nextTabsById = { ...workspace.tabsById };
   assignLeftTabRoles(nextTabsById, workspace.tabOrder, tabId);
   return {
@@ -392,6 +489,7 @@ export function activateWorkspaceTab(workspace: EditorWorkspaceState, tabId: str
     paneTabIds: {
       ...workspace.paneTabIds,
       left: tabId,
+      right: pairedSidecarId,
     },
   };
 }
@@ -406,7 +504,7 @@ export function closeWorkspaceTabTransition(
   blank: { id: string; documentKey: string; name: string; languageId: SupportedEditorLanguageId },
 ): TabTopologyTransition | null {
   const closedTab = workspace.tabsById[tabId];
-  if (!closedTab || closedTab.role === 'sidecar') return null;
+  if (!isMainWorkspaceTab(closedTab)) return null;
   const closedIndex = workspace.tabOrder.indexOf(tabId);
   if (closedIndex < 0) return null;
   let nextTabOrder = workspace.tabOrder.filter((id) => id !== tabId);
@@ -415,16 +513,19 @@ export function closeWorkspaceTabTransition(
   }
   const nextTabsById = { ...workspace.tabsById };
   delete nextTabsById[tabId];
+  if (closedTab.sidecarTabId) delete nextTabsById[closedTab.sidecarTabId];
   if (nextTabOrder.length === 0) {
-    nextTabsById[blank.id] = createEditorTabFromInput({ ...blank, sourceText: '', origin: 'user' }, 'primary');
+    const blankTab = createEditorTabFromInput({ ...blank, sourceText: '', origin: 'user' }, 'primary');
+    const pairedTabs = pairMainTab({ ...nextTabsById, [blank.id]: blankTab }, blankTab);
+    const pairedBlank = pairedTabs[blank.id]!;
     nextTabOrder = [blank.id];
     const nextWorkspace = {
       ...workspace,
-      tabsById: nextTabsById,
+      tabsById: pairedTabs,
       primaryTabId: blank.id,
       activeTabId: blank.id,
       tabOrder: nextTabOrder,
-      paneTabIds: { ...workspace.paneTabIds, left: blank.id },
+      paneTabIds: { ...workspace.paneTabIds, left: blank.id, right: pairedBlank.sidecarTabId ?? null },
       snapshotBindingsByDocumentKey: Object.fromEntries(
         Object.entries(workspace.snapshotBindingsByDocumentKey).filter(([key]) => key !== closedTab.documentKey),
       ),
@@ -461,7 +562,7 @@ export function closeWorkspaceTabTransition(
 export function summarizeWorkspaceTabs(workspace: EditorWorkspaceState): EditorWorkspaceTabSummary[] {
   return workspace.tabOrder
     .map((tabId) => workspace.tabsById[tabId])
-    .filter((tab): tab is EditorWorkspaceTab => Boolean(tab && tab.role !== 'sidecar'))
+    .filter((tab): tab is EditorWorkspaceTab => isMainWorkspaceTab(tab))
     .map((tab) => ({
       id: tab.id,
       name: tab.name,
@@ -475,57 +576,11 @@ export function isWorkspaceTabDirty(tab: EditorWorkspaceTab): boolean {
   return tab.savedText !== undefined && tab.sourceText !== tab.savedText;
 }
 
-export function ensureSidecarTab(
-  workspace: EditorWorkspaceState,
-  input: {
-    id: string;
-    name: string;
-    languageId: SupportedEditorLanguageId;
-    sourceText: string;
-  },
-): EditorWorkspaceState {
-  const existingId = workspace.paneTabIds.right;
-  if (existingId && workspace.tabsById[existingId]) return workspace;
-  const existing = workspace.tabsById[input.id];
-  if (existing?.role === 'sidecar') {
-    return {
-      ...workspace,
-      paneTabIds: {
-        ...workspace.paneTabIds,
-        right: existing.id,
-      },
-    };
-  }
-  const sidecar: EditorWorkspaceTab = {
-    id: input.id,
-    role: 'sidecar',
-    name: input.name,
-    documentKey: sidecarDocumentKey(input.id),
-    languageId: input.languageId,
-    sourceText: input.sourceText,
-    origin: 'user',
-    revision: 0,
-    graphAppliedRevision: 0,
-    snapshotId: null,
-    tempModel: createCleanTempModel(input.sourceText),
-    fullEditUiState: createInactiveFullEditUiState(),
-    fileLinkedDocument: undefined,
-    savedText: undefined,
-  };
-  return {
-    ...workspace,
-    tabsById: {
-      ...workspace.tabsById,
-      [sidecar.id]: sidecar,
-    },
-    paneTabIds: {
-      ...workspace.paneTabIds,
-      right: sidecar.id,
-    },
-  };
-}
-
-export function ensureDetachedSidecarTab(
+/**
+ * Column Detail drafts use a tab-shaped Monaco backing store, but are not a
+ * paired right-sidecar. They project and commit through the main document.
+ */
+export function ensureColumnDetailDraftTab(
   workspace: EditorWorkspaceState,
   input: {
     id: string;
@@ -535,11 +590,11 @@ export function ensureDetachedSidecarTab(
   },
 ): EditorWorkspaceState {
   const existing = workspace.tabsById[input.id];
-  if (existing?.role === 'sidecar') return workspace;
+  if (existing?.role === 'column-detail-draft') return workspace;
   if (existing) return workspace;
   const sidecar: EditorWorkspaceTab = {
     id: input.id,
-    role: 'sidecar',
+    role: 'column-detail-draft',
     name: input.name,
     documentKey: sidecarDocumentKey(input.id),
     languageId: input.languageId,
@@ -561,9 +616,9 @@ export function ensureDetachedSidecarTab(
   };
 }
 
-export function removeDetachedSidecarTab(workspace: EditorWorkspaceState, tabId: string): EditorWorkspaceState {
+export function removeColumnDetailDraftTab(workspace: EditorWorkspaceState, tabId: string): EditorWorkspaceState {
   const current = workspace.tabsById[tabId];
-  if (!current || current.role !== 'sidecar') return workspace;
+  if (!current || current.role !== 'column-detail-draft') return workspace;
   const nextTabsById = { ...workspace.tabsById };
   delete nextTabsById[tabId];
   return {
@@ -592,6 +647,8 @@ export function updateWorkspaceTab(
   const nextTab: EditorWorkspaceTab = {
     id: current.id,
     role: current.role,
+    sidecarTabId: current.sidecarTabId,
+    ownerMainTabId: current.ownerMainTabId,
     name: patch.name ?? current.name,
     documentKey: current.documentKey,
     languageId: patch.languageId ?? current.languageId,
@@ -605,6 +662,7 @@ export function updateWorkspaceTab(
     fileLinkedDocument: patch.fileLinkedDocument ?? current.fileLinkedDocument,
     savedText: patch.savedText ?? current.savedText,
     syncStatus: patch.syncStatus ?? current.syncStatus,
+    sidecarState: patch.sidecarState ? cloneSidecarPaneState(patch.sidecarState) : cloneSidecarPaneState(current.sidecarState),
   };
   return {
     ...workspace,
@@ -622,7 +680,7 @@ export function transitionWorkspaceTabDocument(
   const current = workspace.tabsById[transition.tabId];
   if (
     !current ||
-    current.role === 'sidecar' ||
+    !isMainWorkspaceTab(current) ||
     current.documentKey !== transition.expected.documentKey ||
     current.languageId !== transition.expected.languageId ||
     current.revision !== transition.expected.revision ||
@@ -637,6 +695,7 @@ export function transitionWorkspaceTabDocument(
   const nextTab: EditorWorkspaceTab = {
     ...current,
     documentKey: transition.next.documentKey,
+    generation: (current.generation ?? 0) + 1,
     languageId: transition.next.languageId,
     sourceText: transition.next.sourceText,
     revision: transition.next.revision,
@@ -645,24 +704,30 @@ export function transitionWorkspaceTabDocument(
   };
   const snapshotBindingsByDocumentKey = { ...workspace.snapshotBindingsByDocumentKey };
   delete snapshotBindingsByDocumentKey[current.documentKey];
+  const sidecar = current.sidecarTabId ? workspace.tabsById[current.sidecarTabId] : null;
+  const nextSidecar = sidecar?.role === 'sidecar' && sidecar.ownerMainTabId === current.id
+    ? {
+        ...sidecar,
+        documentKey: sidecarDocumentKey(sidecar.id, `${transition.next.documentKey}:${transition.next.revision}`),
+        generation: (sidecar.generation ?? 0) + 1,
+        languageId: transition.next.languageId,
+        sourceText: '',
+        revision: 0,
+        graphAppliedRevision: 0,
+        snapshotId: null,
+        tempModel: createCleanTempModel(''),
+        fullEditUiState: createInactiveFullEditUiState(),
+        sidecarState: createInitialSidecarPaneState(),
+      }
+    : null;
 
   return {
     ...workspace,
     tabsById: {
       ...workspace.tabsById,
       [current.id]: nextTab,
+      ...(nextSidecar ? { [nextSidecar.id]: nextSidecar } : {}),
     },
     snapshotBindingsByDocumentKey,
   };
-}
-
-export function syncSidecarLanguageFromPrimary(workspace: EditorWorkspaceState): EditorWorkspaceState {
-  const primary = workspace.tabsById[workspace.primaryTabId];
-  if (!primary) return workspace;
-  let nextWorkspace = workspace;
-  for (const [tabId, tab] of Object.entries(workspace.tabsById)) {
-    if (tab.role !== 'sidecar' || tab.languageId === primary.languageId) continue;
-    nextWorkspace = updateWorkspaceTab(nextWorkspace, tabId, { languageId: primary.languageId });
-  }
-  return nextWorkspace;
 }

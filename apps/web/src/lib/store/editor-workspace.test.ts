@@ -4,16 +4,15 @@ import {
   addWorkspaceTab,
   closeWorkspaceTabTransition,
   createEditorWorkspaceState,
-  ensureSidecarTab,
   reinitializeWorkspaceFromPrimaryTab,
   summarizeWorkspaceTabs,
   isWorkspaceTabDirty,
-  syncSidecarLanguageFromPrimary,
   syncWorkspaceEditorTab,
   transitionWorkspaceTabDocument,
   updateWorkspaceTab,
   type EditorWorkspaceTab,
 } from './editor-workspace';
+import { remapPairedSidecarForFixture } from './editor-workspace-test-fixtures';
 
 function keySeg(key: string) {
   return { tag: 0, key, index: 0 };
@@ -63,19 +62,20 @@ function tab(overrides: Partial<EditorWorkspaceTab> = {}): EditorWorkspaceTab {
 }
 
 describe('editor-workspace', () => {
-  it('creates a workspace with one primary tab and no sidecar tab', () => {
+  it('creates a workspace with one primary tab and its paired sidecar', () => {
     const workspace = createEditorWorkspaceState(tab());
 
     expect(workspace.primaryTabId).toBe('tab-primary');
     expect(workspace.activeTabId).toBe('tab-primary');
     expect(workspace.tabOrder).toEqual(['tab-primary']);
     expect(workspace.paneTabIds.left).toBe('tab-primary');
-    expect(workspace.paneTabIds.right).toBeNull();
+    expect(workspace.paneTabIds.right).toBe(workspace.tabsById['tab-primary'].sidecarTabId);
+    expect(workspace.tabsById[workspace.paneTabIds.right!]).toMatchObject({ role: 'sidecar', ownerMainTabId: 'tab-primary' });
     expect(workspace.tabsById['tab-primary'].role).toBe('primary');
   });
 
   it('tracks ordered left tabs separately from the sidecar tab', () => {
-    const workspace = ensureSidecarTab(
+    const workspace = remapPairedSidecarForFixture(
       addWorkspaceTab(createEditorWorkspaceState(tab()), {
         id: 'tab-second',
         name: 'Untitled 2',
@@ -157,7 +157,7 @@ describe('editor-workspace', () => {
   });
 
   it('rejects a target document transition with stale identity or a sidecar target', () => {
-    const workspace = ensureSidecarTab(createEditorWorkspaceState(tab()), {
+    const workspace = remapPairedSidecarForFixture(createEditorWorkspaceState(tab()), {
       id: 'tab-sidecar',
       name: 'Right Editor',
       languageId: 'json' as any,
@@ -203,7 +203,7 @@ describe('editor-workspace', () => {
   });
 
   it('ignores attempts to activate the sidecar tab as primary', () => {
-    const workspace = ensureSidecarTab(createEditorWorkspaceState(tab()), {
+    const workspace = remapPairedSidecarForFixture(createEditorWorkspaceState(tab()), {
       id: 'tab-sidecar',
       name: 'Right Editor',
       languageId: 'json' as any,
@@ -263,8 +263,8 @@ describe('editor-workspace', () => {
     expect(result.workspace.tabsById['tab-blank']).toMatchObject({ role: 'primary', sourceText: '', documentKey: 'tab-blank:0' });
   });
 
-  it('preserves the sidecar when closing the last left tab', () => {
-    const workspace = ensureSidecarTab(createEditorWorkspaceState(tab()), {
+  it('replaces the paired sidecar when closing the last left tab', () => {
+    const workspace = remapPairedSidecarForFixture(createEditorWorkspaceState(tab()), {
       id: 'tab-sidecar',
       name: 'Right Editor',
       languageId: 'json' as any,
@@ -276,7 +276,7 @@ describe('editor-workspace', () => {
     expect(result.workspace.primaryTabId).toBe('tab-blank');
     expect(result.workspace.activeTabId).toBe('tab-blank');
     expect(result.workspace.paneTabIds.left).toBe('tab-blank');
-    expect(result.workspace.paneTabIds.right).toBe('tab-sidecar');
+    expect(result.workspace.paneTabIds.right).toBe(result.workspace.tabsById['tab-blank'].sidecarTabId);
     expect(result.workspace.tabOrder).toEqual(['tab-blank']);
     expect(result.workspace.tabsById['tab-blank']).toMatchObject({
       role: 'primary',
@@ -285,9 +285,9 @@ describe('editor-workspace', () => {
       languageId: 'yaml',
       sourceText: '',
     });
-    expect(result.workspace.tabsById['tab-sidecar']).toMatchObject({
-      role: 'sidecar',
-      sourceText: '{"right":true}',
+    expect(result.workspace.tabsById['tab-sidecar']).toBeUndefined();
+    expect(result.workspace.tabsById[result.workspace.paneTabIds.right!]).toMatchObject({
+      role: 'sidecar', ownerMainTabId: 'tab-blank', sourceText: '',
     });
   });
 
@@ -314,7 +314,7 @@ describe('editor-workspace', () => {
   });
 
   it('rejects a close transition whose generated blank id conflicts with a sidecar', () => {
-    const workspace = ensureSidecarTab(createEditorWorkspaceState(tab()), {
+    const workspace = remapPairedSidecarForFixture(createEditorWorkspaceState(tab()), {
       id: 'tab-sidecar',
       name: 'Right Editor',
       languageId: 'json' as any,
@@ -345,7 +345,7 @@ describe('editor-workspace', () => {
   });
 
   it('syncs editor tab fields without mutating sidecar state', () => {
-    const workspace = ensureSidecarTab(createEditorWorkspaceState(tab()), {
+    const workspace = remapPairedSidecarForFixture(createEditorWorkspaceState(tab()), {
       id: 'tab-sidecar',
       name: 'Right Editor',
       languageId: 'json' as any,
@@ -414,7 +414,7 @@ describe('editor-workspace', () => {
   });
 
   it('syncs an inactive background tab as the only primary left tab', () => {
-    const workspace = ensureSidecarTab(
+    const workspace = remapPairedSidecarForFixture(
       addWorkspaceTab(createEditorWorkspaceState(tab()), {
         id: 'tab-second',
         name: 'Untitled 2',
@@ -502,7 +502,7 @@ describe('editor-workspace', () => {
 
   it('creates a sidecar tab without changing the primary tab', () => {
     const workspace = createEditorWorkspaceState(tab());
-    const next = ensureSidecarTab(workspace, {
+    const next = remapPairedSidecarForFixture(workspace, {
       id: 'tab-sidecar',
       name: 'Right Editor',
       languageId: 'yaml' as any,
@@ -525,8 +525,8 @@ describe('editor-workspace', () => {
     });
   });
 
-  it('reinitializes the primary workspace without dropping sidecar tabs or their bindings', () => {
-    const workspace = ensureSidecarTab(createEditorWorkspaceState(tab()), {
+  it('reinitializes the primary workspace with a fresh paired sidecar', () => {
+    const workspace = remapPairedSidecarForFixture(createEditorWorkspaceState(tab()), {
       id: 'tab-sidecar',
       name: 'Right Editor',
       languageId: 'yaml' as any,
@@ -559,22 +559,17 @@ describe('editor-workspace', () => {
     expect(next.primaryTabId).toBe('tab-bootstrap');
     expect(next.activeTabId).toBe('tab-bootstrap');
     expect(next.paneTabIds.left).toBe('tab-bootstrap');
-    expect(next.paneTabIds.right).toBe('tab-sidecar');
+    expect(next.paneTabIds.right).toBe(next.tabsById['tab-bootstrap'].sidecarTabId);
     expect(next.tabOrder).toEqual(['tab-bootstrap']);
-    expect(next.tabsById['tab-sidecar']).toMatchObject({
-      role: 'sidecar',
-      languageId: 'yaml',
-      sourceText: 'a: 1\n',
-      revision: 3,
-      snapshotId: 12,
+    expect(next.tabsById['tab-sidecar']).toBeUndefined();
+    expect(next.tabsById[next.paneTabIds.right!]).toMatchObject({
+      role: 'sidecar', ownerMainTabId: 'tab-bootstrap', sourceText: '', snapshotId: null,
     });
-    expect(next.snapshotBindingsByDocumentKey).toEqual({
-      'sidecar:tab-sidecar:0': { documentKey: 'sidecar:tab-sidecar:0', revision: 3, snapshotId: 12 },
-    });
+    expect(next.snapshotBindingsByDocumentKey).toEqual({});
   });
 
   it('updates one tab without mutating the other tab', () => {
-    const workspace = ensureSidecarTab(createEditorWorkspaceState(tab()), {
+    const workspace = remapPairedSidecarForFixture(createEditorWorkspaceState(tab()), {
       id: 'tab-sidecar',
       name: 'Right Editor',
       languageId: 'json' as any,
@@ -600,7 +595,7 @@ describe('editor-workspace', () => {
   });
 
   it('allows snapshotId to be cleared with null', () => {
-    const workspace = ensureSidecarTab(createEditorWorkspaceState(tab()), {
+    const workspace = remapPairedSidecarForFixture(createEditorWorkspaceState(tab()), {
       id: 'tab-sidecar',
       name: 'Right Editor',
       languageId: 'json' as any,
@@ -613,7 +608,7 @@ describe('editor-workspace', () => {
   });
 
   it('ignores undefined snapshotId patches', () => {
-    const workspace = ensureSidecarTab(createEditorWorkspaceState(tab()), {
+    const workspace = remapPairedSidecarForFixture(createEditorWorkspaceState(tab()), {
       id: 'tab-sidecar',
       name: 'Right Editor',
       languageId: 'json' as any,
@@ -627,7 +622,7 @@ describe('editor-workspace', () => {
   });
 
   it('ignores runtime attempts to overwrite id role or documentKey', () => {
-    const workspace = ensureSidecarTab(createEditorWorkspaceState(tab()), {
+    const workspace = remapPairedSidecarForFixture(createEditorWorkspaceState(tab()), {
       id: 'tab-sidecar',
       name: 'Right Editor',
       languageId: 'json' as any,
@@ -651,25 +646,8 @@ describe('editor-workspace', () => {
     });
   });
 
-  it('syncs sidecar language from primary while preserving sidecar text and revision', () => {
-    const workspace = ensureSidecarTab(createEditorWorkspaceState(tab({ languageId: 'toml' as any })), {
-      id: 'tab-sidecar',
-      name: 'Right Editor',
-      languageId: 'json' as any,
-      sourceText: '{"right":true}',
-    });
-
-    const next = syncSidecarLanguageFromPrimary(workspace);
-
-    expect(next.tabsById['tab-sidecar']).toMatchObject({
-      languageId: 'toml',
-      sourceText: '{"right":true}',
-      revision: 0,
-    });
-  });
-
   it('creates a clean sidecar tempModel without inheriting primary ui noise', () => {
-    const workspace = ensureSidecarTab(
+    const workspace = remapPairedSidecarForFixture(
       createEditorWorkspaceState(
         tab({
           fullEditUiState: {
@@ -756,7 +734,7 @@ describe('editor-workspace', () => {
   });
 
   it('deep clones patch tempModel so later patch mutation does not leak into workspace', () => {
-    const workspace = ensureSidecarTab(createEditorWorkspaceState(tab()), {
+    const workspace = remapPairedSidecarForFixture(createEditorWorkspaceState(tab()), {
       id: 'tab-sidecar',
       name: 'Right Editor',
       languageId: 'json' as any,
@@ -804,7 +782,7 @@ describe('editor-workspace', () => {
   });
 
   it('deep clones patch fullEditUiState so later patch mutation does not leak into workspace', () => {
-    const workspace = ensureSidecarTab(createEditorWorkspaceState(tab()), {
+    const workspace = remapPairedSidecarForFixture(createEditorWorkspaceState(tab()), {
       id: 'tab-sidecar',
       name: 'Right Editor',
       languageId: 'json' as any,

@@ -9,6 +9,7 @@ import {
   getMonacoVisibleStartLine,
   installGraphEditEventCapture,
   readEditorState,
+  readEditorWorkspace,
   readGraphClickProbes,
   readGraphHighlight,
   readGraphHighlightRect,
@@ -63,6 +64,16 @@ async function revealGraphSearchResult(page: Page, query: string, resultName: st
   await result.click();
 }
 
+async function readActiveSidecarTreePath(page: Page): Promise<string[]> {
+  const workspace = await readEditorWorkspace(page);
+  const sidecarId = workspace.tabsById[workspace.activeTabId]?.sidecarTabId;
+  const path = sidecarId ? workspace.tabsById[sidecarId]?.tempModel.treePath ?? [] : [];
+  return [
+    '$',
+    ...path.map((segment) => typeof segment.key === 'string' ? segment.key : `[${segment.index}]`),
+  ];
+}
+
 test('graph click updates tree path and selects editor text from emitted reveal payload', async ({ page }) => {
   await page.goto('/editor');
   await waitForEditorReady(page);
@@ -76,18 +87,23 @@ test('graph click updates tree path and selects editor text from emitted reveal 
 
   await expect.poll(async () => (await getLatestGraphProbes(page)).length, { timeout: 5_000 }).toBeGreaterThan(1);
   const clickProbes = await readGraphClickProbes(page);
-  const probeCount = clickProbes.length;
   let revealPayload = null as Awaited<ReturnType<typeof readGraphLastReveal>>;
-  for (let probeIndex = 0; probeIndex < probeCount; probeIndex += 1) {
-    const probe = clickProbes[probeIndex];
+  for (const probe of clickProbes) {
     if (!probe?.id) continue;
     const expectedProbe = await readGraphRevealProbe(page, probe.id);
     if (!expectedProbe || expectedProbe.path.length <= 1 || expectedProbe.target === 'node') continue;
+    // A click can re-render the graph and reorder/remove sibling probes.
+    // Resolve the initial stable id again instead of carrying a transient
+    // index into the next interaction.
+    const currentProbe = (await readGraphClickProbes(page)).find((candidate) => candidate.id === probe.id);
+    if (!currentProbe?.coord) continue;
     await clearGraphLastReveal(page);
-    await clickGraphProbe(page, probeIndex);
+    await page.evaluate(async (probeId) => {
+      await window._treease?.graph.activateProbe(probeId);
+    }, currentProbe.id);
     try {
       await expect
-        .poll(async () => (await readEditorState(page)).tempModel.treePath, { timeout: 1_500 })
+        .poll(async () => readActiveSidecarTreePath(page), { timeout: 1_500 })
         .toEqual(expect.arrayContaining(expectedProbe.path));
       revealPayload = (await readGraphLastReveal(page)) ?? expectedProbe;
       if (revealPayload) break;
@@ -95,7 +111,7 @@ test('graph click updates tree path and selects editor text from emitted reveal 
   }
   if (!revealPayload) throw new Error('graph reveal payload missing');
   await expect
-    .poll(async () => (await readEditorState(page)).tempModel.treePath, { timeout: 5_000 })
+    .poll(async () => readActiveSidecarTreePath(page), { timeout: 5_000 })
     .toEqual(expect.arrayContaining(revealPayload.path));
   await expect.poll(async () => (await readEditorState(page)).tempModel.selectionLength, { timeout: 5_000 }).toBeGreaterThan(0);
 });

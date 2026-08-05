@@ -56,6 +56,8 @@ log/
 .tmp
 zig-pkg/
 apps/web/coverage
+apps/web/e2e-coverage
+coverage/
 test-results/
 .omc/
 .playwright-cli

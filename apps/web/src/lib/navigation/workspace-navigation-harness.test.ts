@@ -20,8 +20,8 @@ function createHarness() {
   const store = createTabNavigationStore<Slices>({
     workspaceId: 'workspace',
     initialTabs: [
-      { id: 'left', documentKey: 'left-document', revision: 1 },
-      { id: 'right', documentKey: 'right-document', revision: 1 },
+      { id: 'left', documentKey: 'left-document', generation: 0, revision: 1 },
+      { id: 'right', documentKey: 'right-document', generation: 0, revision: 1 },
     ],
     createEntityState: () => ({
       editorState: { selection: null, lastNavigationSelection: null },

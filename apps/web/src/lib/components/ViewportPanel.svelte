@@ -1,14 +1,14 @@
 <script lang="ts">
   import { tick } from 'svelte'
   import { toast } from 'svelte-sonner'
-  import { clearCompareState, setCompareOutcome } from '../store/compare-state'
   import {
     compareEditToken,
     documentKey as documentKeyStore,
     languageId as languageIdStore,
     sourceText,
   } from '../store/document-session-store'
-  import { activeTempModel } from '../store/graph-selection-store'
+  import { activeSidecarTempModel } from '../store/active-sidecar-state'
+  import { editorWorkspace, getWorkspaceState } from '../store/workspace-store'
   import { jsonBlockSelection } from '../store/full-edit-ui-store'
   import type { PathSeg } from '../store/tree-path'
   import type { ColumnNavigatorState } from './graph-viewer/column-navigator/types'
@@ -42,6 +42,13 @@
   import type { PricingUsageNotice } from './PricingPlanGrid.svelte'
   import type { BillingPriceId, PricingPlan } from '$lib/config/pricing'
   import type { SharedWorkspaceMutationTarget } from '../share/share-workspace-lifecycle'
+  import { tabTargetStatus, type TabTarget } from '../store/tab-target'
+  import {
+    captureActiveSidecarTarget,
+    captureSidecarTarget,
+    updateSidecarCompareOutcome,
+    updateSidecarCompareScroll,
+  } from '../store/sidecar-tab-state'
 
   type PricingPlanGridComponent = typeof import('./PricingPlanGrid.svelte').default
 
@@ -53,7 +60,9 @@
   export let onTextScroll: (payload: { scrollTop: number; scrollLeft: number }) => void = () => {}
   export let onSwap: (payload: { rightText: string; rightLanguage: SupportedEditorLanguageId }) => void = () => {}
   export let onGraphRuntimeState: (payload: RuntimeStateEventDetail) => void = () => {}
-  export let onColumnNavigatorState: (payload: ColumnNavigatorState) => void = () => {}
+  export let sidecarTabId = ''
+  export let onColumnNavigatorState: (payload: { tabId: string; state: ColumnNavigatorState }) => void = () => {}
+  export let onGraphViewportState: (payload: { tabId: string; viewport: { x: number; y: number; scaleX: number; scaleY: number } | null }) => void = () => {}
   export let synchronizedRuntimeLoading = false
   export let graphOnly = false
   export let readonlyGraph = false
@@ -102,7 +111,16 @@
   let entitlementOverlay: UsageBlock | null = null
   let pricingOverlayVisible = false
   let entitlementDocumentKey = ''
-  $: visibleGraphDiagnostics = $jsonBlockSelection ? [] : ($activeTempModel?.diagnostics ?? []).slice(0, 2)
+  let activeSidecarTabId = ''
+  let activeSidecarLanguage: SupportedEditorLanguageId = editorLanguageFallback
+  let restoredCompareSidecarTabId = ''
+  $: visibleGraphDiagnostics = $jsonBlockSelection ? [] : ($activeSidecarTempModel?.diagnostics ?? []).slice(0, 2)
+  $: {
+    const activeMainTab = $editorWorkspace.tabsById[$editorWorkspace.activeTabId]
+    const sidecar = activeMainTab?.sidecarTabId ? $editorWorkspace.tabsById[activeMainTab.sidecarTabId] : null
+    activeSidecarTabId = sidecar?.id ?? ''
+    activeSidecarLanguage = sidecar?.languageId ?? languageIdValue
+  }
   $: effectiveViewMode = graphOnly ? 'graph' : viewMode
   $: if ($documentKeyStore !== entitlementDocumentKey) {
     entitlementDocumentKey = $documentKeyStore
@@ -174,9 +192,10 @@
     onApplyDiff({ decorations: [], fillRanges: [] })
   }
 
-  function invalidateCompare(): void {
+  function invalidateCompare(target: TabTarget | null = null): void {
     compareGeneration += 1
-    clearCompareState()
+    const currentTarget = target ?? captureActiveSidecarTarget()
+    if (currentTarget) updateSidecarCompareOutcome(currentTarget, { kind: 'none' })
     clearCompareHighlights()
   }
 
@@ -192,8 +211,14 @@
   async function runDiffCompare() {
     if (graphOnly || effectiveViewMode !== 'text') return
     let runGeneration = 0
+    let target: TabTarget | null = null
     try {
       await waitForSidecarStoreSync()
+      // The compare operation starts only after the mounted editor is ready.
+      // Capture its complete revision-bearing target here; a component prop is
+      // a view projection and must not be an operation credential.
+      target = captureActiveSidecarTarget()
+      if (!target) return
       const rightText = normalizeCompareText(getSidecarText())
       const leftText = normalizeCompareText($sourceText)
       const rightLanguage = getSidecarLanguage()
@@ -214,8 +239,14 @@
         left: leftText,
         right: rightText
       })
-      if (!isCurrentCompareInput(compareInput, runGeneration)) return
-      setCompareOutcome(data)
+      if (!isCurrentCompareInput(compareInput, runGeneration, target)) return
+      // A background pair remains document-current and stores its result.
+      // Only the visible pair may touch Monaco, toasts, or loading UI.
+      if (tabTargetStatus(getWorkspaceState(), target) !== 'current') return
+      if (!updateSidecarCompareOutcome(target, data.equal
+        ? { kind: 'equal', mode: data.mode }
+        : { kind: 'different', mode: data.mode })) return
+      if (activeSidecarTabId !== target.tabId) return
       const monaco = readySidecarEditor?.getMonaco()
       if (monaco) {
         const plans = buildDiffPlans(monaco, data.result.pairs ?? [], leftText, rightText, {
@@ -235,7 +266,9 @@
       }
       trackEvent('compare_document', { mode: data.mode, result: 'success' });
     } catch {
-      if (runGeneration === 0 || compareGeneration !== runGeneration) return
+      if (runGeneration === 0 || compareGeneration !== runGeneration || tabTargetStatus(getWorkspaceState(), target) !== 'current') return
+      updateSidecarCompareOutcome(target, { kind: 'none' })
+      if (activeSidecarTabId !== target.tabId) return
       diffError = 'Compare failed'
       invalidateCompare()
       trackEvent('compare_document', { result: 'failure' });
@@ -245,16 +278,24 @@
   function isCurrentCompareInput(
     input: { leftText: string; rightText: string; leftLanguage: SupportedEditorLanguageId; rightLanguage: SupportedEditorLanguageId },
     generation: number,
+    target: TabTarget,
   ): boolean {
-    return compareGeneration === generation
-      && normalizeCompareText($sourceText) === input.leftText
-      && normalizeCompareText(getSidecarText()) === input.rightText
-      && languageIdValue === input.leftLanguage
-      && getSidecarLanguage() === input.rightLanguage
+    const workspace = getWorkspaceState()
+    const sidecar = workspace.tabsById[target.tabId]
+    const main = sidecar?.ownerMainTabId ? workspace.tabsById[sidecar.ownerMainTabId] : null
+    return tabTargetStatus(workspace, target) === 'current'
+      && compareGeneration === generation
+      && normalizeCompareText(main?.sourceText ?? '') === input.leftText
+      && normalizeCompareText(sidecar?.sourceText ?? '') === input.rightText
+      && main?.languageId === input.leftLanguage
+      && sidecar?.languageId === input.rightLanguage
   }
 
   $: languageIdValue = $languageIdStore
-  $: if ($activeTempModel && $activeTempModel.scratchText !== scratchText) scratchText = $activeTempModel.scratchText
+  $: if (activeSidecarTabId) {
+    const sidecar = $editorWorkspace.tabsById[activeSidecarTabId]
+    if (sidecar && sidecar.sourceText !== scratchText) scratchText = sidecar.sourceText
+  }
   $: if (lastSourceText === null) {
     lastSourceText = $sourceText
   } else if ($sourceText !== lastSourceText) {
@@ -280,14 +321,30 @@
   $: if (effectiveViewMode !== 'text' && hasRightCompareHighlights()) {
     clearCompareHighlights()
   }
+  $: if (effectiveViewMode === 'text' && activeSidecarTabId && restoredCompareSidecarTabId !== activeSidecarTabId) {
+    restoredCompareSidecarTabId = activeSidecarTabId
+    void restoreSidecarScroll(activeSidecarTabId)
+  }
 
-  function updateScratchText(value: string) {
-    scratchText = value
-    activeTempModel.update((current) => ({ ...current, scratchText: value }))
+  function updateScratchText(payload: { tabId: string; text: string }) {
+    if (payload.tabId === activeSidecarTabId) scratchText = payload.text
   }
 
   function updateScratchLanguage(value: SupportedEditorLanguageId) {
     scratchLanguage = value
+  }
+
+  function handleSidecarScroll(payload: { tabId: string; scrollTop: number; scrollLeft: number }): void {
+    const target = captureSidecarTarget(payload.tabId)
+    if (target) updateSidecarCompareScroll(target, { scrollTop: payload.scrollTop, scrollLeft: payload.scrollLeft })
+    onTextScroll({ scrollTop: payload.scrollTop, scrollLeft: payload.scrollLeft })
+  }
+
+  async function restoreSidecarScroll(sidecarTabId: string): Promise<void> {
+    const sidecar = $editorWorkspace.tabsById[sidecarTabId]
+    await ensureSidecarEditorReady()
+    if (activeSidecarTabId !== sidecarTabId || !sidecar?.sidecarState) return
+    sidecarEditor?.setScrollPosition(sidecar.sidecarState.compare)
   }
 
   async function loadRightPanelFile(file: File) {
@@ -333,7 +390,6 @@
     if (graphOnly) return
     viewMode = 'text'
     invalidateCompare()
-    updateScratchText(value)
     updateScratchLanguage(nextLanguage)
     const readySidecarEditor = await ensureSidecarEditorReady()
     await readySidecarEditor?.showText(value, nextLanguage)
@@ -453,6 +509,19 @@
 
   export async function restoreColumnNavigatorPath(path: PathSeg[]): Promise<boolean> {
     return await graphViewer?.restoreColumnNavigatorPath?.(path) ?? false;
+  }
+
+  export async function restoreColumnNavigatorNavigationState(state: {
+    activePath: PathSeg[];
+    history: PathSeg[][];
+    historyIndex: number;
+    collapsed: boolean;
+  }): Promise<void> {
+    await graphViewer?.restoreColumnNavigatorNavigationState?.(state);
+  }
+
+  export function restoreGraphViewport(state: { x: number; y: number; scaleX: number; scaleY: number } | null): void {
+    graphViewer?.restoreGraphViewport?.(state)
   }
 
   export function collapseColumnNavigator(): void {
@@ -662,17 +731,23 @@
           {diffError}
         </div>
       {/if}
-      <SidecarEditor
-        bind:this={sidecarEditor}
-        language={languageIdValue}
-        placeholderTitle="Enter content to compare"
-        onScroll={onTextScroll}
-        onContentChange={(text) => {
-          updateScratchText(text)
-          invalidateCompare()
-        }}
-        onRequestImportFile={() => openRightPanelFilePicker()}
-      />
+      {#if activeSidecarTabId}
+        {#key activeSidecarTabId}
+          <SidecarEditor
+            bind:this={sidecarEditor}
+            tabId={activeSidecarTabId}
+            language={activeSidecarLanguage}
+            placeholderTitle="Enter content to compare"
+            onScroll={handleSidecarScroll}
+            onContentChange={(payload) => {
+              const target = captureSidecarTarget(payload.tabId)
+              updateScratchText(payload)
+              invalidateCompare(target)
+            }}
+            onRequestImportFile={() => openRightPanelFilePicker()}
+          />
+        {/key}
+      {/if}
     </div>
   {/if}
 
@@ -682,20 +757,24 @@
     class:pointer-events-none={!graphOnly && effectiveViewMode !== 'graph'}
     aria-hidden={!graphOnly && effectiveViewMode !== 'graph'}
   >
-    <GraphViewer
-      bind:this={graphViewer}
-      active={graphOnly || effectiveViewMode === 'graph'}
-      {synchronizedRuntimeLoading}
-      readonly={readonlyGraph}
-      {onFileDrop}
-      {onRequestImportFile}
-      {onLoadExample}
-      onEntitlementBlocked={handleEntitlementBlocked}
-      {ensureSharedWorkspacePromoted}
-      on:navigation={handleGraphNavigation}
-      on:runtime-state={handleGraphViewerRuntimeState}
-      on:column-navigator-state={(event) => onColumnNavigatorState(event.detail)}
-    />
+    {#key sidecarTabId || 'no-sidecar'}
+      <GraphViewer
+        bind:this={graphViewer}
+        {sidecarTabId}
+        active={graphOnly || effectiveViewMode === 'graph'}
+        {synchronizedRuntimeLoading}
+        readonly={readonlyGraph}
+        {onFileDrop}
+        {onRequestImportFile}
+        {onLoadExample}
+        onEntitlementBlocked={handleEntitlementBlocked}
+        {ensureSharedWorkspacePromoted}
+        on:navigation={handleGraphNavigation}
+        on:runtime-state={handleGraphViewerRuntimeState}
+        on:column-navigator-state={(event) => onColumnNavigatorState(event.detail)}
+        on:graph-viewport-state={(event) => onGraphViewportState(event.detail)}
+      />
+    {/key}
   </div>
   {#if pricingOverlayVisible}
     <EntitlementOverlay

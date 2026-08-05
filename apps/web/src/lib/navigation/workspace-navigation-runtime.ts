@@ -110,7 +110,10 @@ export function createWorkspaceNavigationRuntime(
       for (const tab of nextTabs) {
         const current = store.getTarget(tab.id);
         if (!current) store.create(tab);
-        else if (current.documentKey !== tab.documentKey) {
+        // A workspace generation is an identity boundary even when a caller
+        // happens to reuse the same document key. This projection must carry
+        // the authoritative lifecycle value rather than retaining its own.
+        else if (current.documentKey !== tab.documentKey || current.generation !== tab.generation) {
           store.replaceDocument(tab.id, tab);
         } else if (current.revision !== tab.revision) {
           store.updateRevision(tab.id, tab.revision);

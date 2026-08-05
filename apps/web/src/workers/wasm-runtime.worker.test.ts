@@ -638,6 +638,11 @@ it('returns structured diff when isStructurallyEqual returns false for structura
         language: 'json',
         text: '{"a":1}',
         indent: undefined,
+        smart: undefined,
+        maxLineLength: undefined,
+        maxInlineComplexity: undefined,
+        maxArrayInlineItems: undefined,
+        alignObjectArrays: undefined,
         nest: true,
         sortKeys: undefined,
       });

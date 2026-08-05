@@ -92,6 +92,64 @@ test('left editor tabs preserve text and mirror only the active tab into primary
     .toBe('json');
 });
 
+test('each tab pair restores its own compare mode and right-side text', async ({ page }) => {
+  await setEditorContent(page, { language: 'json', sourceText: '{"tab":"one"}' });
+  const [firstTabId] = await leftTabIds(page);
+  const firstSidecarTabId = (await readEditorWorkspace(page)).tabsById[firstTabId].sidecarTabId;
+  await page.getByTestId('graph-surface-compare').click();
+  await expect(page.getByTestId('monaco-right-editor')).toBeVisible({ timeout: 5_000 });
+  await setMonacoValue(page, 'right-editor', '{"compare":"one"}');
+  await expect.poll(async () => {
+    const workspace = await readEditorWorkspace(page);
+    const text = workspace.tabsById[firstTabId].sidecarTabId
+      ? workspace.tabsById[workspace.tabsById[firstTabId].sidecarTabId!]?.sourceText
+      : undefined;
+    return text ? JSON.parse(text).compare : undefined;
+  }, { timeout: 5_000 }).toBe('one');
+  await expect.poll(async () => {
+    const workspace = await readEditorWorkspace(page);
+    const sidecarId = workspace.tabsById[firstTabId].sidecarTabId!;
+    return workspace.tabsById[sidecarId]?.sidecarState?.surfaceMode;
+  }, { timeout: 5_000 }).toBe('compare');
+
+  await page.getByTestId('new-tab-button').click();
+  await expect.poll(async () => (await leftTabIds(page)).length, { timeout: 5_000 }).toBe(2);
+  const [, secondTabId] = await leftTabIds(page);
+  await waitForActiveLeftTabReady(page, secondTabId);
+  await expect.poll(async () => {
+    const workspace = await readEditorWorkspace(page);
+    const sidecarId = workspace.tabsById[firstTabId].sidecarTabId!;
+    return workspace.tabsById[sidecarId]?.sidecarState?.surfaceMode;
+  }, { timeout: 5_000 }).toBe('compare');
+  await expect(page.getByTestId('graph-surface-graph')).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByTestId('monaco-right-editor')).toHaveCount(0);
+
+  await page.getByTestId('graph-surface-compare').click();
+  await expect(page.getByTestId('monaco-right-editor')).toBeVisible({ timeout: 5_000 });
+  await setMonacoValue(page, 'right-editor', '{"compare":"two"}');
+  await expect.poll(async () => {
+    const workspace = await readEditorWorkspace(page);
+    const sidecarId = workspace.tabsById[firstTabId].sidecarTabId!;
+    return workspace.tabsById[sidecarId]?.sidecarState?.surfaceMode;
+  }, { timeout: 5_000 }).toBe('compare');
+
+  await openTab(page, firstTabId);
+  await waitForActiveLeftTabReady(page, firstTabId);
+  await expect.poll(async () => (await readEditorWorkspace(page)).tabsById[firstTabId].sidecarTabId).toBe(firstSidecarTabId);
+  await expect.poll(async () => {
+    const workspace = await readEditorWorkspace(page);
+    const sidecarId = workspace.tabsById[firstTabId].sidecarTabId!;
+    return workspace.tabsById[sidecarId]?.sidecarState?.surfaceMode;
+  }, { timeout: 5_000 }).toBe('compare');
+  await expect(page.getByTestId('graph-surface-compare')).toHaveAttribute('aria-selected', 'true');
+  await expect.poll(async () => JSON.parse(await getMonacoValue(page, 'right-editor')).compare, { timeout: 5_000 }).toBe('one');
+
+  await openTab(page, secondTabId);
+  await waitForActiveLeftTabReady(page, secondTabId);
+  await expect(page.getByTestId('graph-surface-compare')).toHaveAttribute('aria-selected', 'true');
+  await expect.poll(async () => JSON.parse(await getMonacoValue(page, 'right-editor')).compare, { timeout: 5_000 }).toBe('two');
+});
+
 test('tab rename keeps the display width and exposes active editing state', async ({ page }) => {
   const [tabId] = await leftTabIds(page);
   const tab = page.locator(`[data-testid="editor-tab"][data-tab-id="${tabId}"]`);
@@ -110,14 +168,10 @@ test('tab rename keeps the display width and exposes active editing state', asyn
   await renameInput.press('Escape');
 });
 
-test('bottom file menu exposes rename and close actions', async ({ page }) => {
+test('bottom tab strip exposes rename and close actions', async ({ page }) => {
   const [firstTabId] = await leftTabIds(page);
-  await page.getByTestId('tab-switcher').click();
-  await page.getByTestId(`editor-tab-actions-${firstTabId}`).click();
-  await expect(page.getByTestId(`editor-tab-actions-menu-${firstTabId}`)).toBeVisible();
-  await page.getByTestId(`editor-tab-action-rename-${firstTabId}`).click();
-
-  const renameInput = page.getByTestId(`editor-tab-rename-${firstTabId}`);
+  await page.getByTestId(`tab-open-${firstTabId}`).dblclick();
+  const renameInput = page.getByTestId(`tab-rename-${firstTabId}`);
   await renameInput.fill('Renamed from file menu');
   await renameInput.press('Enter');
   await expect.poll(async () => (await readEditorWorkspace(page)).tabsById[firstTabId]?.name, { timeout: 5_000 }).toBe('Renamed from file menu');
@@ -125,10 +179,8 @@ test('bottom file menu exposes rename and close actions', async ({ page }) => {
   await page.getByTestId('new-tab-button').click();
   await expect.poll(async () => (await leftTabIds(page)).length, { timeout: 5_000 }).toBe(2);
   const [, secondTabId] = await leftTabIds(page);
-  await page.getByTestId('tab-switcher').click();
-  await page.getByTestId(`editor-tab-actions-${secondTabId}`).click();
   page.once('dialog', (dialog) => void dialog.accept());
-  await page.getByTestId(`editor-tab-action-close-${secondTabId}`).click();
+  await page.getByTestId(`tab-close-${secondTabId}`).click();
   await expect.poll(async () => await leftTabIds(page), { timeout: 5_000 }).toEqual([firstTabId]);
 });
 
@@ -190,6 +242,14 @@ test('restores a persisted multi-tab session before the editor accepts tab comma
   });
   await expect.poll(async () => getMonacoValue(page, 'source-editor'), { timeout: 5_000 }).toBe('{"restored":2}');
   await expect.poll(async () => {
+    const workspace = await readEditorWorkspace(page);
+    return workspace.tabOrder.every((tabId) => {
+      const main = workspace.tabsById[tabId];
+      const sidecar = main?.sidecarTabId ? workspace.tabsById[main.sidecarTabId] : null;
+      return sidecar?.role === 'sidecar' && sidecar.ownerMainTabId === tabId;
+    });
+  }, { timeout: 5_000 }).toBe(true);
+  await expect.poll(async () => {
     const [workspace, state] = await Promise.all([readEditorWorkspace(page), readEditorState(page)]);
     return state.documentKey === workspace.tabsById[workspace.activeTabId]?.documentKey;
   }, { timeout: 5_000 }).toBe(true);
@@ -210,17 +270,20 @@ test('closing tabs removes only left tabs and never lists the right sidecar tab'
 
   await expect.poll(async () => {
     const workspace = await readEditorWorkspace(page);
+    const sidecarId = workspace.tabsById[secondTabId]?.sidecarTabId;
     return {
       leftTabs: workspace.tabOrder,
       right: workspace.paneTabIds.right,
       sidecarRole: workspace.paneTabIds.right ? workspace.tabsById[workspace.paneTabIds.right]?.role : null,
+      owner: sidecarId ? workspace.tabsById[sidecarId]?.ownerMainTabId : null,
     };
   }, { timeout: 5_000 }).toEqual({
     leftTabs: [firstTabId, secondTabId],
-    right: 'tab-sidecar',
+    right: (await readEditorWorkspace(page)).tabsById[secondTabId].sidecarTabId,
     sidecarRole: 'sidecar',
+    owner: secondTabId,
   });
-  await expect(page.getByTestId('tab-open-tab-sidecar')).toHaveCount(0);
+  await expect(page.getByTestId(`tab-open-${(await readEditorWorkspace(page)).tabsById[secondTabId].sidecarTabId}`)).toHaveCount(0);
 
   page.once('dialog', (dialog) => {
     expect(dialog.message()).toContain('without saving local changes');
@@ -232,10 +295,13 @@ test('closing tabs removes only left tabs and never lists the right sidecar tab'
 
   const state = await readEditorState(page);
   expect(state.sourceText).not.toBe('{"right":true}');
-  expect((await readEditorWorkspace(page)).tabsById['tab-sidecar'].sourceText).toBe('{"right":true}');
+  const remainingWorkspace = await readEditorWorkspace(page);
+  const remainingSidecarId = remainingWorkspace.tabsById[secondTabId].sidecarTabId!;
+  expect(remainingWorkspace.tabsById[remainingSidecarId]).toMatchObject({ ownerMainTabId: secondTabId });
+  expect(JSON.parse(remainingWorkspace.tabsById[remainingSidecarId]!.sourceText)).toEqual({ right: true });
 });
 
-test('closing the last left tab creates a new blank primary and retains the sidecar', async ({ page }) => {
+test('closing the last left tab creates a new blank primary and a fresh sidecar', async ({ page }) => {
   await setEditorContent(page, { language: 'json', sourceText: '{"left":1}' });
   const [closedTabId] = await leftTabIds(page);
   await page.getByTestId('graph-surface-compare').click();
@@ -251,8 +317,9 @@ test('closing the last left tab creates a new blank primary and retains the side
   expect(workspace.activeTabId).toBe(replacementId);
   expect(workspace.primaryTabId).toBe(replacementId);
   expect(workspace.tabsById[replacementId]).toMatchObject({ sourceText: '', role: 'primary' });
-  expect(workspace.paneTabIds.right).toBe('tab-sidecar');
-  expect(workspace.tabsById['tab-sidecar']).toMatchObject({ role: 'sidecar', sourceText: '{"right":true}' });
+  const replacementSidecarId = workspace.tabsById[replacementId].sidecarTabId!;
+  expect(workspace.paneTabIds.right).toBe(replacementSidecarId);
+  expect(workspace.tabsById[replacementSidecarId]).toMatchObject({ role: 'sidecar', ownerMainTabId: replacementId, sourceText: '' });
   await expect.poll(async () => getMonacoValue(page, 'source-editor'), { timeout: 5_000 }).toBe('');
 });
 

@@ -1,23 +1,16 @@
-import { writable } from 'svelte/store';
+import { derived, type Readable } from 'svelte/store';
+import { editorWorkspace } from './workspace-store';
+import type { CompareOutcomeState } from './editor-workspace';
 
-export type CompareState =
-  | { kind: 'none' }
-  | { kind: 'equal'; mode: 'tree' | 'text' }
-  | { kind: 'different'; mode: 'tree' | 'text' };
-
-type CompareOutcome = {
-  equal: boolean;
-  mode: 'tree' | 'text';
-};
+export type CompareState = CompareOutcomeState;
 
 export const initialCompareState: CompareState = { kind: 'none' };
 
-export const compareState = writable<CompareState>(initialCompareState);
-
-export function setCompareOutcome(outcome: CompareOutcome): void {
-  compareState.set(outcome.equal ? { kind: 'equal', mode: outcome.mode } : { kind: 'different', mode: outcome.mode });
-}
-
-export function clearCompareState(): void {
-  compareState.set(initialCompareState);
-}
+/** Read-only projection of the visible pair. Compare mutations use sidecar-tab-state. */
+export const compareState: Readable<CompareState> = derived(editorWorkspace, ($workspace) => {
+  const main = $workspace.tabsById[$workspace.activeTabId];
+  const sidecar = main?.sidecarTabId ? $workspace.tabsById[main.sidecarTabId] : null;
+  return sidecar?.role === 'sidecar' && sidecar.ownerMainTabId === main?.id
+    ? sidecar.sidecarState?.compare.outcome ?? initialCompareState
+    : initialCompareState;
+});

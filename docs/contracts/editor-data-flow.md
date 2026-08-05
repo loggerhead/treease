@@ -1,5 +1,5 @@
 ---
-summary: "Core data-flow constraints, scenario flows, and core entity relationships for the primary document."
+summary: "Core data-flow constraints and the paired main-document/right-side entity flows."
 read_when:
   - The task involves primary-document authority, sourceText, snapshots, workspace, or editor/store/runtime relationships
   - You need to understand the primary-document path from a data-flow perspective
@@ -7,13 +7,18 @@ read_when:
 
 # Editor Data Flow Contract
 
-This document explains Treease's primary-document path: where text authority resides, how commits advance, which state the frontend may retain, and which semantics may only come from the runtime.
+This document explains Treease's primary-document path and paired right-side
+state path: where authority resides, how commits advance, which state the
+frontend may retain, and which semantics may only come from the runtime.
 
-It describes only the primary-document path:
+It describes the two coordinated paths:
 
 - Core data-flow constraints
 - Data flows for typical product scenarios
 - Core entity relationships directly related to the data flow
+
+The right-side path owns only tab-local Graph, Navigator, Compare, and viewport
+state. It never creates a second authority for main-document source text.
 
 It does not cover local implementation details, specific component decomposition, or helper names.
 
@@ -56,6 +61,36 @@ The visible interaction and rendering state for Editor / Graph.
 ### View Runtime Operation Lifecycle
 
 `View Runtime Operation Lifecycle` consolidates freshness, stale-result discard, resource cleanup, and UI landing for asynchronous Web operations. It consumes a stable target (`tabId`, `documentKey`, revision, language, resident Editor Model, and operation generation), but does not produce or interpret `DocumentSnapshot`.
+
+### Sidecar Tab
+
+A sidecar is a normal workspace tab entity in the same `TabId` namespace as its
+paired main tab. Explicit bidirectional fields define the pair; `role` only
+controls projection: the main tab appears in left `tabOrder`, while the sidecar
+is the right-pane state entity.
+
+The main tab retains `sourceText` and `DocumentSnapshot` authority. Its sidecar
+owns surface mode, Graph viewport and selection, Tree Path and Column Navigator
+state, plus Compare input/language/outcome/scroll. A sidecar must never become a
+second owner of main `sourceText`.
+
+### TabTarget
+
+Every async operation captures one target:
+
+```ts
+type TabTarget = {
+  tabId: TabId;
+  documentKey: string;
+  generation: number;
+  revision: number;
+};
+```
+
+Editor Model and Document Runtime operations target the main tab. Graph,
+Navigator, Compare, viewport, search preview, and right-pane restore operations
+target the sidecar. A relationship may be resolved before starting an operation,
+but a running operation never redirects its target by rereading `activeTabId`.
 
 ## Core Entity Relationships
 
@@ -118,6 +153,31 @@ The semantics of `DocumentSnapshot`, `SnapshotReady`, `ParseFailed`, and clear a
 - The Rust `Document Runtime` still owns authoritative freshness and the semantics of `DocumentSnapshot`, `SnapshotReady`, `ParseFailed`, and snapshot-bound reads; the Web operation lifecycle only decides whether an old visible result may land.
 - Synchronous readiness / request correlation may retain a local requestId, but must no longer own freshness for asynchronous stale cleanup or UI landing.
 - `FreshnessScope` may still serve local one-shot queries that own no resources and have no terminal UI landing, such as local hover, search, or immediate value parsing. They do not create parallel operation authority or replace the View Runtime operation lifecycle.
+
+### Sidecar operation lifecycle
+
+```text
+Graph / Navigator / Compare event
+  → capture sidecar TabTarget
+  → tab-local sidecar facade
+  → document-current check
+  → target sidecar state
+  → visible-current check
+  → current Graph / Monaco / toast projection
+```
+
+- **document-current** requires the captured sidecar id, document key,
+  generation, and revision to match. A tab switch alone does not invalidate it,
+  so an invisible sidecar may retain completed state.
+- **visible-current** additionally requires the sidecar to be the active main
+  tab's right-pane projection. Only then may a result alter DOM, focus, scroll,
+  loading, or notifications.
+- Main-document replacement or pair close changes/removes the sidecar target,
+  so late results are rejected. Hidden DOM is never a background state holder.
+
+`sidecar-tab-state` is the sole mutation facade for paired right-pane state. UI
+adapters report facts with an explicit target; they do not assemble `sidecarState`
+or write through an active-sidecar generic writable store.
 
 ## Product Scenario Data Flows
 

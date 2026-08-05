@@ -13,7 +13,7 @@ type Slices = NavigationEntitySlices & {
 function createHarness() {
   const store = createTabNavigationStore<Slices>({
     workspaceId: 'workspace',
-    initialTabs: [{ id: 'tab', documentKey: 'document', revision: 1 }],
+    initialTabs: [{ id: 'tab', documentKey: 'document', generation: 0, revision: 1 }],
     createEntityState: () => ({ editorState: null, graphState: null, navigatorState: null, searchState: { previewId: null } }),
   });
   const target = store.getTarget('tab')!;

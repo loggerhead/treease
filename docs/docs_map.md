@@ -145,6 +145,8 @@ Do not edit it by hand; run `pnpm docs:map:gen`.
   - H3: Active Document Context
   - H3: View Runtime
   - H3: View Runtime Operation Lifecycle
+  - H3: Sidecar Tab
+  - H3: TabTarget
   - H2: Core Entity Relationships
   - H2: Core Constraints
   - H3: Text Authority
@@ -152,6 +154,7 @@ Do not edit it by hand; run `pnpm docs:map:gen`.
   - H3: Semantic Authority
   - H3: Binding Authority
   - H3: View Runtime operation lifecycle
+  - H3: Sidecar operation lifecycle
   - H2: Product Scenario Data Flows
   - H3: 1. User directly edits the primary document
   - H3: 2. Programmatic whole-document replacement

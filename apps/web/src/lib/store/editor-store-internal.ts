@@ -31,7 +31,6 @@ import {
   emitEditorMutation as emitDocumentSessionEditorMutation,
 } from './document-session-store';
 import {
-  syncSidecarLanguageFromPrimary,
   type EditorWorkspaceTab,
   type EditorWorkspaceTabPatch,
   type WorkspaceEditorTabInput,
@@ -43,17 +42,15 @@ import {
   clearWorkspaceSnapshotBinding,
   cloneWorkspaceStateForRead,
   closeWorkspaceTabTransitionFromEditor as closeWorkspaceTabInWorkspace,
-  ensureDetachedSidecarWorkspaceTab,
-  ensureSidecarWorkspaceTab,
+  ensureColumnDetailDraftWorkspaceTab,
   getWorkspaceRawState,
   getWorkspaceSnapshotId as getWorkspaceSnapshotIdState,
   getWorkspaceState,
   getWorkspaceTabSummaries as getWorkspaceTabSummariesState,
   initWorkspaceFromPrimaryTab as initWorkspaceFromPrimaryTabState,
   initialWorkspaceState,
-  removeDetachedSidecarWorkspaceTab,
+  removeColumnDetailDraftWorkspaceTab,
   registerWorkspaceCoordinator,
-  syncSidecarWorkspaceLanguageFromPrimary,
   setWorkspaceState,
   updateWorkspaceTab as updateWorkspaceTabState,
   workspaceStore,
@@ -563,10 +560,7 @@ function createEditorStore() {
         updateState((s) => {
           const nextState = mirrorPrimaryWorkspaceTab({ ...s, languageId: lang }, { languageId: lang });
           setDocumentSessionLanguageId(lang);
-          return {
-            ...nextState,
-            workspace: syncSidecarLanguageFromPrimary(nextState.workspace),
-          };
+          return nextState;
         }),
       incrementCompareEditToken: () => setCompareEditToken(getDocumentSessionState().compareEditToken + 1),
       incrementEditorRevision: () =>
@@ -621,18 +615,15 @@ function createEditorStore() {
           languageId: getWorkspaceState().tabsById[getWorkspaceState().activeTabId]?.languageId ?? 'json',
         }),
       getWorkspaceTabSummaries: () => getWorkspaceTabSummariesState(),
-      ensureSidecarWorkspaceTab: (payload: { id: string; name: string; sourceText: string }) =>
-        ensureSidecarWorkspaceTab(payload),
-      ensureDetachedSidecarWorkspaceTab: (payload: { id: string; name: string; sourceText: string }) =>
-        ensureDetachedSidecarWorkspaceTab(payload),
-      removeDetachedSidecarWorkspaceTab: (tabId: string) => removeDetachedSidecarWorkspaceTab(tabId),
+      ensureColumnDetailDraftWorkspaceTab: (payload: { id: string; name: string; sourceText: string }) =>
+        ensureColumnDetailDraftWorkspaceTab(payload),
+      removeColumnDetailDraftWorkspaceTab: (tabId: string) => removeColumnDetailDraftWorkspaceTab(tabId),
       updateWorkspaceTab: (tabId: string, patch: EditorWorkspaceTabPatch) => updateWorkspaceTabState(tabId, patch),
       bindWorkspaceSnapshot: (payload: { documentKey: string; revision: number; snapshotId: SnapshotId | null | undefined }) =>
         bindWorkspaceSnapshotState(payload),
       clearWorkspaceSnapshot: (documentKey: string, snapshotId?: SnapshotId | null) =>
         clearWorkspaceSnapshotBinding(documentKey, snapshotId),
       getWorkspaceSnapshotId: (documentKey: string): SnapshotId | null => getWorkspaceSnapshotIdState(documentKey),
-      syncSidecarLanguageFromPrimary: () => syncSidecarWorkspaceLanguageFromPrimary(),
       clearJsonBlockSelectionForDocument: (documentKey: string) =>
         updateState((s) => {
           clearJsonBlockSelectionForDocument(documentKey);

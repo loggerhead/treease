@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 
 import { initialFullEditUiState } from '../store/full-edit-ui-state';
 import { initialTempModel } from '../store/graph-selection-store';
-import { createEditorWorkspaceState, ensureSidecarTab } from '../store/editor-workspace';
+import { createEditorWorkspaceState } from '../store/editor-workspace';
+import { remapPairedSidecarForFixture } from '../store/editor-workspace-test-fixtures';
 import { workspaceSessionFromWorkspace } from '../workspace-host/workspace-session';
 import { promoteSharedWorkspaceTopology } from './share-workspace-topology';
 
@@ -64,7 +65,7 @@ describe('share workspace topology promotion', () => {
   });
 
   it('keeps the runtime sidecar out of tab order and session projection', () => {
-    const workspace = ensureSidecarTab(ephemeralWorkspace(), {
+    const workspace = remapPairedSidecarForFixture(ephemeralWorkspace(), {
       id: 'share-sidecar',
       name: 'Preview',
       languageId: 'json',

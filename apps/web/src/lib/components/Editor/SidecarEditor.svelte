@@ -15,15 +15,24 @@
   import { callSharedWasmWorker, getSharedWasmWorkerClient } from '../../wasm/wasm-worker-singleton';
   import type { DocumentAnalysisResult } from '../../../shared/worker-protocol/protocol';
   import { getActiveTempModelSnapshot } from '../../store/graph-selection-store';
+  import { tabTargetStatus, type TabTarget } from '../../store/tab-target';
+  import {
+    commitSidecarCompareEdit,
+    commitSidecarInput,
+    captureSidecarTarget,
+    isVisibleSidecarTarget,
+    readSidecarTempModel,
+    updateSidecarCompareLanguage,
+    updateSidecarTempModel as updateTargetSidecarTempModel,
+  } from '../../store/sidecar-tab-state';
   import {
     editorWorkspace,
-    ensureDetachedSidecarWorkspaceTab,
-    ensureSidecarWorkspaceTab,
+    ensureColumnDetailDraftWorkspaceTab,
     getWorkspaceTab,
-    removeDetachedSidecarWorkspaceTab,
+    removeColumnDetailDraftWorkspaceTab,
     updateWorkspaceTab,
   } from '../../store/workspace-store';
-  import { clearWorkspaceSnapshotBinding, getWorkspaceSnapshotId } from '../../store/workspace-store';
+  import { clearWorkspaceSnapshotBinding, getWorkspaceSnapshotId, getWorkspaceState } from '../../store/workspace-store';
   import { monacoChangesToDocumentTextEdits, type MonacoTextChange } from '../../../shared/document-text-edits';
   import { markSidecarRequested, markSidecarSettled } from '../../test-bridge/runtime-readiness';
   import { applyDocumentAnalysisToEditor } from './editor-analysis-apply';
@@ -34,6 +43,7 @@
   import { createTreeaseMonacoEditorOptions } from './editor-options';
   import { createEditorPlaceholderController } from './editor-placeholder';
   import { fileDropFeedback } from '../ui/file-drop-feedback';
+  import { createContentTransactionEngine, type ContentFormatOptions } from './content-transaction-engine';
 
   export let tabId = 'tab-sidecar';
   export let tabName = 'Right Editor';
@@ -53,8 +63,8 @@
   export let hideLineNumbers = false;
   export let readOnly = false;
   export let placeholderTitle = 'Start typing, or open a file';
-  export let onScroll: (payload: { scrollTop: number; scrollLeft: number }) => void = () => {};
-  export let onContentChange: (text: string) => void = () => {};
+  export let onScroll: (payload: { tabId: string; scrollTop: number; scrollLeft: number }) => void = () => {};
+  export let onContentChange: (payload: { tabId: string; text: string }) => void = () => {};
   export let onEditorBlur: (text: string) => void = () => {};
   export let onRequestImportFile: (payload: {
     sourceFormat: string;
@@ -62,7 +72,7 @@
     accept: string[];
   }) => void | Promise<void> = async () => {};
 
-  // A detached sidecar is the Column Detail Editor: it owns a Monaco draft,
+  // A Column Detail draft owns a Monaco draft,
   // but its path is part of the primary document. Its writes must therefore
   // return through the graph planner instead of creating a second document.
   const isPrimaryDocumentDraft = () => !attachToPane;
@@ -82,6 +92,8 @@
   let editor: Monaco.editor.IStandaloneCodeEditor | null = null;
   let model: Monaco.editor.ITextModel | null = null;
   let cleanupTestHook: (() => void) | null = null;
+  let boundRuntimeHookId = '';
+  const ownedColumnDetailDraftTabIds = new Set<string>();
   let diffDecorations: Monaco.editor.IEditorDecorationsCollection | null = null;
   let diffBlankZoneIds: string[] = [];
   let runtimeToken = 0;
@@ -102,6 +114,7 @@
   let detachedDraftText = sourceText ?? '';
   let detachedDraftRevision = 0;
   let detachedDraftBaseline = {
+    tabId,
     documentKey: projectedDocumentKey,
     snapshotId: projectedSnapshotId,
     revision: projectedRevision,
@@ -121,6 +134,9 @@
   $: editor?.updateOptions({ readOnly });
 
   const fullEditSink = createWorkspaceTabFullEditSink(tabId);
+  const sidecarContentEngine = createContentTransactionEngine(
+    (method, input) => callSharedWasmWorker(method, input as Record<string, unknown>),
+  );
 
   const editorPlaceholder = createEditorPlaceholderController({
     getEditor: () => editor,
@@ -196,33 +212,53 @@
 
   function currentTempModel() {
     if (isPrimaryDocumentDraft()) return getActiveTempModelSnapshot();
+    if (attachToPane) {
+      const pairedTarget = currentPairedTarget();
+      return pairedTarget ? readSidecarTempModel(pairedTarget) ?? getActiveTempModelSnapshot() : getActiveTempModelSnapshot();
+    }
     return getWorkspaceTab(tabId)?.tempModel ?? getActiveTempModelSnapshot();
+  }
+
+  /** A local edit advances only this sidecar revision; a new generation must never be adopted by an old runtime. */
+  function currentPairedTarget(): TabTarget | null {
+    const current = getWorkspaceTab(tabId);
+    return current?.role === 'sidecar' && current.ownerMainTabId ? captureSidecarTarget(tabId) : null;
   }
 
   function updateSidecarTempModel(updater: (current: any) => any): void {
     if (isPrimaryDocumentDraft()) return;
+    const pairedTarget = currentPairedTarget();
+    if (pairedTarget) {
+      updateTargetSidecarTempModel(pairedTarget, updater);
+      return;
+    }
+    if (attachToPane) return;
     updateWorkspaceTab(tabId, { tempModel: updater(currentTempModel()) });
   }
 
-  function ensureWorkspaceSidecarTab(sourceText: string): void {
+  function ensureColumnDetailDraft(sourceText: string): void {
     if (isPrimaryDocumentDraft()) return;
     if (attachToPane) {
-      ensureSidecarWorkspaceTab({
-        id: tabId,
-        name: tabName,
-        sourceText,
-      });
+      // Paired sidecars are created atomically with their main tab. Creating
+      // one from this mounted editor would reintroduce an unowned right pane.
       return;
     }
-    ensureDetachedSidecarWorkspaceTab({
+    ensureColumnDetailDraftWorkspaceTab({
       id: tabId,
       name: tabName,
       sourceText,
     });
+    ownedColumnDetailDraftTabIds.add(tabId);
   }
 
   function setWorkspaceSidecarLanguage(languageId: SupportedEditorLanguageId): void {
     if (isPrimaryDocumentDraft()) return;
+    const pairedTarget = currentPairedTarget();
+    if (pairedTarget) {
+      updateSidecarCompareLanguage(pairedTarget, languageId);
+      return;
+    }
+    if (attachToPane) return;
     updateWorkspaceTab(tabId, { languageId });
   }
 
@@ -232,6 +268,14 @@
       detachedDraftBaseline = { ...detachedDraftBaseline, pending: true };
       return detachedDraftRevision;
     }
+    const pairedTarget = currentPairedTarget();
+    if (pairedTarget) {
+      return commitSidecarCompareEdit(pairedTarget, {
+        languageId: activeLanguage,
+        sourceText: model?.getValue() ?? currentTempModel().scratchText,
+      }) ?? (getWorkspaceTab(tabId)?.revision ?? 0);
+    }
+    if (attachToPane) return getWorkspaceTab(tabId)?.revision ?? 0;
     const current = getWorkspaceTab(tabId);
     const revision = (current?.revision ?? 0) + 1;
     updateWorkspaceTab(tabId, {
@@ -242,6 +286,7 @@
   }
 
   function projectionIsNewerThanDetachedDraft(): boolean {
+    if (tabId !== detachedDraftBaseline.tabId) return true;
     if (projectedDocumentKey !== detachedDraftBaseline.documentKey) return true;
     return (
       projectedRevision > detachedDraftBaseline.revision &&
@@ -261,6 +306,7 @@
   function acceptDetachedProjection(value: string): void {
     detachedDraftText = value;
     detachedDraftBaseline = {
+      tabId,
       documentKey: projectedDocumentKey,
       snapshotId: projectedSnapshotId,
       revision: projectedRevision,
@@ -351,9 +397,13 @@
       detachedDraftText = value;
       return;
     }
+    const pairedTarget = currentPairedTarget();
+    // A paired sidecar is persisted exclusively by the sidecar-input sink.
+    // In particular, it must never clear a workspace snapshot binding.
+    if (pairedTarget || attachToPane) return;
     const documentKey = sidecarDocumentKey();
     const shouldClearSnapshot = options.clearSnapshot ?? true;
-    updateWorkspaceTab(tabId, {
+    if (!attachToPane) updateWorkspaceTab(tabId, {
       languageId: activeLanguage,
       sourceText: value,
       ...(shouldClearSnapshot ? { snapshotId: null } : {}),
@@ -415,12 +465,19 @@
     request: { requestId: number; documentKey: string },
     value: string,
     nextLanguage: SupportedEditorLanguageId,
+    operationTarget: TabTarget | null,
   ): Promise<void> {
     syncModelTextIfNeeded(value);
     externalSync.acceptExternalText(value);
-    settleSidecarReadinessRequest(request, value);
-    await runFullEditForCurrentText('whole-document-replacement', value, nextLanguage);
-    settleSidecarReadinessRequest(request, value);
+    if (operationTarget) {
+      await runPairedSidecarTransaction(operationTarget, value, nextLanguage, true);
+    } else {
+      await runFullEditForCurrentText('whole-document-replacement', value, nextLanguage);
+    }
+    // The transaction may commit a canonical formatted form. Read the
+    // explicit sidecar entity (never the active tab) to acknowledge exactly
+    // the value that reached this channel's sink.
+    settleSidecarReadinessRequest(request, getWorkspaceTab(tabId)?.sourceText ?? value);
   }
 
   function setModelLanguage(nextLanguage: SupportedEditorLanguageId): void {
@@ -468,10 +525,61 @@
     });
   }
 
+  function sidecarFormattingOptions(): ContentFormatOptions {
+    return {
+      ...$settings.formatting,
+      nest: $settings.parser.enableNest,
+    };
+  }
+
+  async function runPairedSidecarTransaction(
+    operationTarget: TabTarget,
+    text: string,
+    nextLanguage: SupportedEditorLanguageId,
+    format: boolean,
+  ): Promise<void> {
+    const submittedText = text;
+    await sidecarContentEngine.run(
+      {
+        channel: 'sidecar-input',
+        language: nextLanguage,
+        text,
+        format: format ? sidecarFormattingOptions() : null,
+      },
+      operationTarget,
+      {
+        isDocumentCurrent: (candidate) => tabTargetStatus(getWorkspaceState(), candidate) === 'current',
+        commit: (candidate, value) => commitSidecarInput(candidate, {
+          languageId: value.language,
+          sourceText: value.text,
+        }),
+        isVisibleCurrent: isVisibleSidecarTarget,
+        project: (committedTarget, result) => {
+          if (!model) return;
+          activeLanguage = result.language;
+          setModelLanguage(result.language);
+          if (model.getValue() === submittedText && result.text !== submittedText) {
+            setModelValueSilently(model, result.text, () => {
+              syncLastModelSnapshot();
+              externalSync.acceptExternalText(result.text);
+            });
+          }
+          if (model.getValue() !== result.text) return;
+          setModelDocumentKey(model, committedTarget.documentKey);
+          primeSemanticTokensForDocument(
+            committedTarget.documentKey,
+            new Uint32Array(result.semanticTokens).buffer,
+          );
+          refreshSemanticTokensForLanguage(result.language);
+        },
+      },
+    );
+  }
+
   async function ensureEditor(): Promise<void> {
     if (editor || !container) return;
     const existingText = isPrimaryDocumentDraft() ? sourceText ?? detachedDraftText : getWorkspaceTab(tabId)?.sourceText ?? '';
-    ensureWorkspaceSidecarTab(existingText);
+    ensureColumnDetailDraft(existingText);
     void getSharedWasmWorkerClient().catch(() => {});
     const token = ++runtimeToken;
     const freshness = createFreshnessScope({ token }, () => ({ token: runtimeToken }));
@@ -512,7 +620,7 @@
     editorPlaceholder.update();
     await tick();
     editorPlaceholder.refresh();
-    cleanupTestHook = attachMonacoTestHook(editor, runtimeHookId, monaco.editor.tokenize);
+    bindTestHook();
     editor.onDidLayoutChange(() => editorPlaceholder.refresh());
     editor.onDidChangeModelContent((event) => {
       const activeModel = model;
@@ -543,9 +651,10 @@
       lastModelLength = nextText.length;
       lastModelText = nextText;
       if (wholeDocumentReplacement) {
-        updateSidecarSourceText(nextText, { clearSnapshot: true });
         if (!isPrimaryDocumentDraft()) {
-          void runFullEditForCurrentText('whole-document-replacement', nextText, requestLanguage);
+          const operationTarget = currentPairedTarget();
+          if (operationTarget) void runPairedSidecarTransaction(operationTarget, nextText, requestLanguage, true);
+          else void runFullEditForCurrentText('whole-document-replacement', nextText, requestLanguage);
         } else {
           commitSidecarEditorState();
           void refreshDetachedDraftSemanticTokens(
@@ -555,7 +664,13 @@
             detachedDraftRevision,
           );
         }
-        onContentChange(nextText);
+        onContentChange({ tabId, text: nextText });
+        return;
+      }
+      const pairedTarget = !isPrimaryDocumentDraft() ? currentPairedTarget() : null;
+      if (pairedTarget) {
+        void runPairedSidecarTransaction(pairedTarget, nextText, requestLanguage, false);
+        onContentChange({ tabId, text: nextText });
         return;
       }
       updateSidecarSourceText(nextText, { clearSnapshot: false });
@@ -615,10 +730,10 @@
           detachedDraftRevision,
         );
       }
-      onContentChange(nextText);
+      onContentChange({ tabId, text: nextText });
     });
     editor.onDidScrollChange((event) => {
-      onScroll({ scrollTop: event.scrollTop, scrollLeft: event.scrollLeft });
+      onScroll({ tabId, scrollTop: event.scrollTop, scrollLeft: event.scrollLeft });
     });
     editor.onDidFocusEditorText(() => {
       externalSync.focus();
@@ -627,6 +742,13 @@
       externalSync.blur();
       onEditorBlur(model?.getValue() ?? '');
     });
+  }
+
+  function bindTestHook(): void {
+    if (!editor || !monaco || boundRuntimeHookId === runtimeHookId) return;
+    cleanupTestHook?.();
+    cleanupTestHook = attachMonacoTestHook(editor, runtimeHookId, monaco.editor.tokenize);
+    boundRuntimeHookId = runtimeHookId;
   }
 
   export async function ensureReady(): Promise<void> {
@@ -690,17 +812,18 @@
     nextLanguage: SupportedEditorLanguageId = language,
   ): Promise<void> {
     activeLanguage = nextLanguage;
-    onContentChange(value);
-    ensureWorkspaceSidecarTab(value);
+    onContentChange({ tabId, text: value });
+    ensureColumnDetailDraft(value);
+    const operationTarget = currentPairedTarget();
     setWorkspaceSidecarLanguage(nextLanguage);
-    updateSidecarSourceText(value);
     const readinessRequest = beginSidecarReadinessRequest();
     await prepareSidecarSync(nextLanguage);
-    await finishSidecarSync(readinessRequest, value, nextLanguage);
+    await finishSidecarSync(readinessRequest, value, nextLanguage, operationTarget);
   }
 
   async function syncExternalSourceText(value: string, nextLanguage: SupportedEditorLanguageId = activeLanguage): Promise<void> {
-    ensureWorkspaceSidecarTab(value);
+    const operationTarget = currentPairedTarget();
+    ensureColumnDetailDraft(value);
     setWorkspaceSidecarLanguage(nextLanguage);
     const readinessRequest = beginSidecarReadinessRequest();
     await prepareSidecarSync(nextLanguage);
@@ -708,8 +831,8 @@
       settleSidecarReadinessRequest(readinessRequest, value);
       return;
     }
-    updateSidecarSourceText(value);
-    await finishSidecarSync(readinessRequest, value, nextLanguage);
+    if (!operationTarget) updateSidecarSourceText(value);
+    await finishSidecarSync(readinessRequest, value, nextLanguage, operationTarget);
   }
 
   async function runFullEditForCurrentText(
@@ -759,18 +882,26 @@
 
   $: if (language !== lastPropLanguage) {
     lastPropLanguage = language;
+    const languageChangedExternally = activeLanguage !== language;
     activeLanguage = language;
     sidecarAnalysisSyncToken += 1;
     setWorkspaceSidecarLanguage(activeLanguage);
-    if (model && monaco) {
+    if (model && monaco && languageChangedExternally) {
       setModelLanguage(activeLanguage);
-      void runFullEditForCurrentText('language-switch', undefined, activeLanguage);
+      const operationTarget = currentPairedTarget();
+      if (operationTarget) {
+        void runPairedSidecarTransaction(operationTarget, model.getValue(), activeLanguage, true);
+      } else {
+        void runFullEditForCurrentText('language-switch', undefined, activeLanguage);
+      }
     }
   }
 
   $: if (model && monaco && activeLanguage && model.getLanguageId() !== activeLanguage) {
     setModelLanguage(activeLanguage);
   }
+
+  $: if (editor && monaco && runtimeHookId) bindTestHook();
 
   $: if (model && !isPrimaryDocumentDraft() && sidecarTab && !suppressChange && sidecarTab.sourceText !== model.getValue()) {
     if (externalSync.shouldApplyExternalText(sidecarTab.sourceText, model.getValue())) {
@@ -784,6 +915,15 @@
   $: if (sourceText != null && (isPrimaryDocumentDraft() ? detachedDraftText : sidecarTab?.sourceText) !== sourceText && !suppressChange) {
     if (!isPrimaryDocumentDraft()) {
       void syncExternalSourceText(sourceText, activeLanguage);
+    } else if (tabId !== detachedDraftBaseline.tabId) {
+      // A Column Detail path is a distinct read projection even when it comes
+      // from the same main snapshot. Its text must replace the previous path's
+      // draft directly; external-sync protects edits within one projection only.
+      acceptDetachedProjection(sourceText);
+      externalSync.reset(sourceText);
+      syncModelTextIfNeeded(sourceText);
+      setModelDocumentKey(model, sidecarDocumentKey());
+      void refreshDetachedDraftSemanticTokens(model, sourceText, activeLanguage, detachedDraftRevision);
     } else if (mayApplyDetachedProjection(sourceText)) {
       acceptDetachedProjection(sourceText);
       void syncExternalSourceText(sourceText, activeLanguage);
@@ -807,13 +947,16 @@
     editorPlaceholder.dispose();
     cleanupTestHook?.();
     cleanupTestHook = null;
+    boundRuntimeHookId = '';
     editor?.dispose();
     editor = null;
     model?.dispose();
     model = null;
     fullEditController.dispose();
     if (destroyOnUnmount) {
-      removeDetachedSidecarWorkspaceTab(tabId);
+      for (const draftTabId of ownedColumnDetailDraftTabIds) {
+        removeColumnDetailDraftWorkspaceTab(draftTabId);
+      }
     }
   });
 </script>

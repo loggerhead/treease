@@ -7,7 +7,6 @@ import { initialFullEditUiState } from './full-edit-ui-state';
 import { initialTempModel } from './graph-selection-store';
 import {
   createEditorWorkspaceState,
-  syncSidecarLanguageFromPrimary,
   type EditorWorkspaceState,
   type EditorWorkspaceTab,
   type EditorWorkspaceTabPatch,
@@ -172,12 +171,9 @@ export function patchAuthorityActiveDocument(patch: ActiveDocumentPatch): void {
   updateAuthority((current) => {
     const active = getActiveTab(current);
     const next = patchActiveTab(current, patch);
-    const withSidecarLanguage = patch.languageId !== undefined
-      ? { ...next, workspace: syncSidecarLanguageFromPrimary(next.workspace) }
-      : next;
     return 'sourceText' in patch && patch.sourceText !== undefined && patch.sourceText !== active?.sourceText
-      ? { ...withSidecarLanguage, previousSourceText: active?.sourceText ?? current.previousSourceText }
-      : withSidecarLanguage;
+      ? { ...next, previousSourceText: active?.sourceText ?? current.previousSourceText }
+      : next;
   });
 }
 

@@ -89,8 +89,12 @@ pnpm test
 pnpm test:unit
 pnpm test:integration
 pnpm test:e2e
+pnpm test:full
+pnpm test:e2e:coverage
 
-cd ../../packages/core
+cd ../..
+pnpm test:coverage:core  # 需要先安装 cargo-llvm-cov
+cd packages/core
 cargo nextest run --locked
 
 cd ../../apps/cli

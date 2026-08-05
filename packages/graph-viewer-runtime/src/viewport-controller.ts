@@ -62,6 +62,7 @@ type CreateGraphViewportControllerOptions = {
   ) => void;
   updateRenderableProjection?: () => void;
   updateViewportOverlays: () => void;
+  onViewportStateChange?: (state: GraphViewportState | null) => void;
   getPanConstraintBounds?: () => GraphWorldBounds | null;
 };
 
@@ -112,6 +113,7 @@ export function createGraphViewportController(options: CreateGraphViewportContro
   function handleViewportMove(): void {
     clampViewportPanOffset();
     syncViewportOverlays();
+    options.onViewportStateChange?.(getViewportState());
   }
 
   function handleViewportZoom(): void {

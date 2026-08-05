@@ -315,7 +315,7 @@ describe('path-driven column navigator controller', () => {
     expect(controller.getActivePath()).toEqual(keyPath('alpha'));
   });
 
-  it('moves through every sibling while coalescing their graph reveals', async () => {
+  it('does not publish a sibling reveal when every rapid operation is superseded', async () => {
     installDocument(
       {
         '': readyPathValue('object', '{3}'),
@@ -337,19 +337,12 @@ describe('path-driven column navigator controller', () => {
     publishNavigation.mockClear();
     const stateCountBeforeMoves = states.length;
 
-    vi.useFakeTimers();
-    try {
-      const moves = Array.from({ length: 30 }, () => controller.moveSibling(1));
-      await Promise.all(moves);
-      expect(states.slice(stateCountBeforeMoves).filter((state) => state.isLoading)).toHaveLength(30);
-    expect(publishNavigation).not.toHaveBeenCalled();
-      await vi.advanceTimersByTimeAsync(48);
-    } finally {
-      vi.useRealTimers();
-    }
+    const moves = Array.from({ length: 30 }, () => controller.moveSibling(1));
+    await Promise.all(moves);
+    expect(states.slice(stateCountBeforeMoves).filter((state) => state.isLoading)).toHaveLength(30);
 
     expect(controller.getActivePath()).toEqual(keyPath('alpha'));
-    expect(publishNavigation).toHaveBeenCalledOnce();
+    expect(publishNavigation).not.toHaveBeenCalled();
   });
 
   it('keeps array sibling navigation inside the existing pane structure', async () => {

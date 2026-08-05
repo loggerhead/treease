@@ -1,7 +1,8 @@
 <script lang="ts">
 import { Cloud, CloudOff, CloudUpload, CircleAlert, LoaderCircle, Plus, X } from 'lucide-svelte'
   import type { CommandId } from '../command-registry'
-  import { activeTempModel } from '../store/graph-selection-store'
+  import { activeSidecarTempModel } from '../store/active-sidecar-state'
+  import { captureActiveSidecarTarget, updateSidecarTempModel } from '../store/sidecar-tab-state'
   import CommandPalette from './CommandPalette.svelte'
 
   type CloudSyncStatus = 'synced' | 'syncing' | 'pending' | 'error' | 'offline'
@@ -22,12 +23,13 @@ import { Cloud, CloudOff, CloudUpload, CircleAlert, LoaderCircle, Plus, X } from
   let renamedTabName = ''
   let commandQuery = ''
 
-  $: if ($activeTempModel && $activeTempModel.commandQuery !== commandQuery) commandQuery = $activeTempModel.commandQuery
+  $: if ($activeSidecarTempModel && $activeSidecarTempModel.commandQuery !== commandQuery) commandQuery = $activeSidecarTempModel.commandQuery
   $: directTabs = tabs
 
   function updateCommandQuery(value: string) {
     commandQuery = value
-    activeTempModel.update((current) => ({ ...current, commandQuery: value }))
+    const target = captureActiveSidecarTarget()
+    if (target) updateSidecarTempModel(target, (current) => ({ ...current, commandQuery: value }))
   }
 
   function beginTabRename(tab: { id: string; name: string }) {

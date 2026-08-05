@@ -16,12 +16,10 @@ import {
   closeWorkspaceTabTransition,
   createWorkspaceTabTransition,
   createEditorWorkspaceState,
-  ensureDetachedSidecarTab,
-  ensureSidecarTab,
+  ensureColumnDetailDraftTab,
   reinitializeWorkspaceFromPrimaryTab,
-  removeDetachedSidecarTab,
+  removeColumnDetailDraftTab,
   summarizeWorkspaceTabs,
-  syncSidecarLanguageFromPrimary,
   transitionWorkspaceTabDocument as transitionWorkspaceTabDocumentState,
   updateWorkspaceTab as patchWorkspaceTab,
   type EditorWorkspaceState,
@@ -112,6 +110,18 @@ export function cloneWorkspaceStateForWrite(workspace: EditorWorkspaceState): Ed
             })),
           },
           fullEditUiState: { ...tab.fullEditUiState },
+          sidecarState: tab.sidecarState
+            ? {
+                ...tab.sidecarState,
+                graph: { viewport: tab.sidecarState.graph.viewport ? { ...tab.sidecarState.graph.viewport } : null },
+                navigator: {
+                  ...tab.sidecarState.navigator,
+                  activePath: tab.sidecarState.navigator.activePath.map((segment) => ({ ...segment })),
+                  history: tab.sidecarState.navigator.history.map((path) => path.map((segment) => ({ ...segment }))),
+                },
+                compare: { ...tab.sidecarState.compare, outcome: { ...tab.sidecarState.compare.outcome } },
+              }
+            : undefined,
         },
       ]),
     ),
@@ -165,13 +175,13 @@ export function initWorkspaceFromPrimaryTab(payload: { id: string; name: string 
 
 export function createWorkspaceTabTransitionFromEditor(payload: WorkspaceEditorTabInput) {
   const result = createWorkspaceTabTransition(get(workspaceStore), payload);
-  if (result) setWorkspaceState(syncSidecarLanguageFromPrimary(result.workspace));
+  if (result) setWorkspaceState(result.workspace);
   return result;
 }
 
 export function activateWorkspaceTabTransitionFromEditor(tabId: string) {
   const result = activateWorkspaceTabTransition(get(workspaceStore), tabId);
-  if (result) setWorkspaceState(syncSidecarLanguageFromPrimary(result.workspace));
+  if (result) setWorkspaceState(result.workspace);
   return result;
 }
 
@@ -180,7 +190,7 @@ export function closeWorkspaceTabTransitionFromEditor(
   blank: { id: string; documentKey: string; name: string; languageId: SupportedEditorLanguageId },
 ) {
   const result = closeWorkspaceTabTransition(get(workspaceStore), tabId, blank);
-  if (result) setWorkspaceState(syncSidecarLanguageFromPrimary(result.workspace));
+  if (result) setWorkspaceState(result.workspace);
   return result;
 }
 
@@ -188,10 +198,10 @@ export function getWorkspaceTabSummaries(): EditorWorkspaceTabSummary[] {
   return summarizeWorkspaceTabs(get(workspaceStore));
 }
 
-export function ensureSidecarWorkspaceTab(payload: { id: string; name: string; sourceText: string }): void {
+export function ensureColumnDetailDraftWorkspaceTab(payload: { id: string; name: string; sourceText: string }): void {
   const session = getAuthorityDocumentSessionState();
   setWorkspaceState(
-    ensureSidecarTab(get(workspaceStore), {
+    ensureColumnDetailDraftTab(get(workspaceStore), {
       id: payload.id,
       name: payload.name,
       languageId: session.languageId,
@@ -200,20 +210,8 @@ export function ensureSidecarWorkspaceTab(payload: { id: string; name: string; s
   );
 }
 
-export function ensureDetachedSidecarWorkspaceTab(payload: { id: string; name: string; sourceText: string }): void {
-  const session = getAuthorityDocumentSessionState();
-  setWorkspaceState(
-    ensureDetachedSidecarTab(get(workspaceStore), {
-      id: payload.id,
-      name: payload.name,
-      languageId: session.languageId,
-      sourceText: payload.sourceText,
-    }),
-  );
-}
-
-export function removeDetachedSidecarWorkspaceTab(tabId: string): void {
-  setWorkspaceState(removeDetachedSidecarTab(get(workspaceStore), tabId));
+export function removeColumnDetailDraftWorkspaceTab(tabId: string): void {
+  setWorkspaceState(removeColumnDetailDraftTab(get(workspaceStore), tabId));
 }
 
 export function updateWorkspaceTab(tabId: string, patch: EditorWorkspaceTabPatch): void {
@@ -222,9 +220,10 @@ export function updateWorkspaceTab(tabId: string, patch: EditorWorkspaceTabPatch
     patchAuthorityActiveDocument(patch);
     return;
   }
-  const isSidecarTab = workspace.tabsById[tabId]?.role === 'sidecar';
+  const isNonMainDocumentDraft = workspace.tabsById[tabId]?.role === 'sidecar'
+    || workspace.tabsById[tabId]?.role === 'column-detail-draft';
   const { languageId: _ignoredLanguageId, ...patchWithoutLanguage } = patch;
-  setWorkspaceState(patchWorkspaceTab(workspace, tabId, isSidecarTab ? patch : patchWithoutLanguage));
+  setWorkspaceState(patchWorkspaceTab(workspace, tabId, isNonMainDocumentDraft ? patch : patchWithoutLanguage));
 }
 
 /** Applies an identity-checked document replacement to one left tab. */
@@ -245,10 +244,6 @@ export function bindWorkspaceSnapshot(payload: {
 
 export function clearWorkspaceSnapshotBinding(documentKey: string, snapshotId?: SnapshotId | null): void {
   clearAuthoritySnapshot(documentKey, snapshotId);
-}
-
-export function syncSidecarWorkspaceLanguageFromPrimary(): void {
-  setWorkspaceState(syncSidecarLanguageFromPrimary(get(workspaceStore)));
 }
 
 export function resetWorkspaceState(): void {

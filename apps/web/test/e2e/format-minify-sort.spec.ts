@@ -4,6 +4,7 @@ import {
   getMonacoValue,
   openCommandSearch,
   readEditorState,
+  readEditorWorkspace,
   setEditorContent,
   setMonacoPosition,
   setMonacoValue,
@@ -12,6 +13,12 @@ import {
   waitForMonacoHook,
   waitForSettingsReady,
 } from './utils';
+
+async function readActiveSidecarText(page: import('@playwright/test').Page): Promise<string> {
+  const workspace = await readEditorWorkspace(page);
+  const sidecarId = workspace.tabsById[workspace.activeTabId]?.sidecarTabId;
+  return sidecarId ? workspace.tabsById[sidecarId]?.sourceText ?? '' : '';
+}
 
 async function resetSettingsStore(page: import('@playwright/test').Page) {
   await page.evaluate(
@@ -148,7 +155,7 @@ test('runs yq preview from command search without overwriting source editor', as
   await page.getByRole('button', { name: 'Run', exact: true }).click();
 
   await expect
-    .poll(async () => (await readEditorState(page)).tempModel.scratchText, { timeout: 5_000 })
+    .poll(async () => readActiveSidecarText(page), { timeout: 5_000 })
     .toContain('Alice');
 
   await expect

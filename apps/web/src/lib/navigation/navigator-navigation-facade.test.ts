@@ -18,7 +18,7 @@ const path = (key: string): NavigationPath => [{ tag: 0, key, index: 0 }];
 function createHarness() {
   const store = createTabNavigationStore<Slices>({
     workspaceId: 'workspace',
-    initialTabs: [{ id: 'tab', documentKey: 'document', revision: 1 }],
+    initialTabs: [{ id: 'tab', documentKey: 'document', generation: 0, revision: 1 }],
     createEntityState: () => ({ editorState: null, graphState: null, navigatorState: initialNavigatorState, searchState: null }),
   });
   const port = { apply: vi.fn<(_: unknown) => Promise<NavigationResult>>().mockResolvedValue({ kind: 'applied' }) };

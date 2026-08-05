@@ -23,6 +23,9 @@ change, run:
 ```bash
 pnpm --dir apps/web check
 pnpm --dir apps/web test:unit
+pnpm test:full
+pnpm test:coverage:e2e
+pnpm test:coverage:core  # requires cargo-llvm-cov
 cd packages/core && cargo nextest run --locked
 cd ../../apps/cli && cargo nextest run --locked --lib
 ```

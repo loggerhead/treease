@@ -12,11 +12,12 @@
     sourceText,
   } from '../store/document-session-store';
   import {
-    activeTempModel,
-    getActiveTempModelSnapshot,
+    initialTempModel,
     treeState,
     type TempModel,
   } from '../store/graph-selection-store';
+  import { activeSidecarTempModel } from '../store/active-sidecar-state';
+  import { captureSidecarTarget, readSidecarTempModel, updateSidecarTempModel } from '../store/sidecar-tab-state';
   import { activeDocumentSemanticStateByKey } from '../store/active-document-authority';
   import { jsonBlockSelection } from '../store/full-edit-ui-store';
   import { activeFullEditUiState as fullEditUiState } from '../store/active-full-edit-ui-store';
@@ -165,6 +166,8 @@
   import type { SharedWorkspaceMutationTarget } from '../share/share-workspace-lifecycle';
 
   type LeaferAppOrLeafer = LeaferApp | Leafer;
+  /** Stable identity of the keyed right pane. Operations capture their target at mutation time. */
+  export let sidecarTabId = '';
   export let active = true;
   export let synchronizedRuntimeLoading = false;
   export let readonly = false;
@@ -173,6 +176,22 @@
   export let onLoadExample: (example: string, language: SupportedEditorLanguageId) => void | Promise<void> = () => {};
   export let onEntitlementBlocked: (block: UsageBlock) => void = () => {};
   export let ensureSharedWorkspacePromoted: (target: SharedWorkspaceMutationTarget) => Promise<boolean> = async () => true;
+
+  function updateTargetTempModel(updater: (current: TempModel) => TempModel): void {
+    const target = captureSidecarTarget(sidecarTabId);
+    if (target) updateSidecarTempModel(target, updater);
+  }
+
+  function targetTempModelSnapshot(): TempModel {
+    const target = captureSidecarTarget(sidecarTabId);
+    const state = target ? readSidecarTempModel(target) : null;
+    return state ?? {
+      ...initialTempModel,
+      treePath: [],
+      graphHighlight: null,
+      diagnostics: [],
+    };
+  }
 
   const MINIMAP_WIDTH = 220;
   const MINIMAP_HEIGHT = 150;
@@ -261,6 +280,7 @@
     navigation: unknown;
     'runtime-state': RuntimeStateEventDetail;
     'column-navigator-state': ColumnNavigatorState;
+    'graph-viewport-state': { x: number; y: number; scaleX: number; scaleY: number } | null;
   }>();
   let lastRuntimeStateSignature = '';
 
@@ -334,15 +354,21 @@
   let hasColumnNavigatorDetail = false;
   let columnNavigatorDetailCollapsed = false;
   let columnNavigatorDetailPane: VisibleColumnNavigatorPaneState | null = null;
+  let mountedColumnNavigatorDetailPane: VisibleColumnNavigatorPaneState | null = null;
   let columnNavigatorHintReady = false;
   let columnNavigatorHintPresentationCount = 0;
   let columnNavigatorHintTriggered = false;
   let columnNavigatorHintVisible = false;
   let columnNavigatorHintFading = false;
   let columnNavigatorHintTimer: ReturnType<typeof setTimeout> | null = null;
-  $: hasColumnNavigatorDetail = Boolean(
-    columnNavigatorDetailPane?.status === 'ready' && columnNavigatorDetailPane.content,
-  );
+  $: {
+    if (columnNavigatorDetailPane?.status === 'ready' && columnNavigatorDetailPane.content) {
+      mountedColumnNavigatorDetailPane = columnNavigatorDetailPane;
+    } else if (columnNavigatorCollapsed) {
+      mountedColumnNavigatorDetailPane = null;
+    }
+  }
+  $: hasColumnNavigatorDetail = Boolean(mountedColumnNavigatorDetailPane?.content);
   $: columnNavigatorDetailCollapsed = columnNavigatorDetailLayout.layoutMode === 'left-only';
   $: {
     const widths = computePaneWidths(
@@ -479,7 +505,9 @@
   $: {
     const nextPaneScrollKey = columnNavigatorVisiblePanes
       .filter((pane) => pane.kind === 'column')
-      .map((pane) => pane.pathKey)
+      // A sibling object changes the column's path, not the pane topology.
+      // Only a newly introduced column may require horizontal rail movement.
+      .map((pane) => `${pane.visibleIndex}:${pane.kind}`)
       .join('|');
     if (!columnNavigatorCollapsed && nextPaneScrollKey !== lastSubgraphPaneScrollKey) {
       lastSubgraphPaneScrollKey = nextPaneScrollKey;
@@ -559,6 +587,7 @@
     updateViewportOverlays: () => {
       graphMinimapRuntimeController.updateViewport();
     },
+    onViewportStateChange: (viewport) => dispatch('graph-viewport-state', viewport),
     getPanConstraintBounds: () => {
       const graphData = graphSceneController?.getLastGraphData?.() ?? null;
       const nodes = graphData?.nodes ?? [];
@@ -682,7 +711,7 @@
     centerOnBox,
     centerOnNode,
     updateLeafer: requestLeaferRender,
-    updateActiveTempModel: (updater) => activeTempModel.update(updater),
+    updateActiveTempModel: updateTargetTempModel,
     getEditorRevision: () => editorRevisionValue,
     getGraphAppliedRevision: () => $graphAppliedRevision,
     dispatchReveal: (path, target, trigger) => dispatch('navigation', { path, target, trigger }),
@@ -712,7 +741,7 @@
     nextTreeStateToken: () => graphTreeStateController.nextToken(),
     publishTreeState: (...args) => graphTreeStateController.publish(...args),
     emitEditorMutation,
-    updateActiveTempModel: (updater) => activeTempModel.update(updater),
+    updateActiveTempModel: updateTargetTempModel,
     dispatchGraphEditEvent: (type, detail) => dispatchGraphEditEvent(container, type, detail),
     beforeApplyMutation: ({ documentKey, model }) => {
       const workspace = getWorkspaceState();
@@ -753,7 +782,7 @@
     getShellHeight: () => graphViewerShellHeight,
     clearSearchHighlight,
     clearActiveGraphSelection: () => {
-      activeTempModel.update((current) => clearGraphSelectionForFullEdit(current));
+      updateTargetTempModel((current) => clearGraphSelectionForFullEdit(current));
     },
     publishNavigation: (path, target) => publishNavigation(path, target, 'breadcrumb'),
     handleError,
@@ -876,12 +905,21 @@
 
   function syncSubgraphReadinessForPane(pane: ColumnNavigatorPaneState | null | undefined): void {
     if (!pane?.pathKey || !pane.requestId) return;
-    syncSubgraphInteractionReadiness({
-      requestId: pane.requestId,
-      pathKey: pane.pathKey,
-      sourceRevision: editorRevisionValue,
-      interactiveRevision: editorRevisionValue,
-      interactiveReady: pane.status === 'ready',
+    const captured = { requestId: pane.requestId, pathKey: pane.pathKey, status: pane.status };
+    // Controller state is a data projection. Publish interactive readiness only
+    // after its corresponding DOM projection has committed, otherwise callers
+    // can begin a sibling navigation while the rail is still correcting the
+    // preceding pane layout.
+    void tick().then(() => {
+      const current = columnNavigatorController.getChain().find((candidate) => candidate.pathKey === captured.pathKey);
+      if (!current || current.requestId !== captured.requestId || current.status !== captured.status) return;
+      syncSubgraphInteractionReadiness({
+        requestId: captured.requestId,
+        pathKey: captured.pathKey,
+        sourceRevision: editorRevisionValue,
+        interactiveRevision: editorRevisionValue,
+        interactiveReady: captured.status === 'ready',
+      });
     });
   }
 
@@ -905,9 +943,6 @@
   function getRuntimeReadiness() {
     const interaction = syncGraphReadinessFromInteraction();
     const base = readRuntimeReadiness();
-    if (base.subgraph.pathKey) {
-      syncSubgraphReadinessForPane(columnNavigatorController.getChain().find((pane) => pane.pathKey === base.subgraph.pathKey));
-    }
     const next = readRuntimeReadiness();
     return {
       ...next,
@@ -969,7 +1004,7 @@
       }
       if (snapshotId == null) {
         columnNavigatorController.reset();
-        activeTempModel.update((current) => ({ ...current, treePath: [], graphHighlight: null }));
+        updateTargetTempModel((current) => ({ ...current, treePath: [], graphHighlight: null }));
       }
       const requestId = graphTreeStateController.nextToken();
       graphTreeStateController.clear(requestId, 'graph', revision);
@@ -1456,7 +1491,7 @@
   function beginSearchPreview(): void {
     if (searchPreviewSnapshot) return;
     searchPreviewSnapshot = {
-      tempModel: getActiveTempModelSnapshot(),
+      tempModel: targetTempModelSnapshot(),
       viewport: graphViewportController.getViewportState(),
       columnNavigatorCollapsed,
       columnNavigatorPath: columnNavigatorActivePath.map((segment) => ({ ...segment })),
@@ -1486,7 +1521,7 @@
     } else if (!snapshot.columnNavigatorCollapsed) {
       columnNavigatorController.expand();
     }
-    activeTempModel.set(snapshot.tempModel);
+    updateTargetTempModel(() => snapshot.tempModel);
     await tick();
     await graphViewportController.waitForRevealTransition();
     if (snapshot.viewport) graphViewportController.restoreViewportState(snapshot.viewport);
@@ -1519,6 +1554,19 @@
     } catch {
       return false;
     }
+  }
+
+  export async function restoreColumnNavigatorNavigationState(state: {
+    activePath: PathSeg[];
+    history: PathSeg[][];
+    historyIndex: number;
+    collapsed: boolean;
+  }): Promise<void> {
+    await columnNavigatorController.restoreNavigationState(state);
+  }
+
+  export function restoreGraphViewport(state: { x: number; y: number; scaleX: number; scaleY: number } | null): void {
+    if (state) graphViewportController.restoreViewportState(state);
   }
 
   export function collapseColumnNavigator(): void {
@@ -1740,7 +1788,7 @@
   $: graphViewRuntimeLifecycle.settle($fullEditUiState);
 
   $: {
-    const graphHighlight = $activeTempModel?.graphHighlight ?? null;
+    const graphHighlight = $activeSidecarTempModel?.graphHighlight ?? null;
     const graphHighlightSignature = buildGraphHighlightSignature(graphHighlight, buildPathKey);
     const appliedRevision = $graphAppliedRevision;
     if (isFullEditInteractionBlocked()) {
@@ -2103,7 +2151,7 @@
           class:column-navigator-detail--collapsed={columnNavigatorDetailCollapsed}
           class:column-navigator-detail--instant={isDraggingColumnNavigatorDetailDivider}
           data-testid="column-navigator-pane"
-          data-column-navigator-content-path-key={columnNavigatorDetailPane.pathKey}
+          data-column-navigator-content-path-key={mountedColumnNavigatorDetailPane.pathKey}
           style:width={`${columnNavigatorDetailWidthPx}px`}
         >
           <div
@@ -2112,31 +2160,31 @@
             aria-hidden={columnNavigatorDetailCollapsed}
           >
             <div class="column-navigator-pane__content-editor" data-testid="column-navigator-monaco-pane">
-              {#key columnNavigatorDetailPane.content.tabId}
-                <SidecarEditor
-                  tabId={columnNavigatorDetailPane.content.tabId}
-                  tabName={columnNavigatorDetailPane.content.tabName}
-                  language={languageIdValue}
-                  sourceText={columnNavigatorDetailPane.content.sourceText}
-                  projectedSemanticTokens={columnNavigatorDetailPane.content.semanticTokens}
-                  projectedSnapshotId={columnNavigatorDetailPane.content.snapshotId}
-                  projectedDocumentKey={documentKeyValue}
-                  projectedRevision={editorRevisionValue}
-                  runtimeHookId={columnNavigatorDetailPane.content.tabId}
-                  containerTestId="column-navigator-monaco-editor"
-                  attachToPane={false}
-                  destroyOnUnmount={true}
-                  hideLineNumbers={true}
-                  compactGutter={true}
-                  readOnly={readonly || columnNavigatorLoading}
-                  onScroll={() => {}}
-                  onContentChange={(text) => {
-                    publishNavigation(columnNavigatorDetailPane!.path, 'value', 'click');
-                    void commitColumnNavigatorValueEdit(columnNavigatorDetailPane!, text);
-                  }}
-                  onEditorBlur={(text) => void commitColumnNavigatorValueEdit(columnNavigatorDetailPane!, text)}
-                />
-              {/key}
+              <!-- The detail editor is a stable view runtime. Path changes replace
+                its projection; they must not recreate Monaco or its DOM subtree. -->
+              <SidecarEditor
+                tabId={mountedColumnNavigatorDetailPane.content.tabId}
+                tabName={mountedColumnNavigatorDetailPane.content.tabName}
+                language={languageIdValue}
+                sourceText={mountedColumnNavigatorDetailPane.content.sourceText}
+                projectedSemanticTokens={mountedColumnNavigatorDetailPane.content.semanticTokens}
+                projectedSnapshotId={mountedColumnNavigatorDetailPane.content.snapshotId}
+                projectedDocumentKey={documentKeyValue}
+                projectedRevision={editorRevisionValue}
+                runtimeHookId={mountedColumnNavigatorDetailPane.content.tabId}
+                containerTestId="column-navigator-monaco-editor"
+                attachToPane={false}
+                destroyOnUnmount={true}
+                hideLineNumbers={true}
+                compactGutter={true}
+                readOnly={readonly || columnNavigatorLoading}
+                onScroll={() => {}}
+                onContentChange={({ text }) => {
+                  publishNavigation(mountedColumnNavigatorDetailPane!.path, 'value', 'click');
+                  void commitColumnNavigatorValueEdit(mountedColumnNavigatorDetailPane!, text);
+                }}
+                onEditorBlur={(text) => void commitColumnNavigatorValueEdit(mountedColumnNavigatorDetailPane!, text)}
+              />
             </div>
           </div>
         </section>

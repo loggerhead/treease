@@ -1,6 +1,12 @@
 import { expect, test } from './fixtures';
 
-import { evaluateTreease, getMonacoValue, readEditorState, waitForEditorReady, waitForMonacoHook } from './utils';
+import { evaluateTreease, getMonacoValue, readEditorState, readEditorWorkspace, waitForEditorReady, waitForMonacoHook } from './utils';
+
+async function readActiveSidecarText(page: import('@playwright/test').Page): Promise<string> {
+  const workspace = await readEditorWorkspace(page);
+  const sidecarId = workspace.tabsById[workspace.activeTabId]?.sidecarTabId;
+  return sidecarId ? workspace.tabsById[sidecarId]?.sourceText ?? '' : '';
+}
 
 test.describe.configure({ timeout: 20_000 });
 
@@ -49,7 +55,7 @@ test('rightText preset forces viewer text mode and populates the right editor', 
   await waitForMonacoHook(page, 'right-editor');
   await expect.poll(async () => getMonacoValue(page, 'right-editor')).toContain('"right": 2');
   await expect
-    .poll(async () => JSON.parse((await readEditorState(page)).tempModel.scratchText))
+    .poll(async () => JSON.parse(await readActiveSidecarText(page)))
     .toEqual({ right: 2 });
 
   const presetState = await evaluateTreease(page, (treease) => treease.test.getUrlPresetState());
@@ -62,7 +68,7 @@ test('url compare command reads the right side from workspace state', async ({ p
 
   await waitForMonacoHook(page, 'right-editor');
   await expect(page.getByText('Compare completed (differences found)')).toBeVisible();
-  await expect.poll(async () => (await readEditorState(page)).tempModel.scratchText).toContain('"port": 9090');
+  await expect.poll(async () => readActiveSidecarText(page)).toContain('"port": 9090');
   await expect
     .poll(async () => Number((await page.getByTestId('right-panel-dropzone').getAttribute('data-compare-highlight-count')) ?? '0'))
     .toBeGreaterThan(0);
@@ -94,6 +100,10 @@ test('missing textUrl shows a toast instead of crashing the page', async ({ page
   testInfo.annotations.push({
     type: 'allow-browser-error',
     description: 'Failed to load resource: the server responded with a status of 404 (Not Found)',
+  });
+  testInfo.annotations.push({
+    type: 'allow-browser-error',
+    description: 'Failed to load resource: net::ERR_CONNECTION_REFUSED',
   });
   testInfo.annotations.push({
     type: 'allow-browser-error',

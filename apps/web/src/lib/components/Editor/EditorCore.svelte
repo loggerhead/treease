@@ -16,7 +16,8 @@
     sourceText,
     type EditorMutation,
   } from '../../store/document-session-store';
-  import { activeTempModel, treeState } from '../../store/graph-selection-store';
+  import { treeState } from '../../store/graph-selection-store';
+  import { captureActiveSidecarTarget, captureSidecarTarget, updateSidecarTempModel } from '../../store/sidecar-tab-state';
   import {
     initialFullEditUiState,
     jsonBlockSelection,
@@ -73,7 +74,6 @@
     activateWorkspaceTabTransition,
     closeWorkspaceTabTransition,
     createWorkspaceTabTransition,
-    syncSidecarLanguageFromPrimary,
     type EditorWorkspaceTab,
   } from '../../store/editor-workspace';
   import { EDITOR_CONFIG } from '../../config/constants';
@@ -111,7 +111,6 @@
   let cleanupSourceEditorTestHook: (() => void) | null = null;
   let storeUnsub: (() => void) | null = null;
   let languageUnsub: (() => void) | null = null;
-  let tempModelUnsub: (() => void) | null = null;
   let jsonBlockSelectionUnsub: (() => void) | null = null;
 
   let languageIdValue: SupportedEditorLanguageId = editorLanguageFallback;
@@ -254,13 +253,23 @@
     const position = editor.getPosition();
     if (position && monaco) {
       editor.setSelection(new monaco.Selection(position.lineNumber, position.column, position.lineNumber, position.column));
-      activeTempModel.update((current) => ({ ...current, selectionLength: 0 }));
-      queueMicrotask(() => activeTempModel.update((current) => ({ ...current, selectionLength: 0 })));
+      updateCurrentTempModel((current) => ({ ...current, selectionLength: 0 }));
+      queueMicrotask(() => updateCurrentTempModel((current) => ({ ...current, selectionLength: 0 })));
     }
   }
 
   const getNestEnabled = () => $settings.parser.enableNest;
-  const updateCurrentTempModel = (updater: (current: any) => any) => activeTempModel.update(updater);
+  /** Main-editor interaction projects UI-only selection state to its paired sidecar. */
+  function updateCurrentTempModel(updater: (current: any) => any): void {
+    const target = captureActiveSidecarTarget();
+    if (target) updateSidecarTempModel(target, updater);
+  }
+
+  function updateMainTabSidecarTempModel(tabId: string, updater: (current: any) => any): void {
+    const main = getWorkspaceState().tabsById[tabId];
+    const target = main?.sidecarTabId ? captureSidecarTarget(main.sidecarTabId) : null;
+    if (target) updateSidecarTempModel(target, updater);
+  }
   function clearDocumentSemanticTokens(documentKey: string | undefined): void {
     clearSemanticTokensForDocument(documentKey);
   }
@@ -362,7 +371,7 @@
     const workspace = getWorkspaceState();
     const tab = workspace.tabsById[tabId];
     const targetModel = tabRuntime?.get(tabId) ?? null;
-    if (!tab || tab.role === 'sidecar') return 0;
+    if (!tab || tab.role === 'sidecar' || tab.role === 'column-detail-draft') return 0;
     const revision = tab.revision + 1;
     const transitioned = transitionWorkspaceTabDocument({
       tabId,
@@ -384,7 +393,7 @@
     const workspace = getWorkspaceState();
     const tab = workspace.tabsById[tabId];
     const targetModel = tabRuntime?.get(tabId) ?? null;
-    if (!tab || tab.role === 'sidecar' || tab.languageId === language) return;
+    if (!tab || tab.role === 'sidecar' || tab.role === 'column-detail-draft' || tab.languageId === language) return;
     if (isTabActive(tabId, targetModel)) {
       setLanguageIdWithoutExample(language);
     } else {
@@ -461,11 +470,7 @@
       getFormattingOptions: () => formattingOptionsValue,
       callWasmWorker: callWasmWorkerFromEditor,
       updateActiveTempModel: (updater) => {
-        const tab = getWorkspaceState().tabsById[tabId];
-        if (!tab) return;
-        const next = updater(tab.tempModel);
-        if (isTabActive(tabId)) activeTempModel.set(next);
-        else updateWorkspaceTab(tabId, { tempModel: next });
+        updateMainTabSidecarTempModel(tabId, updater);
       },
       commitEditorState: () => getWorkspaceState().tabsById[tabId]?.revision ?? 0,
       applyGraphAnalysis: async (requestModel, requestLanguage, requestDocumentKey, revision, analysis) => {
@@ -623,7 +628,7 @@
       const nextValue = value || editorLanguageFallback;
       if (!supportedEditorLanguageSet.has(nextValue as SupportedEditorLanguageId)) {
         const message = `Unsupported editor language: ${nextValue}`;
-        activeTempModel.update((current) => ({ ...current, error: message }));
+        updateCurrentTempModel((current) => ({ ...current, error: message }));
         throw new Error(message);
       }
       const previousLanguage = languageIdValue;
@@ -632,7 +637,7 @@
       const isManualLanguageSwitch = languageChanged && !shouldSuppressLanguageExample;
       const hadUserInput = activeTabHasUserInput(previousLanguage);
       languageIdValue = next;
-      activeTempModel.update((current) => ({ ...current, error: '' }));
+      updateCurrentTempModel((current) => ({ ...current, error: '' }));
       ensureLanguageRegistered(next);
       let shouldDeferTreePath = false;
       if (model && monaco) {
@@ -677,7 +682,7 @@
         jsonBlockSelection.set(null);
       }
       if (!treePathLanguages.has(next)) {
-        activeTempModel.update((current) => ({ ...current, treePath: [], graphHighlight: null }));
+        updateCurrentTempModel((current) => ({ ...current, treePath: [], graphHighlight: null }));
       } else if (activeId && model && !shouldDeferTreePath) {
         void editorAnalysisController.updateTreePath(editor?.getPosition() ?? null, {
           syncGraphHighlight: false,
@@ -839,7 +844,7 @@
           releaseStoreUpdateSuppression();
           return;
         }
-        activeTempModel.update((current) => ({
+        updateCurrentTempModel((current) => ({
           ...current,
           treePath: [],
           graphHighlight: null,
@@ -911,12 +916,7 @@
             if (!isReplacementCurrent()) return;
             const message = error instanceof Error ? error.message : String(error);
             console.error('[editor] whole-document replacement failed', error);
-            const targetTab = getWorkspaceState().tabsById[targetTabId];
-            if (targetTab) {
-              const nextTempModel = { ...targetTab.tempModel, error: message };
-              if (isTabActive(targetTabId, requestModel)) activeTempModel.set(nextTempModel);
-              else updateWorkspaceTab(targetTabId, { tempModel: nextTempModel });
-            }
+            updateMainTabSidecarTempModel(targetTabId, (current) => ({ ...current, error: message }));
             if (isTabActive(targetTabId, requestModel)) toast.error('Graph rebuild failed');
           })
           .finally(() => {
@@ -961,7 +961,7 @@
     ) => {
       if (!model || !position) return;
       const selectionLength = selection ? model.getValueInRange(selection).length : 0;
-      activeTempModel.update((current) => ({
+      updateCurrentTempModel((current) => ({
         ...current,
         cursor: `Ln ${position.lineNumber}, Col ${position.column}`,
         selectionLength,
@@ -1002,10 +1002,6 @@
       if (value !== model.getValue()) {
         model.setValue(value);
       }
-    });
-    tempModelUnsub = activeTempModel.subscribe((value) => {
-      const activeId = getWorkspaceState().activeTabId;
-      if (activeId) updateWorkspaceTab(activeId, { tempModel: value });
     });
     jsonBlockSelectionUnsub = jsonBlockSelection.subscribe((value) => {
       jsonBlockSelectionValue = value;
@@ -1286,7 +1282,6 @@
     lastModelText = model.getValue();
     setLanguageIdWithoutExample(tab.languageId);
     setActiveEditorIo();
-    activeTempModel.set(tab.tempModel);
     return { model, text };
   }
 
@@ -1303,12 +1298,7 @@
     if (!isExpectedDocumentTaskTermination(error)) {
       const message = error instanceof Error ? error.message : String(error);
       console.error('[editor] document task failed', { tabId, message, error });
-      const targetTab = getWorkspaceState().tabsById[tabId];
-      if (targetTab) {
-        const nextTempModel = { ...targetTab.tempModel, error: message };
-        if (isTabActive(tabId, requestModel)) activeTempModel.set(nextTempModel);
-        else updateWorkspaceTab(tabId, { tempModel: nextTempModel });
-      }
+      updateMainTabSidecarTempModel(tabId, (current) => ({ ...current, error: message }));
       if (isTabActive(tabId, requestModel)) toast.error('Unable to update the document view. You can keep editing and try again.');
       return;
     }
@@ -1331,6 +1321,11 @@
       language: tab.languageId,
       text: installed.text,
       reason,
+      // Re-activating a resident tab is a view change, not a document
+      // replacement. Rotating its document key here also resets its paired
+      // sidecar, which makes right-pane state appear to leak between tabs.
+      documentKey: tab.documentKey,
+      documentTransitioned: true,
       editorReadOnly: options.editorReadOnly ?? false,
       // Tab activation changes only the visible projection. The operation is
       // still current while its resident model belongs to this tab, even when
@@ -1386,7 +1381,7 @@
       // Install the model before publishing the new active workspace tab.
       const installed = installActiveTab(tab);
       if (!installed) return;
-      setWorkspaceState(syncSidecarLanguageFromPrimary(transition.workspace));
+      setWorkspaceState(transition.workspace);
       commitEditorState();
       void startInstalledActiveTab(tab, installed, 'tab-reactivate');
     }
@@ -1407,7 +1402,7 @@
     userInputByTabId.set(tab.id, true);
     const installed = installActiveTab(tab);
     if (!installed) return null;
-    setWorkspaceState(syncSidecarLanguageFromPrimary(transition.workspace));
+    setWorkspaceState(transition.workspace);
     commitEditorState();
     void startInstalledActiveTab(tab, installed, 'tab-reactivate');
     return tab.id;
@@ -1468,14 +1463,14 @@
     const nextTab = transition.workspace.tabsById[transition.effect.tabId];
     if (!nextTab) return;
     if (!wasActive) {
-      setWorkspaceState(syncSidecarLanguageFromPrimary(transition.workspace));
+      setWorkspaceState(transition.workspace);
       if (transition.effect.disposeTabId) tabRuntime.dispose(transition.effect.disposeTabId);
       return;
     }
     // Install successor before releasing the removed model; editorIO must never observe a disposed active document.
     const installed = installActiveTab(nextTab);
     if (!installed) return;
-    setWorkspaceState(syncSidecarLanguageFromPrimary(transition.workspace));
+    setWorkspaceState(transition.workspace);
     if (transition.effect.kind === 'activate-new-blank') commitEditorState();
     void startInstalledActiveTab(nextTab, installed, 'tab-reactivate');
     if (transition.effect.disposeTabId) tabRuntime.dispose(transition.effect.disposeTabId);
@@ -1487,7 +1482,7 @@
     if (tab && transition) {
       const installed = installActiveTab(tab);
       if (!installed) return;
-      setWorkspaceState(syncSidecarLanguageFromPrimary(transition.workspace));
+      setWorkspaceState(transition.workspace);
       void startInstalledActiveTab(tab, installed, 'tab-reactivate');
     }
   }
@@ -1599,7 +1594,7 @@
       : (targetFormat as SupportedEditorLanguageId);
     if (!supportedEditorLanguageSet.has(nextLanguage)) {
       const message = `Unsupported editor language: ${nextLanguage}`;
-      activeTempModel.update((current) => ({ ...current, error: message }));
+      updateCurrentTempModel((current) => ({ ...current, error: message }));
       toast.error(message);
       throw new Error(message);
     }
@@ -1662,7 +1657,7 @@
       // Clear graphHighlight to prevent the reactive subscription from
       // re-entering — the error update would otherwise keep the reference
       // check alive (H1 !== H2) and loop forever.
-      activeTempModel.update((current) => ({ ...current, error: message, graphHighlight: null }));
+      updateCurrentTempModel((current) => ({ ...current, error: message, graphHighlight: null }));
       toast.error('Reveal failed');
       throw new Error(message);
     }
@@ -1863,7 +1858,7 @@
         } catch (error) {
           // Syntax services are optional; Monaco remains editable.
           console.error('[editor] optional language services failed', error);
-          activeTempModel.update((current) => ({
+          updateCurrentTempModel((current) => ({
             ...current,
             error: error instanceof Error ? error.message : String(error),
           }));
@@ -1913,8 +1908,6 @@
     storeUnsub = null;
     languageUnsub?.();
     languageUnsub = null;
-    tempModelUnsub?.();
-    tempModelUnsub = null;
     jsonBlockSelectionUnsub?.();
     jsonBlockSelectionUnsub = null;
 

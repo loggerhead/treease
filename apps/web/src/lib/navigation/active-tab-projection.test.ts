@@ -15,8 +15,8 @@ describe('ActiveTabProjection', () => {
     const store = createTabNavigationStore<Slices>({
       workspaceId: 'workspace',
       initialTabs: [
-        { id: 'one', documentKey: 'one', revision: 0 },
-        { id: 'two', documentKey: 'two', revision: 0 },
+        { id: 'one', documentKey: 'one', generation: 0, revision: 0 },
+        { id: 'two', documentKey: 'two', generation: 0, revision: 0 },
       ],
       createEntityState: (target) => ({ editorState: { tab: target.tabId }, graphState: null, navigatorState: null, searchState: null }),
     });

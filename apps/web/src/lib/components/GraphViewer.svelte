@@ -20,6 +20,7 @@
   };
 
   export let active = true;
+  export let sidecarTabId = '';
   export let synchronizedRuntimeLoading = false;
   export let readonly = false;
   export let onFileDrop: (event: DragEvent) => void | Promise<void> = () => {};
@@ -31,7 +32,8 @@
   const dispatch = createEventDispatcher<{
     navigation: unknown;
     'runtime-state': RuntimeStateEventDetail;
-    'column-navigator-state': ColumnNavigatorState;
+    'column-navigator-state': { tabId: string; state: ColumnNavigatorState };
+    'graph-viewport-state': { tabId: string; viewport: { x: number; y: number; scaleX: number; scaleY: number } | null };
   }>();
   let runtime: GraphViewRuntime | null = null;
 
@@ -72,6 +74,15 @@
 
   export async function restoreColumnNavigatorPath(path: PathSeg[]): Promise<boolean> {
     return await runtime?.restoreColumnNavigatorPath(path) ?? false;
+  }
+
+  export async function restoreColumnNavigatorNavigationState(state: {
+    activePath: PathSeg[];
+    history: PathSeg[][];
+    historyIndex: number;
+    collapsed: boolean;
+  }): Promise<void> {
+    await runtime?.restoreColumnNavigatorNavigationState(state);
   }
 
   export function collapseColumnNavigator(): void {
@@ -117,10 +128,15 @@
   export function showEntitlementOverlay(block: UsageBlock): void {
     runtime?.showEntitlementOverlay(block);
   }
+
+  export function restoreGraphViewport(state: { x: number; y: number; scaleX: number; scaleY: number } | null): void {
+    runtime?.restoreGraphViewport(state);
+  }
 </script>
 
 <GraphViewRuntime
   bind:this={runtime}
+  {sidecarTabId}
   {active}
   {synchronizedRuntimeLoading}
   {readonly}
@@ -131,5 +147,6 @@
   {ensureSharedWorkspacePromoted}
   on:navigation={(event) => dispatch('navigation', event.detail)}
   on:runtime-state={(event) => dispatch('runtime-state', event.detail)}
-  on:column-navigator-state={(event) => dispatch('column-navigator-state', event.detail)}
+  on:column-navigator-state={(event) => { if (sidecarTabId) dispatch('column-navigator-state', { tabId: sidecarTabId, state: event.detail }); }}
+  on:graph-viewport-state={(event) => { if (sidecarTabId) dispatch('graph-viewport-state', { tabId: sidecarTabId, viewport: event.detail }); }}
 />

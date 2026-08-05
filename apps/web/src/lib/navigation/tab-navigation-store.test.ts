@@ -12,8 +12,8 @@ function createStore() {
   return createTabNavigationStore<Slices>({
     workspaceId: 'workspace',
     initialTabs: [
-      { id: 'one', documentKey: 'document:one', revision: 3 },
-      { id: 'two', documentKey: 'document:two', revision: 7 },
+      { id: 'one', documentKey: 'document:one', generation: 0, revision: 3 },
+      { id: 'two', documentKey: 'document:two', generation: 0, revision: 7 },
     ],
     createEntityState: () => ({
       editorState: { selection: null },
@@ -60,7 +60,7 @@ describe('TabNavigationStore', () => {
     const editor = store.entity('editorState');
     editor.update(oldTarget, () => ({ selection: '$.before' }));
 
-    const replacement = store.replaceDocument('one', { documentKey: 'document:replacement', revision: 1 })!;
+    const replacement = store.replaceDocument('one', { documentKey: 'document:replacement', generation: 1, revision: 1 })!;
 
     expect(editor.update(oldTarget, () => ({ selection: '$.late' }))).toEqual({ kind: 'stale' });
     expect(replacement.generation).toBe(oldTarget.generation + 1);

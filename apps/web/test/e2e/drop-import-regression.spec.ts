@@ -6,6 +6,7 @@ import {
   getLatestGraphProbes,
   getMonacoValue,
   readEditorState,
+  readEditorWorkspace,
   readRuntimeReadiness,
   readTempGraphSelection,
   setMonacoPositionByTextAndWaitForTreePath,
@@ -14,6 +15,12 @@ import {
   waitForImportSettled,
   waitForSidecarSettled,
 } from './utils';
+
+async function readActiveSidecarText(page: Page): Promise<string> {
+  const workspace = await readEditorWorkspace(page);
+  const sidecarId = workspace.tabsById[workspace.activeTabId]?.sidecarTabId;
+  return sidecarId ? workspace.tabsById[sidecarId]?.sourceText ?? '' : '';
+}
 
 const IS_CI = !!process.env.CI;
 const SOURCE_DROP_BUDGET_MS = IS_CI ? 10_000 : 5_000;
@@ -1145,7 +1152,7 @@ test('dropping a medium json file onto compare panel loads compare text without 
       .toBe(JSON.stringify(JSON.parse(compareText)));
     await expect
       .poll(
-        async () => JSON.stringify(JSON.parse((await readEditorState(page)).tempModel.scratchText)),
+        async () => JSON.stringify(JSON.parse(await readActiveSidecarText(page))),
         { timeout: SOURCE_DROP_BUDGET_MS },
       )
       .toBe(JSON.stringify(JSON.parse(compareText)));
