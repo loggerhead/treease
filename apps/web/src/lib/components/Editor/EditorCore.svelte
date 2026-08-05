@@ -63,7 +63,6 @@
   import { createEditorFormatController, type FormatCommandTarget } from './editor-format-controller';
   import { createEditorFullEditController } from './editor-full-edit-controller';
   import { createWorkspaceTabFullEditSink } from './editor-full-edit-sink';
-  import { resolveLanguageSwitchPolicy } from './language-switch-policy';
   import { createEditorRuntimeController } from './editor-runtime-controller';
   import { createEditorPlaceholderController } from './editor-placeholder';
   import { commitEditorTabTextChange } from './editor-tab-edit-commit';
@@ -114,7 +113,10 @@
   let jsonBlockSelectionUnsub: (() => void) | null = null;
 
   let languageIdValue: SupportedEditorLanguageId = editorLanguageFallback;
-  let shouldSuppressLanguageExample = false;
+  // Some programmatic document operations update the language store as part of
+  // their own transaction. They already own the subsequent analysis, so the
+  // language subscription must not start a second language-switch transaction.
+  let shouldSuppressLanguageSwitchHandling = false;
   let lastMutationId = 0;
   let diffDecorations: Monaco.editor.IEditorDecorationsCollection | null = null;
   let jsonBlockDecorations: Monaco.editor.IEditorDecorationsCollection | null = null;
@@ -201,10 +203,10 @@
     return coveredEnd >= previousLength;
   }
 
-  function setLanguageIdWithoutExample(nextLanguage: SupportedEditorLanguageId): void {
-    shouldSuppressLanguageExample = true;
+  function setLanguageIdSilently(nextLanguage: SupportedEditorLanguageId): void {
+    shouldSuppressLanguageSwitchHandling = true;
     languageIdStore.set(nextLanguage);
-    shouldSuppressLanguageExample = false;
+    shouldSuppressLanguageSwitchHandling = false;
   }
 
   function releaseStoreUpdateSuppression(): void {
@@ -395,7 +397,7 @@
     const targetModel = tabRuntime?.get(tabId) ?? null;
     if (!tab || tab.role === 'sidecar' || tab.role === 'column-detail-draft' || tab.languageId === language) return;
     if (isTabActive(tabId, targetModel)) {
-      setLanguageIdWithoutExample(language);
+      setLanguageIdSilently(language);
     } else {
       transitionWorkspaceTabDocument({
         tabId,
@@ -498,14 +500,6 @@
   function getActiveFullEditController() {
     const tabId = getWorkspaceState().activeTabId;
     return tabId ? getFullEditController(tabId) : null;
-  }
-
-  function activeTabHasUserInput(language: SupportedEditorLanguageId): boolean {
-    const activeId = getWorkspaceState().activeTabId;
-    if (!activeId) return false;
-    const recorded = userInputByTabId.get(activeId);
-    if (recorded !== undefined) return recorded;
-    return (model?.getValue() ?? '') !== getLanguageExample(language);
   }
 
   function markActiveTabUserInput(value: boolean): void {
@@ -634,50 +628,49 @@
       const previousLanguage = languageIdValue;
       const next = nextValue as SupportedEditorLanguageId;
       const languageChanged = next !== previousLanguage;
-      const isManualLanguageSwitch = languageChanged && !shouldSuppressLanguageExample;
-      const hadUserInput = activeTabHasUserInput(previousLanguage);
+      const isManualLanguageSwitch = languageChanged && !shouldSuppressLanguageSwitchHandling;
       languageIdValue = next;
       updateCurrentTempModel((current) => ({ ...current, error: '' }));
       ensureLanguageRegistered(next);
-      let shouldDeferTreePath = false;
-      if (model && monaco) {
-        const languageSwitchSourceText = getActiveDocumentText();
-        const languageSwitchPolicy = isManualLanguageSwitch
-          ? resolveLanguageSwitchPolicy({
-              nextLanguage: next,
-              hasUserInput: hadUserInput,
-              currentText: languageSwitchSourceText,
-              nextExampleText: getLanguageExample(next),
-            })
-          : null;
-      shouldDeferTreePath = Boolean(languageSwitchPolicy);
-      if (isManualLanguageSwitch) {
-        suppressNextWholeDocumentAutoGuess = true;
-        wholeDocumentReplacementToken += 1;
-        editorAnalysisController.prepareLanguageSwitchAnalysisReset();
-      }
-        monaco.editor.setModelLanguage(model, next);
-        syncColorViewportState('language');
-        if (languageSwitchPolicy) {
-          const requestModel = model;
-          lastModelLength = languageSwitchPolicy.text.length;
-          lastModelText = languageSwitchPolicy.text;
-          markActiveTabUserInput(languageSwitchPolicy.kind === 'preserve-input');
-          void getActiveFullEditController()?.startFullEditSession({
-            language: languageSwitchPolicy.language,
-            text: languageSwitchPolicy.text,
-            reason: languageSwitchPolicy.reason,
-            isFresh: () => model === requestModel,
-          }).catch((error) => {
-            const activeTabId = getWorkspaceState().activeTabId;
-            if (model) reportEditorDocumentTaskError(error, activeTabId, model);
-          });
-        }
-      }
       ensureSemanticTokensProvider(next);
       ensureDocumentColorProvider(next);
+      let shouldDeferTreePath = false;
+      let languageSwitchText: string | null = null;
+      if (model && monaco) {
+        const languageSwitchSourceText = getActiveDocumentText();
+        shouldDeferTreePath = isManualLanguageSwitch;
+        if (isManualLanguageSwitch) {
+          suppressNextWholeDocumentAutoGuess = true;
+          wholeDocumentReplacementToken += 1;
+          editorAnalysisController.prepareLanguageSwitchAnalysisReset();
+          languageSwitchText = languageSwitchSourceText;
+        }
+        monaco.editor.setModelLanguage(model, next);
+        syncColorViewportState('language');
+      }
       const activeId = getWorkspaceState().activeTabId;
       if (activeId) updateWorkspaceTab(activeId, { languageId: next });
+      if (languageSwitchText !== null && activeId && model) {
+        const tab = getWorkspaceState().tabsById[activeId];
+        const target = tabRuntime?.get(activeId) ?? null;
+        if (tab && target === model) {
+          void replaceWholeDocumentTextForTarget(
+            {
+              tabId: activeId,
+              model,
+              documentKey: tab.documentKey,
+              revision: tab.revision,
+              languageId: tab.languageId,
+            },
+            languageSwitchText,
+            {
+              sourceWritebackPolicy: 'intake',
+              formatSourceOnClose: true,
+              markUserInput: false,
+            },
+          ).catch((error) => reportEditorDocumentTaskError(error, activeId, model));
+        }
+      }
       if (next !== 'json') {
         jsonBlockSelection.set(null);
       }
@@ -1280,7 +1273,7 @@
     syncColorViewportState('model');
     lastModelLength = model.getValue().length;
     lastModelText = model.getValue();
-    setLanguageIdWithoutExample(tab.languageId);
+    setLanguageIdSilently(tab.languageId);
     setActiveEditorIo();
     return { model, text };
   }
@@ -1416,7 +1409,7 @@
   }): Promise<void> {
     if (!model || !monaco) return;
     suppressNextWholeDocumentAutoGuess = true;
-    setLanguageIdWithoutExample(payload.languageId);
+    setLanguageIdSilently(payload.languageId);
     queueWholeDocumentReplacement(payload.text, { skipUsageMetering: payload.skipUsageMetering });
     setActiveTabOrigin(payload.origin ?? 'import');
   }
@@ -1601,7 +1594,7 @@
     suppressNextWholeDocumentAutoGuess = true;
     suppressNextTreePathUpdate();
     markActiveTabUserInput(true);
-    setLanguageIdWithoutExample(nextLanguage);
+    setLanguageIdSilently(nextLanguage);
     setEditorValue(text);
   }
 
