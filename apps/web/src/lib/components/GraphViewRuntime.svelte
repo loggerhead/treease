@@ -380,10 +380,16 @@
   );
   let columnNavigatorHintFadeTimer: ReturnType<typeof setTimeout> | null = null;
   let lastSubgraphSelectionScrollKey = '';
-  let lastSubgraphPaneScrollKey = '';
 
-  function syncRenderedColumnNavigatorPanes(nextPanes: VisibleColumnNavigatorPaneState[]): void {
+  async function syncRenderedColumnNavigatorPanes(nextPanes: VisibleColumnNavigatorPaneState[]): Promise<void> {
     const nextColumns = nextPanes.filter((pane) => pane.kind === 'column');
+    const currentColumns = renderedColumnNavigatorPanes.filter((entry) => entry.phase !== 'exiting');
+    const transition =
+      nextColumns.length > currentColumns.length
+        ? 'expand'
+        : nextColumns.length < currentColumns.length
+          ? 'collapse'
+          : null;
     const nextKeys = new Set(nextColumns.map((pane) => pane.pathKey));
     const currentByKey = new Map(renderedColumnNavigatorPanes.map((entry) => [entry.pane.pathKey, entry]));
 
@@ -405,6 +411,41 @@
       .filter((entry) => !nextKeys.has(entry.pane.pathKey))
       .map((entry) => ({ ...entry, phase: 'exiting' as const }));
     renderedColumnNavigatorPanes = [...nextEntries, ...exitingEntries];
+    if (transition) {
+      await tick();
+      const rail = columnNavigatorRail;
+      if (rail) {
+        const activeIndex = Math.max(0, columnNavigatorActivePath.length - 1);
+        const visibleWidth = nextPanes.some((pane) => pane.kind === 'content')
+          ? columnNavigatorDetailDividerLeftPx
+          : rail.clientWidth;
+        const common = {
+          activeDepth: columnNavigatorActivePath.length,
+          scrollLeft: rail.scrollLeft,
+          visibleWidth,
+          activeColumn: {
+            left: activeIndex * COLUMN_NAVIGATOR_PANE_WIDTH_PX,
+            width: COLUMN_NAVIGATOR_PANE_WIDTH_PX,
+          },
+        };
+        const plan = columnNavigatorController.planPreviewScroll(
+          transition === 'expand'
+            ? {
+                ...common,
+                transition,
+                maxScrollLeft: Math.max(0, rail.scrollWidth - rail.clientWidth),
+                previewColumn: {
+                  left: (nextColumns.length - 1) * COLUMN_NAVIGATOR_PANE_WIDTH_PX,
+                  width: COLUMN_NAVIGATOR_PANE_WIDTH_PX,
+                },
+              }
+            : { ...common, transition },
+        );
+        if (plan && Math.abs(rail.scrollLeft - plan.scrollLeft) > 0.5) {
+          rail.scrollLeft = plan.scrollLeft;
+        }
+      }
+    }
 
     for (const entry of exitingEntries) {
       if (columnNavigatorPaneExitTimers.has(entry.pane.pathKey)) continue;
@@ -483,18 +524,6 @@
     if (!columnNavigatorCollapsed && nextSelectionScrollKey !== lastSubgraphSelectionScrollKey) {
       lastSubgraphSelectionScrollKey = nextSelectionScrollKey;
       void scrollSubgraphSelectionIntoView();
-    }
-  }
-  $: {
-    const nextPaneScrollKey = columnNavigatorVisiblePanes
-      .filter((pane) => pane.kind === 'column')
-      // A sibling object changes the column's path, not the pane topology.
-      // Only a newly introduced column may require horizontal rail movement.
-      .map((pane) => `${pane.visibleIndex}:${pane.kind}`)
-      .join('|');
-    if (!columnNavigatorCollapsed && nextPaneScrollKey !== lastSubgraphPaneScrollKey) {
-      lastSubgraphPaneScrollKey = nextPaneScrollKey;
-      void scrollSubgraphPanesIntoView();
     }
   }
   const fullBuildReasonSet = new Set([
@@ -1333,32 +1362,6 @@
     else if (selectedBottom > scroller.scrollTop + scroller.clientHeight) scroller.scrollTop = selectedBottom - scroller.clientHeight;
   }
 
-  async function scrollSubgraphPanesIntoView(): Promise<void> {
-    await tick();
-    const rail = columnNavigatorRail;
-    const terminalPane = columnNavigatorRail?.querySelector<HTMLElement>(
-      ':scope > [data-testid="column-navigator-pane"]:last-of-type',
-    );
-    if (!rail || !terminalPane) return;
-
-    // Keep the newest column beside the detail editor, but leave an already-visible
-    // column untouched. Re-centering on every path change makes sibling navigation jitter.
-    const detailLeft = hasColumnNavigatorDetail
-      ? columnNavigatorDetailDividerLeftPx
-      : rail.clientWidth;
-    const terminalRight = terminalPane.offsetLeft + terminalPane.offsetWidth - rail.scrollLeft;
-    if (terminalRight <= detailLeft) return;
-
-    const maxScrollLeft = Math.max(0, rail.scrollWidth - rail.clientWidth);
-    const desiredScrollLeft = Math.min(
-      maxScrollLeft,
-      Math.max(0, terminalPane.offsetLeft + terminalPane.offsetWidth - detailLeft),
-    );
-    if (Math.abs(rail.scrollLeft - desiredScrollLeft) > 0.5) {
-      rail.scrollLeft = desiredScrollLeft;
-    }
-  }
-
   function pathSegmentLabel(path: PathSeg[]): string {
     if (!path.length) return '$';
     const segment = path.at(-1)!;
@@ -1575,7 +1578,11 @@
     getViewportState: () => graphViewportController.getViewportState(),
     getRuntimeReadiness: () => getRuntimeReadiness(),
     getStreamProgressState: () => streamProgressState,
-    revealPath: (path: PathSeg[], options: { target: 'key' | 'value' | 'node' | undefined; navigate: boolean | undefined }) =>
+    revealPath: (path: PathSeg[], options: {
+      target: 'key' | 'value' | 'node' | undefined;
+      materialize?: boolean;
+      navigate: boolean | undefined;
+    }) =>
       revealPath(path, options),
     activateProbe: (probeId: string) => graphRuntimeProbeActions.activateRuntimeProbe(probeId),
     commitProbe: (probeId: string, text: string) => graphRuntimeProbeActions.commitRuntimeProbe(probeId, text),

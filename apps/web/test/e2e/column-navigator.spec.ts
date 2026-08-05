@@ -563,6 +563,155 @@ test('workspace keyboard navigation is focus-bounded and Monaco keeps arrow keys
   );
 });
 
+test('returning to a parent collapses its child preview with one rightward rail movement', async ({ page }) => {
+  test.setTimeout(30_000);
+  await page.goto('/editor');
+  await waitForEditorReady(page);
+  await setEditorContent(page, {
+    sourceText: JSON.stringify({
+      root: {
+        branch: {
+          child: {
+            grandchild: { leaf: 'value' },
+          },
+        },
+      },
+    }),
+    language: 'json',
+  });
+  await waitForGraphRendered(page);
+
+  const rootProbe = (await readGraphClickProbes(page)).find(
+    (probe) => probe.target === 'value' && probe.path.join('.') === 'root' && probe.coord,
+  );
+  expect(rootProbe).toBeTruthy();
+  if (!rootProbe?.coord) throw new Error('root probe missing');
+  await clickGraphProbeAt(page, rootProbe.coord);
+  await waitForColumnNavigatorSettled(page, 'k:root', 20_000);
+
+  const workspace = page.getByTestId('column-navigator-graph');
+  await workspace.focus();
+  for (const pathKey of [
+    'k:root|k:branch',
+    'k:root|k:branch|k:child',
+    'k:root|k:branch|k:child|k:grandchild',
+  ]) {
+    await page.keyboard.press('ArrowRight');
+    await waitForColumnNavigatorSettled(page, pathKey, 20_000);
+  }
+
+  const rail = workspace.locator('.column-navigator-graph__track');
+  const before = await rail.evaluate((element) => element.scrollLeft);
+  await rail.evaluate((element) => {
+    element.dataset.previewScrollEvents = '0';
+    element.addEventListener('scroll', () => {
+      element.dataset.previewScrollEvents = String(
+        Number(element.dataset.previewScrollEvents ?? '0') + 1,
+      );
+    });
+  });
+  await page.keyboard.press('ArrowLeft');
+  await waitForColumnNavigatorSettled(page, 'k:root|k:branch|k:child', 20_000);
+  const result = await workspace.evaluate((root) => {
+    const railElement = root.querySelector<HTMLElement>('.column-navigator-graph__track')!;
+    const activeColumn = root.querySelector<HTMLElement>(
+      '[data-column-navigator-item-path-key="k:root|k:branch|k:child"]',
+    )!.closest<HTMLElement>('[data-testid="column-navigator-pane"]')!;
+    const visibleRight = root.querySelector<HTMLElement>('.column-navigator-detail-divider')?.offsetLeft
+      ?? railElement.clientWidth;
+    const visibleLeft = railElement.scrollLeft;
+    const activeLeft = activeColumn.offsetLeft;
+    const activeRight = activeLeft + activeColumn.offsetWidth;
+    return {
+      scrollLeft: railElement.scrollLeft,
+      scrollEvents: Number(railElement.dataset.previewScrollEvents ?? '0'),
+      expectedActiveVisibleWidth: Math.min(activeColumn.offsetWidth, visibleRight / 2),
+      activeVisibleWidth: Math.min(activeRight, visibleLeft + visibleRight) - Math.max(activeLeft, visibleLeft),
+    };
+  });
+
+  expect(result.scrollLeft).toBeLessThan(before);
+  expect(result.scrollEvents).toBeLessThanOrEqual(1);
+  expect(result.activeVisibleWidth).toBeGreaterThan(0);
+  expect(result.activeVisibleWidth).toBeCloseTo(result.expectedActiveVisibleWidth, 0);
+});
+
+test('sibling preview changes keep the rail stable after the level uses its scroll opportunity', async ({ page }) => {
+  test.setTimeout(30_000);
+  await page.goto('/editor');
+  await waitForEditorReady(page);
+  await setEditorContent(page, {
+    sourceText: JSON.stringify({
+      root: {
+        container: { child: { leaf: 'value' } },
+        scalar: 1,
+      },
+    }),
+    language: 'json',
+  });
+  await waitForGraphRendered(page);
+
+  const rootProbe = (await readGraphClickProbes(page)).find(
+    (probe) => probe.target === 'value' && probe.path.join('.') === 'root' && probe.coord,
+  );
+  expect(rootProbe).toBeTruthy();
+  if (!rootProbe?.coord) throw new Error('root probe missing');
+  await clickGraphProbeAt(page, rootProbe.coord);
+  await waitForColumnNavigatorSettled(page, 'k:root', 20_000);
+
+  const workspace = page.getByTestId('column-navigator-graph');
+  const rail = workspace.locator('.column-navigator-graph__track');
+  await workspace.focus();
+  const beforeExpansion = await rail.evaluate((element) => {
+    element.dataset.previewScrollEvents = '0';
+    element.addEventListener('scroll', () => {
+      element.dataset.previewScrollEvents = String(
+        Number(element.dataset.previewScrollEvents ?? '0') + 1,
+      );
+    });
+    return element.scrollLeft;
+  });
+  await page.keyboard.press('ArrowRight');
+  await waitForColumnNavigatorSettled(page, 'k:root|k:container', 20_000);
+  const afterExpansion = await rail.evaluate((element) => element.scrollLeft);
+  const expansion = await workspace.evaluate((root) => {
+    const railElement = root.querySelector<HTMLElement>('.column-navigator-graph__track')!;
+    const activeColumn = root.querySelector<HTMLElement>(
+      '[data-column-navigator-path-key="k:root"]',
+    )!;
+    const previewColumn = root.querySelector<HTMLElement>(
+      '[data-column-navigator-path-key="k:root|k:container"]',
+    )!;
+    const visibleWidth = root.querySelector<HTMLElement>('.column-navigator-detail-divider')?.offsetLeft
+      ?? railElement.clientWidth;
+    const visibleLeft = railElement.scrollLeft;
+    const visibleRight = visibleLeft + visibleWidth;
+    const visiblePart = (element: HTMLElement) => {
+      const left = element.offsetLeft;
+      const right = left + element.offsetWidth;
+      return Math.min(right, visibleRight) - Math.max(left, visibleLeft);
+    };
+    return {
+      scrollEvents: Number(railElement.dataset.previewScrollEvents ?? '0'),
+      activeVisibleWidth: visiblePart(activeColumn),
+      previewVisibleWidth: visiblePart(previewColumn),
+      expectedPreviewVisibleWidth: Math.min(previewColumn.offsetWidth, visibleWidth / 2),
+    };
+  });
+  expect(afterExpansion).toBeGreaterThanOrEqual(beforeExpansion);
+  expect(expansion.scrollEvents).toBeLessThanOrEqual(1);
+  expect(expansion.activeVisibleWidth).toBeGreaterThan(0);
+  expect(expansion.previewVisibleWidth).toBeCloseTo(expansion.expectedPreviewVisibleWidth, 0);
+
+  await page.keyboard.press('ArrowDown');
+  await waitForColumnNavigatorSettled(page, 'k:root|k:scalar', 20_000);
+  expect(await rail.evaluate((element) => element.scrollLeft)).toBe(afterExpansion);
+
+  await page.keyboard.press('ArrowUp');
+  await waitForColumnNavigatorSettled(page, 'k:root|k:container', 20_000);
+  expect(await rail.evaluate((element) => element.scrollLeft)).toBe(afterExpansion);
+});
+
 test('column navigator introduces its keyboard controls and supports history shortcuts', async ({ page }) => {
   test.setTimeout(30_000);
   await page.addInitScript(() => localStorage.removeItem('treease:column-navigator-keyboard-hint-seen'));

@@ -20,6 +20,10 @@ import type {
   ColumnNavigatorState,
   VisibleColumnNavigatorPaneState,
 } from './types';
+import {
+  createColumnPreviewScrollSession,
+  type PreviewScrollSessionInput,
+} from './preview-scroll';
 
 const COLUMN_NAVIGATOR_MIN_HEIGHT = 100;
 const COLUMN_NAVIGATOR_MAX_HEIGHT_FRACTION = 0.75;
@@ -102,6 +106,7 @@ function samePath(left: PathSeg[], right: PathSeg[]): boolean {
 }
 
 export function createColumnNavigatorController(deps: ColumnNavigatorControllerDeps) {
+  const previewScrollSession = createColumnPreviewScrollSession();
   const pendingEditTaskMap = new Map<string, Promise<void>>();
   const queuedEditMap = new Map<string, string>();
   let collapsed = true;
@@ -681,6 +686,7 @@ export function createColumnNavigatorController(deps: ColumnNavigatorControllerD
   }
 
   function reset(): void {
+    previewScrollSession.reset();
     projectionEpoch += 1;
     void navigationOperation?.cancel();
     void refreshOperation?.cancel();
@@ -740,6 +746,7 @@ export function createColumnNavigatorController(deps: ColumnNavigatorControllerD
     moveSibling,
     enterSelected,
     navigateParent,
+    planPreviewScroll: (input: PreviewScrollSessionInput) => previewScrollSession.plan(input),
     goBack: () => deps.publishHistoryTraversal(-1),
     goForward: () => deps.publishHistoryTraversal(1),
     collapse,
