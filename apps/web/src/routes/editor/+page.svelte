@@ -1785,7 +1785,7 @@
               />
             {/if}
             <div class="editor-status" data-testid="editor-status">
-              <span>{$activeTempModel?.cursor ?? 'Ln 1, Col 1'}{#if ($activeTempModel?.selectionLength ?? 0) > 0} ({$activeTempModel?.selectionLength} selected){/if}</span>
+              <span class="editor-status__cursor">{$activeTempModel?.cursor ?? 'Ln 1, Col 1'}{#if ($activeTempModel?.selectionLength ?? 0) > 0}{' '}({$activeTempModel?.selectionLength} selected){/if}</span>
               <Tooltip content={documentInvalid ? 'Document has errors' : 'Document is valid'} side="top"><button type="button" class:editor-status--invalid={documentInvalid} disabled={!documentInvalid} on:click={() => { const diagnostic = $activeTempModel?.diagnostics?.[0]; if (diagnostic) editorRef?.revealError(diagnostic.startLineNumber, diagnostic.startColumn) }}>{#if documentInvalid}<CircleAlert size={13} />Invalid{:else}<Check size={13} />Valid{/if}</button></Tooltip>
             </div>
           </div>
