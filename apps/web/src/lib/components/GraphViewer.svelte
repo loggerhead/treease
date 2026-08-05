@@ -29,7 +29,11 @@
 
   export function revealPath(
     path: PathSeg[],
-    options: { target: 'key' | 'value' | 'node' | undefined; navigate: boolean | undefined },
+    options: {
+      target: 'key' | 'value' | 'node' | undefined;
+      materialize?: boolean;
+      navigate: boolean | undefined;
+    },
   ): Promise<boolean> {
     return runtime?.revealPath(path, options) ?? Promise.resolve(false);
   }

@@ -49,7 +49,7 @@ export type ColumnNavigatorControllerDeps = {
   getShellHeight: () => number;
   clearSearchHighlight: () => void;
   clearActiveGraphSelection: () => void;
-  publishNavigation: (path: PathSeg[], target: 'key' | 'value' | 'node', trigger: 'breadcrumb') => void;
+  publishNavigation: (path: PathSeg[], target: 'key' | 'value' | 'node', trigger: 'column') => void;
   publishHistoryTraversal: (direction: -1 | 1) => void;
   publishExpanded: (expanded: boolean) => void;
   handleError: (
@@ -399,7 +399,7 @@ export function createColumnNavigatorController(deps: ColumnNavigatorControllerD
           materializedRevision: deps.getRevision(),
         });
         emitState();
-        deps.publishNavigation(path, 'value', 'breadcrumb');
+        deps.publishNavigation(path, 'value', 'column');
       },
     });
     if (result.status === 'failed') {
@@ -455,7 +455,7 @@ export function createColumnNavigatorController(deps: ColumnNavigatorControllerD
           materializedRevision: deps.getRevision(),
         });
         emitState();
-        if (options.reveal === 'immediate' && activePath.length) deps.publishNavigation(activePath, 'value', 'breadcrumb');
+        if (options.reveal === 'immediate' && activePath.length) deps.publishNavigation(activePath, 'value', 'column');
       },
     });
     if (result.status === 'failed' && result.error instanceof SnapshotNotReadyError) {

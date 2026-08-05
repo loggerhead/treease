@@ -786,7 +786,7 @@
     clearActiveGraphSelection: () => {
       updateTargetTempModel((current) => clearGraphSelectionForFullEdit(current));
     },
-    publishNavigation: (path, target) => publishNavigation(path, target, 'breadcrumb'),
+    publishNavigation: (path, target) => publishNavigation(path, target, 'column'),
     publishHistoryTraversal: (direction) => dispatch('navigation', { trigger: 'history', direction }),
     publishExpanded: (expanded) => dispatch('navigation', { trigger: 'visibility', expanded }),
     handleError,
@@ -1469,7 +1469,11 @@
 
   export function revealPath(
     path: PathSeg[],
-    options: { target: 'key' | 'value' | 'node' | undefined; navigate: boolean | undefined },
+    options: {
+      target: 'key' | 'value' | 'node' | undefined;
+      materialize?: boolean;
+      navigate: boolean | undefined;
+    },
   ): Promise<boolean> {
     if (isFullEditInteractionBlocked()) return Promise.resolve(false);
     return graphTextLinkageController.revealPath(path, options);

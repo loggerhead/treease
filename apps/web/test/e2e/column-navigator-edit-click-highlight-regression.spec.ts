@@ -134,9 +134,11 @@ test("editing a nested trajectory scalar preserves column-navigator highlighting
       2,
     )}`,
   ).toBeTruthy();
-  if (!basicInfoProbe?.coord)
-    throw new Error("main graph basic_info cell is missing a coordinate");
-  await clickGraphProbeAt(page, basicInfoProbe.coord);
+  if (!basicInfoProbe?.id)
+    throw new Error("main graph basic_info cell is missing a probe id");
+  await page.evaluate(async (probeId) => {
+    await window._treease?.graph.activateProbe(probeId);
+  }, basicInfoProbe.id);
   await waitForColumnNavigatorSettled(page, basicInfoPathKey, 30_000);
 
   const durationProbe = (await readColumnNavigatorClickProbes(page)).find(

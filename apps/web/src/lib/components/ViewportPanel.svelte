@@ -57,7 +57,7 @@
   type GraphNavigationPayload = {
     path?: PathSeg[];
     target?: 'key' | 'value' | 'node';
-    trigger?: 'click' | 'search-preview' | 'search-commit' | 'search-cancel' | 'breadcrumb' | 'history' | 'visibility';
+    trigger?: 'click' | 'search-preview' | 'search-commit' | 'search-cancel' | 'column' | 'history' | 'visibility';
     direction?: -1 | 1;
     expanded?: boolean;
   };
@@ -482,7 +482,7 @@
 
   export function revealPath(
     path: PathSeg[],
-    options: { target?: 'key' | 'value' | 'node'; navigate?: boolean } | undefined,
+    options: { target?: 'key' | 'value' | 'node'; materialize?: boolean; navigate?: boolean } | undefined,
   ): Promise<boolean> {
     if (!path.length) return Promise.resolve(false)
     return graphViewer?.revealPath?.(path, { ...options, navigate: options?.navigate ?? true }) ?? Promise.resolve(false)

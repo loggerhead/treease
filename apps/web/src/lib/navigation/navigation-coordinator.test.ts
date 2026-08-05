@@ -107,6 +107,40 @@ describe('NavigationCoordinator', () => {
     expect(facades.graph.navigate).toHaveBeenCalledOnce();
   });
 
+  it('materializes a Navigator column as a Graph highlight without moving the viewport', async () => {
+    const facades = createFacades();
+    const result = await createCoordinator(facades).dispatch({
+      kind: 'navigator-column',
+      target: target(),
+      path: [],
+      cellTarget: 'value',
+    });
+
+    expect(result).toMatchObject({ behavior: 'locate', outcome: 'applied' });
+    expect(facades.graph.locate).toHaveBeenCalledOnce();
+    expect(facades.graph.navigate).not.toHaveBeenCalled();
+  });
+
+  it('fully reveals a Navigator column when complete navigation is enabled', async () => {
+    const facades = createFacades();
+    const coordinator = new NavigationCoordinator({
+      facades,
+      targetReader: { status: () => 'current' },
+      getSettings: () => ({ completeNavigationEnabled: true }),
+    });
+
+    const result = await coordinator.dispatch({
+      kind: 'navigator-column',
+      target: target(),
+      path: [],
+      cellTarget: 'value',
+    });
+
+    expect(result).toMatchObject({ behavior: 'navigate', outcome: 'applied' });
+    expect(facades.graph.navigate).toHaveBeenCalledOnce();
+    expect(facades.graph.locate).not.toHaveBeenCalled();
+  });
+
   it('projects authoritative history traversal before revealing the selected path', async () => {
     const facades = createFacades();
     const historyPath = [{ tag: 0, key: 'previous', index: 0 }] as const;

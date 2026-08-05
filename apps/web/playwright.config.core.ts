@@ -5,6 +5,7 @@ const CI = !!process.env.CI;
 export default defineConfig({
   testDir: './test/e2e',
   testMatch: [
+    'editor-core-workflow.spec.ts',
     'editor-core-real-chain.spec.ts',
     'import-format-recognition.spec.ts',
     'format-minify-sort.spec.ts',

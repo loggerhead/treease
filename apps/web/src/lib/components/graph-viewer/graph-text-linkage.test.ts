@@ -504,6 +504,37 @@ describe('graph-text-linkage', () => {
     expect(setGraphHighlightTestState).toHaveBeenLastCalledWith(secondPath, 'value', expect.any(MockBox));
   });
 
+  it('materializes a highlighted value without moving the viewport', async () => {
+    const path = [{ tag: 0, key: 'target', index: 0 }] as any[];
+    const highlightedBox = new MockBox();
+    const materializeTarget = vi.fn().mockResolvedValue(true);
+    const centerOnBox = vi.fn(() => true);
+    const centerOnNode = vi.fn();
+    const setGraphHighlightTestState = vi.fn();
+    const controller = createGraphTextLinkageController(createBaseDeps({
+      getNodeDataMap: () => new Map([[1, { renderHandle: 1, path }]]),
+      getPathKeyToRenderHandleMap: () => new Map([[buildPathKey(path), 1]]),
+      getCellBoxByPathMap: () => new Map([
+        [buildPathKey(path), { value: highlightedBox, row: new MockBox() }],
+      ]),
+      materializeTarget,
+      centerOnBox,
+      centerOnNode,
+      setGraphHighlightTestState,
+    }));
+
+    await expect(controller.revealPath(path, {
+      target: 'value',
+      materialize: true,
+      navigate: false,
+    })).resolves.toBe(true);
+
+    expect(materializeTarget).toHaveBeenCalledWith(1);
+    expect(setGraphHighlightTestState).toHaveBeenCalledWith(path, 'value', highlightedBox);
+    expect(centerOnBox).not.toHaveBeenCalled();
+    expect(centerOnNode).not.toHaveBeenCalled();
+  });
+
   it('derives headerless table row scroll fallback directly from the target path', async () => {
     const visiblePath = [{ tag: 0, key: 'rows', index: 0 }, { tag: 1, key: '', index: 0 }] as any[];
     const targetPath = [{ tag: 0, key: 'rows', index: 0 }, { tag: 1, key: '', index: 172 }] as any[];

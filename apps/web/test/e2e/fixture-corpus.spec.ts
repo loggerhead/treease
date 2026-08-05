@@ -227,6 +227,10 @@ test.describe('fixture corpus sampling', () => {
 
     for (const fixture of invalidFixtures) {
       test(`invalid ${kind}: ${path.basename(fixture.filePath)}`, async ({ page }) => {
+        test.info().annotations.push({
+          type: 'allow-browser-error',
+          description: '[graph] document analysis failed',
+        });
         await page.goto('/editor');
         await waitForEditorReady(page);
 

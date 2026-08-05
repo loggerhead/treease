@@ -1226,6 +1226,7 @@
           if (!isVisibleSidecarTarget(context.target)) return { kind: 'applied' };
           return navigationResult(await viewerRef?.revealPath([...command.path], {
             target: command.cellTarget,
+            materialize: true,
             navigate: false,
           }) === true);
         },
@@ -1299,7 +1300,7 @@
   function handleGraphReveal(payload: {
     path: PathSeg[];
     target?: 'key' | 'value' | 'node';
-    trigger?: 'click' | 'search-preview' | 'search-commit' | 'search-cancel' | 'breadcrumb' | 'history' | 'visibility';
+    trigger?: 'click' | 'search-preview' | 'search-commit' | 'search-cancel' | 'column' | 'history' | 'visibility';
     direction?: -1 | 1;
     expanded?: boolean;
   }) {
@@ -1320,8 +1321,8 @@
     }
     if (!path.length) return;
     const cellTarget = payload.target ?? 'node';
-    const kind = payload.trigger === 'breadcrumb'
-      ? 'navigator-tree-path'
+    const kind = payload.trigger === 'column'
+      ? 'navigator-column'
       : payload.trigger === 'search-preview'
         ? 'search-preview'
         : payload.trigger === 'search-commit'

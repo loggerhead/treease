@@ -714,8 +714,9 @@ test('sibling preview changes keep the rail stable after the level uses its scro
 
 test('column navigator introduces its keyboard controls and supports history shortcuts', async ({ page }) => {
   test.setTimeout(30_000);
-  await page.addInitScript(() => localStorage.removeItem('treease:column-navigator-keyboard-hint-seen'));
   await page.goto('/editor');
+  await page.evaluate(() => localStorage.removeItem('treease:column-navigator-keyboard-hint-seen'));
+  await page.reload();
   await waitForEditorRuntimeReady(page);
   await setEditorContent(page, {
     sourceText: JSON.stringify({ root: { first: { leaf: 'one' } } }),
@@ -737,6 +738,7 @@ test('column navigator introduces its keyboard controls and supports history sho
   await expect(hint).toBeVisible();
   await expect(hint).toContainText('Browse nodes with');
   await expect(hint).toContainText('move through history');
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('treease:column-navigator-keyboard-hint-seen'))).toBe('1');
 
   await workspace.focus();
   await page.keyboard.press('ArrowRight');
@@ -753,8 +755,6 @@ test('column navigator introduces its keyboard controls and supports history sho
   await page.keyboard.press('[');
   await waitForColumnNavigatorSettled(page, 'k:root', 20_000);
   await expect(page.getByTestId('column-navigator-graph')).toHaveCount(0);
-
-  await expect.poll(() => page.evaluate(() => localStorage.getItem('treease:column-navigator-keyboard-hint-seen'))).toBe('1');
 });
 
 test('full active paths remain horizontally browsable with independent native column scrolling', async ({ page }) => {

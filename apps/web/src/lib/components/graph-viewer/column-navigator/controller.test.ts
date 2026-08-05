@@ -347,7 +347,7 @@ describe('path-driven column navigator controller', () => {
 
     expect(controller.getActivePath()).toEqual(keyPath('alpha'));
     expect(publishNavigation).toHaveBeenCalledOnce();
-    expect(publishNavigation).toHaveBeenCalledWith(keyPath('alpha'), 'value', 'breadcrumb');
+    expect(publishNavigation).toHaveBeenCalledWith(keyPath('alpha'), 'value', 'column');
   });
 
   it('keeps array sibling navigation inside the existing pane structure', async () => {

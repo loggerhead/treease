@@ -8,53 +8,17 @@ import {
   waitForGraphRendered,
 } from './utils';
 
-async function countYellowCellRegions(page: Page): Promise<number> {
-  const viewport = page.getByTestId('graph-viewer-canvas');
-  const clip = await viewport.boundingBox();
-  if (!clip) throw new Error('graph viewport is not visible');
-  const screenshot = await page.screenshot({ clip });
-  return page.evaluate(async (dataUrl) => {
-    const image = new Image();
-    image.src = dataUrl;
-    await image.decode();
-    const canvas = document.createElement('canvas');
-    canvas.width = image.width;
-    canvas.height = image.height;
-    const context = canvas.getContext('2d');
-    if (!context) return 0;
-    context.drawImage(image, 0, 0);
-    const { data, width, height } = context.getImageData(0, 0, canvas.width, canvas.height);
-    const isYellow = (offset: number) =>
-      data[offset] >= 245 && data[offset + 1] >= 210 && data[offset + 1] <= 240 && data[offset + 2] >= 90 && data[offset + 2] <= 150;
-    const seen = new Uint8Array(width * height);
-    let regions = 0;
-    for (let start = 0; start < seen.length; start += 1) {
-      if (seen[start] || !isYellow(start * 4)) continue;
-      let size = 0;
-      const queue = [start];
-      seen[start] = 1;
-      for (let cursor = 0; cursor < queue.length; cursor += 1) {
-        const pixel = queue[cursor]!;
-        size += 1;
-        const x = pixel % width;
-        const y = Math.floor(pixel / width);
-        for (const neighbor of [pixel - 1, pixel + 1, pixel - width, pixel + width]) {
-          if (neighbor < 0 || neighbor >= seen.length) continue;
-          const neighborX = neighbor % width;
-          const neighborY = Math.floor(neighbor / width);
-          if (Math.abs(neighborX - x) + Math.abs(neighborY - y) !== 1 || seen[neighbor] || !isYellow(neighbor * 4)) continue;
-          seen[neighbor] = 1;
-          queue.push(neighbor);
-        }
-      }
-      // Ignore antialiased glyph fragments; a cell background is much larger.
-      if (size >= 100) regions += 1;
-    }
-    return regions;
-  }, `data:image/png;base64,${screenshot.toString('base64')}`);
+async function readRuntimeHighlightPathKey(page: Page): Promise<string | null> {
+  return page.evaluate(() => {
+    const path = window._treease?.graph.getHighlightTarget()?.path;
+    if (!path?.length) return null;
+    return path
+      .map((segment) => segment.tag === 1 ? `i:${segment.index}` : `k:${segment.key}`)
+      .join('|');
+  });
 }
 
-test('rapid Column Navigator ArrowDown leaves one yellow graph cell', async ({ page }) => {
+test('rapid Column Navigator ArrowDown leaves the graph highlight on the selected path', async ({ page }) => {
   test.setTimeout(60_000);
   await page.goto('/editor');
   await waitForEditorReady(page);
@@ -85,7 +49,7 @@ test('rapid Column Navigator ArrowDown leaves one yellow graph cell', async ({ p
   await workspace.focus();
   await page.keyboard.press('ArrowRight');
   await waitForColumnNavigatorSettled(page, 'k:table|i:0', 20_000);
-  await expect.poll(() => countYellowCellRegions(page), { timeout: 5_000 }).toBe(1);
+  await expect.poll(() => readRuntimeHighlightPathKey(page)).toBe('k:table|i:0');
 
   // Do not await a settle between presses: this matches OS key-repeat faster
   // than async projection and graph-reveal completion.
@@ -97,5 +61,8 @@ test('rapid Column Navigator ArrowDown leaves one yellow graph cell', async ({ p
   await waitForColumnNavigatorSettled(page, undefined, 20_000);
   await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
 
-  await expect.poll(() => countYellowCellRegions(page), { timeout: 5_000 }).toBe(1);
+  const selectedPathKey = await workspace.locator('[data-column-navigator-selected="true"]')
+    .getAttribute('data-column-navigator-item-path-key');
+  expect(selectedPathKey).toBeTruthy();
+  await expect.poll(() => readRuntimeHighlightPathKey(page)).toBe(selectedPathKey);
 });

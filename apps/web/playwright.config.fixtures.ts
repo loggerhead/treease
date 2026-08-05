@@ -1,5 +1,8 @@
 import { defineConfig, devices } from '@playwright/test';
 
+const e2ePort = process.env.TREEASE_E2E_PORT ?? '8080';
+const e2eBaseUrl = `http://localhost:${e2ePort}`;
+
 export default defineConfig({
   testDir: './test/e2e',
   testMatch: 'fixture-corpus.spec.ts',
@@ -11,7 +14,7 @@ export default defineConfig({
   workers: '50%',
   reporter: 'list',
   use: {
-    baseURL: 'http://localhost:8080',
+    baseURL: e2eBaseUrl,
     trace: 'retain-on-failure',
   },
   projects: [
@@ -21,8 +24,8 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: 'pnpm serve:e2e',
-    url: 'http://localhost:8080',
+    command: `pnpm exec vp preview --outDir "$PWD/build" --host localhost --port ${e2ePort} --strictPort`,
+    url: e2eBaseUrl,
     reuseExistingServer: true,
     timeout: 120_000,
   },

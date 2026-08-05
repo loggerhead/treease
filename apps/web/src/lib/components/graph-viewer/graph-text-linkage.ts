@@ -76,6 +76,7 @@ type GraphTextLinkageControllerDeps = {
 type RevealTarget = "key" | "value" | "node";
 type RevealOptions = {
   target?: RevealTarget;
+  materialize?: boolean;
   navigate?: boolean;
 };
 
@@ -567,7 +568,7 @@ export function createGraphTextLinkageController(
     if (token !== revealPathToken) return false;
     const target = resolveNodeForPath(path);
     if (
-      options?.navigate &&
+      (options?.materialize || options?.navigate) &&
       target.renderHandle != null &&
       deps.materializeTarget
     ) {
