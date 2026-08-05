@@ -97,6 +97,8 @@ function createController(overrides: Record<string, unknown> = {}) {
     clearSearchHighlight: vi.fn(),
     clearActiveGraphSelection: vi.fn(),
     publishNavigation: vi.fn(),
+    publishHistoryTraversal: vi.fn(),
+    publishExpanded: vi.fn(),
     handleError: vi.fn(),
     applyStructuredValueEdit: vi.fn(async () => true),
     waitForCommittedDocument: vi.fn(async () => true),
@@ -188,16 +190,18 @@ describe('path-driven column navigator controller', () => {
     expect(controller.getActivePath()).toEqual(keyPath('second'));
   });
 
-  it('records external paths without expanding or changing the active column workspace', () => {
+  it('projects authoritative history availability without materializing columns', () => {
     const { controller, states } = createController();
-    const firstPath = keyPath('first');
-    const secondPath = keyPath('second');
 
-    controller.recordExternalPath(firstPath);
-    controller.recordExternalPath(secondPath);
+    controller.projectNavigationState({
+      activePath: keyPath('second'),
+      canGoBack: true,
+      canGoForward: false,
+      collapsed: true,
+    });
 
     expect(states.at(-1)).toMatchObject({ collapsed: true, canGoBack: true, canGoForward: false });
-    expect(controller.getActivePath()).toEqual([]);
+    expect(controller.getActivePath()).toEqual(keyPath('second'));
     expect(controller.getChain()).toEqual([]);
   });
 
@@ -315,7 +319,7 @@ describe('path-driven column navigator controller', () => {
     expect(controller.getActivePath()).toEqual(keyPath('alpha'));
   });
 
-  it('does not publish a sibling reveal when every rapid operation is superseded', async () => {
+  it('publishes only the final sibling reveal when rapid operations supersede each other', async () => {
     installDocument(
       {
         '': readyPathValue('object', '{3}'),
@@ -342,7 +346,8 @@ describe('path-driven column navigator controller', () => {
     expect(states.slice(stateCountBeforeMoves).filter((state) => state.isLoading)).toHaveLength(30);
 
     expect(controller.getActivePath()).toEqual(keyPath('alpha'));
-    expect(publishNavigation).not.toHaveBeenCalled();
+    expect(publishNavigation).toHaveBeenCalledOnce();
+    expect(publishNavigation).toHaveBeenCalledWith(keyPath('alpha'), 'value', 'breadcrumb');
   });
 
   it('keeps array sibling navigation inside the existing pane structure', async () => {
@@ -370,8 +375,12 @@ describe('path-driven column navigator controller', () => {
     await controller.moveSibling(1);
 
     expect(mocks.queryDirectChildren).not.toHaveBeenCalled();
-    expect(markSubgraphRequested).not.toHaveBeenCalled();
-    expect(markSubgraphMaterialized).not.toHaveBeenCalled();
+    expect(markSubgraphRequested).toHaveBeenCalledOnce();
+    expect(markSubgraphMaterialized).toHaveBeenCalledOnce();
+    expect(markSubgraphMaterialized).toHaveBeenCalledWith(expect.objectContaining({
+      requestId: markSubgraphRequested.mock.calls[0]?.[0].requestId,
+      pathKey: 'k:items|i:1',
+    }));
     expect(states.slice(stateCount)).not.toContainEqual(expect.objectContaining({ isLoading: true }));
     expect(states.at(-1)?.chain.map((pane: any) => pane.pathKey)).toEqual(['$', 'k:items', 'k:items|i:1']);
   });
@@ -392,52 +401,15 @@ describe('path-driven column navigator controller', () => {
     expect(controller.getChain().at(-1)?.content).toMatchObject({ valueType: 'object', sourceText: '{1}' });
   });
 
-  it('restores active paths through back and forward history', async () => {
-    installDocument(
-      {
-        '': readyPathValue('object', '{2}'),
-        alpha: readyPathValue('object', '{1}'),
-        beta: readyPathValue('object', '{1}'),
-      },
-      {
-        '': [item(keyPath('alpha')), item(keyPath('beta'))],
-        alpha: [item(keyPath('alpha', 'child'), 'string')],
-        beta: [item(keyPath('beta', 'child'), 'string')],
-      },
-    );
-    const { controller, states } = createController();
-    await controller.openPath(keyPath('alpha'));
-    await controller.selectPath(keyPath('beta'));
+  it('publishes history traversal intent without choosing a path locally', () => {
+    const publishHistoryTraversal = vi.fn();
+    const { controller } = createController({ publishHistoryTraversal });
 
-    await controller.goBack();
-    expect(controller.getActivePath()).toEqual(keyPath('alpha'));
-    expect(states.at(-1)).toMatchObject({ canGoBack: false, canGoForward: true });
+    controller.goBack();
+    controller.goForward();
 
-    await controller.goForward();
-    expect(controller.getActivePath()).toEqual(keyPath('beta'));
-  });
-
-  it('clears forward history when a new path is selected after going back', async () => {
-    installDocument(
-      {
-        '': readyPathValue('object', '{3}'),
-        alpha: readyPathValue('number', '1'),
-        beta: readyPathValue('number', '2'),
-        gamma: readyPathValue('number', '3'),
-      },
-      { '': [item(keyPath('alpha'), 'number'), item(keyPath('beta'), 'number'), item(keyPath('gamma'), 'number')] },
-    );
-    const { controller, states } = createController();
-
-    await controller.openPath(keyPath('alpha'));
-    await controller.selectPath(keyPath('beta'));
-    await controller.goBack();
-    await controller.selectPath(keyPath('gamma'));
-
-    expect(controller.getActivePath()).toEqual(keyPath('gamma'));
-    expect(states.at(-1)).toMatchObject({ canGoBack: true, canGoForward: false });
-    await controller.goForward();
-    expect(controller.getActivePath()).toEqual(keyPath('gamma'));
+    expect(publishHistoryTraversal.mock.calls).toEqual([[-1], [1]]);
+    expect(controller.getActivePath()).toEqual([]);
   });
 
   it('navigates to the parent path without creating a second navigation state', async () => {

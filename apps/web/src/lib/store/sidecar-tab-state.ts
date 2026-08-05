@@ -43,6 +43,20 @@ export function updateSidecarNavigator(target: TabTarget, navigator: NavigatorUp
   return true;
 }
 
+export function updateSidecarNavigatorProjection(
+  target: TabTarget,
+  navigator: NavigatorUpdate,
+  treePath: PathSeg[],
+): boolean {
+  const current = pairedSidecar(target);
+  if (!current) return false;
+  updateWorkspaceTab(current.sidecar.id, {
+    sidecarState: { ...current.sidecar.sidecarState!, navigator },
+    tempModel: { ...current.sidecar.tempModel, treePath },
+  });
+  return true;
+}
+
 export function updateSidecarViewport(target: TabTarget, viewport: Viewport): boolean {
   const current = pairedSidecar(target);
   if (!current) return false;

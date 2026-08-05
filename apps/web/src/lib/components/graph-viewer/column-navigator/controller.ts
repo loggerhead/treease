@@ -46,6 +46,8 @@ export type ColumnNavigatorControllerDeps = {
   clearSearchHighlight: () => void;
   clearActiveGraphSelection: () => void;
   publishNavigation: (path: PathSeg[], target: 'key' | 'value' | 'node', trigger: 'breadcrumb') => void;
+  publishHistoryTraversal: (direction: -1 | 1) => void;
+  publishExpanded: (expanded: boolean) => void;
   handleError: (
     error: unknown,
     context: { component: string; operation: string; metadata?: Record<string, unknown> },
@@ -107,8 +109,8 @@ export function createColumnNavigatorController(deps: ColumnNavigatorControllerD
   let isLoading = false;
   let activePath: PathSeg[] = [];
   let chain: ColumnNavigatorPaneState[] = [];
-  let history: PathSeg[][] = [];
-  let historyIndex = -1;
+  let canGoBack = false;
+  let canGoForward = false;
   let heightPx = deps.defaultHeightPx;
   let isDraggingDivider = false;
   let resizeState: { startClientY: number; startHeightPx: number } | null = null;
@@ -141,12 +143,10 @@ export function createColumnNavigatorController(deps: ColumnNavigatorControllerD
       collapsed,
       isLoading,
       activePath: clonePath(activePath),
-      history: history.map(clonePath),
-      historyIndex,
       chain: chain.map(clonePane),
       visiblePanes: panes,
-      canGoBack: historyIndex > 0,
-      canGoForward: historyIndex >= 0 && historyIndex < history.length - 1,
+      canGoBack,
+      canGoForward,
       heightPx,
       isDraggingDivider,
     });
@@ -331,18 +331,6 @@ export function createColumnNavigatorController(deps: ColumnNavigatorControllerD
     return { activePath: clonePath(path), chain: nextChain };
   }
 
-  function recordHistory(path: PathSeg[]): boolean {
-    if (historyIndex >= 0 && samePath(history[historyIndex] ?? [], path)) return false;
-    history = [...history.slice(0, historyIndex + 1), clonePath(path)];
-    historyIndex = history.length - 1;
-    return true;
-  }
-
-  function recordExternalPath(path: PathSeg[]): void {
-    if (disposed || !path.length || !recordHistory(path)) return;
-    emitState();
-  }
-
   function hasStableSiblingPaneStructure(item: ColumnNavigatorColumnItem): boolean {
     const currentIndex = activePath.at(-1);
     const nextIndex = item.path.at(-1);
@@ -374,7 +362,12 @@ export function createColumnNavigatorController(deps: ColumnNavigatorControllerD
       if (!operation.isCurrent()) return;
     }
     activePath = clonePath(path);
-    recordHistory(path);
+    const nextRequestId = ++requestId;
+    deps.markSubgraphRequested({
+      requestId: nextRequestId,
+      pathKey: workspacePathKey(path),
+      sourceRevision: deps.getRevision(),
+    });
     emitState();
     const result = await operation.run({
       execute: ({ step }) => step(async () => {
@@ -388,12 +381,20 @@ export function createColumnNavigatorController(deps: ColumnNavigatorControllerD
         if (!terminalPane || terminalPane.kind !== 'content') return;
         chain[chain.length - 1] = {
           ...terminalPane,
+          requestId: nextRequestId,
           path: clonePath(path),
           pathKey: workspacePathKey(path),
           title: formatColumnNavigatorPath(path),
           content,
         };
+        deps.markSubgraphMaterialized({
+          requestId: nextRequestId,
+          pathKey: workspacePathKey(path),
+          sourceRevision: deps.getRevision(),
+          materializedRevision: deps.getRevision(),
+        });
         emitState();
+        deps.publishNavigation(path, 'value', 'breadcrumb');
       },
     });
     if (result.status === 'failed') {
@@ -407,7 +408,7 @@ export function createColumnNavigatorController(deps: ColumnNavigatorControllerD
 
   async function navigate(
     path: PathSeg[],
-    options: { recordHistory: boolean; reveal: 'immediate' | 'debounced' | 'none' },
+    options: { reveal: 'immediate' | 'debounced' | 'none' },
   ): Promise<void> {
     if (disposed) return;
     // Selection rebinding waits for the current Monaco draft transaction to
@@ -429,7 +430,6 @@ export function createColumnNavigatorController(deps: ColumnNavigatorControllerD
     // Resetting the workspace invalidates it before this state can become visible.
     // Keep a readable chain until its replacement is ready.
     if (!chain.length) chain = [loadingPane(path, nextRequestId)];
-    if (options.recordHistory) recordHistory(path);
     deps.markSubgraphRequested({
       requestId: nextRequestId,
       pathKey: requestedPathKey,
@@ -449,8 +449,8 @@ export function createColumnNavigatorController(deps: ColumnNavigatorControllerD
           sourceRevision: deps.getRevision(),
           materializedRevision: deps.getRevision(),
         });
-        if (options.reveal === 'immediate' && activePath.length) deps.publishNavigation(activePath, 'value', 'breadcrumb');
         emitState();
+        if (options.reveal === 'immediate' && activePath.length) deps.publishNavigation(activePath, 'value', 'breadcrumb');
       },
     });
     if (result.status === 'failed' && result.error instanceof SnapshotNotReadyError) {
@@ -466,16 +466,16 @@ export function createColumnNavigatorController(deps: ColumnNavigatorControllerD
 
   async function openPath(path: PathSeg[], _parentAbsoluteIndex = -1): Promise<void> {
     if (!keepCollapsed) collapsed = false;
-    await navigate(path, { recordHistory: true, reveal: 'none' });
+    await navigate(path, { reveal: 'none' });
   }
 
   async function selectPath(path: PathSeg[]): Promise<void> {
-    await navigate(path, { recordHistory: true, reveal: 'immediate' });
+    await navigate(path, { reveal: 'immediate' });
   }
 
   async function applyExternalPath(path: PathSeg[]): Promise<void> {
     if (!keepCollapsed) collapsed = false;
-    await navigate(path, { recordHistory: false, reveal: 'none' });
+    await navigate(path, { reveal: 'none' });
   }
 
   function selectedItem(): ColumnNavigatorColumnItem | null {
@@ -500,7 +500,7 @@ export function createColumnNavigatorController(deps: ColumnNavigatorControllerD
         await selectSibling(item.path);
         return;
       }
-      await navigate(item.path, { recordHistory: true, reveal: 'none' });
+      await navigate(item.path, { reveal: 'immediate' });
     }
   }
 
@@ -519,14 +519,6 @@ export function createColumnNavigatorController(deps: ColumnNavigatorControllerD
   async function navigateParent(): Promise<void> {
     if (!activePath.length) return;
     await selectPath(activePath.slice(0, -1));
-  }
-
-  async function goHistory(delta: -1 | 1): Promise<void> {
-    const nextIndex = historyIndex + delta;
-    const path = history[nextIndex];
-    if (!path || nextIndex < 0 || nextIndex >= history.length) return;
-    historyIndex = nextIndex;
-    await navigate(path, { recordHistory: false, reveal: 'immediate' });
   }
 
   async function runValueEditLoop(pane: ColumnNavigatorPaneState, initialText: string): Promise<void> {
@@ -670,6 +662,7 @@ export function createColumnNavigatorController(deps: ColumnNavigatorControllerD
     if (collapsed) return;
     collapsed = true;
     emitState();
+    deps.publishExpanded(false);
   }
 
   function expand(): void {
@@ -677,12 +670,14 @@ export function createColumnNavigatorController(deps: ColumnNavigatorControllerD
     keepCollapsed = false;
     collapsed = false;
     emitState();
+    deps.publishExpanded(true);
   }
 
   function pinCollapsed(): void {
     keepCollapsed = true;
     collapsed = true;
     emitState();
+    deps.publishExpanded(false);
   }
 
   function reset(): void {
@@ -694,8 +689,8 @@ export function createColumnNavigatorController(deps: ColumnNavigatorControllerD
     isLoading = false;
     activePath = [];
     chain = [];
-    history = [];
-    historyIndex = -1;
+    canGoBack = false;
+    canGoForward = false;
     pendingEditTaskMap.clear();
     queuedEditMap.clear();
     deps.clearSearchHighlight();
@@ -707,14 +702,23 @@ export function createColumnNavigatorController(deps: ColumnNavigatorControllerD
 
   async function restoreNavigationState(state: ColumnNavigatorNavigationState): Promise<void> {
     reset();
-    history = state.history.map(clonePath);
-    historyIndex = Math.max(-1, Math.min(state.historyIndex, history.length - 1));
+    canGoBack = state.canGoBack;
+    canGoForward = state.canGoForward;
     keepCollapsed = state.collapsed;
     collapsed = state.collapsed;
     if (state.activePath.length) {
       await openPath(state.activePath);
       return;
     }
+    emitState();
+  }
+
+  function projectNavigationState(state: ColumnNavigatorNavigationState): void {
+    activePath = clonePath(state.activePath);
+    canGoBack = state.canGoBack;
+    canGoForward = state.canGoForward;
+    keepCollapsed = state.collapsed;
+    collapsed = state.collapsed;
     emitState();
   }
 
@@ -736,15 +740,15 @@ export function createColumnNavigatorController(deps: ColumnNavigatorControllerD
     moveSibling,
     enterSelected,
     navigateParent,
-    goBack: () => goHistory(-1),
-    goForward: () => goHistory(1),
-    recordExternalPath,
+    goBack: () => deps.publishHistoryTraversal(-1),
+    goForward: () => deps.publishHistoryTraversal(1),
     collapse,
     pinCollapsed,
     expand,
     commitValueEdit,
     syncProjection,
     restoreNavigationState,
+    projectNavigationState,
     reset,
     dispose,
     syncHeightToShell,

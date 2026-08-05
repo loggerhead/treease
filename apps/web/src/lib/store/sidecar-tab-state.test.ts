@@ -9,6 +9,7 @@ import {
   updateSidecarCompareOutcome,
   commitSidecarInput,
   updateSidecarNavigator,
+  updateSidecarNavigatorProjection,
   updateSidecarTempModel,
   updateSidecarViewport,
 } from './sidecar-tab-state';
@@ -62,7 +63,10 @@ describe('sidecar tab-state facade', () => {
       activePath: itemsPath, history: [itemsPath], historyIndex: 0,
       collapsed: false, expanded: true, columnsMaterialized: true,
     })).toBe(true);
-    expect(updateSidecarTempModel(target, (current) => ({ ...current, treePath: itemsPath }))).toBe(true);
+    expect(updateSidecarNavigatorProjection(target, {
+      activePath: itemsPath, history: [itemsPath], historyIndex: 0,
+      collapsed: false, expanded: true, columnsMaterialized: true,
+    }, itemsPath)).toBe(true);
     expect(getWorkspaceState().tabsById[secondSidecar.id].sidecarState?.graph.viewport).toMatchObject({ x: 10, y: 20 });
     expect(getWorkspaceState().tabsById[secondSidecar.id].sidecarState?.navigator.activePath).toEqual(itemsPath);
     expect(readSidecarTempModel(target)?.treePath).toEqual(itemsPath);

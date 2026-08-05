@@ -125,14 +125,12 @@
   {results}
   useVirtualList={false}
   shouldFilter={true}
+  loop={true}
   itemValue={(item) => item.label}
   itemKeywords={(item) => item.keywords}
   onFocus={() => openPanel()}
   onClick={() => openPanel()}
-  onInput={(event: any) => {
-    const detail = event.detail as InputEvent
-    setQuery((detail.target as HTMLInputElement).value)
-  }}
+  onInput={({ value }) => setQuery(value)}
   onEscape={closePanel}
   onItemSelect={(_index, item) => {
     if (item) void executeCommand(item.id)

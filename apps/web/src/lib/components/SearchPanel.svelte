@@ -29,9 +29,9 @@
   export let useVirtualList = true
   export let estimateSize = 36
   export let overscan = 6
-  export let onInput: (event: any) => void = () => {}
-  export let onFocus: (event: any) => void = () => {}
-  export let onClick: (event: any) => void = () => {}
+  export let onInput: (payload: { event: Event; value: string }) => void = () => {}
+  export let onFocus: (event: FocusEvent) => void = () => {}
+  export let onClick: (event: MouseEvent) => void = () => {}
   export let onItemSelect: (index: number, item: any) => void = () => {}
   export let onActiveIndexChange: (index: number) => void = () => {}
   export let onEscape: () => void = () => {}
@@ -47,27 +47,17 @@
 
   let searchRef: SearchInput | null = null
   let listRef: HTMLDivElement | null = null
-  let previousQuery = query
 
-  $: visibleResults = shouldFilter && query.trim()
-    ? results.filter((item, index) => {
-        const haystack = `${itemValue(item, index)} ${itemKeywords(item, index).join(' ')}`.toLowerCase()
-        return haystack.includes(query.trim().toLowerCase())
-      })
-    : results
-
-  $: if (query !== previousQuery) {
-    previousQuery = query
-    activeIndex = visibleResults.length ? 0 : -1
-    onActiveIndexChange(activeIndex)
+  function filterResults(inputQuery: string): any[] {
+    const normalizedQuery = inputQuery.trim().toLowerCase()
+    if (!shouldFilter || !normalizedQuery) return results
+    return results.filter((item, index) => {
+      const haystack = `${itemValue(item, index)} ${itemKeywords(item, index).join(' ')}`.toLowerCase()
+      return haystack.includes(normalizedQuery)
+    })
   }
 
-  $: if (!visibleResults.length) {
-    activeIndex = -1
-  } else if (activeIndex < 0 || activeIndex >= visibleResults.length) {
-    activeIndex = 0
-    onActiveIndexChange(activeIndex)
-  }
+  $: visibleResults = customResults ? filterResults(query) : results
 
   export function focusInput() {
     searchRef?.focus()
@@ -116,22 +106,22 @@
     })
   }
 
-  function moveActiveIndex(offset: number): void {
-    if (!visibleResults.length) return
-    activeIndex = (activeIndex + offset + visibleResults.length) % visibleResults.length
+  function moveActiveIndex(offset: number, currentResults: any[]): void {
+    if (!currentResults.length) return
+    activeIndex = (activeIndex + offset + currentResults.length) % currentResults.length
     onActiveIndexChange(activeIndex)
     scrollActiveResultIntoView(activeIndex)
   }
 
-  function handleKeydown(event: KeyboardEvent): void {
+  function handleKeydown(event: KeyboardEvent, currentResults: any[]): void {
     if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
       event.preventDefault()
       event.stopPropagation()
-      moveActiveIndex(event.key === 'ArrowDown' ? 1 : -1)
+      moveActiveIndex(event.key === 'ArrowDown' ? 1 : -1, currentResults)
       return
     }
     if (event.key === 'Enter') {
-      const item = visibleResults[activeIndex]
+      const item = currentResults[activeIndex]
       if (item) {
         event.preventDefault()
         event.stopPropagation()
@@ -147,8 +137,19 @@
     }
   }
 
-  function handleInputKeydown(event: CustomEvent): void {
-    handleKeydown(event.detail as KeyboardEvent)
+  function handleInputKeydown(
+    event: CustomEvent<{ event: KeyboardEvent; value: string }>,
+  ): void {
+    const keyboardEvent = event.detail.event
+    if (!customResults) {
+      if (keyboardEvent.key === 'Escape') {
+        keyboardEvent.preventDefault()
+        keyboardEvent.stopPropagation()
+        onEscape()
+      }
+      return
+    }
+    handleKeydown(keyboardEvent, filterResults(event.detail.value))
   }
 </script>
 
@@ -162,9 +163,9 @@
       {inputAriaLabel}
       {inputTestId}
       className={inputClassName}
-      on:focus={onFocus}
-      on:click={onClick}
-      on:input={onInput}
+      on:focus={(event) => onFocus(event.detail)}
+      on:click={(event) => onClick(event.detail)}
+      on:input={(event) => onInput(event.detail)}
       on:keydown={handleInputKeydown}
     />
   {/if}
@@ -179,7 +180,7 @@
     >
       <Command
         class={commandClassName}
-        {shouldFilter}
+        shouldFilter={!customResults && shouldFilter}
         {loop}
       >
         {#if inputInline}
@@ -191,9 +192,9 @@
             {inputAriaLabel}
             {inputTestId}
             className={inputClassName}
-            on:focus={onFocus}
-            on:click={onClick}
-            on:input={onInput}
+            on:focus={(event) => onFocus(event.detail)}
+            on:click={(event) => onClick(event.detail)}
+            on:input={(event) => onInput(event.detail)}
             on:keydown={handleInputKeydown}
           />
         {/if}
@@ -203,7 +204,6 @@
           {:else}
             <SearchResultsList
               results={visibleResults}
-              {activeIndex}
               {useVirtualList}
               virtualizer={virtualizer}
               {listClassName}
@@ -231,7 +231,7 @@
     transition: background-color 150ms ease, color 150ms ease;
   }
 
-  :global(.search-panel__item:not(.graph-search-result--active):not([data-search-active='true']):hover) {
+  :global(.search-panel__item:not(.graph-search-result--active):hover) {
     background-color: var(--item-hover-bg) !important;
     color: var(--text-primary);
   }

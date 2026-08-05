@@ -18,6 +18,10 @@ function event(kind: NavigationUserEvent['kind']): NavigationUserEvent {
       return { kind, target, path: [], cellTarget: 'node', previewId: 'preview' };
     case 'search-cancel':
       return { kind, target, previewId: 'preview' };
+    case 'navigator-history':
+      return { kind, target, direction: -1 };
+    case 'navigator-visibility':
+      return { kind, target, expanded: false };
     default:
       return { kind, target };
   }
@@ -29,6 +33,8 @@ describe('navigation behavior policy', () => {
     ['graph-cell', 'locate', 'navigate'],
     ['navigator-column', 'locate', 'navigate'],
     ['navigator-tree-path', 'navigate', 'navigate'],
+    ['navigator-history', 'navigate', 'navigate'],
+    ['navigator-visibility', 'navigate', 'navigate'],
     ['search-preview', 'graph-highlight-preview', 'graph-viewport-preview'],
     ['search-commit', 'navigate', 'navigate'],
     ['search-cancel', 'cancel-preview', 'cancel-preview'],

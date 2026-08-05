@@ -54,7 +54,15 @@
 
   export let viewMode: 'graph' | 'text' = 'graph'
   export let onRevealError: (line: number, column: number) => void = () => {}
-  export let onGraphNavigation: (payload: { path: PathSeg[]; target?: 'key' | 'value' | 'node'; trigger?: 'click' | 'search-preview' | 'search-commit' | 'breadcrumb' }) => void =
+  type GraphNavigationPayload = {
+    path?: PathSeg[];
+    target?: 'key' | 'value' | 'node';
+    trigger?: 'click' | 'search-preview' | 'search-commit' | 'search-cancel' | 'breadcrumb' | 'history' | 'visibility';
+    direction?: -1 | 1;
+    expanded?: boolean;
+  };
+
+  export let onGraphNavigation: (payload: GraphNavigationPayload) => void =
     () => {}
   export let onApplyDiff: (plan: DiffPlan) => void = () => {}
   export let onTextScroll: (payload: { scrollTop: number; scrollLeft: number }) => void = () => {}
@@ -442,41 +450,42 @@
     await graphViewer?.exportImage?.()
   }
 
-  export function previewGraphSearchResult(result: any): void {
-    graphViewer?.previewSearchResult?.(result)
-  }
-
-  export function cancelGraphSearchPreview(): Promise<void> {
-    return graphViewer?.cancelSearchPreview?.() ?? Promise.resolve()
-  }
-
   export function revealGraphSearchResult(result: any): void {
-    graphViewer?.commitSearchPreview?.()
-    graphViewer?.revealSearchResult?.(result)
     trackEvent('graph_search', { surface: 'graph', result_count: 1 })
   }
 
   function handleGraphSearchPreview(result: GraphSearchResult): void {
-    graphViewer?.previewSearchResult?.(result)
+    onGraphNavigation({ path: result.path, target: result.target, trigger: 'search-preview' })
   }
 
   function handleGraphSearchCancel(): void {
-    void graphViewer?.cancelSearchPreview?.()
+    onGraphNavigation({ path: [], trigger: 'search-cancel' })
   }
 
   function handleGraphSearchSelect(event: CustomEvent<GraphSearchResult>): void {
-    graphViewer?.commitSearchPreview?.()
+    onGraphNavigation({ path: event.detail.path, target: event.detail.target, trigger: 'search-commit' })
     revealGraphSearchResult(event.detail)
   }
 
-  function handleGraphNavigation(event: CustomEvent<any>): void {
-    const path = event?.detail?.path ?? []
-    if (path.length) onGraphNavigation(event.detail)
+  function handleGraphNavigation(event: CustomEvent<GraphNavigationPayload>): void {
+    const payload = event.detail;
+    if (payload.trigger === 'history' && payload.direction) {
+      onGraphNavigation(payload);
+      return;
+    }
+    if (payload.trigger === 'visibility' && typeof payload.expanded === 'boolean') {
+      onGraphNavigation(payload);
+      return;
+    }
+    if (payload.path?.length) onGraphNavigation(payload);
   }
 
-  export function revealPath(path: PathSeg[], options: { target?: 'key' | 'value' | 'node' } | undefined): Promise<boolean> {
+  export function revealPath(
+    path: PathSeg[],
+    options: { target?: 'key' | 'value' | 'node'; navigate?: boolean } | undefined,
+  ): Promise<boolean> {
     if (!path.length) return Promise.resolve(false)
-    return graphViewer?.revealPath?.(path, { ...options, navigate: true }) ?? Promise.resolve(false)
+    return graphViewer?.revealPath?.(path, { ...options, navigate: options?.navigate ?? true }) ?? Promise.resolve(false)
   }
 
   export async function waitForGraphReady(): Promise<boolean> {
@@ -513,8 +522,8 @@
 
   export async function restoreColumnNavigatorNavigationState(state: {
     activePath: PathSeg[];
-    history: PathSeg[][];
-    historyIndex: number;
+    canGoBack: boolean;
+    canGoForward: boolean;
     collapsed: boolean;
   }): Promise<void> {
     await graphViewer?.restoreColumnNavigatorNavigationState?.(state);
@@ -522,6 +531,18 @@
 
   export function restoreGraphViewport(state: { x: number; y: number; scaleX: number; scaleY: number } | null): void {
     graphViewer?.restoreGraphViewport?.(state)
+  }
+
+  export function getGraphViewport(): { x: number; y: number; scaleX: number; scaleY: number } | null {
+    return graphViewer?.getGraphViewport?.() ?? null
+  }
+
+  export function cancelGraphViewportTransition(): void {
+    graphViewer?.cancelGraphViewportTransition?.()
+  }
+
+  export function waitForGraphViewportTransition(): Promise<void> {
+    return graphViewer?.waitForGraphViewportTransition?.() ?? Promise.resolve()
   }
 
   export function collapseColumnNavigator(): void {
@@ -548,8 +569,14 @@
     await graphViewer?.selectColumnNavigatorPath?.(path);
   }
 
-  export async function applyColumnNavigatorNavigationPath(path: PathSeg[]): Promise<void> {
-    await graphViewer?.applyColumnNavigatorNavigationPath?.(path);
+  export async function applyColumnNavigatorNavigationProjection(state: {
+    activePath: PathSeg[];
+    canGoBack: boolean;
+    canGoForward: boolean;
+    materializeColumns: boolean;
+    expanded: boolean;
+  }): Promise<void> {
+    await graphViewer?.applyColumnNavigatorNavigationProjection?.(state);
   }
 
   export function setTextScrollPosition(position: { scrollTop: number; scrollLeft: number }) {

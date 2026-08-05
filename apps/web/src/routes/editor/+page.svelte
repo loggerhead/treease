@@ -29,7 +29,7 @@
     readSidecarTempModel,
     isVisibleSidecarTarget,
     updateSidecarCompareOutcome,
-    updateSidecarNavigator,
+    updateSidecarNavigatorProjection,
     updateSidecarSurfaceMode,
     updateSidecarTempModel,
     updateSidecarTreePath,
@@ -538,11 +538,6 @@
   }
 
   function handleColumnNavigatorState(payload: { tabId: string; state: ColumnNavigatorState }): void {
-    const target = captureSidecarTarget(payload.tabId);
-    if (!target || !updateSidecarNavigator(target, {
-      activePath: payload.state.activePath, history: payload.state.history, historyIndex: payload.state.historyIndex,
-      collapsed: payload.state.collapsed, expanded: !payload.state.collapsed, columnsMaterialized: payload.state.chain.length > 0,
-    })) return;
     if (payload.tabId === renderedSidecarTabId) columnNavigatorState = payload.state;
   }
 
@@ -567,8 +562,8 @@
     if (!mainTab || !navigator || !viewerRef) return;
     await viewerRef.restoreColumnNavigatorNavigationState({
       activePath: navigator.activePath,
-      history: navigator.history,
-      historyIndex: navigator.historyIndex,
+      canGoBack: navigator.historyIndex > 0,
+      canGoForward: navigator.historyIndex >= 0 && navigator.historyIndex < navigator.history.length - 1,
       collapsed: navigator.collapsed,
     });
     if (getWorkspaceState().activeTabId !== mainTab.id || getWorkspaceState().tabsById[mainTab.id]?.sidecarTabId !== sidecarTabId) return;
@@ -1213,7 +1208,10 @@
       graph: {
         isInteractive: (target) => isVisibleSidecarTarget(target) && viewerRef?.isGraphInteractive() === true,
         capturePreviewBaseline: async (context) => {
-          return { selection: readSidecarTempModel(context.target)?.graphHighlight ?? null, viewport: null };
+          return {
+            selection: readSidecarTempModel(context.target)?.graphHighlight ?? null,
+            viewport: isVisibleSidecarTarget(context.target) ? viewerRef?.getGraphViewport() ?? null : null,
+          };
         },
         highlight: async (context, command) => {
           if (!context.isCurrent()) return { kind: 'stale' };
@@ -1225,7 +1223,11 @@
               revealToken: ++graphRevealToken,
             },
           }))) return { kind: 'stale' };
-          return { kind: 'applied' };
+          if (!isVisibleSidecarTarget(context.target)) return { kind: 'applied' };
+          return navigationResult(await viewerRef?.revealPath([...command.path], {
+            target: command.cellTarget,
+            navigate: false,
+          }) === true);
         },
         reveal: async (context, command) => {
           if (!context.isCurrent()) return { kind: 'stale' };
@@ -1237,8 +1239,22 @@
           if (!updateSidecarTempModel(context.target, (current) => ({ ...current, graphHighlight: baseline.selection as typeof current.graphHighlight }))) return { kind: 'stale' };
           return { kind: 'applied' };
         },
-        restoreViewport: async () => ({ kind: 'no-op' }),
-        cancelViewportTransition: async () => ({ kind: 'applied' }),
+        restoreViewport: async (context, baseline) => {
+          if (!context.isCurrent()) return { kind: 'stale' };
+          if (isVisibleSidecarTarget(context.target)) {
+            await viewerRef?.waitForGraphViewportTransition();
+            if (!context.isCurrent()) return { kind: 'stale' };
+            viewerRef?.restoreGraphViewport(
+              baseline.viewport as { x: number; y: number; scaleX: number; scaleY: number } | null,
+            );
+          }
+          return { kind: 'applied' };
+        },
+        cancelViewportTransition: async (context) => {
+          if (!context.isCurrent()) return { kind: 'stale' };
+          if (isVisibleSidecarTarget(context.target)) viewerRef?.cancelGraphViewportTransition();
+          return { kind: 'applied' };
+        },
       },
       navigator: {
         apply: async (command) => {
@@ -1249,9 +1265,24 @@
             tab.documentKey !== command.target.documentKey ||
             tab.revision !== command.target.revision
           ) return { kind: 'stale' };
-          if (!updateSidecarTreePath(command.target, [...command.path])) return { kind: 'stale' };
-          if (!command.materializeColumns || !isVisibleSidecarTarget(command.target)) return { kind: 'applied' };
-          await viewerRef?.applyColumnNavigatorNavigationPath([...command.path]);
+          const navigator = tab.sidecarState?.navigator;
+          if (!navigator || !updateSidecarNavigatorProjection(command.target, {
+            ...navigator,
+            activePath: [...command.path],
+            history: command.history.map((path) => [...path]),
+            historyIndex: command.historyIndex,
+            expanded: command.expanded,
+            collapsed: !command.expanded,
+            columnsMaterialized: command.materializeColumns || navigator.columnsMaterialized,
+          }, [...command.path])) return { kind: 'stale' };
+          if (!isVisibleSidecarTarget(command.target)) return { kind: 'applied' };
+          await viewerRef?.applyColumnNavigatorNavigationProjection({
+            activePath: [...command.path],
+            canGoBack: command.historyIndex > 0,
+            canGoForward: command.historyIndex >= 0 && command.historyIndex < command.history.length - 1,
+            materializeColumns: command.materializeColumns,
+            expanded: command.expanded,
+          });
           return { kind: 'applied' };
         },
       },
@@ -1268,11 +1299,26 @@
   function handleGraphReveal(payload: {
     path: PathSeg[];
     target?: 'key' | 'value' | 'node';
-    trigger?: 'click' | 'search-preview' | 'search-commit' | 'breadcrumb';
+    trigger?: 'click' | 'search-preview' | 'search-commit' | 'search-cancel' | 'breadcrumb' | 'history' | 'visibility';
+    direction?: -1 | 1;
+    expanded?: boolean;
   }) {
-    const path = payload?.path ?? [];
     const target = navigationTarget('sidecar');
-    if (!path.length || !target) return;
+    if (!target) return;
+    if (payload.trigger === 'history' && payload.direction) {
+      void navigationRuntime?.dispatch({ kind: 'navigator-history', target, direction: payload.direction });
+      return;
+    }
+    if (payload.trigger === 'visibility' && typeof payload.expanded === 'boolean') {
+      void navigationRuntime?.dispatch({ kind: 'navigator-visibility', target, expanded: payload.expanded });
+      return;
+    }
+    const path = payload?.path ?? [];
+    if (payload.trigger === 'search-cancel') {
+      cancelSearchPreview();
+      return;
+    }
+    if (!path.length) return;
     const cellTarget = payload.target ?? 'node';
     const kind = payload.trigger === 'breadcrumb'
       ? 'navigator-tree-path'
@@ -1301,7 +1347,6 @@
     const previewId = activeSearchPreviewId;
     activeSearchPreviewId = null;
     if (target && previewId) void navigationRuntime?.dispatch({ kind: 'search-cancel', target, previewId });
-    void viewerRef?.cancelGraphSearchPreview();
   }
 
   function handleAddTab() {
@@ -1940,8 +1985,15 @@
                 language={$languageIdStore}
                 text={$sourceTextStore}
                 isGraphInteractive={() => viewerRef?.isGraphInteractive() === true}
-                onSearchSelect={(event) => viewerRef?.revealGraphSearchResult(event.detail)}
-                onSearchPreview={(result) => viewerRef?.previewGraphSearchResult(result)}
+                onSearchSelect={(event) => {
+                  handleGraphReveal({ path: event.detail.path, target: event.detail.target, trigger: 'search-commit' });
+                  viewerRef?.revealGraphSearchResult(event.detail);
+                }}
+                onSearchPreview={(result) => handleGraphReveal({
+                  path: result.path,
+                  target: result.target,
+                  trigger: 'search-preview',
+                })}
                 onSearchCancel={cancelSearchPreview}
                 onOpenCompareFile={() => viewerRef?.openCompareFile()}
                 onSwapEditors={() => viewerRef?.swapCompareEditors()}

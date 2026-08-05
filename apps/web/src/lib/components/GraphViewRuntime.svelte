@@ -182,17 +182,6 @@
     if (target) updateSidecarTempModel(target, updater);
   }
 
-  function targetTempModelSnapshot(): TempModel {
-    const target = captureSidecarTarget(sidecarTabId);
-    const state = target ? readSidecarTempModel(target) : null;
-    return state ?? {
-      ...initialTempModel,
-      treePath: [],
-      graphHighlight: null,
-      diagnostics: [],
-    };
-  }
-
   const MINIMAP_WIDTH = 220;
   const MINIMAP_HEIGHT = 150;
   const COLUMN_NAVIGATOR_DEFAULT_HEIGHT = 220;
@@ -389,12 +378,6 @@
   const columnNavigatorDetailDragController = createSplitLayoutDragController(
     COLUMN_NAVIGATOR_DETAIL_LAYOUT_CONFIG,
   );
-  let searchPreviewSnapshot: {
-    tempModel: TempModel;
-    viewport: GraphViewportState | null;
-    columnNavigatorCollapsed: boolean;
-    columnNavigatorPath: PathSeg[];
-  } | null = null;
   let columnNavigatorHintFadeTimer: ReturnType<typeof setTimeout> | null = null;
   let lastSubgraphSelectionScrollKey = '';
   let lastSubgraphPaneScrollKey = '';
@@ -556,16 +539,6 @@
     },
   });
   let measureSignature = '';
-
-  type GraphSearchTarget = 'node' | 'key' | 'value';
-
-  type GraphSearchResult = {
-    nodeId: number | undefined;
-    target: GraphSearchTarget;
-    label: string;
-    path: PathSeg[];
-    pathText: string;
-  };
 
   const graphPointerController = createGraphPointerController({
     getPointerEventCtor: () => PointerEventCtor,
@@ -785,6 +758,8 @@
       updateTargetTempModel((current) => clearGraphSelectionForFullEdit(current));
     },
     publishNavigation: (path, target) => publishNavigation(path, target, 'breadcrumb'),
+    publishHistoryTraversal: (direction) => dispatch('navigation', { trigger: 'history', direction }),
+    publishExpanded: (expanded) => dispatch('navigation', { trigger: 'visibility', expanded }),
     handleError,
     applyStructuredValueEdit,
     waitForCommittedDocument,
@@ -1402,7 +1377,6 @@
   }
 
   function handleColumnNavigatorKeydown(event: KeyboardEvent): void {
-    if (hasActiveEdit()) return;
     if (isWorkspaceTextEditorTarget(event.target)) return;
     const historyDirection = event.key === '[' ? -1 : event.key === ']' ? 1 : 0;
     if (historyDirection) {
@@ -1412,6 +1386,7 @@
         : columnNavigatorController.goForward());
       return;
     }
+    if (hasActiveEdit()) return;
     if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
       event.preventDefault();
       void columnNavigatorController.moveSibling(event.key === 'ArrowUp' ? -1 : 1);
@@ -1439,6 +1414,7 @@
   }
 
   function handleGraphKeydown(event: KeyboardEvent): void {
+    if (event.defaultPrevented) return;
     handleColumnNavigatorKeydown(event);
   }
 
@@ -1488,51 +1464,6 @@
     );
   }
 
-  function beginSearchPreview(): void {
-    if (searchPreviewSnapshot) return;
-    searchPreviewSnapshot = {
-      tempModel: targetTempModelSnapshot(),
-      viewport: graphViewportController.getViewportState(),
-      columnNavigatorCollapsed,
-      columnNavigatorPath: columnNavigatorActivePath.map((segment) => ({ ...segment })),
-    };
-  }
-
-  export function previewSearchResult(result: GraphSearchResult): void {
-    if (isFullEditInteractionBlocked() || !result?.path?.length) return;
-    beginSearchPreview();
-    graphTextLinkageController.publishNavigation(result.path, result.target, 'search-preview');
-  }
-
-  export function commitSearchPreview(): void {
-    searchPreviewSnapshot = null;
-  }
-
-  export async function cancelSearchPreview(): Promise<void> {
-    const snapshot = searchPreviewSnapshot;
-    if (!snapshot) return;
-    searchPreviewSnapshot = null;
-    graphTextLinkageController.cancelPendingReveal();
-    graphTextLinkageController.clearSearchHighlight();
-    columnNavigatorController.reset();
-    if (snapshot.columnNavigatorPath.length) {
-      await columnNavigatorController.openPath(snapshot.columnNavigatorPath);
-      if (snapshot.columnNavigatorCollapsed) columnNavigatorController.collapse();
-    } else if (!snapshot.columnNavigatorCollapsed) {
-      columnNavigatorController.expand();
-    }
-    updateTargetTempModel(() => snapshot.tempModel);
-    await tick();
-    await graphViewportController.waitForRevealTransition();
-    if (snapshot.viewport) graphViewportController.restoreViewportState(snapshot.viewport);
-  }
-
-  export function revealSearchResult(result: GraphSearchResult): void {
-    if (isFullEditInteractionBlocked() || !result?.path?.length) return;
-    graphTextLinkageController.publishNavigation(result.path, result.target, 'search-commit', { navigate: true });
-    commitSearchPreview();
-  }
-
   export function revealPath(
     path: PathSeg[],
     options: { target: 'key' | 'value' | 'node' | undefined; navigate: boolean | undefined },
@@ -1558,8 +1489,8 @@
 
   export async function restoreColumnNavigatorNavigationState(state: {
     activePath: PathSeg[];
-    history: PathSeg[][];
-    historyIndex: number;
+    canGoBack: boolean;
+    canGoForward: boolean;
     collapsed: boolean;
   }): Promise<void> {
     await columnNavigatorController.restoreNavigationState(state);
@@ -1567,6 +1498,18 @@
 
   export function restoreGraphViewport(state: { x: number; y: number; scaleX: number; scaleY: number } | null): void {
     if (state) graphViewportController.restoreViewportState(state);
+  }
+
+  export function getGraphViewport(): GraphViewportState | null {
+    return graphViewportController.getViewportState();
+  }
+
+  export function cancelGraphViewportTransition(): void {
+    graphTextLinkageController.cancelPendingReveal();
+  }
+
+  export function waitForGraphViewportTransition(): Promise<void> {
+    return graphViewportController.waitForRevealTransition();
   }
 
   export function collapseColumnNavigator(): void {
@@ -1596,9 +1539,23 @@
     await selectColumnNavigatorPathInternal(path);
   }
 
-  export async function applyColumnNavigatorNavigationPath(path: PathSeg[]): Promise<void> {
+  export async function applyColumnNavigatorNavigationProjection(state: {
+    activePath: PathSeg[];
+    canGoBack: boolean;
+    canGoForward: boolean;
+    materializeColumns: boolean;
+    expanded: boolean;
+  }): Promise<void> {
     if (isFullEditInteractionBlocked()) return;
-    await columnNavigatorController.applyExternalPath(path);
+    if (state.materializeColumns) {
+      await columnNavigatorController.applyExternalPath(state.activePath);
+    }
+    columnNavigatorController.projectNavigationState({
+      activePath: state.activePath,
+      canGoBack: state.canGoBack,
+      canGoForward: state.canGoForward,
+      collapsed: !state.expanded,
+    });
     await tick();
   }
 

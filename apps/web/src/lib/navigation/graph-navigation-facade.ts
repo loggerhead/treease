@@ -142,6 +142,8 @@ export class GraphNavigationFacade implements GraphNavigationFacadeContract {
     const session = this.previews.get(key);
     if (!session || session.previewId !== command.previewId) return { kind: 'no-op' };
 
+    const cancelled = await this.invoke(context, () => this.options.runtime.cancelViewportTransition(context));
+    if (!completed(cancelled)) return cancelled;
     const selection = await this.invoke(context, () => this.options.runtime.restoreSelection(context, session.baseline));
     if (!completed(selection)) return selection;
     const viewport = session.ownsViewport

@@ -20,7 +20,12 @@ function createFacades(): NavigationFacades {
   return {
     editor: { navigate: vi.fn(resolved) },
     graph: { locate: vi.fn(resolved), navigate: vi.fn(resolved), preview: vi.fn(resolved), cancelPreview: vi.fn(resolved), flush: vi.fn(resolved) },
-    navigator: { locate: vi.fn(resolved), navigate: vi.fn(resolved) },
+    navigator: {
+      locate: vi.fn(resolved),
+      navigate: vi.fn(resolved),
+      traverse: vi.fn(async () => ({ result: { kind: 'applied' as const }, path: [] })),
+      setExpanded: vi.fn(resolved),
+    },
     search: { beginPreview: vi.fn((): NavigationResult => ({ kind: 'applied' })), endPreview: vi.fn(resolved), discardPreview: vi.fn(resolved) },
   };
 }
@@ -46,7 +51,7 @@ describe('NavigationCoordinator', () => {
   it('always fully navigates a tree-path click and reports explicit facade outcomes', async () => {
     const facades = createFacades();
     vi.mocked(facades.graph.navigate).mockResolvedValue({ kind: 'no-op' });
-    vi.mocked(facades.navigator.navigate).mockResolvedValue({ kind: 'cancelled' });
+    vi.mocked(facades.navigator.locate).mockResolvedValue({ kind: 'cancelled' });
     const coordinator = createCoordinator(facades);
     const result = await coordinator.dispatch({ kind: 'navigator-tree-path', target: target(), path: [], cellTarget: 'value' });
 
@@ -54,7 +59,7 @@ describe('NavigationCoordinator', () => {
     expect(facades.editor.navigate).toHaveBeenCalledOnce();
     expect(facades.editor.navigate).toHaveBeenCalledWith(expect.anything(), { focus: false });
     expect(facades.graph.navigate).toHaveBeenCalledOnce();
-    expect(facades.navigator.navigate).toHaveBeenCalledWith(expect.objectContaining({ history: 'push' }));
+    expect(facades.navigator.locate).toHaveBeenCalledWith(expect.objectContaining({ history: 'push' }));
   });
 
   it('does not feed editor-originated complete navigation back into the editor', async () => {
@@ -70,6 +75,59 @@ describe('NavigationCoordinator', () => {
     expect(facades.editor.navigate).not.toHaveBeenCalled();
     expect(facades.graph.navigate).toHaveBeenCalledOnce();
     expect(facades.navigator.navigate).toHaveBeenCalledOnce();
+  });
+
+  it('does not feed graph-originated complete navigation back into a viewport reveal', async () => {
+    const facades = createFacades();
+    const coordinator = new NavigationCoordinator({
+      facades,
+      targetReader: { status: () => 'current' },
+      getSettings: () => ({ completeNavigationEnabled: true }),
+    });
+
+    await coordinator.dispatch({ kind: 'graph-cell', target: target(), path: [], cellTarget: 'value' });
+
+    expect(facades.graph.locate).toHaveBeenCalledOnce();
+    expect(facades.graph.navigate).not.toHaveBeenCalled();
+    expect(facades.navigator.navigate).toHaveBeenCalledOnce();
+  });
+
+  it('does not feed navigator-originated navigation back into column materialization', async () => {
+    const facades = createFacades();
+    const result = await createCoordinator(facades).dispatch({
+      kind: 'navigator-tree-path',
+      target: target(),
+      path: [],
+      cellTarget: 'value',
+    });
+
+    expect(result).toMatchObject({ behavior: 'navigate', outcome: 'applied' });
+    expect(facades.navigator.locate).toHaveBeenCalledWith(expect.objectContaining({ history: 'push' }));
+    expect(facades.navigator.navigate).not.toHaveBeenCalled();
+    expect(facades.graph.navigate).toHaveBeenCalledOnce();
+  });
+
+  it('projects authoritative history traversal before revealing the selected path', async () => {
+    const facades = createFacades();
+    const historyPath = [{ tag: 0, key: 'previous', index: 0 }] as const;
+    vi.mocked(facades.navigator.traverse).mockResolvedValue({
+      result: { kind: 'applied' },
+      path: historyPath,
+    });
+
+    const result = await createCoordinator(facades).dispatch({
+      kind: 'navigator-history',
+      target: target(),
+      direction: -1,
+    });
+
+    expect(result).toMatchObject({ behavior: 'navigate', outcome: 'applied' });
+    expect(facades.navigator.traverse).toHaveBeenCalledWith(expect.objectContaining({ direction: -1 }));
+    expect(facades.editor.navigate).toHaveBeenCalledWith(
+      expect.objectContaining({ path: historyPath, origin: 'navigator' }),
+      { focus: false },
+    );
+    expect(facades.graph.navigate).toHaveBeenCalledWith(expect.objectContaining({ path: historyPath }));
   });
 
   it('uses per-tab latest-wins without cancelling a different tab', async () => {

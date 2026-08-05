@@ -45,8 +45,6 @@ export type ColumnNavigatorState = {
   /** A new path is being prepared while the last complete workspace stays visible. */
   isLoading: boolean;
   activePath: PathSeg[];
-  history: PathSeg[][];
-  historyIndex: number;
   chain: ColumnNavigatorPaneState[];
   visiblePanes: VisibleColumnNavigatorPaneState[];
   canGoBack: boolean;
@@ -57,5 +55,8 @@ export type ColumnNavigatorState = {
 
 export type ColumnNavigatorNavigationState = Pick<
   ColumnNavigatorState,
-  'activePath' | 'history' | 'historyIndex' | 'collapsed'
+  'activePath' | 'collapsed'
+> & Pick<
+  ColumnNavigatorState,
+  'canGoBack' | 'canGoForward'
 >;

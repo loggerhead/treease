@@ -96,6 +96,44 @@ export class NavigationCoordinator {
       ]);
     }
 
+    if (event.kind === 'navigator-history') {
+      const traversal = await this.options.facades.navigator.traverse({
+        target: event.target,
+        transaction,
+        direction: event.direction,
+      });
+      if (!traversal.path || traversal.result.kind !== 'applied' || !transaction.isCurrent()) {
+        return [traversal.result];
+      }
+      const command = {
+        target: event.target,
+        transaction,
+        path: traversal.path,
+        cellTarget: 'value',
+        origin: 'navigator',
+      } as const;
+      return [
+        traversal.result,
+        ...(await Promise.all([
+          this.options.facades.editor.navigate(command, { focus: false }),
+          this.options.facades.graph.navigate(command),
+          this.options.facades.search.discardPreview({
+            target: event.target,
+            transaction,
+            reason: 'superseded',
+          }),
+        ])),
+      ];
+    }
+
+    if (event.kind === 'navigator-visibility') {
+      return [await this.options.facades.navigator.setExpanded({
+        target: event.target,
+        transaction,
+        expanded: event.expanded,
+      })];
+    }
+
     if (!('path' in event)) return [{ kind: 'no-op' }];
 
     const origin = event.kind === 'editor-selection'
@@ -133,7 +171,9 @@ export class NavigationCoordinator {
     // Commit the Navigator's atomic path/history projection before asynchronous
     // viewport work. A graph reveal can remount the visual scene; it must never
     // race or supersede the navigation state it was asked to render.
-    const navigator = await this.options.facades.navigator.navigate({ ...command, history: 'push' });
+    const navigator = command.origin === 'navigator'
+      ? await this.options.facades.navigator.locate({ ...command, history: 'push' })
+      : await this.options.facades.navigator.navigate({ ...command, history: 'push' });
     if (!transaction.isCurrent()) return [navigator];
     return [
       navigator,
@@ -144,7 +184,9 @@ export class NavigationCoordinator {
         command.origin === 'editor'
           ? Promise.resolve<NavigationResult>({ kind: 'no-op' })
           : this.options.facades.editor.navigate(command, { focus: false }),
-        this.options.facades.graph.navigate(command),
+        command.origin === 'graph'
+          ? this.options.facades.graph.locate(command)
+          : this.options.facades.graph.navigate(command),
         previewEnd,
         event.kind === 'search-commit'
           ? Promise.resolve<NavigationResult>({ kind: 'no-op' })

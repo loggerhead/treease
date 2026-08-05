@@ -103,11 +103,14 @@ test('command search supports click open, execute, and outside-click close', asy
   await expect(commandList).toBeVisible({ timeout: 5_000 });
   await expect(commandList.getByText('Format', { exact: true })).toBeVisible({ timeout: 5_000 });
   const commandOptions = commandList.getByRole('option');
+  const selectedCommandOptions = commandList.locator('[role="option"][data-selected]');
   const commandInput = page.getByTestId('command-search-input');
-  await expect(commandOptions.first()).toHaveAttribute('data-search-active', 'true');
+  await expect(selectedCommandOptions).toHaveCount(1);
+  await expect(commandOptions.first()).toHaveAttribute('data-selected', '');
   await commandInput.press('ArrowUp');
-  await expect(commandOptions.first()).toHaveAttribute('data-search-active', 'false');
-  await expect(commandOptions.last()).toHaveAttribute('data-search-active', 'true');
+  await expect(selectedCommandOptions).toHaveCount(1);
+  await expect(commandOptions.last()).toHaveAttribute('data-selected', '');
+  await expect(commandInput).toBeFocused();
 
   const compactInfo = page.getByRole('option', { name: 'Compact', exact: true }).locator('.ui-tooltip');
   await compactInfo.hover();
@@ -123,9 +126,15 @@ test('command search supports click open, execute, and outside-click close', asy
   })).toBe(true);
 
   await commandInput.fill('sort');
+  await commandInput.evaluate((input: HTMLInputElement) => input.setSelectionRange(2, 2));
+  await commandInput.press('ArrowLeft');
+  await expect.poll(() => commandInput.evaluate((input: HTMLInputElement) => input.selectionStart)).toBe(1);
+  await commandInput.press('ArrowRight');
+  await expect.poll(() => commandInput.evaluate((input: HTMLInputElement) => input.selectionStart)).toBe(2);
+  await expect(commandInput).toBeFocused();
   await expect(commandList.getByText('Sort', { exact: true })).toBeVisible();
   await expect(commandList.getByText('Format', { exact: true })).toHaveCount(0);
-  await commandList.getByText('Sort', { exact: true }).click();
+  await commandInput.press('Enter');
 
   await expect
     .poll(async () => Object.keys(JSON.parse((await readEditorState(page)).sourceText)).join(','), { timeout: 5_000 })
@@ -188,6 +197,12 @@ test('graph search loops keyboard selection through results', async ({ page }) =
   await input.press('ArrowDown');
   await expect(results.nth(1)).toHaveAttribute('aria-selected', 'true');
   await expect(page.locator('[role="option"][aria-selected="true"]')).toHaveCount(1);
+  await expect(input).toBeFocused();
+  await input.evaluate((element: HTMLInputElement) => element.setSelectionRange(3, 3));
+  await input.press('ArrowLeft');
+  await expect.poll(() => input.evaluate((element: HTMLInputElement) => element.selectionStart)).toBe(2);
+  await input.press('ArrowRight');
+  await expect.poll(() => input.evaluate((element: HTMLInputElement) => element.selectionStart)).toBe(3);
   await expect.poll(() => readGraphHighlightWorld(page), { timeout: 5_000 }).not.toBeNull();
   await input.press('ArrowUp');
   await expect(results.nth(0)).toHaveAttribute('aria-selected', 'true');

@@ -2,7 +2,6 @@
   import { CommandList, CommandItem, CommandEmpty, CommandGroup } from './ui/command';
 
   export let results: any[] = [];
-  export let activeIndex = -1;
   export let useVirtualList = true;
   export let virtualizer: any;
   export let listClassName = '';
@@ -30,9 +29,7 @@
               aria-label={itemAriaLabel(results[row.index], row.index)}
               data-testid={itemTestId(results[row.index], row.index)}
               data-search-index={row.index}
-              data-search-active={activeIndex === row.index ? 'true' : 'false'}
               class="search-panel__item"
-              aria-selected={activeIndex === row.index}
               onSelect={() => onItemSelect(row.index, results[row.index])}
             >
               <slot name="item" item={results[row.index]} index={row.index} />
@@ -48,9 +45,7 @@
           aria-label={itemAriaLabel(item, index)}
           data-testid={itemTestId(item, index)}
           data-search-index={index}
-          data-search-active={activeIndex === index ? 'true' : 'false'}
           class="search-panel__item"
-          aria-selected={activeIndex === index}
           onSelect={() => onItemSelect(index, item)}
         >
           <slot name="item" {item} {index} />
@@ -59,11 +54,3 @@
     {/if}
   </CommandGroup>
 </CommandList>
-
-<style>
-  :global([data-search-active='true']) {
-    background-color: var(--item-active-bg) !important;
-    color: var(--text-primary) !important;
-  }
-
-</style>

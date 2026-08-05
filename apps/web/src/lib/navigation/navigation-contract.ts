@@ -79,9 +79,16 @@ export type NavigatorHistoryMode = 'merge' | 'push';
 export interface NavigatorNavigationFacade {
   locate(command: NavigationCommand & Readonly<{ history: NavigatorHistoryMode }>): Promise<NavigationResult>;
   navigate(command: NavigationCommand & Readonly<{ history: NavigatorHistoryMode }>): Promise<NavigationResult>;
+  traverse(command: NavigationScopeCommand & Readonly<{ direction: -1 | 1 }>): Promise<NavigatorTraversalResult>;
+  setExpanded(command: NavigationScopeCommand & Readonly<{ expanded: boolean }>): Promise<NavigationResult>;
 }
 
 export type PreviewEndReason = 'cancelled' | 'committed' | 'superseded';
+
+export type NavigatorTraversalResult = Readonly<{
+  result: NavigationResult;
+  path: NavigationPath | null;
+}>;
 
 export type PreviewCancellationCommand = Readonly<{
   target: NavigationTarget;
@@ -101,6 +108,8 @@ export type NavigationUserEvent =
   | Readonly<{ kind: 'graph-cell'; target: NavigationTarget; path: NavigationPath; cellTarget: GraphCellTarget }>
   | Readonly<{ kind: 'navigator-column'; target: NavigationTarget; path: NavigationPath; cellTarget: GraphCellTarget }>
   | Readonly<{ kind: 'navigator-tree-path'; target: NavigationTarget; path: NavigationPath; cellTarget: GraphCellTarget }>
+  | Readonly<{ kind: 'navigator-history'; target: NavigationTarget; direction: -1 | 1 }>
+  | Readonly<{ kind: 'navigator-visibility'; target: NavigationTarget; expanded: boolean }>
   | Readonly<{ kind: 'search-preview'; target: NavigationTarget; path: NavigationPath; cellTarget: GraphCellTarget; previewId: string }>
   | Readonly<{ kind: 'search-commit'; target: NavigationTarget; path: NavigationPath; cellTarget: GraphCellTarget; previewId: string }>
   | Readonly<{ kind: 'search-cancel'; target: NavigationTarget; previewId: string }>

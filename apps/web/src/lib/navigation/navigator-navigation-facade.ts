@@ -2,10 +2,12 @@ import type {
   NavigationCommand,
   NavigationPath,
   NavigationResult,
+  NavigationScopeCommand,
   NavigationTarget,
   NavigationTargetReader,
   NavigatorHistoryMode,
   NavigatorNavigationFacade,
+  NavigatorTraversalResult,
 } from './navigation-contract';
 import type { NavigationEntitySlices, TabEntitySliceWriter } from './tab-navigation-store';
 
@@ -42,7 +44,7 @@ type NavigatorFacadeOptions<Slices extends NavigationEntitySlices & { navigatorS
   port: NavigatorNavigationPort;
 }>;
 
-function freshness(targetReader: NavigationTargetReader, command: NavigationCommand): NavigationResult | null {
+function freshness(targetReader: NavigationTargetReader, command: NavigationScopeCommand): NavigationResult | null {
   const status = targetReader.status(command.target);
   if (status !== 'current') return { kind: status };
   return command.transaction.isCurrent() ? null : { kind: 'stale' };
@@ -81,6 +83,72 @@ export class TabNavigatorNavigationFacade<Slices extends NavigationEntitySlices 
 
   navigate(command: NavigatorCommand): Promise<NavigationResult> {
     return this.apply(command, true);
+  }
+
+  async traverse(
+    command: NavigationScopeCommand & Readonly<{ direction: -1 | 1 }>,
+  ): Promise<NavigatorTraversalResult> {
+    const before = freshness(this.options.targetReader, command);
+    if (before) return { result: before, path: null };
+
+    const state = this.options.readState(command.target);
+    if (!state) {
+      return {
+        result: freshness(this.options.targetReader, command) ?? { kind: 'stale' },
+        path: null,
+      };
+    }
+    const historyIndex = state.historyIndex + command.direction;
+    const path = state.history[historyIndex];
+    if (!path) return { result: { kind: 'no-op' }, path: null };
+
+    const next: NavigatorNavigationState = {
+      ...state,
+      activePath: clonePath(path),
+      historyIndex,
+    };
+    const portResult = await this.options.port.apply({
+      target: command.target,
+      transaction: command.transaction,
+      path: next.activePath,
+      history: next.history,
+      historyIndex: next.historyIndex,
+      materializeColumns: true,
+      expanded: next.expanded,
+    });
+    if (portResult.kind !== 'applied') return { result: portResult, path: null };
+
+    const after = freshness(this.options.targetReader, command);
+    if (after) return { result: after, path: null };
+    const writeResult = this.options.writer.update(command.target, () => next);
+    const result = writeResult.kind === 'applied' ? { kind: 'applied' as const } : writeResult;
+    return { result, path: result.kind === 'applied' ? next.activePath : null };
+  }
+
+  async setExpanded(
+    command: NavigationScopeCommand & Readonly<{ expanded: boolean }>,
+  ): Promise<NavigationResult> {
+    const before = freshness(this.options.targetReader, command);
+    if (before) return before;
+
+    const state = this.options.readState(command.target);
+    if (!state) return freshness(this.options.targetReader, command) ?? { kind: 'stale' };
+    const next: NavigatorNavigationState = { ...state, expanded: command.expanded };
+    const portResult = await this.options.port.apply({
+      target: command.target,
+      transaction: command.transaction,
+      path: next.activePath,
+      history: next.history,
+      historyIndex: next.historyIndex,
+      materializeColumns: false,
+      expanded: next.expanded,
+    });
+    if (portResult.kind !== 'applied') return portResult;
+
+    const after = freshness(this.options.targetReader, command);
+    if (after) return after;
+    const writeResult = this.options.writer.update(command.target, () => next);
+    return writeResult.kind === 'applied' ? { kind: 'applied' } : writeResult;
   }
 
   private async apply(command: NavigatorCommand, materializeColumns: boolean): Promise<NavigationResult> {

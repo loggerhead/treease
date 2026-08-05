@@ -15,7 +15,12 @@
     inputEl?.focus()
   }
 
-  const dispatch = createEventDispatcher()
+  const dispatch = createEventDispatcher<{
+    click: MouseEvent;
+    focus: FocusEvent;
+    input: { event: Event; value: string };
+    keydown: { event: KeyboardEvent; value: string };
+  }>()
 </script>
 
 <div
@@ -35,8 +40,14 @@
       dispatch('click', event)
     }}
     onfocus={(event) => dispatch('focus', event)}
-    oninput={(event) => dispatch('input', event)}
-    onkeydown={(event) => dispatch('keydown', event)}
+    oninput={(event) => dispatch('input', {
+      event,
+      value: (event.currentTarget as HTMLInputElement).value,
+    })}
+    onkeydown={(event) => dispatch('keydown', {
+      event,
+      value: (event.currentTarget as HTMLInputElement).value,
+    })}
   />
   <span class="ml-1 rounded-[4px] border-l border-[rgba(15,23,42,0.06)] pl-1.5 pr-[2px] text-[10px] font-medium leading-[16px] tracking-[-0.01em] text-[#94a3b8]">{shortcut}</span>
 </div>

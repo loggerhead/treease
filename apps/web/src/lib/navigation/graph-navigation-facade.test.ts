@@ -55,6 +55,7 @@ describe('GraphNavigationFacade', () => {
     await expect(facade.cancelPreview({ target, transaction: tx.value, previewId: 'latest' })).resolves.toEqual({ kind: 'applied' });
     expect(graph.selection).toBe('before');
     expect(graph.viewport).toBe('before');
+    expect(graph.calls.slice(-3)).toEqual(['cancel-transition', 'restore-selection', 'restore-viewport']);
   });
 
   it('drops a preview without restoring it when explicit navigation takes ownership', async () => {

@@ -8,6 +8,8 @@ export const navigationBehaviorPolicy: NavigationBehaviorPolicy = {
       case 'navigator-column':
         return settings.completeNavigationEnabled ? 'navigate' : 'locate';
       case 'navigator-tree-path':
+      case 'navigator-history':
+      case 'navigator-visibility':
       case 'search-commit':
         return 'navigate';
       case 'search-preview':

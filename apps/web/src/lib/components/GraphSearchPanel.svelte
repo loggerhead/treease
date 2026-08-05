@@ -105,6 +105,11 @@
     }, 120)
   }
 
+  function searchDependencySignature(): string {
+    if (!documentKey || !text || !language || $graphAppliedRevision < $editorRevision) return ''
+    return `${documentKey}:${language}:${text.length}:${$settings.parser.enableNest}:${$graphAppliedRevision}`
+  }
+
   /**
    * Execute a search request.
    * @param keyword Search keyword
@@ -115,6 +120,7 @@
       results = []
       return
     }
+    lastSearchDependencySignature = searchDependencySignature()
     const token = (searchToken += 1)
     try {
       const result = await callSharedWasmWorker<GraphSearchReadResult>('graphSearch', {
@@ -167,6 +173,11 @@
     previewResult(index)
   }
 
+  function activatePointerResult(event: MouseEvent, index: number): void {
+    if (event.movementX === 0 && event.movementY === 0) return
+    activateResult(index)
+  }
+
   function selectResult(item: GraphSearchResult): void {
     dispatch('select', item)
     closePanel(false)
@@ -207,10 +218,13 @@
   }
 
   $: {
-    const dependencySignature = documentKey && text && language && $graphAppliedRevision >= $editorRevision
-      ? `${documentKey}:${language}:${text.length}:${$settings.parser.enableNest}:${$graphAppliedRevision}`
-      : ''
-    if (query.trim() && dependencySignature && dependencySignature !== lastSearchDependencySignature) {
+    const dependencySignature = searchDependencySignature()
+    if (
+      query.trim()
+      && resolvedQuery === query.trim()
+      && dependencySignature
+      && dependencySignature !== lastSearchDependencySignature
+    ) {
       lastSearchDependencySignature = dependencySignature
       void runSearch(query.trim())
     }
@@ -237,17 +251,13 @@
   showWhenClosed={false}
   inputInline={true}
   customResults={true}
-  onInput={(event: any) => {
-    const detail = event.detail as InputEvent
-    setQuery((detail.target as HTMLInputElement).value)
-  }}
+  onInput={({ value }) => setQuery(value)}
   onActiveIndexChange={(index) => {
     activeIndex = index
     previewResult(index)
   }}
   onEscape={closePanel}
-  onItemSelect={(index) => {
-    const item = results[index]
+  onItemSelect={(_index, item) => {
     if (item && query.trim() === resolvedQuery) selectResult(item)
   }}
 >
@@ -270,7 +280,7 @@
             data-testid={`graph-search-result-${item.nodeId ?? 'unresolved'}-${item.pathText}`}
             class:graph-search-result--active={activeIndex === index}
             class="search-panel__item graph-search-result flex h-[40px] w-full cursor-default select-none items-center gap-2 rounded-[8px] px-2.5 py-1.5 text-left text-[13px] outline-none"
-            on:mouseenter={() => activateResult(index)}
+            on:mousemove={(event) => activatePointerResult(event, index)}
             on:click={() => {
               activateResult(index)
               selectResult(item)

@@ -9,16 +9,6 @@
   import type { SupportedEditorLanguageId } from '../monaco/language-support';
   import GraphViewRuntime from './GraphViewRuntime.svelte';
 
-  type GraphSearchTarget = 'node' | 'key' | 'value';
-
-  type GraphSearchResult = {
-    nodeId: number | undefined;
-    target: GraphSearchTarget;
-    label: string;
-    path: PathSeg[];
-    pathText: string;
-  };
-
   export let active = true;
   export let sidecarTabId = '';
   export let synchronizedRuntimeLoading = false;
@@ -36,22 +26,6 @@
     'graph-viewport-state': { tabId: string; viewport: { x: number; y: number; scaleX: number; scaleY: number } | null };
   }>();
   let runtime: GraphViewRuntime | null = null;
-
-  export function previewSearchResult(result: GraphSearchResult): void {
-    runtime?.previewSearchResult(result);
-  }
-
-  export function commitSearchPreview(): void {
-    runtime?.commitSearchPreview();
-  }
-
-  export async function cancelSearchPreview(): Promise<void> {
-    await runtime?.cancelSearchPreview();
-  }
-
-  export function revealSearchResult(result: GraphSearchResult): void {
-    runtime?.revealSearchResult(result);
-  }
 
   export function revealPath(
     path: PathSeg[],
@@ -78,8 +52,8 @@
 
   export async function restoreColumnNavigatorNavigationState(state: {
     activePath: PathSeg[];
-    history: PathSeg[][];
-    historyIndex: number;
+    canGoBack: boolean;
+    canGoForward: boolean;
     collapsed: boolean;
   }): Promise<void> {
     await runtime?.restoreColumnNavigatorNavigationState(state);
@@ -109,8 +83,14 @@
     await runtime?.selectColumnNavigatorPath(path);
   }
 
-  export async function applyColumnNavigatorNavigationPath(path: PathSeg[]): Promise<void> {
-    await runtime?.applyColumnNavigatorNavigationPath(path);
+  export async function applyColumnNavigatorNavigationProjection(state: {
+    activePath: PathSeg[];
+    canGoBack: boolean;
+    canGoForward: boolean;
+    materializeColumns: boolean;
+    expanded: boolean;
+  }): Promise<void> {
+    await runtime?.applyColumnNavigatorNavigationProjection(state);
   }
 
   export async function exportImage(): Promise<void> {
@@ -131,6 +111,18 @@
 
   export function restoreGraphViewport(state: { x: number; y: number; scaleX: number; scaleY: number } | null): void {
     runtime?.restoreGraphViewport(state);
+  }
+
+  export function getGraphViewport(): { x: number; y: number; scaleX: number; scaleY: number } | null {
+    return runtime?.getGraphViewport() ?? null;
+  }
+
+  export function cancelGraphViewportTransition(): void {
+    runtime?.cancelGraphViewportTransition();
+  }
+
+  export function waitForGraphViewportTransition(): Promise<void> {
+    return runtime?.waitForGraphViewportTransition() ?? Promise.resolve();
   }
 </script>
 

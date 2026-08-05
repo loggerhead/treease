@@ -80,4 +80,40 @@ describe('TabNavigatorNavigationFacade', () => {
 
     expect(store.getTab('tab')!.state.navigatorState).toEqual(initialNavigatorState);
   });
+
+  it('traverses authoritative history and forwards the complete projection atomically', async () => {
+    const { store, port, facade, command, target } = createHarness();
+    await facade.navigate(command(path('one')));
+    await facade.navigate(command(path('two')));
+    const transaction: NavigationTransaction = { id: 2, target, isCurrent: () => true };
+
+    await expect(facade.traverse({ target, transaction, direction: -1 })).resolves.toEqual({
+      result: { kind: 'applied' },
+      path: path('one'),
+    });
+
+    expect(port.apply).toHaveBeenLastCalledWith(expect.objectContaining({
+      path: path('one'),
+      history: [path('one'), path('two')],
+      historyIndex: 0,
+      materializeColumns: true,
+      expanded: true,
+    }));
+    expect(store.getTab('tab')!.state.navigatorState).toMatchObject({
+      activePath: path('one'),
+      historyIndex: 0,
+    });
+  });
+
+  it('does not call the runtime when history traversal has no destination', async () => {
+    const { port, facade, target } = createHarness();
+    const transaction: NavigationTransaction = { id: 2, target, isCurrent: () => true };
+
+    await expect(facade.traverse({ target, transaction, direction: -1 })).resolves.toEqual({
+      result: { kind: 'no-op' },
+      path: null,
+    });
+
+    expect(port.apply).not.toHaveBeenCalled();
+  });
 });
