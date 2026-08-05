@@ -48,7 +48,7 @@
   })
 </script>
 
-<div class="border-t border-[var(--border-strong)] bg-[var(--panel-bg-alt)] px-2 py-1.5" data-testid="ai-input-panel">
+<div class="editor-input-panel editor-input-panel--ai px-2 py-1.5" data-testid="ai-input-panel">
   {#if error}
     <div class="mb-1 flex items-center justify-between gap-2" role="alert" aria-live="assertive" aria-atomic="true">
       <p class="text-[12px] text-[var(--danger-text,#dc2626)]" data-testid="ai-input-error">{error}</p>
@@ -70,14 +70,14 @@
     </p>
   {:else if success}
     <p class="mb-1 flex min-w-0 items-center gap-1.5 pl-1 text-[11px] text-[var(--text-muted)]" role="status" aria-live="polite">
-      <Sparkles size={11} strokeWidth={1.9} class="shrink-0 text-[#4779c9]" />
+      <Sparkles size={11} strokeWidth={1.9} class="shrink-0 text-[var(--accent)]" />
       <span class="shrink-0">Executed</span>
-      <code class="truncate rounded bg-[#edf3ff] px-1 py-px font-mono text-[#3b68ae]">{success}</code>
+      <code class="truncate rounded bg-[var(--accent-soft)] px-1 py-px font-mono text-[var(--accent)]">{success}</code>
     </p>
   {/if}
   <form class="flex items-end gap-1.5" on:submit|preventDefault={handleSubmit}>
-    <div class="flex min-h-[30px] min-w-0 flex-1 items-end gap-2 overflow-hidden rounded-[8px] border border-[#c8d7f5] bg-[linear-gradient(110deg,#f8fbff,#fffdf7)] px-2.5 shadow-[0_1px_2px_rgba(37,99,235,0.04)] focus-within:border-[#8bb3f3] focus-within:shadow-[0_0_0_2px_rgba(96,165,250,0.12)]">
-      <Sparkles size={13} strokeWidth={1.9} class="mb-1.5 shrink-0 text-[#4779c9]" />
+    <div class="flex min-h-[30px] min-w-0 flex-1 items-end gap-2 overflow-hidden rounded-[var(--control-radius)] border border-[var(--border-muted)] bg-[var(--panel-bg)] px-2.5 shadow-[0_1px_2px_rgb(24_59_86_/_5%)] focus-within:border-[var(--accent)] focus-within:shadow-[var(--focus-ring)]">
+      <Sparkles size={13} strokeWidth={1.9} class="mb-1.5 shrink-0 text-[var(--accent)]" />
       <textarea
         bind:this={input}
         value={value}
@@ -94,7 +94,7 @@
       type="submit"
       aria-label={busy ? 'Processing' : 'Send'}
       title={busy ? 'Processing…' : 'Send'}
-      class="inline-flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-full bg-[#172033] text-white shadow-[0_1px_2px_rgba(15,23,42,0.24)] transition-[background-color,transform] hover:bg-[#0f172a] active:scale-95 disabled:cursor-not-allowed disabled:opacity-45"
+      class="inline-flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-full bg-[var(--accent)] text-white shadow-[0_1px_2px_rgb(24_59_86_/_20%)] transition-[background-color,transform] hover:brightness-95 active:scale-95 disabled:cursor-not-allowed disabled:opacity-45"
       disabled={busy || !value.trim()}
     >
       {#if busy}<LoaderCircle size={14} strokeWidth={2} class="animate-spin" />{:else}<ArrowUp size={15} strokeWidth={2.2} />{/if}
@@ -104,38 +104,4 @@
 </div>
 
 <style>
-  [data-testid='ai-input-panel'] {
-    position: relative;
-    animation: editor-input-panel-enter 220ms cubic-bezier(.22, 1, .36, 1) both;
-  }
-
-  [data-testid='ai-input-panel']::after {
-    position: absolute;
-    top: -20px;
-    right: 15px;
-    width: 10px;
-    height: 10px;
-    border-right: 2px solid var(--accent);
-    border-bottom: 2px solid var(--accent);
-    content: '';
-    opacity: 0;
-    filter: drop-shadow(0 0 2px var(--accent));
-    transform: translateY(-10px) rotate(45deg) scale(.75);
-    animation: editor-input-panel-cue 900ms ease-out 3;
-  }
-
-  @keyframes editor-input-panel-enter {
-    from { opacity: 0; transform: translateY(10px); }
-    to { opacity: 1; transform: translateY(0); }
-  }
-
-  @keyframes editor-input-panel-cue {
-    0%, 100% { opacity: 0; transform: translateY(-10px) rotate(45deg) scale(.75); }
-    30% { opacity: 1; transform: translateY(-1px) rotate(45deg) scale(1.05); }
-    62% { opacity: .8; transform: translateY(4px) rotate(45deg) scale(1.12); }
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    [data-testid='ai-input-panel'], [data-testid='ai-input-panel']::after { animation: none; }
-  }
 </style>

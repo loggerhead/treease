@@ -270,7 +270,7 @@
   })
 </script>
 
-<div class="border-t border-[var(--border-strong)] bg-[var(--panel-bg-alt)] px-2 py-1.5" data-testid="yq-expression-panel">
+<div class="editor-input-panel editor-input-panel--yq px-2 py-1.5" data-testid="yq-expression-panel">
   {#if error}
     <p
       class="mb-1 text-[12px] text-[var(--danger-text,#dc2626)]"
@@ -281,7 +281,7 @@
     >{error}</p>
   {/if}
   <div class="flex items-center gap-1.5">
-    <div class="min-w-0 flex-1 overflow-visible rounded-[8px] border border-[var(--border-muted)] bg-[var(--panel-bg)]">
+    <div class="min-w-0 flex-1 overflow-visible rounded-[var(--control-radius)] border border-[var(--border-muted)] bg-[var(--panel-bg)]">
       <div bind:this={container} class="h-[30px] w-full" data-testid="yq-expression-editor"></div>
     </div>
     <Button size="xs" on:click={() => void handleSubmit()} disabled={busy || !currentValue.trim()}>
@@ -292,37 +292,4 @@
 </div>
 
 <style>
-  [data-testid='yq-expression-panel'] {
-    position: relative;
-    animation: editor-input-panel-enter 220ms cubic-bezier(.22, 1, .36, 1) both;
-  }
-
-  [data-testid='yq-expression-panel']::after {
-    position: absolute;
-    top: -7px;
-    left: 50%;
-    width: 8px;
-    height: 8px;
-    border-right: 2px solid var(--accent);
-    border-bottom: 2px solid var(--accent);
-    content: '';
-    opacity: 0;
-    transform: translate(-50%, -7px) rotate(45deg);
-    animation: editor-input-panel-cue 1.2s ease-out 2;
-  }
-
-  @keyframes editor-input-panel-enter {
-    from { opacity: 0; transform: translateY(10px); }
-    to { opacity: 1; transform: translateY(0); }
-  }
-
-  @keyframes editor-input-panel-cue {
-    0%, 100% { opacity: 0; transform: translate(-50%, -7px) rotate(45deg); }
-    35% { opacity: 1; transform: translate(-50%, 1px) rotate(45deg); }
-    70% { opacity: .45; transform: translate(-50%, -2px) rotate(45deg); }
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    [data-testid='yq-expression-panel'], [data-testid='yq-expression-panel']::after { animation: none; }
-  }
 </style>
