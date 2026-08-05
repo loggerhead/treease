@@ -111,6 +111,23 @@ The relationships mean:
   detail area and do not create an empty navigation column.
 - Missing placeholder cells cannot open another column.
 
+### Preview and horizontal-stability constraints
+
+- Automatic child-column expansion and collapse provide a structural preview
+  while keeping sibling keyboard navigation horizontally stable.
+- Each active level has one scroll opportunity, used by its first automatic
+  expansion or collapse. Later sibling changes at that level do not scroll;
+  changing level provides a new opportunity.
+- One eligible transition produces at most one scroll. The column change occurs
+  with the scroll or after it, not before it.
+- Expansion moves the active column only left; collapse moves the active parent
+  column only right. The active column must remain visible.
+- Expansion aims to show `min(child column width, visible width / 2)` of the
+  child column. Collapse aims to show
+  `min(active parent width, visible width / 2)` of the active parent.
+- The visible width is the Column Rail width not occupied by the Column Detail
+  Editor. If the applicable goal is already met, no scroll occurs.
+
 ### Graph / content routing constraints
 
 - Ordinary objects / arrays open as a column in the path rail.
@@ -244,6 +261,10 @@ When the projection context changes, the Module invalidates the cache and render
 - Do columns derive from path prefixes and direct children?
 - Do empty containers open as content without an empty navigation column?
 - Is the complete path preserved through native horizontal scrolling?
+- Does sibling keyboard navigation remain horizontally stable after the active
+  level's one scroll opportunity?
+- Do preview transitions use the required direction and visibility goals while
+  keeping the active column visible?
 - Are column and detail-editor vertical scrolling independent?
 - Is a column detail editor's local draft incorrectly overwritten by an external refresh?
 - Do consecutive commits on the same path retain and submit only the latest draft?

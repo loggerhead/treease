@@ -91,6 +91,7 @@ Do not edit it by hand; run `pnpm docs:map:gen`.
   - H2: Column Navigator Constraints
   - H3: Subdomain role
   - H3: Column constraints
+  - H3: Preview and horizontal-stability constraints
   - H3: Graph / content routing constraints
   - H3: Projection constraints
   - H3: Editing constraints
