@@ -166,6 +166,41 @@ test('runs yq preview from command search without overwriting source editor', as
   await expect(page.getByTestId('yq-expression-error')).toHaveCount(0);
 });
 
+test('keeps downward yq completions above the editor chrome', async ({ page }) => {
+  await page.goto('/editor');
+  await resetSettingsStore(page);
+
+  const commandInput = await openCommandSearch(page);
+  await commandInput.fill('yq');
+  await page.getByText('Show yq input box', { exact: true }).click();
+
+  await expect(page.getByTestId('yq-expression-panel')).toBeVisible({ timeout: 5_000 });
+  const yqEditor = await waitForMonacoHook(page, 'yq-input-box');
+  await page.keyboard.type('to_y');
+
+  const suggestionWidget = page.locator('.suggest-widget');
+  await expect(suggestionWidget).toBeVisible();
+  await expect(suggestionWidget).toContainText('to_yaml');
+
+  const widgetBounds = await suggestionWidget.boundingBox();
+  const editorBounds = await yqEditor.boundingBox();
+  const viewport = page.viewportSize();
+  if (!widgetBounds || !editorBounds || !viewport) throw new Error('Expected yq suggestions to have viewport bounds');
+  expect(widgetBounds.y + widgetBounds.height / 2).toBeGreaterThan(editorBounds.y + editorBounds.height / 2);
+  expect(widgetBounds.x).toBeGreaterThanOrEqual(0);
+  expect(widgetBounds.y).toBeGreaterThanOrEqual(0);
+  expect(widgetBounds.x + widgetBounds.width).toBeLessThanOrEqual(viewport.width);
+  expect(widgetBounds.y + widgetBounds.height).toBeLessThanOrEqual(viewport.height);
+  const suggestionAtBottom = await page.evaluate(
+    ({ x, y }) => document.elementFromPoint(x, y)?.closest('.suggest-widget') != null,
+    {
+      x: widgetBounds.x + widgetBounds.width / 2,
+      y: widgetBounds.y + widgetBounds.height - 2,
+    },
+  );
+  expect(suggestionAtBottom).toBe(true);
+});
+
 test('format keeps TOML literal dotted key', async ({ page }) => {
   await page.goto('/editor');
   await resetSettingsStore(page);
