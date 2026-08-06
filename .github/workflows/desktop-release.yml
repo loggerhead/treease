@@ -71,6 +71,9 @@ jobs:
         with:
           workspaces: . -> target
       - run: pnpm install --frozen-lockfile
+      - name: Generate desktop icons
+        working-directory: apps/desktop
+        run: pnpm icons:generate
       - name: Run Windows desktop E2E
         if: matrix.runner == 'windows-latest'
         working-directory: apps/desktop

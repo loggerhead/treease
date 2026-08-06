@@ -33,6 +33,10 @@ test('updater accepts only signed GitHub Release metadata and keeps Windows inte
 
 test('desktop release stays isolated from unified releases and uploads updater metadata', () => {
   assert.match(releaseWorkflow, /tags: \["desktop-v\*"\]/);
+  assert.match(
+    releaseWorkflow,
+    /pnpm install --frozen-lockfile[\s\S]*?working-directory: apps\/desktop[\s\S]*?run: pnpm icons:generate[\s\S]*?uses: tauri-apps\/tauri-action@v1/,
+  );
   assert.match(releaseWorkflow, /TAURI_SIGNING_PRIVATE_KEY/);
   assert.match(releaseWorkflow, /uploadUpdaterJson: true/);
   assert.match(releaseWorkflow, /uploadUpdaterSignatures: true/);
