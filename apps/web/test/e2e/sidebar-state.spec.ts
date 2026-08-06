@@ -1,7 +1,9 @@
 import { expect, test } from './fixtures';
+import { waitForSettingsReady } from './utils';
 
 test('sidebar expansion only changes through its toggle', async ({ page }) => {
   await page.goto('/editor');
+  await waitForSettingsReady(page);
 
   const sidebar = page.locator('.sidebar');
   const sidebarHost = page.locator('.sidebar-host');

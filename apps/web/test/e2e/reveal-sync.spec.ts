@@ -16,6 +16,7 @@ import {
   readGraphHighlightWorld,
   readGraphLastReveal,
   readGraphRevealProbe,
+  runColumnNavigatorAction,
   setEditorContent,
   setMonacoPositionByText,
   setMonacoScroll,
@@ -163,8 +164,12 @@ test('editor cursor selects the matching Column Navigator path', async ({ page }
   );
   expect(tableProbe?.coord).toBeTruthy();
   if (!tableProbe?.coord) throw new Error('table_with_header graph cell missing');
-  await clickGraphProbeAt(page, tableProbe.coord);
-  await waitForColumnNavigatorSettled(page, 'k:table_with_header');
+  const tableNavigation = await runColumnNavigatorAction(
+    page,
+    () => clickGraphProbeAt(page, tableProbe.coord),
+    'k:table_with_header',
+  );
+  await waitForColumnNavigatorSettled(page, tableNavigation);
 
   const workspace = page.getByTestId('column-navigator-graph');
   await expect(workspace.locator('[data-column-navigator-selected="true"]')).toHaveAttribute(
@@ -172,9 +177,13 @@ test('editor cursor selects the matching Column Navigator path', async ({ page }
     'k:table_with_header',
   );
 
-  await page.locator('.view-line', { hasText: '"float": 0.125' }).click();
+  const floatNavigation = await runColumnNavigatorAction(
+    page,
+    () => page.locator('.view-line', { hasText: '"float": 0.125' }).click(),
+    'k:object|k:float',
+  );
 
-  await waitForColumnNavigatorSettled(page, 'k:object|k:float');
+  await waitForColumnNavigatorSettled(page, floatNavigation);
   await expect(workspace.locator('[data-column-navigator-selected="true"]')).toHaveAttribute(
     'data-column-navigator-item-path-key',
     'k:object|k:float',
@@ -491,8 +500,9 @@ test('sync scroll toggle gates programmatic editor navigation without creating g
   await expect(navigationSync).toHaveAttribute('aria-pressed', 'false');
 
   await setMonacoPositionByText(page, 'source-editor', '"count":');
-  await page.waitForTimeout(150);
-  expect((await readEditorState(page)).tempModel.treePath).toEqual(['$', 'count']);
+  await expect
+    .poll(async () => (await readEditorState(page)).tempModel.treePath, { timeout: 5_000 })
+    .toEqual(['$', 'count']);
   await expect.poll(async () => readGraphHighlight(page), { timeout: 5_000 }).toBeNull();
 
   const nameProbe = (await readGraphClickProbes(page)).find(
@@ -502,8 +512,9 @@ test('sync scroll toggle gates programmatic editor navigation without creating g
   if (!nameProbe?.coord) throw new Error('graph probe user.name missing');
 
   await clickGraphProbeAt(page, nameProbe.coord);
-  await page.waitForTimeout(150);
-  expect((await readEditorState(page)).tempModel.treePath).toEqual(['$', 'user', 'name']);
+  await expect
+    .poll(async () => (await readEditorState(page)).tempModel.treePath, { timeout: 5_000 })
+    .toEqual(['$', 'user', 'name']);
 
   await navigationSync.click();
   await expect(navigationSync).toHaveAttribute('aria-pressed', 'true');

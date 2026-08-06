@@ -49,6 +49,7 @@
     "test:coverage": "vp test --coverage",
     "test:e2e:coverage": "pnpm build:e2e && TREEASE_E2E_COVERAGE=1 playwright test --config playwright.config.ts",
     "test:e2e": "pnpm build:e2e && playwright test test/e2e",
+    "test:e2e:cpu": "pnpm build:e2e && TREEASE_E2E_CPU_CONSTRAINED=1 playwright test",
     "test:e2e:headed": "pnpm test:e2e --headed",
     "test:e2e:fixtures": "pnpm build:e2e && pnpm test:e2e:fixtures:run",
     "test:e2e:fixtures:run": "playwright test --config playwright.config.fixtures.ts",

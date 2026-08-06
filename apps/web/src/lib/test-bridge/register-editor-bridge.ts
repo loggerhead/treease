@@ -7,6 +7,7 @@ import {
   emitEditorMutation,
   getDocumentSessionState,
   editorRevision,
+  sourceText,
 } from '../store/document-session-store';
 import { getEditorStateSnapshot } from '../store/editor-store';
 import { activeFullEditUiState as fullEditUiState } from '../store/active-full-edit-ui-store';
@@ -57,12 +58,16 @@ export function installEditorStoreBridge(): void {
     syncRuntimeReadinessFromEditorState({
       documentKey: state.documentKey,
       editorRevision: state.editorRevision,
+      sourceText: state.sourceText,
       fullEditUiState: state.fullEditUiState,
     });
   };
   syncBridgeState();
   documentKey.subscribe(() => syncBridgeState());
   editorRevision.subscribe(() => syncBridgeState());
+  // Source writes can be the final effect of an import. Observe them directly
+  // so test readiness cannot report the import idle before the store caught up.
+  sourceText.subscribe(() => syncBridgeState());
   fullEditUiState.subscribe(() => syncBridgeState());
   registerTreeaseEditorStoreBridge({
     // The bridge exposes the rendered right-pane state. It must not read the

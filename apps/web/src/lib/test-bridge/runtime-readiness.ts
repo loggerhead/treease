@@ -26,10 +26,13 @@ export type TreeaseRuntimeReadiness = {
   cursorPath: RuntimeReadinessCursorPath;
   sidecar: RuntimeReadinessSidecar;
   import: {
+    requestId: number;
     sessionId: string | null;
     phase: FullEditUiState['phase'];
     requestedRevision: number;
     completedRevision: number;
+    sourceFingerprint: string | null;
+    sourceWriteObserved: boolean;
     settled: boolean;
   };
   graph: {
@@ -125,10 +128,13 @@ function createInitialSnapshot(): RuntimeReadinessSnapshot {
     cursorPath: createCursorPathSnapshot(),
     sidecar: createSidecarSnapshot(),
     import: {
+      requestId: 0,
       sessionId: null,
       phase: 'idle',
       requestedRevision: 0,
       completedRevision: 0,
+      sourceFingerprint: null,
+      sourceWriteObserved: false,
       settled: true,
     },
     graph: {
@@ -162,20 +168,32 @@ let snapshot = createInitialSnapshot();
 let lastImportSessionId: string | null = null;
 let lastImportRevision = 0;
 let lastImportActive = false;
+let importRequestId = 0;
 
-function resetImportTracking(): void {
+function resetImportTracking(resetRequestId = true): void {
   lastImportSessionId = null;
   lastImportRevision = 0;
   lastImportActive = false;
+  if (resetRequestId) importRequestId = 0;
 }
 
-function resetForDocument(documentKey: string, editorRevision: number): void {
+function resetForDocument(documentKey: string, editorRevision: number, preserveActiveImport = false): void {
+  const previousImport = snapshot.import;
   snapshot = {
     ...createInitialSnapshot(),
     documentKey,
     editorRevision,
+    import: preserveActiveImport
+      ? previousImport
+      : {
+          ...createInitialSnapshot().import,
+          // An import often creates a new document key. Keep the operation
+          // identity monotonic across that transition so callers can still
+          // prove that this is the request their file action started.
+          requestId: importRequestId,
+        },
   };
-  resetImportTracking();
+  if (!preserveActiveImport) resetImportTracking(false);
 }
 
 function isIdleAtRevision(fullEditUiState: FullEditUiState, revision: number): boolean {
@@ -190,6 +208,19 @@ function completedImportRevision(fullEditUiState: FullEditUiState, requestedRevi
   return isIdleAtRevision(fullEditUiState, requestedRevision)
     ? Math.max(completedRevision, requestedRevision)
     : completedRevision;
+}
+
+function sourceFingerprint(text: string): string {
+  let hash = 2166136261;
+  for (let index = 0; index < text.length; index += 1) {
+    hash ^= text.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return `${text.length}:${hash >>> 0}`;
+}
+
+function importRequiresSourceWrite(fullEditUiState: FullEditUiState): boolean {
+  return fullEditUiState.reason === 'import-file' || fullEditUiState.reason === 'drop-file';
 }
 
 function createSidecarSnapshot(
@@ -220,7 +251,7 @@ function createCursorPathSnapshot(
   };
 }
 
-function syncImportState(fullEditUiState: FullEditUiState): void {
+function syncImportState(fullEditUiState: FullEditUiState, sourceText: string): void {
   const nextRequestedRevision = fullEditUiState.active
     ? Math.max(snapshot.import.requestedRevision, fullEditUiState.revision)
     : snapshot.import.requestedRevision;
@@ -228,10 +259,25 @@ function syncImportState(fullEditUiState: FullEditUiState): void {
     Boolean(fullEditUiState.sessionId) &&
     fullEditUiState.sessionId !== lastImportSessionId &&
     fullEditUiState.revision >= lastImportRevision;
+  // A whole-document intake first enters `preparing` without a session id.
+  // That transition is already a distinct request and must be observable by
+  // E2E; the later streaming session must not create a second identity.
+  const requestStarted = fullEditUiState.active && (
+    !lastImportActive ||
+    fullEditUiState.revision > snapshot.import.requestedRevision
+  );
   if (sessionChanged) {
     lastImportSessionId = fullEditUiState.sessionId;
     lastImportRevision = fullEditUiState.revision;
   }
+  if (requestStarted) importRequestId += 1;
+  const requestSourceFingerprint = requestStarted && importRequiresSourceWrite(fullEditUiState)
+    ? sourceFingerprint(sourceText)
+    : snapshot.import.sourceFingerprint;
+  const sourceWriteObserved = requestStarted
+    ? false
+    : snapshot.import.sourceWriteObserved ||
+      (requestSourceFingerprint !== null && sourceFingerprint(sourceText) !== requestSourceFingerprint);
   const completedBySettled = fullEditUiState.phase === 'settled'
     ? Math.max(snapshot.import.completedRevision, fullEditUiState.revision)
     : snapshot.import.completedRevision;
@@ -253,11 +299,14 @@ function syncImportState(fullEditUiState: FullEditUiState): void {
   snapshot = {
     ...snapshot,
     import: {
+      requestId: importRequestId,
       sessionId: fullEditUiState.sessionId,
       phase: fullEditUiState.phase,
       requestedRevision: nextRequestedRevision,
       completedRevision: nextCompletedRevision,
-      settled,
+      sourceFingerprint: requestSourceFingerprint,
+      sourceWriteObserved,
+      settled: settled && (requestSourceFingerprint === null || sourceWriteObserved),
     },
   };
   lastImportActive = fullEditUiState.active;
@@ -302,12 +351,17 @@ export function resetRuntimeReadiness(): void {
 export function syncRuntimeReadinessFromEditorState(state: {
   documentKey: string;
   editorRevision: number;
+  sourceText?: string;
   fullEditUiState: FullEditUiState;
 }): void {
   const documentChanged = state.documentKey !== snapshot.documentKey;
   const revisionRewound = state.editorRevision < snapshot.editorRevision;
   if (documentChanged || revisionRewound) {
-    resetForDocument(state.documentKey, state.editorRevision);
+    resetForDocument(
+      state.documentKey,
+      state.editorRevision,
+      documentChanged && state.fullEditUiState.active && snapshot.import.requestId > 0,
+    );
   } else if (state.editorRevision > snapshot.editorRevision) {
     snapshot = {
       ...snapshot,
@@ -317,7 +371,7 @@ export function syncRuntimeReadinessFromEditorState(state: {
   } else if (state.documentKey !== snapshot.documentKey) {
     snapshot = { ...snapshot, documentKey: state.documentKey };
   }
-  syncImportState(state.fullEditUiState);
+  syncImportState(state.fullEditUiState, state.sourceText ?? '');
 }
 
 export function markGraphRequested(payload: GraphMilestonePayload): void {

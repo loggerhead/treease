@@ -243,7 +243,6 @@ test('graph search hover does not take control of manual result scrolling', asyn
   await results.first().evaluate((element) => {
     element.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
   });
-  await page.waitForTimeout(200);
   await expect.poll(() => list.evaluate((element) => element.scrollTop)).toBe(manualScrollTop);
   await expect(page.locator('[role="option"][aria-selected="true"]')).toHaveCount(1);
   await expect(results.first()).toHaveAttribute('aria-selected', 'true');

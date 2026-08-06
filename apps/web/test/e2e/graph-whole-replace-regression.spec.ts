@@ -20,13 +20,13 @@ function fullDocumentRange(text: string) {
 
 async function replaceSourceByEdit(page: Page, nextText: string) {
   const currentText = await page.evaluate(() => window._treease?.editor.getValue('source-editor') ?? '');
-  await applyMonacoEdits(page, 'source-editor', [
+  const operation = await applyMonacoEdits(page, 'source-editor', [
     {
       range: fullDocumentRange(currentText),
       text: nextText,
     },
   ]);
-  await waitForGraphRendered(page);
+  await waitForGraphRendered(page, operation);
 }
 
 test.describe('graph whole replace regressions', () => {
@@ -37,11 +37,11 @@ test.describe('graph whole replace regressions', () => {
     await page.goto('/editor');
     await waitForEditorReady(page);
 
-    await setEditorContent(page, {
+    const initialContent = await setEditorContent(page, {
       sourceText: sampleJson,
       language: 'json',
     });
-    await waitForGraphRendered(page);
+    await waitForGraphRendered(page, initialContent);
 
     await replaceSourceByEdit(page, '');
 
@@ -53,11 +53,11 @@ test.describe('graph whole replace regressions', () => {
     await page.goto('/editor');
     await waitForEditorReady(page);
 
-    await setEditorContent(page, {
+    const initialContent = await setEditorContent(page, {
       sourceText: sampleJson,
       language: 'json',
     });
-    await waitForGraphRendered(page);
+    await waitForGraphRendered(page, initialContent);
 
     await replaceSourceByEdit(page, '123');
 

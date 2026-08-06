@@ -1,11 +1,13 @@
 import { expect, test, type Page } from './fixtures';
 import {
+  captureOperationToken,
   dropFile,
   getMonacoValue,
   readEditorState,
   readEditorWorkspace,
   waitForEditorReady,
   waitForGraphRendered,
+  waitForImportSettled,
 } from './utils';
 
 async function readActiveSidecarText(page: Page): Promise<string> {
@@ -26,12 +28,13 @@ test('top import drop target loads original file text into source editor', async
   await waitForEditorReady(page);
 
   await page.getByRole('button', { name: 'Import', exact: true }).click();
-  await dropFile(page, {
+  const importOperation = await dropFile(page, {
     targetTestId: 'import-drop-trigger',
     fileName: 'sample.yaml',
     content: yamlText,
     mimeType: 'text/plain',
   });
+  await waitForImportSettled(page, importOperation);
 
   await expect(page.getByText('Imported sample.yaml')).toBeVisible();
   await expect.poll(async () => (await readEditorState(page)).sourceText, { timeout: 5_000 }).toBe(yamlText);
@@ -44,12 +47,13 @@ test('top import drop target converts csv into the active editor language', asyn
   await waitForEditorReady(page);
 
   await page.getByRole('button', { name: 'Import', exact: true }).click();
-  await dropFile(page, {
+  const importOperation = await dropFile(page, {
     targetTestId: 'import-drop-trigger',
     fileName: 'people.csv',
     content: 'name,age\nAlice,18\nBob,20\n',
     mimeType: 'text/csv',
   });
+  await waitForImportSettled(page, importOperation);
 
   await expect(page.getByText('Imported people.csv')).toBeVisible();
   await expect.poll(async () => (await readEditorState(page)).languageId, { timeout: 5_000 }).toBe('json');
@@ -62,19 +66,20 @@ test('top import drop target converts csv into the active editor language', asyn
       { timeout: 5_000 },
     )
     .toBe(JSON.stringify([{ name: 'Alice', age: 18 }, { name: 'Bob', age: 20 }]));
-  await waitForGraphRendered(page);
+  await waitForGraphRendered(page, await captureOperationToken(page));
 });
 
 test('dragging file onto left editor loads original file text', async ({ page }) => {
   await page.goto('/editor');
   await waitForEditorReady(page);
 
-  await dropFile(page, {
+  const importOperation = await dropFile(page, {
     targetTestId: 'source-editor-region',
     fileName: 'drag-left.yaml',
     content: yamlText,
     mimeType: 'text/plain',
   });
+  await waitForImportSettled(page, importOperation);
 
   await expect.poll(async () => (await readEditorState(page)).sourceText, { timeout: 5_000 }).toBe(yamlText);
   await expect.poll(async () => getMonacoValue(page, 'source-editor'), { timeout: 5_000 }).toBe(yamlText);

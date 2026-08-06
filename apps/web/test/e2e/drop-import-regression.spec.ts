@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { expect, test, type Page } from './fixtures';
 import {
   dropFile,
+  type E2EOperationToken,
   getLatestGraphProbes,
   getMonacoValue,
   readEditorState,
@@ -88,8 +89,13 @@ async function expectWithinBudget(label: string, budgetMs: number, action: () =>
   expect(elapsedMs, `${label} exceeded budget: ${elapsedMs}ms > ${budgetMs}ms`).toBeLessThanOrEqual(budgetMs);
 }
 
-async function expectSettledJsonSource(page: Page, expectedText: string, timeout = SOURCE_DROP_BUDGET_MS) {
-  await waitForImportSettled(page, timeout);
+async function expectSettledJsonSource(
+  page: Page,
+  expectedText: string,
+  timeout = SOURCE_DROP_BUDGET_MS,
+  operation?: E2EOperationToken,
+) {
+  await waitForImportSettled(page, operation ?? timeout);
   const [modelText, state] = await Promise.all([
     getMonacoValue(page, 'source-editor'),
     readEditorState(page),
@@ -690,7 +696,7 @@ test('dropping a 5MB json file streams source before terminal import settlement 
   await waitForEditorReady(page);
 
   const startedAt = Date.now();
-  await dropFile(page, {
+  const importOperation = await dropFile(page, {
     targetTestId: 'source-editor-region',
     fileName: '5MB-min.json',
     content: largeJsonFixtureText,
@@ -765,7 +771,12 @@ test('dropping a 5MB json file streams source before terminal import settlement 
   let terminalReadiness = firstVisibleReadiness;
   const terminalPhaseStartedAt = Date.now();
   try {
-    await expectSettledJsonSource(page, largeJsonFixtureText, LARGE_IMPORT_TERMINAL_SETTLEMENT_BUDGET_MS);
+    await expectSettledJsonSource(
+      page,
+      largeJsonFixtureText,
+      LARGE_IMPORT_TERMINAL_SETTLEMENT_BUDGET_MS,
+      importOperation,
+    );
     terminalReadiness = await readRuntimeReadiness(page);
   } catch (error) {
     terminalReadiness = await readRuntimeReadiness(page);
@@ -795,15 +806,15 @@ test('dropping the 5MB json fixture completes graph progress without remaining s
   await waitForEditorReady(page);
   await installGraphProgressObservation(page);
 
-  await dropFile(page, {
+  const importOperation = await dropFile(page, {
     targetTestId: 'source-editor-region',
     fileName: '5MB-min.json',
     content: largeJsonFixtureText,
     mimeType: 'application/json',
   });
 
-  await waitForImportSettled(page, LARGE_IMPORT_TERMINAL_SETTLEMENT_BUDGET_MS);
-  await waitForGraphRendered(page, LARGE_IMPORT_TERMINAL_SETTLEMENT_BUDGET_MS);
+  await waitForImportSettled(page, importOperation);
+  await waitForGraphRendered(page, importOperation);
 
   const observation = await stopGraphProgressObservation(page);
   const streamRunId = observation?.samples.at(-1)?.streamRunId ?? '';
@@ -821,15 +832,16 @@ test('dropping the 1mb json fixture keeps graph progress monotonic', async ({ pa
   await waitForEditorReady(page);
   await installGraphProgressObservation(page);
 
-  await dropFile(page, {
+  const importOperation = await dropFile(page, {
     targetTestId: 'source-editor-region',
     fileName: '1MB-min.json',
     content: oneMbMinJsonFixtureText,
     mimeType: 'application/json',
   });
 
+  await waitForImportSettled(page, importOperation);
   await expectSettledJsonSource(page, oneMbMinJsonFixtureText);
-  await waitForGraphRendered(page, SOURCE_DROP_BUDGET_MS);
+  await waitForGraphRendered(page, importOperation);
   const observation = await stopGraphProgressObservation(page);
   const streamRunId = observation?.samples.at(-1)?.streamRunId ?? '';
   const runSamples = (observation?.samples ?? []).filter((sample) => sample.streamRunId === streamRunId);
@@ -856,14 +868,14 @@ test('importing the 1mb json fixture through the TopBar drop target never lets a
   await installGraphProgressObservation(page);
 
   await page.getByTestId('topbar-import-button').click();
-  await dropFile(page, {
+  const importOperation = await dropFile(page, {
     targetTestId: 'import-drop-trigger',
     fileName: '1MB-min.1.json',
     content: oneMbMinJsonFixtureText,
     mimeType: 'application/json',
   });
-  await waitForGraphRendered(page, 10_000);
-  await waitForImportSettled(page, 10_000);
+  await waitForImportSettled(page, importOperation);
+  await waitForGraphRendered(page, importOperation);
 
   const observation = await stopGraphProgressObservation(page);
   const runOrder = (observation?.samples ?? [])
@@ -881,22 +893,22 @@ test('dropping the 1mb json fixture never surfaces document analysis failed duri
   await waitForEditorReady(page);
   await installGraphErrorObservation(page);
 
-  await dropFile(page, {
+  const importOperation = await dropFile(page, {
     targetTestId: 'source-editor-region',
     fileName: '1MB-min.json',
     content: oneMbMinJsonFixtureText,
     mimeType: 'application/json',
   });
 
-    await expect.poll(async () => {
-      const [storeText, modelText] = await Promise.all([
-        (await readEditorState(page)).sourceText,
-        getMonacoValue(page, 'source-editor'),
-      ]);
-      return storeText.length > 0 && storeText === modelText;
-    }, { timeout: SOURCE_DROP_BUDGET_MS }).toBe(true);
-  await waitForGraphRendered(page, SOURCE_DROP_BUDGET_MS);
-  await page.waitForTimeout(250);
+  await expect.poll(async () => {
+    const [storeText, modelText] = await Promise.all([
+      (await readEditorState(page)).sourceText,
+      getMonacoValue(page, 'source-editor'),
+    ]);
+    return storeText.length > 0 && storeText === modelText;
+  }, { timeout: SOURCE_DROP_BUDGET_MS }).toBe(true);
+  await waitForImportSettled(page, importOperation);
+  await waitForGraphRendered(page, importOperation);
 
   const observation = await stopGraphErrorObservation(page);
   expect(observation).toEqual({

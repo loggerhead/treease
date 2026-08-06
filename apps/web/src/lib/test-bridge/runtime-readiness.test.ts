@@ -62,6 +62,135 @@ describe('runtime-readiness', () => {
     expect(readRuntimeReadiness().graph.appliedRevision).toBe(0);
   });
 
+  it('gives each import session a distinct request id', () => {
+    syncRuntimeReadinessFromEditorState({
+      documentKey: 'doc-1',
+      editorRevision: 1,
+      fullEditUiState: idleFullEditUiState({ active: true, sessionId: 'import-1', revision: 2, phase: 'preparing' }),
+    });
+    const first = readRuntimeReadiness().import;
+    syncRuntimeReadinessFromEditorState({
+      documentKey: 'doc-1',
+      editorRevision: 2,
+      fullEditUiState: idleFullEditUiState({ active: true, sessionId: 'import-2', revision: 3, phase: 'preparing' }),
+    });
+    const second = readRuntimeReadiness().import;
+
+    expect(second.requestId).toBeGreaterThan(first.requestId);
+    expect(second.requestedRevision).toBe(3);
+    expect(second.settled).toBe(false);
+  });
+
+  it('observes a preparing import before its stream session id exists', () => {
+    syncRuntimeReadinessFromEditorState({
+      documentKey: 'doc-1',
+      editorRevision: 1,
+      fullEditUiState: idleFullEditUiState({ active: true, sessionId: null, revision: 2, phase: 'preparing' }),
+    });
+
+    expect(readRuntimeReadiness().import).toMatchObject({
+      requestId: 1,
+      requestedRevision: 2,
+      settled: false,
+    });
+  });
+
+  it('keeps one request id when a preparing import later receives its session id', () => {
+    syncRuntimeReadinessFromEditorState({
+      documentKey: 'doc-1',
+      editorRevision: 1,
+      fullEditUiState: idleFullEditUiState({ active: true, sessionId: null, revision: 2, phase: 'preparing' }),
+    });
+    const preparingRequestId = readRuntimeReadiness().import.requestId;
+    syncRuntimeReadinessFromEditorState({
+      documentKey: 'doc-1',
+      editorRevision: 1,
+      fullEditUiState: idleFullEditUiState({ active: true, sessionId: 'import-1', revision: 2, phase: 'streaming' }),
+    });
+
+    expect(readRuntimeReadiness().import.requestId).toBe(preparingRequestId);
+  });
+
+  it('keeps an import request identity when intake creates a new document key', () => {
+    syncRuntimeReadinessFromEditorState({
+      documentKey: 'doc-1',
+      editorRevision: 1,
+      fullEditUiState: idleFullEditUiState({ active: true, revision: 2, phase: 'preparing' }),
+    });
+    syncRuntimeReadinessFromEditorState({
+      documentKey: 'doc-2',
+      editorRevision: 1,
+      fullEditUiState: idleFullEditUiState({ active: true, revision: 2, phase: 'preparing' }),
+    });
+
+    expect(readRuntimeReadiness().import.requestId).toBe(1);
+  });
+
+  it('does not settle a file import until the source store has changed', () => {
+    const importing = idleFullEditUiState({
+      active: true,
+      revision: 2,
+      phase: 'preparing',
+      reason: 'import-file',
+    });
+    syncRuntimeReadinessFromEditorState({
+      documentKey: 'doc-1',
+      editorRevision: 1,
+      sourceText: '{"before":true}',
+      fullEditUiState: importing,
+    });
+    syncRuntimeReadinessFromEditorState({
+      documentKey: 'doc-1',
+      editorRevision: 2,
+      sourceText: '{"before":true}',
+      fullEditUiState: idleFullEditUiState({ revision: 2, reason: 'import-file' }),
+    });
+
+    expect(readRuntimeReadiness().import).toMatchObject({
+      sourceWriteObserved: false,
+      settled: false,
+    });
+
+    syncRuntimeReadinessFromEditorState({
+      documentKey: 'doc-1',
+      editorRevision: 3,
+      sourceText: '{"after":true}',
+      fullEditUiState: idleFullEditUiState({ revision: 2, reason: 'import-file' }),
+    });
+
+    expect(readRuntimeReadiness().import).toMatchObject({
+      sourceWriteObserved: true,
+      settled: true,
+    });
+  });
+
+  it('resets source-write evidence for each new file import', () => {
+    syncRuntimeReadinessFromEditorState({
+      documentKey: 'doc-1',
+      editorRevision: 1,
+      sourceText: 'before',
+      fullEditUiState: idleFullEditUiState({ active: true, revision: 2, phase: 'preparing', reason: 'drop-file' }),
+    });
+    syncRuntimeReadinessFromEditorState({
+      documentKey: 'doc-1',
+      editorRevision: 2,
+      sourceText: 'after-first',
+      fullEditUiState: idleFullEditUiState({ revision: 2, reason: 'drop-file' }),
+    });
+    syncRuntimeReadinessFromEditorState({
+      documentKey: 'doc-1',
+      editorRevision: 2,
+      sourceText: 'after-first',
+      fullEditUiState: idleFullEditUiState({ active: true, revision: 3, phase: 'preparing', reason: 'drop-file' }),
+    });
+
+    expect(readRuntimeReadiness().import).toMatchObject({
+      requestId: 2,
+      sourceWriteObserved: false,
+      settled: false,
+    });
+  });
+
   it('advances graph milestones monotonically through settled', () => {
     syncRuntimeReadinessFromEditorState({
       documentKey: 'doc-1',

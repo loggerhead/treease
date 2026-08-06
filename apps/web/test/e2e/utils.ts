@@ -31,8 +31,117 @@ type EditorSnapshot = {
 
 const CURSOR_RE = /Ln\s+(\d+),\s*Col\s+(\d+)/;
 
+/**
+ * Immutable identity for an asynchronous E2E action.  A token deliberately
+ * contains the readiness values observed *after* the action was accepted so
+ * that a later wait cannot accidentally pass on an older settled operation.
+ */
+export type E2EOperationToken = Readonly<{
+  documentKey: string;
+  editorRevision: number;
+  requestId?: number;
+  sourceRevision?: number;
+  hookId?: string;
+  pathKey?: string;
+  previousSourceFingerprint?: string;
+}>;
+
+function textFingerprint(text: string): string {
+  let hash = 2166136261;
+  for (let index = 0; index < text.length; index += 1) {
+    hash ^= text.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return `${text.length}:${hash >>> 0}`;
+}
+
+function sameEditorTextOrJsonValue(actual: string, expected: string): boolean {
+  if (actual === expected) return true;
+  try {
+    return JSON.stringify(JSON.parse(actual)) === JSON.stringify(JSON.parse(expected));
+  } catch {
+    return false;
+  }
+}
+
+function operationToken(
+  readiness: TreeaseRuntimeReadiness,
+  context: Partial<E2EOperationToken> = {},
+): E2EOperationToken {
+  return {
+    documentKey: context.documentKey ?? readiness.documentKey,
+    editorRevision: context.editorRevision ?? readiness.editorRevision,
+    ...context,
+  };
+}
+
+export async function captureOperationToken(
+  page: Page,
+  context: Partial<E2EOperationToken> = {},
+): Promise<E2EOperationToken> {
+  return operationToken(await readRuntimeReadiness(page), context);
+}
+
+/** Execute a UI action and return the exact sidecar request it created. */
+export async function runSidecarAction(
+  page: Page,
+  action: () => Promise<void>,
+  hookId = 'right-editor',
+  timeout = DEFAULT_UI_TIMEOUT,
+): Promise<E2EOperationToken> {
+  const baseline = await readRuntimeReadiness(page);
+  await action();
+  await expect
+    .poll(
+      async () => {
+        const readiness = await readRuntimeReadiness(page);
+        return readiness.sidecar.requestId > baseline.sidecar.requestId && readiness.sidecar.hookId === hookId;
+      },
+      { timeout },
+    )
+    .toBe(true);
+  const readiness = await readRuntimeReadiness(page);
+  return operationToken(readiness, {
+    documentKey: readiness.sidecar.documentKey ?? readiness.documentKey,
+    requestId: readiness.sidecar.requestId,
+    sourceRevision: readiness.sidecar.revision,
+    hookId,
+  });
+}
+
+/** Execute a navigator UI action and return the exact materialization request. */
+export async function runColumnNavigatorAction(
+  page: Page,
+  action: () => Promise<void>,
+  pathKey?: string,
+  timeout = DEFAULT_UI_TIMEOUT,
+): Promise<E2EOperationToken> {
+  const baseline = await readRuntimeReadiness(page);
+  await action();
+  await expect
+    .poll(
+      async () => {
+        const readiness = await readRuntimeReadiness(page);
+        return readiness.subgraph.requestId > baseline.subgraph.requestId
+          && (!pathKey || readiness.subgraph.pathKey === pathKey);
+      },
+      { timeout },
+    )
+    .toBe(true);
+  const readiness = await readRuntimeReadiness(page);
+  return operationToken(readiness, {
+    requestId: readiness.subgraph.requestId,
+    sourceRevision: readiness.subgraph.sourceRevision,
+    pathKey: readiness.subgraph.pathKey ?? pathKey,
+  });
+}
+
+function describeWaitTarget(name: string, token: E2EOperationToken, readiness: TreeaseRuntimeReadiness): string {
+  return `${name} did not settle for token=${JSON.stringify(token)} readiness=${JSON.stringify(readiness)}`;
+}
+
 function monacoHook(page: Page, hookId: string) {
-  return page.getByTestId(`monaco-${hookId}`).last();
+  return page.getByTestId(`monaco-${hookId}`);
 }
 
 export async function evaluateTreease<T, P = undefined>(
@@ -94,7 +203,7 @@ export async function waitForMonacoHook(page: Page, hookId: string, timeout = DE
     .poll(
       async () => {
         const count = await locator.count();
-        if (count === 0) {
+        if (count !== 1) {
           return false;
         }
         return evaluateTreease(page, (treease, nextHookId) => treease.editor.isReady(nextHookId), hookId);
@@ -149,13 +258,15 @@ export async function readRuntimeReadiness(page: Page): Promise<TreeaseRuntimeRe
 
 async function waitForRuntimeReadiness(
   page: Page,
-  predicate: (readiness: TreeaseRuntimeReadiness) => boolean,
+  predicate: (readiness: TreeaseRuntimeReadiness) => boolean | Promise<boolean>,
   timeout = DEFAULT_UI_TIMEOUT,
 ) {
   await expect.poll(async () => predicate(await readRuntimeReadiness(page)), { timeout }).toBe(true);
 }
 
 export async function setEditorContent(page: Page, payload: { sourceText: string; language?: string }) {
+  const baseline = await readRuntimeReadiness(page);
+  const baselineState = await readEditorState(page);
   await waitForMonacoHook(page, 'source-editor');
   await expect
     .poll(
@@ -199,17 +310,21 @@ export async function setEditorContent(page: Page, payload: { sourceText: string
         // explicitly by the caller through waitForImportSettled /
         // waitForGraphRendered when needed.
         return {
-          modelSynced: state.sourceText === modelText,
-          storeSynced: state.sourceText === modelText,
+          modelHasTarget: modelText === payload.sourceText,
+          storeHasTarget: state.sourceText === payload.sourceText,
+          modelStoreSynced: state.sourceText === modelText,
           languageSynced: payload.language ? state.languageId === payload.language : true,
+          revisionAdvanced: state.editorRevision > baseline.editorRevision || payload.sourceText === baselineState.sourceText,
         };
       },
       { timeout: DEFAULT_UI_TIMEOUT },
     )
-    .toEqual({ modelSynced: true, storeSynced: true, languageSynced: true });
+    .toEqual({ modelHasTarget: true, storeHasTarget: true, modelStoreSynced: true, languageSynced: true, revisionAdvanced: true });
+  return captureOperationToken(page);
 }
 
 export async function setMonacoValue(page: Page, hookId: string, value: string) {
+  const baseline = await readRuntimeReadiness(page);
   await waitForMonacoHook(page, hookId);
   await evaluateTreease(
     page,
@@ -218,6 +333,11 @@ export async function setMonacoValue(page: Page, hookId: string, value: string) 
     },
     { hookId, value },
   );
+  await expect
+    .poll(async () => sameEditorTextOrJsonValue(await getMonacoValue(page, hookId), value), { timeout: DEFAULT_UI_TIMEOUT })
+    .toBe(true);
+  const readiness = await readRuntimeReadiness(page);
+  return operationToken(readiness, { hookId, sourceRevision: baseline.editorRevision });
 }
 
 export async function setMonacoPosition(page: Page, hookId: string, lineNumber: number, column: number) {
@@ -308,6 +428,8 @@ export async function applyMonacoEdits(
     text: string;
   }>,
 ) {
+  const baseline = await readRuntimeReadiness(page);
+  const beforeValue = await getMonacoValue(page, hookId);
   await waitForMonacoHook(page, hookId);
   await evaluateTreease(
     page,
@@ -325,6 +447,13 @@ export async function applyMonacoEdits(
     },
     { hookId, edits },
   );
+  await expect
+    .poll(async () => ({
+      valueChanged: (await getMonacoValue(page, hookId)) !== beforeValue,
+      revisionAdvanced: hookId !== 'source-editor' || (await readRuntimeReadiness(page)).editorRevision > baseline.editorRevision,
+    }), { timeout: DEFAULT_UI_TIMEOUT })
+    .toEqual({ valueChanged: true, revisionAdvanced: true });
+  return captureOperationToken(page, { hookId, sourceRevision: baseline.editorRevision });
 }
 
 export async function getMonacoScroll(page: Page, hookId: string) {
@@ -392,6 +521,7 @@ export async function getMonacoInlineClassColor(page: Page, hookId: string, clas
 }
 
 export async function setMonacoScroll(page: Page, hookId: string, scrollTop: number, scrollLeft = 0) {
+  const baseline = await readRuntimeReadiness(page);
   await waitForMonacoHook(page, hookId);
   await evaluateTreease(
     page,
@@ -400,6 +530,19 @@ export async function setMonacoScroll(page: Page, hookId: string, scrollTop: num
     },
     { hookId, scrollTop, scrollLeft },
   );
+  await expect
+    .poll(async () => (await getMonacoScroll(page, hookId)).scrollTop, { timeout: DEFAULT_UI_TIMEOUT })
+    .toBe(scrollTop);
+  return captureOperationToken(page, { hookId, sourceRevision: baseline.editorRevision });
+}
+
+/** Wait for browser paint turns without using wall-clock sleeps. */
+export async function waitForAnimationFrames(page: Page, count = 2): Promise<void> {
+  await page.evaluate(async (frames) => {
+    for (let index = 0; index < frames; index += 1) {
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    }
+  }, count);
 }
 
 export async function chooseFile(
@@ -409,11 +552,15 @@ export async function chooseFile(
     triggerTestId?: string;
     inputLabel?: string;
     inputIndex?: number;
+    operation?: 'import' | 'sidecar';
     fileName: string;
     content: string;
     mimeType?: string;
   },
 ) {
+  const baseline = await readRuntimeReadiness(page);
+  const baselineState = await readEditorState(page);
+  const operation = options.operation ?? (options.inputLabel === 'Right panel file input' ? 'sidecar' : 'import');
   if (options.triggerLabel) {
     await page.getByRole('button', { name: options.triggerLabel, exact: true }).click();
   }
@@ -428,6 +575,25 @@ export async function chooseFile(
     mimeType: options.mimeType ?? 'text/plain',
     buffer: Buffer.from(options.content),
   });
+  await expect.poll(async () => {
+    const readiness = await readRuntimeReadiness(page);
+    return operation === 'import'
+      ? readiness.import.requestId > baseline.import.requestId
+      : readiness.sidecar.requestId > baseline.sidecar.requestId;
+  }, { timeout: DEFAULT_UI_TIMEOUT }).toBe(true);
+  const readiness = await readRuntimeReadiness(page);
+  return operation === 'import'
+    ? operationToken(readiness, {
+        requestId: readiness.import.requestId,
+        sourceRevision: readiness.import.requestedRevision,
+        previousSourceFingerprint: textFingerprint(baselineState.sourceText),
+      })
+    : operationToken(readiness, {
+        documentKey: readiness.sidecar.documentKey ?? readiness.documentKey,
+        requestId: readiness.sidecar.requestId,
+        sourceRevision: readiness.sidecar.revision,
+        hookId: readiness.sidecar.hookId ?? 'right-editor',
+      });
 }
 
 export async function dropFile(
@@ -442,9 +608,13 @@ export async function dropFile(
   const target = page.getByTestId(options.targetTestId);
   await expect(target).toBeVisible({ timeout: DEFAULT_UI_TIMEOUT });
   const tracksImport = options.targetTestId === 'source-editor-region' || options.targetTestId === 'import-drop-trigger';
-  const previousImportRevision = tracksImport
-    ? (await readRuntimeReadiness(page)).import.requestedRevision
+  const tracksSidecar = options.targetTestId === 'right-panel-dropzone';
+  const baseline = await readRuntimeReadiness(page);
+  const baselineState = await readEditorState(page);
+  const previousImportRequestId = tracksImport
+    ? baseline.import.requestId
     : null;
+  const previousSidecarRequestId = tracksSidecar ? baseline.sidecar.requestId : null;
   await target.evaluate(
     (node, payload) => {
       const dataTransfer = new DataTransfer();
@@ -459,16 +629,38 @@ export async function dropFile(
       mimeType: options.mimeType ?? 'text/plain',
     },
   );
-  if (previousImportRevision !== null) {
-    // The drop handler is async; wait until this event owns a new import revision.
+  if (previousImportRequestId !== null) {
+    // The drop handler is async; wait until this event owns a new import request.
     // Otherwise callers can observe the initial settled=true state before import starts.
     await expect
       .poll(
-        async () => (await readRuntimeReadiness(page)).import.requestedRevision > previousImportRevision,
+        async () => (await readRuntimeReadiness(page)).import.requestId > previousImportRequestId,
         { timeout: DEFAULT_UI_TIMEOUT },
       )
       .toBe(true);
   }
+  if (previousSidecarRequestId !== null) {
+    await expect
+      .poll(async () => (await readRuntimeReadiness(page)).sidecar.requestId > previousSidecarRequestId, { timeout: DEFAULT_UI_TIMEOUT })
+      .toBe(true);
+  }
+  const readiness = await readRuntimeReadiness(page);
+  if (tracksImport) {
+    return operationToken(readiness, {
+      requestId: readiness.import.requestId,
+      sourceRevision: readiness.import.requestedRevision,
+      previousSourceFingerprint: textFingerprint(baselineState.sourceText),
+    });
+  }
+  if (tracksSidecar) {
+    return operationToken(readiness, {
+      documentKey: readiness.sidecar.documentKey ?? readiness.documentKey,
+      requestId: readiness.sidecar.requestId,
+      sourceRevision: readiness.sidecar.revision,
+      hookId: readiness.sidecar.hookId ?? 'right-editor',
+    });
+  }
+  return operationToken(readiness);
 }
 
 export async function waitForEditorRuntimeReady(page: Page, timeout = DEFAULT_UI_TIMEOUT) {
@@ -513,7 +705,7 @@ export async function openCommandSearch(page: Page) {
 export async function waitForSettingsReady(page: Page, timeout = DEFAULT_UI_TIMEOUT) {
   await expect
     .poll(
-      async () => evaluateTreease(page, (treease) => treease.settings.getStatus()),
+      async () => page.evaluate(() => window._treease?.settings.getStatus() ?? null),
       { timeout },
     )
     .toBe('ready');
@@ -521,14 +713,24 @@ export async function waitForSettingsReady(page: Page, timeout = DEFAULT_UI_TIME
 
 export async function waitForGraphRendered(
   page: Page,
-  timeout = DEFAULT_UI_TIMEOUT,
+  timeoutOrToken: number | E2EOperationToken = DEFAULT_UI_TIMEOUT,
   target?: { documentKey: string; revision: number },
 ) {
-  await waitForRuntimeReadiness(
-    page,
-    (lastReadiness) => {
-      const targetDocumentKey = target?.documentKey ?? lastReadiness.documentKey;
-      const targetRevision = Math.max(1, target?.revision ?? lastReadiness.graph.requestedRevision);
+  const token = typeof timeoutOrToken === 'number' ? undefined : timeoutOrToken;
+  const timeout = typeof timeoutOrToken === 'number' ? timeoutOrToken : DEFAULT_UI_TIMEOUT;
+  // Freeze the target once.  Reading requestedRevision inside the poll would
+  // make this wait follow unrelated later edits under CPU pressure.
+  const initial = await readRuntimeReadiness(page);
+  const frozenTarget = target ?? {
+    documentKey: token?.documentKey ?? initial.documentKey,
+    revision: Math.max(1, token?.editorRevision ?? initial.graph.requestedRevision),
+  };
+  try {
+    await waitForRuntimeReadiness(
+      page,
+      (lastReadiness) => {
+        const targetDocumentKey = frozenTarget.documentKey;
+        const targetRevision = frozenTarget.revision;
       return (
         lastReadiness.documentKey === targetDocumentKey &&
         lastReadiness.import.settled &&
@@ -539,33 +741,95 @@ export async function waitForGraphRendered(
         lastReadiness.graph.settled &&
         lastReadiness.graph.settledRevision >= targetRevision
       );
-    },
-    timeout,
-  );
+      },
+      timeout,
+    );
+  } catch (error) {
+    throw new Error(
+      describeWaitTarget(
+        'graph render',
+        operationToken(initial, {
+          documentKey: frozenTarget.documentKey,
+          editorRevision: frozenTarget.revision,
+        }),
+        await readRuntimeReadiness(page),
+      ),
+      { cause: error },
+    );
+  }
 }
 
-export async function waitForImportSettled(page: Page, timeout = DEFAULT_UI_TIMEOUT) {
-  await waitForRuntimeReadiness(page, (readiness) => readiness.import.settled, timeout);
+export async function waitForImportSettled(page: Page, timeoutOrToken: number | E2EOperationToken = DEFAULT_UI_TIMEOUT) {
+  const token = typeof timeoutOrToken === 'number' ? undefined : timeoutOrToken;
+  const timeout = typeof timeoutOrToken === 'number' ? timeoutOrToken : DEFAULT_UI_TIMEOUT;
+  const initial = await readRuntimeReadiness(page);
+  const targetRevision = token?.sourceRevision ?? initial.import.requestedRevision;
+  try {
+    await waitForRuntimeReadiness(
+      page,
+      async (readiness) => {
+        const lifecycleSettled = readiness.documentKey === (token?.documentKey ?? initial.documentKey)
+          && (token?.requestId === undefined || readiness.import.requestId === token.requestId)
+          && readiness.editorRevision >= (token?.editorRevision ?? initial.editorRevision)
+          && readiness.import.requestedRevision >= targetRevision
+          && readiness.import.completedRevision >= targetRevision
+          && readiness.import.settled;
+        if (!lifecycleSettled || !token?.previousSourceFingerprint) return lifecycleSettled;
+        const [state, modelText] = await Promise.all([
+          readEditorState(page),
+          getMonacoValue(page, 'source-editor'),
+        ]);
+        return state.sourceText === modelText
+          && textFingerprint(state.sourceText) !== token.previousSourceFingerprint;
+      },
+      timeout,
+    );
+  } catch (error) {
+    throw new Error(describeWaitTarget('import', token ?? operationToken(initial, { sourceRevision: targetRevision }), await readRuntimeReadiness(page)), { cause: error });
+  }
 }
 
 export async function waitForPreviewSettled(page: Page, timeout = DEFAULT_UI_TIMEOUT) {
   await waitForRuntimeReadiness(page, (readiness) => readiness.preview.settled, timeout);
 }
 
-export async function waitForSidecarSettled(page: Page, hookId = 'right-editor', timeout = DEFAULT_UI_TIMEOUT) {
-  await waitForRuntimeReadiness(
-    page,
-    (readiness) => readiness.sidecar.settled && readiness.sidecar.hookId === hookId,
-    timeout,
-  );
+export async function waitForSidecarSettled(page: Page, hookOrToken: string | E2EOperationToken = 'right-editor', timeout = DEFAULT_UI_TIMEOUT) {
+  const token = typeof hookOrToken === 'string' ? undefined : hookOrToken;
+  const hookId = typeof hookOrToken === 'string' ? hookOrToken : hookOrToken.hookId ?? 'right-editor';
+  const initial = await readRuntimeReadiness(page);
+  const requestId = token?.requestId;
+  try {
+    await waitForRuntimeReadiness(
+      page,
+      (readiness) => readiness.sidecar.settled
+        && (requestId === undefined || readiness.sidecar.requestId >= initial.sidecar.requestId)
+        && readiness.sidecar.hookId === hookId
+        && (token?.documentKey === undefined || readiness.sidecar.documentKey === token.documentKey),
+      timeout,
+    );
+  } catch (error) {
+    throw new Error(describeWaitTarget('sidecar', token ?? operationToken(initial, { requestId: initial.sidecar.requestId, hookId }), await readRuntimeReadiness(page)), { cause: error });
+  }
 }
 
-export async function waitForColumnNavigatorSettled(page: Page, pathKey?: string, timeout = DEFAULT_UI_TIMEOUT) {
-  await waitForRuntimeReadiness(
-    page,
-    (readiness) => readiness.subgraph.settled && (pathKey ? readiness.subgraph.pathKey === pathKey : true),
-    timeout,
-  );
+export async function waitForColumnNavigatorSettled(page: Page, pathOrToken?: string | E2EOperationToken, timeout = DEFAULT_UI_TIMEOUT) {
+  const token = typeof pathOrToken === 'string' || typeof pathOrToken === 'undefined' ? undefined : pathOrToken;
+  const pathKey = typeof pathOrToken === 'string' ? pathOrToken : token?.pathKey;
+  const initial = await readRuntimeReadiness(page);
+  const requestId = token?.requestId;
+  const sourceRevision = token?.sourceRevision ?? initial.subgraph.sourceRevision;
+  try {
+    await waitForRuntimeReadiness(
+      page,
+      (readiness) => readiness.subgraph.settled
+        && (requestId === undefined || readiness.subgraph.requestId >= initial.subgraph.requestId)
+        && readiness.subgraph.sourceRevision >= sourceRevision
+        && (pathKey ? readiness.subgraph.pathKey === pathKey : true),
+      timeout,
+    );
+  } catch (error) {
+    throw new Error(describeWaitTarget('column navigator', token ?? operationToken(initial, { requestId: initial.subgraph.requestId, sourceRevision, pathKey }), await readRuntimeReadiness(page)), { cause: error });
+  }
 }
 
 export async function waitForDiagnostics(page: Page, timeout = DEFAULT_UI_TIMEOUT) {
@@ -586,6 +850,9 @@ export async function openMonacoHover(
   await setMonacoPosition(page, options.hookId, options.lineNumber, options.column);
   const locator = monacoHook(page, options.hookId);
   await expect(locator).toBeVisible({ timeout });
+  // Wait for layout before sampling virtualized Monaco token geometry.  This
+  // is a paint boundary, not a duration-based sleep.
+  await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())));
   const point = await locator.evaluate((node, hoverText) => {
     const editorNode = node as HTMLElement;
     const spans = Array.from(editorNode.querySelectorAll('.view-lines .view-line span')) as HTMLElement[];
@@ -604,10 +871,10 @@ export async function openMonacoHover(
   await expect
     .poll(
       async () => {
-        const hoverCount = await page.evaluate(() => document.querySelectorAll('.monaco-hover').length);
-        if (hoverCount > 0) return true;
+        const hover = page.locator('.monaco-hover').filter({ visible: true }).last();
+        if (await hover.count()) return true;
         await page.mouse.move(point.x + 1, point.y + 1);
-        return (await page.evaluate(() => document.querySelectorAll('.monaco-hover').length)) > 0;
+        return (await page.locator('.monaco-hover').filter({ visible: true }).count()) > 0;
       },
       { timeout },
     )
@@ -615,17 +882,13 @@ export async function openMonacoHover(
 }
 
 export async function readMonacoHoverRows(page: Page) {
-  return page.evaluate(() =>
-    Array.from(document.querySelectorAll('.monaco-hover .hover-row-contents')).map((node) =>
-      (node.textContent ?? '').trim(),
-    ),
+  return page.locator('.monaco-hover:visible .hover-row-contents').evaluateAll((nodes) =>
+    nodes.map((node) => (node.textContent ?? '').trim()),
   );
 }
 
 export async function readMonacoHoverHtml(page: Page) {
-  return page.evaluate(() =>
-    Array.from(document.querySelectorAll('.monaco-hover .hover-row-contents')).map((node) => node.innerHTML),
-  );
+  return page.locator('.monaco-hover:visible .hover-row-contents').evaluateAll((nodes) => nodes.map((node) => node.innerHTML));
 }
 
 export async function expectMonacoHoverContains(page: Page, expectedParts: Array<string | RegExp>, timeout = DEFAULT_UI_TIMEOUT) {
@@ -694,7 +957,9 @@ async function evaluateGraphRuntime<T, P = undefined>(
 }
 
 export async function getLatestGraphProbes(page: Page): Promise<Array<{ x: number; y: number }>> {
-  const directProbes = await evaluateGraphRuntime(page, (runtime) =>
+  // An empty direct snapshot is a valid current result.  Falling back to a
+  // historical event makes tests observe a previous graph revision.
+  return evaluateGraphRuntime(page, (runtime) =>
     (runtime.getClickProbeTargets?.('root') ?? [])
       .map((probe) =>
         typeof probe.coord?.x === 'number' && typeof probe.coord?.y === 'number'
@@ -702,15 +967,7 @@ export async function getLatestGraphProbes(page: Page): Promise<Array<{ x: numbe
           : null,
       )
       .filter((probe): probe is { x: number; y: number } => !!probe),
-  ).catch(() => []);
-  if (directProbes.length > 0) {
-    return directProbes;
-  }
-  const events = await readGraphEditEvents(page);
-  const probes = events.filter((evt) => evt.type === 'probes').at(-1)?.detail?.probes ?? [];
-  return probes
-    .filter((probe): probe is { x: number; y: number } => typeof probe?.x === 'number' && typeof probe?.y === 'number')
-    .map((probe) => ({ x: probe.x, y: probe.y }));
+  );
 }
 
 export async function readGraphHighlight(

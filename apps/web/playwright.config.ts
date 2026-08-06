@@ -1,6 +1,7 @@
 import { defineConfig, devices } from '@playwright/test';
 
 const CI = !!process.env.CI;
+const CPU_CONSTRAINED = process.env.TREEASE_E2E_CPU_CONSTRAINED === '1';
 const e2ePort = process.env.TREEASE_E2E_PORT ?? '8080';
 const e2eBaseUrl = `http://localhost:${e2ePort}`;
 
@@ -10,13 +11,17 @@ export default defineConfig({
     'fixture-corpus.spec.ts',
     'editor-core-workflow.spec.ts',
   ],
-  timeout: CI ? 10_000 : 10_000,
+  // CPU-constrained runs preserve the assertions and only widen their
+  // diagnostic budget; readiness still decides completion.
+  timeout: CPU_CONSTRAINED ? 30_000 : 10_000,
   retries: 1,
   expect: {
-    timeout: CI ? 10_000 : 10_000,
+    timeout: CPU_CONSTRAINED ? 30_000 : 10_000,
   },
   fullyParallel: true,
-  workers: CI ? 1 : '50%',
+  // Exercise the same semantic waits with scheduling pressure removed.  This
+  // is intentionally a test-runner switch, not a production timing change.
+  workers: CI || CPU_CONSTRAINED ? 1 : '50%',
   reporter: process.env.TREEASE_E2E_COVERAGE === '1'
     ? [
         ['dot'],

@@ -9,6 +9,7 @@ import {
   setEditorContent,
   setMonacoValue,
   waitForEditorReady,
+  waitForSidecarSettled,
   waitForSettingsReady,
 } from './utils';
 
@@ -68,13 +69,15 @@ test('right editor receives semantic token colors after auto-formatted full-edit
   });
 
   await openTextMode(page);
-  await chooseFile(page, {
+  const sidecarImport = await chooseFile(page, {
+    operation: 'sidecar',
     triggerLabel: 'Load compare file',
     inputLabel: 'Right panel file input',
     fileName: 'sidecar.json',
     content: '{"sidecar":{"nested":true},"count":2}',
     mimeType: 'application/json',
   });
+  await waitForSidecarSettled(page, sidecarImport);
 
   await expect.poll(async () => getMonacoValue(page, 'right-editor'), { timeout: 5_000 }).toContain('\n  "sidecar"');
   const formattedRightText = await getMonacoValue(page, 'right-editor');
@@ -110,13 +113,15 @@ test('right editor preserves semantic token colors after manual edits', async ({
 }`;
 
   await openTextMode(page);
-  await chooseFile(page, {
+  const sidecarImport = await chooseFile(page, {
+    operation: 'sidecar',
     triggerLabel: 'Load compare file',
     inputLabel: 'Right panel file input',
     fileName: 'sidecar.json',
     content: initialRightText,
     mimeType: 'application/json',
   });
+  await waitForSidecarSettled(page, sidecarImport);
 
   await expect.poll(async () => getMonacoValue(page, 'right-editor'), { timeout: 5_000 }).toContain('0.125');
   const loadedRightText = await getMonacoValue(page, 'right-editor');

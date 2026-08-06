@@ -4,6 +4,7 @@ import { expect, test, type Page } from './fixtures';
 import {
   clickGraphProbeAt,
   readGraphClickProbes,
+  runColumnNavigatorAction,
   setEditorContent,
   waitForColumnNavigatorSettled,
   waitForEditorReady,
@@ -110,17 +111,37 @@ test('moves the root graph smoothly during rapid alternating SKU Price navigatio
   expect(firstRootProbe, 'first root graph cell').toBeTruthy();
   if (!firstRootProbe?.coord) throw new Error('first root graph cell has no coordinate');
 
-  await clickGraphProbeAt(page, firstRootProbe.coord);
-  await waitForColumnNavigatorSettled(page, 'k:AE', 20_000);
+  const aeNavigation = await runColumnNavigatorAction(
+    page,
+    () => clickGraphProbeAt(page, firstRootProbe.coord),
+    'k:AE',
+    20_000,
+  );
+  await waitForColumnNavigatorSettled(page, aeNavigation, 20_000);
 
-  await page.locator('[data-column-navigator-item-path-key="k:QA"]').click();
-  await waitForColumnNavigatorSettled(page, 'k:QA', 20_000);
+  const qaNavigation = await runColumnNavigatorAction(
+    page,
+    () => page.locator('[data-column-navigator-item-path-key="k:QA"]').click(),
+    'k:QA',
+    20_000,
+  );
+  await waitForColumnNavigatorSettled(page, qaNavigation, 20_000);
 
-  await page.locator('[data-column-navigator-item-path-key="k:QA|k:Prices"]').click();
-  await waitForColumnNavigatorSettled(page, 'k:QA|k:Prices', 20_000);
+  const pricesNavigation = await runColumnNavigatorAction(
+    page,
+    () => page.locator('[data-column-navigator-item-path-key="k:QA|k:Prices"]').click(),
+    'k:QA|k:Prices',
+    20_000,
+  );
+  await waitForColumnNavigatorSettled(page, pricesNavigation, 20_000);
 
-  await page.locator('[data-column-navigator-item-path-key="k:QA|k:Prices|i:0"]').click();
-  await waitForColumnNavigatorSettled(page, 'k:QA|k:Prices|i:0', 20_000);
+  const firstPriceNavigation = await runColumnNavigatorAction(
+    page,
+    () => page.locator('[data-column-navigator-item-path-key="k:QA|k:Prices|i:0"]').click(),
+    'k:QA|k:Prices|i:0',
+    20_000,
+  );
+  await waitForColumnNavigatorSettled(page, firstPriceNavigation, 20_000);
 
   const workspace = page.getByTestId('column-navigator-graph');
   const columnPanes = workspace.locator('[data-testid="column-navigator-pane"]');
@@ -130,17 +151,22 @@ test('moves the root graph smoothly during rapid alternating SKU Price navigatio
   const railScrollLeftBefore = await workspace.locator('.column-navigator-graph__track').evaluate((rail) => rail.scrollLeft);
   await workspace.focus();
   await startViewportSampling(page);
-  await workspace.evaluate((element) => {
-    for (let index = 0; index < 30; index += 1) {
-      // Reversing direction defeats the ArrowDown coalescing path and matches
-      // the interaction that makes the whole root graph visibly shake.
-      element.dispatchEvent(new KeyboardEvent('keydown', {
-        key: index % 2 === 0 ? 'ArrowDown' : 'ArrowUp',
-        bubbles: true,
-      }));
-    }
-  });
-  await waitForColumnNavigatorSettled(page, undefined, 20_000);
+  const rapidNavigation = await runColumnNavigatorAction(
+    page,
+    () => workspace.evaluate((element) => {
+      for (let index = 0; index < 30; index += 1) {
+        // Reversing direction defeats the ArrowDown coalescing path and matches
+        // the interaction that makes the whole root graph visibly shake.
+        element.dispatchEvent(new KeyboardEvent('keydown', {
+          key: index % 2 === 0 ? 'ArrowDown' : 'ArrowUp',
+          bubbles: true,
+        }));
+      }
+    }),
+    undefined,
+    20_000,
+  );
+  await waitForColumnNavigatorSettled(page, rapidNavigation, 20_000);
   const samples = await stopViewportSampling(page);
   await testInfo.attach('root-graph-viewport-samples', {
     body: JSON.stringify(samples),
@@ -222,18 +248,32 @@ test('keeps the Column Navigator rail x position stable while stepping through o
     (probe) => probe.target === 'value' && probe.path.join('.') === 'items' && probe.coord,
   );
   if (!firstRootProbe?.coord) throw new Error('items graph cell has no coordinate');
-  await clickGraphProbeAt(page, firstRootProbe.coord);
-  await waitForColumnNavigatorSettled(page, 'k:items', 20_000);
-  await page.locator('[data-column-navigator-item-path-key="k:items|i:34"]').click();
-  await waitForColumnNavigatorSettled(page, 'k:items|i:34', 20_000);
+  const rootNavigation = await runColumnNavigatorAction(
+    page,
+    () => clickGraphProbeAt(page, firstRootProbe.coord),
+    'k:items',
+    20_000,
+  );
+  await waitForColumnNavigatorSettled(page, rootNavigation, 20_000);
+  const initialItemNavigation = await runColumnNavigatorAction(
+    page,
+    () => page.locator('[data-column-navigator-item-path-key="k:items|i:34"]').click(),
+    'k:items|i:34',
+    20_000,
+  );
+  await waitForColumnNavigatorSettled(page, initialItemNavigation, 20_000);
 
   const workspace = page.getByTestId('column-navigator-graph');
   await workspace.focus();
   await startColumnNavigatorRailSampling(page);
   for (let index = 35; index <= 50; index += 1) {
-    await page.keyboard.press('ArrowDown');
-    await waitForColumnNavigatorSettled(page, `k:items|i:${index}`, 20_000);
-    await page.waitForTimeout(60);
+    const navigation = await runColumnNavigatorAction(
+      page,
+      () => page.keyboard.press('ArrowDown'),
+      `k:items|i:${index}`,
+      20_000,
+    );
+    await waitForColumnNavigatorSettled(page, navigation, 20_000);
   }
   const samples = await stopColumnNavigatorRailSampling(page);
   await testInfo.attach('column-navigator-rail-scroll-samples', {

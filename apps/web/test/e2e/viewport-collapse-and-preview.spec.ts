@@ -7,6 +7,7 @@ import {
   setMonacoScroll,
   setEditorContent,
   waitForEditorReady,
+  waitForAnimationFrames,
   waitForGraphRendered,
   waitForPreviewSettled,
   waitForSettingsReady,
@@ -149,7 +150,7 @@ test('sync scroll toggle stops and resumes left/right text scroll mirroring', as
   await expect(page.getByRole('button', { name: 'Navigation sync', exact: true })).toHaveAttribute('aria-pressed', 'false');
 
   await setMonacoScroll(page, 'source-editor', 1280);
-  await page.waitForTimeout(150);
+  await waitForAnimationFrames(page);
   expect((await getMonacoScroll(page, 'right-editor')).scrollTop).toBe(640);
 
   await page.getByRole('button', { name: 'Navigation sync', exact: true }).click();
