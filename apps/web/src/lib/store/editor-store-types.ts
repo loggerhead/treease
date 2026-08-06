@@ -67,17 +67,22 @@ export type GraphEditReplaceFallbackReason =
   | 'unsupportedEdit'
   | 'unsafeEdit';
 
-export type EditorMutation = {
-  type: 'replaceSourceText';
-  payload: {
-    text: string;
-    graphEditFallback?: {
-      reason: GraphEditReplaceFallbackReason;
-      path: PathSeg[];
-      kind: 'key' | 'value';
+export type EditorMutation =
+  | {
+      type: 'replaceSourceText';
+      payload: {
+        text: string;
+        graphEditFallback?: {
+          reason: GraphEditReplaceFallbackReason;
+          path: PathSeg[];
+          kind: 'key' | 'value';
+        };
+      };
+    }
+  | {
+      type: 'changeLanguage';
+      payload: { languageId: SupportedEditorLanguageId };
     };
-  };
-};
 
 export type EditorMutationEnvelope = { id: number; mutation: EditorMutation };
 

@@ -327,8 +327,7 @@
       await editorRef?.importAs(nextLanguage, presetText, nextLanguage);
       await editorRef?.waitForIdle?.();
     } else if (nextPreset.language) {
-      languageIdStore.set(nextPreset.language);
-      await tick();
+      await editorRef?.changeLanguage(nextPreset.language);
     }
 
     if (nextPreset.rightText.effective) {
@@ -1850,6 +1849,7 @@
             onShowAiInputPanel={handleShowAiInputPanel}
             onFormat={() => editorRef?.formatActive()}
             onMinify={() => editorRef?.minifyActive()}
+            onLanguageChange={(languageId) => void editorRef?.changeLanguage(languageId)}
             onCommandExecute={handleCommandExecute}
           />
           <div class="min-h-0 flex-1">

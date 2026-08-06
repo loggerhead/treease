@@ -4,9 +4,9 @@ import type { GraphHighlightTarget } from '../store/graph-selection-store';
 import { activeSidecarTempModel } from '../store/active-sidecar-state';
 import {
   documentKey,
+  emitEditorMutation,
   getDocumentSessionState,
   editorRevision,
-  setLanguageId,
 } from '../store/document-session-store';
 import { getEditorStateSnapshot } from '../store/editor-store';
 import { activeFullEditUiState as fullEditUiState } from '../store/active-full-edit-ui-store';
@@ -69,7 +69,8 @@ export function installEditorStoreBridge(): void {
     // legacy main-tab TempModel now that graph interaction belongs to sidecar.
     getState: () => ({ ...getEditorStateSnapshot(), tempModel: get(activeSidecarTempModel) }),
     getWorkspace: () => getWorkspaceState(),
-    setLanguageId: (value: string) => setLanguageId(value as any),
+    setLanguageId: (value: string) =>
+      emitEditorMutation({ type: 'changeLanguage', payload: { languageId: value as any } }),
     setTempGraphSelection: (path: TreeaseBridgePathSeg[], target?: GraphHighlightTarget | 'node') => {
       const normalized = normalizeBridgePath(path);
       const state = getDocumentSessionState();

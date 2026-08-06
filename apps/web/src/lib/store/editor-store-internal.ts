@@ -488,6 +488,12 @@ function cloneTreeStateForRead(treeState: TreeSyncState): TreeSyncState {
 function baseCloneEditorMutationForRead(editorMutation: EditorMutationEnvelope | null): EditorMutationEnvelope | null {
   if (!editorMutation) return null;
   const mutation = editorMutation.mutation;
+  if (mutation.type === 'changeLanguage') {
+    return {
+      ...editorMutation,
+      mutation: { type: mutation.type, payload: { ...mutation.payload } },
+    };
+  }
   return {
     ...editorMutation,
     mutation: {

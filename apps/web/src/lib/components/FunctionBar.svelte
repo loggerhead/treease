@@ -12,6 +12,7 @@
   export let onFormat: () => void | Promise<void> = () => {};
   export let onMinify: () => void | Promise<void> = () => {};
   export let onCommandExecute: (id: CommandId) => void | Promise<void> = () => {};
+  export let onLanguageChange: (languageId: typeof $languageIdStore) => void | Promise<void> = () => {};
   export let aiInputOpen = false;
   export let emptyDocument = false;
 
@@ -20,7 +21,7 @@
   function selectLanguage(value: string): void {
     if (value === $languageIdStore) return;
     trackEvent('language_selected', { from: $languageIdStore, to: value });
-    languageIdStore.set(value as typeof $languageIdStore);
+    void onLanguageChange(value as typeof $languageIdStore);
   }
 </script>
 

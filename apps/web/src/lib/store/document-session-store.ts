@@ -18,6 +18,9 @@ function clonePathSegs(path: PathSeg[]) {
 }
 
 function cloneEditorMutationForWrite(mutation: EditorMutation): EditorMutation {
+  if (mutation.type === 'changeLanguage') {
+    return { type: mutation.type, payload: { ...mutation.payload } };
+  }
   return {
     ...mutation,
     payload: {

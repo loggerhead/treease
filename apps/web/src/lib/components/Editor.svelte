@@ -66,6 +66,10 @@
     return editorCore?.getActiveLanguage();
   }
 
+  export function changeLanguage(languageId: SupportedEditorLanguageId) {
+    return editorCore?.changeLanguage(languageId);
+  }
+
   export function importAs(targetFormat: string, text: string, sourceFormat: string) {
     return editorCore?.importAs(targetFormat, text, sourceFormat);
   }
